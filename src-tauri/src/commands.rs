@@ -8,6 +8,7 @@ use anyhow::{anyhow, bail, Context};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::ipc::{Channel, InvokeResponseBody, Response};
@@ -23,6 +24,8 @@ pub struct AppState {
     pub manager: Arc<SessionManager>,
     pub registry: AdapterRegistry,
     pub channels: Channels,
+    /// Set once the user confirmed quitting, so the exit guard lets the exit through.
+    pub exit_confirmed: AtomicBool,
 }
 
 impl AppState {
@@ -311,11 +314,17 @@ pub fn detach_session(id: String, state: State<'_, AppState>) {
 /// Kills every session and exits (the user confirmed quitting).
 #[tauri::command]
 pub async fn quit_now(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    state.exit_confirmed.store(true, Ordering::SeqCst);
     for s in state.manager.list() {
         let _ = state.manager.close(&s.id);
     }
     app.exit(0);
     Ok(())
+}
+
+/// Whether a close/exit request must be held back for the user to confirm.
+pub fn should_block_exit(live: usize, confirmed: bool) -> bool {
+    live > 0 && !confirmed
 }
 
 pub fn emit_confirm_quit(app: &AppHandle, live: usize) {
@@ -351,6 +360,13 @@ mod tests {
         assert!(validate_builder_name("   ").is_err());
         assert!(validate_builder_name(&"x".repeat(41)).is_err());
         assert!(validate_builder_name(&"x".repeat(40)).is_ok());
+    }
+
+    #[test]
+    fn exit_blocked_only_when_live_and_unconfirmed() {
+        assert!(!should_block_exit(0, false));
+        assert!(should_block_exit(2, false));
+        assert!(!should_block_exit(2, true));
     }
 
     #[test]

@@ -12,6 +12,7 @@ mod status;
 
 use commands::{AppState, Channels, Removed};
 use sessions::{Emit, ManagerEvent, SessionManager};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 use tauri::ipc::InvokeResponseBody;
 use tauri::{Emitter, Manager, WindowEvent};
@@ -60,13 +61,15 @@ pub fn run() {
                 manager,
                 registry: adapters::AdapterRegistry::new(),
                 channels,
+                exit_confirmed: AtomicBool::new(false),
             });
             Ok(())
         })
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
-                let live = window.state::<AppState>().manager.live_count();
-                if live > 0 {
+                let st = window.state::<AppState>();
+                let live = st.manager.live_count();
+                if commands::should_block_exit(live, st.exit_confirmed.load(Ordering::SeqCst)) {
                     api.prevent_close();
                     commands::emit_confirm_quit(window.app_handle(), live);
                 }
@@ -94,8 +97,19 @@ pub fn run() {
             commands::detach_session,
             commands::quit_now,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            // Cmd+Q / app-menu Quit never raise CloseRequested, so guard the exit itself.
+            if let tauri::RunEvent::ExitRequested { api, .. } = event {
+                let st = app.state::<AppState>();
+                let live = st.manager.live_count();
+                if commands::should_block_exit(live, st.exit_confirmed.load(Ordering::SeqCst)) {
+                    api.prevent_exit();
+                    commands::emit_confirm_quit(app, live);
+                }
+            }
+        });
 }
 
 #[cfg(test)] mod smoke { #[test] fn it_builds() { assert_eq!(2 + 2, 4); } }

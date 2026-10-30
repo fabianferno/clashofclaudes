@@ -3,6 +3,12 @@ import { ipc } from '../api/ipc';
 import type { AgentInfo, Builder, Compound, ListState, SessionInfo, SessionState, Stats, Tile, Workspace } from '../api/types';
 import { placeCompound, spotFor } from '../village/layout';
 
+export type Selection =
+  | { kind: 'hall' }
+  | { kind: 'workspace'; id: string }
+  | { kind: 'session'; id: string }
+  | { kind: 'builder'; id: string };
+
 export interface VillageActions {
   /** The workspace's compound, placing and persisting one first if it has none. */
   ensureCompound: (wsId: string) => Promise<Compound>;
@@ -17,11 +23,15 @@ export interface AppState {
   agents: AgentInfo[];
   stats: Stats;
   selectedSessionId: string | null;
+  selection: Selection | null;
+  panelOpen: boolean;
   village: VillageActions;
   hydrate: (s: ListState) => void;
   upsertSession: (s: SessionInfo) => void;
   removeSession: (id: string) => void;
   select: (id: string | null) => void;
+  /** Village selection; opens the panel for anything selected. A selected session also drives Plan 1's panel. */
+  setSelection: (sel: Selection | null) => void;
   setAgents: (a: AgentInfo[]) => void;
   addWorkspace: (w: Workspace) => void;
   updateWorkspace: (w: Workspace) => void;
@@ -38,6 +48,8 @@ export const useApp = create<AppState>((set, get) => ({
   agents: [],
   stats: { shippedTotal: 0, recentShips: [] },
   selectedSessionId: null,
+  selection: null,
+  panelOpen: false,
   village: villageActions(get),
   hydrate: (s) =>
     set({
@@ -55,9 +67,16 @@ export const useApp = create<AppState>((set, get) => ({
   removeSession: (id) =>
     set((st) => {
       const { [id]: _removed, ...rest } = st.sessions;
-      return { sessions: rest, selectedSessionId: st.selectedSessionId === id ? null : st.selectedSessionId };
+      const gone = st.selection?.kind === 'session' && st.selection.id === id;
+      return {
+        sessions: rest,
+        selectedSessionId: st.selectedSessionId === id ? null : st.selectedSessionId,
+        ...(gone ? { selection: null, panelOpen: false } : {}),
+      };
     }),
   select: (id) => set({ selectedSessionId: id }),
+  setSelection: (sel) =>
+    set({ selection: sel, panelOpen: sel !== null, selectedSessionId: sel?.kind === 'session' ? sel.id : null }),
   setAgents: (agents) => set({ agents }),
   addWorkspace: (w) => set((st) => ({ workspaces: [...st.workspaces, w] })),
   updateWorkspace: (w) => set((st) => ({ workspaces: st.workspaces.map((x) => (x.id === w.id ? w : x)) })),

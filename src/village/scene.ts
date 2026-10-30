@@ -1,6 +1,6 @@
 import { Application, Container, Sprite, Texture } from 'pixi.js';
 import type { AgentKind, Builder, Compound, SessionInfo, SessionState, Tile, Workspace } from '../api/types';
-import { iso } from './iso';
+import { iso, toGrid } from './iso';
 import { HALL, HOUSE, STRUCT, gateSide, gateTile, wallRect, type Rect } from './layout';
 import { classOf, gearOf, houseColors, houseStage, scaffoldHeight, type ClassTier, type Gear } from './look';
 import { routeHome, routeToSite, standTile, step, type Walker } from './walkers';
@@ -8,6 +8,11 @@ import {
   drawBadge, drawBubble, drawBuilder, drawGate, drawGround, drawHall, drawHouse, drawPuff, drawRing, drawStructure, drawWallSeg, groundOrigin, type Art, type Pose,
 } from './art/entities';
 import { getTexture, prepareArt } from './textures';
+import type { Selection } from '../state/store';
+import {
+  PANEL_W, ZMAX, ease, fitRect, keepVisible, pxRectOfCompound, pxRectOfTiles, screenToWorld, worldToScreen, zoomAt, type Cam,
+} from './camera';
+import { clickPoint, compoundAt, hitTest } from './input';
 
 // ---------------------------------------------------------------- pure part
 
@@ -213,6 +218,16 @@ export interface SceneDebug {
   running: boolean;
   entities: Array<{ id: string; kind: EntityKind; x: number; y: number; mode?: Walker['mode']; pose?: string }>;
   groundBakes: number;
+  cam: Cam;
+  /** Client (window) position of an entity's clickable middle: an entity id, or a workspace id for its house. */
+  screenOf(id: string): { x: number; y: number } | null;
+}
+
+export interface SceneOptions {
+  /** A click (or double-click on a compound) picked this, or null for empty ground. */
+  onSelect?: (sel: Selection | null) => void;
+  /** Width of the panel currently covering the right of the window (0 when closed). */
+  panelWidth?: () => number;
 }
 
 export interface Scene {
@@ -220,6 +235,12 @@ export interface Scene {
   destroy(): void;
   world: Container;
   debug(): SceneDebug;
+  /** Ease the camera to fit the whole village. */
+  fitVillage(): void;
+  /** Ease-zoom by `factor` around the centre of the area left of the panel. */
+  zoomBy(factor: number): void;
+  /** Pan (eased) just enough that the selected thing is not under the panel. */
+  reveal(sel: Selection | null): void;
 }
 
 const GROUND_SEED = 7;
@@ -240,7 +261,7 @@ function publishToDriver(): void {
 const FPS_FOCUSED = 30;
 const FPS_BLURRED = 15;
 
-export async function createScene(canvasHost: HTMLElement): Promise<Scene> {
+export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = {}): Promise<Scene> {
   const app = new Application();
   await app.init({
     resizeTo: canvasHost,
@@ -253,7 +274,7 @@ export async function createScene(canvasHost: HTMLElement): Promise<Scene> {
   await prepareArt();
   canvasHost.appendChild(app.canvas);
 
-  // view holds the layers and is what the (Task 8) camera transforms; for now it fits the village.
+  // view holds the layers and is what the camera transforms.
   const view = new Container();
   const groundLayer = new Container();
   const world = new Container({ sortableChildren: true });
@@ -265,7 +286,8 @@ export async function createScene(canvasHost: HTMLElement): Promise<Scene> {
   groundLayer.addChild(ground);
   let groundKey = '';
   let groundBakes = 0;
-  let fitRect: Rect | null = null;
+  let villageTiles: Rect | null = null;
+  let workspaces: Workspace[] = [];
 
   const sprites = new Map<string, { sprite: Sprite; key: string; entity: Entity }>();
   let entities: Entity[] = [];
@@ -303,17 +325,36 @@ export async function createScene(canvasHost: HTMLElement): Promise<Scene> {
   applyCap();
   if (document.hidden) app.ticker.stop();
 
-  const fit = () => {
-    if (!fitRect) return;
-    const r = fitRect;
-    const L = iso(r.x0, r.y0 + r.h).x, R = iso(r.x0 + r.w, r.y0).x;
-    const T = iso(r.x0, r.y0).y - 140, B = iso(r.x0 + r.w, r.y0 + r.h).y + 20; // 140: tallest roof/flag
-    const sw = app.screen.width, sh = app.screen.height, m = 40;
-    const z = Math.min(1, (sw - 2 * m) / (R - L), (sh - 2 * m) / (B - T));
-    view.scale.set(z);
-    view.position.set(sw / 2 - ((L + R) / 2) * z, sh / 2 - ((T + B) / 2) * z);
+  // ---- camera: screen = world * zoom + (x, y). Eased only while a target is set.
+  let cam: Cam = { x: 0, y: 0, zoom: 1 };
+  let camTarget: Cam | null = null;
+  let autoFit = true; // follow the village rect until the user moves the camera
+  const applyCam = () => {
+    view.scale.set(cam.zoom);
+    view.position.set(cam.x, cam.y);
   };
-  app.renderer.on('resize', fit);
+  const panelW = () => opts.panelWidth?.() ?? 0;
+  const villageCam = (): Cam | null =>
+    villageTiles ? fitRect(pxRectOfTiles(villageTiles), app.screen.width, app.screen.height, panelW(), 1) : null;
+  const jumpTo = (c: Cam) => { cam = c; camTarget = null; applyCam(); };
+  const fit = () => {
+    const c = villageCam();
+    if (c) jumpTo(c);
+  };
+  const fitVillage = () => {
+    const c = villageCam();
+    if (!c) return;
+    autoFit = true;
+    camTarget = c;
+  };
+  const onResize = () => { if (autoFit) fit(); };
+  app.renderer.on('resize', onResize);
+  app.ticker.add((t) => {
+    if (!camTarget) return; // idle: no camera work
+    cam = ease(cam, camTarget, Math.min(t.deltaMS / 1000, 0.25));
+    if (cam.x === camTarget.x && cam.y === camTarget.y && cam.zoom === camTarget.zoom) camTarget = null;
+    applyCam();
+  });
 
   const syncGround = (compounds: Compound[]) => {
     const b = groundBounds(compounds);
@@ -326,8 +367,12 @@ export async function createScene(canvasHost: HTMLElement): Promise<Scene> {
     const o = groundOrigin(b);
     ground.position.set(o.x, o.y);
     groundBakes++;
-    fitRect = villageRect(compounds);
-    fit();
+    const first = villageTiles === null;
+    villageTiles = villageRect(compounds);
+    if (autoFit) {
+      if (first) fit();
+      else fitVillage(); // the village grew: ease to the new extent
+    }
   };
 
 
@@ -449,6 +494,7 @@ export async function createScene(canvasHost: HTMLElement): Promise<Scene> {
 
   const sync = (state: VillageInput) => {
     if (destroyed) return;
+    workspaces = state.workspaces;
     const compounds = state.workspaces.flatMap((w) => (w.compound ? [w.compound] : []));
     syncGround(compounds);
     syncBuilders(state);
@@ -495,7 +541,108 @@ export async function createScene(canvasHost: HTMLElement): Promise<Scene> {
       })),
     ],
     groundBakes,
+    cam: { ...cam },
+    screenOf: (id) => {
+      const e = hitEntities().find((x) => x.id === id) ?? hitEntities().find((x) => x.id === `house:${id}`);
+      if (!e) return null;
+      const p = clickPoint(e), q = worldToScreen(cam, p.x, p.y), r = app.canvas.getBoundingClientRect();
+      return { x: q.x + r.left, y: q.y + r.top };
+    },
   });
+
+  // ---- input: drag pans, wheel zooms to the cursor, click selects, double-click zooms to a compound
+  const hitEntities = (): Entity[] => [
+    ...entities,
+    ...[...views].map(([id, v]): Entity => ({
+      id: `builder:${id}`, kind: 'builder', x: v.walker.x, y: v.walker.y, depth: v.walker.x + v.walker.y, texKey: '',
+    })),
+  ];
+  const selectionOf = (e: Entity | null): Selection | null => {
+    if (!e) return null;
+    if (e.kind === 'hall') return { kind: 'hall' };
+    if (e.kind === 'house') return { kind: 'workspace', id: e.id.slice('house:'.length) };
+    if (e.kind === 'structure') return { kind: 'session', id: e.id.slice('struct:'.length) };
+    if (e.kind === 'builder') return { kind: 'builder', id: e.id.slice('builder:'.length) };
+    return null;
+  };
+  const localPoint = (ev: MouseEvent) => {
+    const r = app.canvas.getBoundingClientRect();
+    return { x: ev.clientX - r.left, y: ev.clientY - r.top };
+  };
+  const DRAG_PX = 4;
+  let down: { id: number; x: number; y: number; cam: Cam; moved: boolean } | null = null;
+  const canvas = app.canvas;
+  const onDown = (ev: PointerEvent) => {
+    if (ev.button !== 0) return;
+    const p = localPoint(ev);
+    down = { id: ev.pointerId, x: p.x, y: p.y, cam: { ...cam }, moved: false };
+    try { canvas.setPointerCapture(ev.pointerId); } catch { /* synthetic events have no live pointer */ }
+  };
+  const onMove = (ev: PointerEvent) => {
+    if (!down || ev.pointerId !== down.id) return;
+    const p = localPoint(ev);
+    const dx = p.x - down.x, dy = p.y - down.y;
+    if (!down.moved && Math.hypot(dx, dy) > DRAG_PX) {
+      down.moved = true;
+      autoFit = false;
+      canvas.style.cursor = 'grabbing';
+    }
+    if (down.moved) jumpTo({ ...down.cam, x: down.cam.x + dx, y: down.cam.y + dy });
+  };
+  const onUp = (ev: PointerEvent) => {
+    if (!down || ev.pointerId !== down.id) return;
+    const d = down;
+    down = null;
+    canvas.style.cursor = '';
+    try { canvas.releasePointerCapture(ev.pointerId); } catch { /* see onDown */ }
+    if (d.moved) return;
+    const w = screenToWorld(cam, d.x, d.y);
+    opts.onSelect?.(selectionOf(hitTest(hitEntities(), w.x, w.y)));
+  };
+  const onCancel = () => { down = null; canvas.style.cursor = ''; };
+  const onWheel = (ev: WheelEvent) => {
+    ev.preventDefault();
+    const p = localPoint(ev);
+    const dy = ev.deltaMode === 1 ? ev.deltaY * 16 : ev.deltaY;
+    autoFit = false;
+    jumpTo(zoomAt(cam, p.x, p.y, Math.exp(-dy * 0.0015)));
+  };
+  const onDblClick = (ev: MouseEvent) => {
+    const p = localPoint(ev);
+    const w = screenToWorld(cam, p.x, p.y);
+    const g = toGrid(w.x, w.y);
+    const ws = compoundAt(workspaces, g.x, g.y);
+    if (ws?.compound) {
+      autoFit = false;
+      // the panel opens with the selection, so fit into the space it leaves
+      camTarget = fitRect(pxRectOfCompound(ws.compound), app.screen.width, app.screen.height, PANEL_W, ZMAX);
+      opts.onSelect?.({ kind: 'workspace', id: ws.id });
+    } else {
+      fitVillage();
+    }
+  };
+  canvas.addEventListener('pointerdown', onDown);
+  canvas.addEventListener('pointermove', onMove);
+  canvas.addEventListener('pointerup', onUp);
+  canvas.addEventListener('pointercancel', onCancel);
+  canvas.addEventListener('wheel', onWheel, { passive: false });
+  canvas.addEventListener('dblclick', onDblClick);
+
+  const zoomBy = (factor: number) => {
+    const cx = (app.screen.width - panelW()) / 2, cy = app.screen.height / 2;
+    autoFit = false;
+    camTarget = zoomAt(camTarget ?? cam, cx, cy, factor);
+  };
+  const reveal = (sel: Selection | null) => {
+    if (!sel) return;
+    const id = sel.kind === 'hall' ? 'hall' : sel.kind === 'workspace' ? `house:${sel.id}`
+      : sel.kind === 'session' ? `struct:${sel.id}` : `builder:${sel.id}`;
+    const e = hitEntities().find((x) => x.id === id);
+    if (!e) return;
+    const p = clickPoint(e);
+    const next = keepVisible(camTarget ?? cam, p.x, p.y, app.screen.width, app.screen.height, PANEL_W, 60);
+    if (next) { autoFit = false; camTarget = next; }
+  };
 
   const destroy = () => {
     if (destroyed) return;
@@ -503,7 +650,7 @@ export async function createScene(canvasHost: HTMLElement): Promise<Scene> {
     window.removeEventListener('focus', applyCap);
     window.removeEventListener('blur', applyCap);
     document.removeEventListener('visibilitychange', onVisibility);
-    app.renderer.off('resize', fit);
+    app.renderer.off('resize', onResize);
     sprites.clear();
     const gt = ground.texture;
     app.destroy({ removeView: true }, { children: true, texture: false });
@@ -524,5 +671,5 @@ export async function createScene(canvasHost: HTMLElement): Promise<Scene> {
   liveScenes.push(hooks);
   publishToDriver();
 
-  return { sync, destroy, world, debug };
+  return { sync, destroy, world, debug, fitVillage, zoomBy, reveal };
 }

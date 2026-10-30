@@ -3,6 +3,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const invoke = vi.fn();
 vi.mock('@tauri-apps/api/core', () => ({ invoke: (...a: unknown[]) => invoke(...a), Channel: class {} }));
 
+const win = { setAlwaysOnTop: vi.fn().mockResolvedValue(undefined), setFocus: vi.fn().mockResolvedValue(undefined), setVisibleOnAllWorkspaces: vi.fn().mockResolvedValue(undefined) };
+vi.mock('@tauri-apps/api/window', () => ({ getCurrentWindow: () => win }));
+
 describe('__cocDriver', () => {
   beforeEach(async () => {
     invoke.mockReset();
@@ -24,6 +27,15 @@ describe('__cocDriver', () => {
     d.run(3, 'Promise.resolve(5)');
     await settled();
     expect(lastCall()).toEqual(['driver_result', { id: 3, ok: true, value: 5 }]);
+  });
+
+  it('front raises and focuses; unfront drops always-on-top', async () => {
+    const d = window.__cocDriver!;
+    await d.front();
+    expect(win.setAlwaysOnTop).toHaveBeenLastCalledWith(true);
+    expect(win.setFocus).toHaveBeenCalled();
+    await d.unfront();
+    expect(win.setAlwaysOnTop).toHaveBeenLastCalledWith(false);
   });
 
   it('snapshot and scene default to empty until registered', async () => {

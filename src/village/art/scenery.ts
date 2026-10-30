@@ -1,7 +1,7 @@
 import { iso } from '../iso';
 import { OUT, bake, ctx, flag, isoBox, line, shadow, up, type Art } from './draw';
 
-/** One tile of wall running along x or y. Anchor: front corner of its 1x1 tile. */
+/** One tile of wall running along x or y. Anchor: the tile's front corner, grid point (tx+1, ty+1) for tile (tx, ty). */
 export function drawWallSeg(dir: 'x' | 'y'): Art {
   return bake(110, 80, 55, 62, () => {
     const L = 0.96, T = 0.44, hh = 14;
@@ -16,7 +16,7 @@ export function drawWallSeg(dir: 'x' | 'y'): Art {
 
 /**
  * Gate on the wall tile facing the hall: two stone posts joined by a wooden lintel, open between.
- * n/s gates run along x, e/w along y. Anchor: front corner of its 1x1 tile.
+ * n/s gates run along x, e/w along y. Anchor: the tile's front corner, grid point (tx+1, ty+1) for tile (tx, ty).
  */
 export function drawGate(side: 'n' | 's' | 'e' | 'w'): Art {
   return bake(120, 110, 60, 92, () => {
@@ -58,7 +58,7 @@ export function paintTree(pine: boolean, s: number): void {
   }
 }
 
-/** Tree on a 1x1 tile; anchor is the trunk base. Variants: 0 oak, 1 pine, 2 big oak, 3 small pine. */
+/** Tree on a 1x1 tile; anchor is the trunk base, at the tree's world position iso(x, y). Variants: 0 oak, 1 pine, 2 big oak, 3 small pine. */
 export function drawTree(variant: 0 | 1 | 2 | 3): Art {
   const s = [1.05, 1.15, 1.35, 0.95][variant];
   return bake(100, 130, 50, 112, () => paintTree(variant === 1 || variant === 3, s));

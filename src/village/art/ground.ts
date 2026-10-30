@@ -7,7 +7,7 @@ import { paintTree } from './scenery';
 const PAD_TOP = 90;
 const PAD = 40;
 
-/** World px (iso space) of the ground canvas' top-left corner. Ground is baked at 1x. */
+/** World px (iso space) of the ground canvas' top-left corner: place the bare canvas sprite there at scale 1 (ground is 1x, not 2x). */
 export function groundOrigin(b: Rect): Pt {
   return { x: iso(b.x0, b.y0 + b.h).x - PAD, y: iso(b.x0, b.y0).y - PAD_TOP };
 }
@@ -27,7 +27,8 @@ function gatePoint(c: Compound): Pt {
 
 /**
  * Grass, dirt paths hall -> each gate, and forest cleared from every wall rect (+GAP) and the hall.
- * Deterministic for a given seed. Returns a 1x-density canvas; `groundOrigin(bounds)` locates it.
+ * Deterministic for a given seed. Returns a bare 1x-density canvas (no anchor, unlike Art): place it at
+ * `groundOrigin(bounds)` in world px with scale 1.
  */
 export function drawGround(b: Rect, compounds: Compound[], seed: number): HTMLCanvasElement {
   let s = (Math.abs(Math.floor(seed)) % 233280) || 5;

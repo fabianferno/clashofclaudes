@@ -11,7 +11,7 @@ export const PALETTE: Record<
   codex: { body: '#3a3a40', dark: '#111114', hat: '#f4f4f4', roof: '#4a4d57', wall: '#cfccc5', label: 'Codex' },
   gemini: { body: '#4f7cf0', dark: '#22409a', hat: '#c9b8ff', roof: '#4f7cf0', wall: '#eef1f8', label: 'Gemini CLI' },
   opencode: { body: '#33a889', dark: '#17594a', hat: '#ffcc1a', roof: '#2f9a7e', wall: '#dcbf92', label: 'OpenCode' },
-  custom: { body: '#8a8479', dark: '#4f4c47', hat: '#efeae0', roof: '#7d7468', wall: '#e3dac6', label: 'Custom' },
+  custom: { body: '#8d8a83', dark: '#4f4c47', hat: '#efeae0', roof: '#7d7a74', wall: '#e4ded2', label: 'Custom' },
 };
 
 /** Model name (lowercase) to builder class; single-model or unknown agents are Craftsman. */

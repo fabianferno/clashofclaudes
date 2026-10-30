@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { PALETTE } from '../look';
 import { shade } from './draw';
 import {
   drawBuilder, drawGate, drawGround, drawHall, drawHouse, drawStructure, drawTree, drawWallSeg,
@@ -50,6 +51,18 @@ describe('art', () => {
     expect(shade('rgb(128,128,128)', 0)).toBe('rgb(128,128,128)');
     expect(shade('rgb(200, 100, 50)', -0.5)).toBe('rgb(100,50,25)');
     expect(shade('#000000', 1)).toBe('rgb(255,255,255)');
+  });
+});
+
+describe('palette', () => {
+  it('custom_palette_matches_constraints', () => {
+    expect(PALETTE.custom).toMatchObject({
+      body: '#8d8a83', roof: '#7d7a74', wall: '#e4ded2', dark: '#4f4c47', hat: '#efeae0',
+    });
+    expect(PALETTE.claude).toMatchObject({ body: '#d97757', roof: '#d4683f', wall: '#f3e2c4' });
+    expect(PALETTE.codex).toMatchObject({ body: '#3a3a40', roof: '#4a4d57', wall: '#cfccc5' });
+    expect(PALETTE.gemini).toMatchObject({ body: '#4f7cf0', roof: '#4f7cf0', wall: '#eef1f8' });
+    expect(PALETTE.opencode).toMatchObject({ body: '#33a889', roof: '#2f9a7e', wall: '#dcbf92' });
   });
 });
 

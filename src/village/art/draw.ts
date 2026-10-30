@@ -5,6 +5,12 @@ export const OUT = '#1d130b';
 export const SCALE = 2; // pixel density of baked art
 
 export interface Pt { x: number; y: number }
+/**
+ * Baked art contract. `canvas` is drawn at 2x pixel density (1 canvas px = 0.5 world px).
+ * `ax`/`ay` are the anchor's position in CANVAS pixels. Consumers create the sprite with
+ * anchor (ax / canvas.width, ay / canvas.height) and scale 0.5, then place it at the world
+ * position `iso(x, y)` of the anchor's grid point (documented on each draw function).
+ */
 export interface Art { canvas: HTMLCanvasElement; ax: number; ay: number }
 
 let cur: CanvasRenderingContext2D | null = null;
@@ -16,8 +22,9 @@ export function ctx(): CanvasRenderingContext2D {
 }
 
 /**
- * Draw once into a fresh canvas of w x h logical px at 2x density. The origin (0,0) of `fn`
- * `origin` (world px, default 0,0) lands on logical (ax, ay), which is returned in canvas pixels.
+ * Draw once into a fresh canvas of w x h logical px (canvas is w*scale x h*scale, default 2x).
+ * `fn` draws in world px; the world point `origin` (default 0,0) is mapped to logical (ax, ay).
+ * The returned ax/ay are that anchor in canvas pixels.
  */
 export function bake(w: number, h: number, ax: number, ay: number, fn: () => void, origin: Pt = { x: 0, y: 0 }, scale = SCALE): Art {
   const canvas = document.createElement('canvas');

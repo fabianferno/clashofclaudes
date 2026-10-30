@@ -74,7 +74,7 @@ function figure(agent: AgentKind, cls: ClassTier, gear: Gear, pose: Pose, face: 
   }
 }
 
-/** Builder art; anchor is the feet. Idle builders carry no hammer. */
+/** Builder art. Anchor: the feet, at the builder's world position iso(x, y). Idle builders carry no hammer. */
 export function drawBuilder(agent: AgentKind, cls: ClassTier, gear: Gear, pose: Pose, face: 1 | -1): Art {
   const S = CLASS_SCALE[cls];
   return bake(110, 130, 55, 100, () => {

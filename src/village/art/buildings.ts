@@ -48,7 +48,7 @@ function houseBody(
   return { k, r, H };
 }
 
-/** Town hall: 5x5 footprint, front corner anchor. */
+/** Town hall, 5x5 footprint. Anchor: the footprint's front corner, grid point (gx+5, gy+5), i.e. iso(gx+5, gy+5) in world px. */
 export function drawHall(): Art {
   return bake(380, 340, 190, 290, () => {
     const n = 5;
@@ -63,7 +63,7 @@ export function drawHall(): Art {
   }, iso(5, 5));
 }
 
-/** Workspace house: 3x3 footprint. Stages: 0 plain, 1 banner, 2 wing, 3 tower, 4 gold trim. */
+/** Workspace house, 3x3 footprint. Anchor: the footprint's front corner, grid point (gx+3, gy+3).  Stages: 0 plain, 1 banner, 2 wing, 3 tower, 4 gold trim. */
 export function drawHouse(stage: 0 | 1 | 2 | 3 | 4, roofColor: string, wall: string): Art {
   return bake(300, 330, 150, 300, () => {
     const gold = stage >= 4;
@@ -84,7 +84,7 @@ export function drawHouse(stage: 0 | 1 | 2 | 3 | 4, roofColor: string, wall: str
 
 type StructStage = 'foundation' | 'scaffold' | 'complete';
 
-/** Agent structure: 2x2 footprint, body 1.6 tiles, h=28, roof 22. `height01` is built fraction. */
+/** Agent structure. Anchor: the footprint's front corner, grid point (gx+2, gy+2). 2x2 footprint, body 1.6 tiles, h=28, roof 22. `height01` is built fraction. */
 export function drawStructure(agent: AgentKind, stage: StructStage, height01: number): Art {
   const P = PALETTE[agent];
   const w = 1.6, h = 28, rh = 22, base = 8, gx = 0.2, gy = 0.2;

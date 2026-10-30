@@ -17,6 +17,7 @@ export default function SessionPanel({ sessionId, onClosed }: { sessionId: strin
   const [now, setNow] = useState(Date.now());
   const [error, setError] = useState<string | null>(null);
   const [review, setReview] = useState<Review | null>(null);
+  const [answering, setAnswering] = useState(false);
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -32,6 +33,11 @@ export default function SessionPanel({ sessionId, onClosed }: { sessionId: strin
     try { await p; } catch (e) { setError(String(e)); }
   };
   const st = session.state.kind;
+  const answer = async (p: () => Promise<unknown>) => {
+    if (answering) return;
+    setAnswering(true);
+    try { await run(p()); } finally { setAnswering(false); }
+  };
 
   async function close() {
     setError(null);
@@ -50,9 +56,12 @@ export default function SessionPanel({ sessionId, onClosed }: { sessionId: strin
         {session.kind.kind === 'agent' && <span>{session.steps} steps</span>}
         <span>{elapsed(session.startedAt, now)}</span>
         <span className="spacer" />
-        {st === 'needsYou' && (agent?.canApprove
-          ? <><button onClick={() => run(ipc.approve(sessionId))}>Allow</button><button onClick={() => run(ipc.deny(sessionId))}>Deny</button></>
-          : <em>Answer in the terminal below</em>)}
+        {session.state.kind === 'needsYou' && (agent?.canApprove && session.awaitingDecision
+          ? <>
+              <button disabled={answering} onClick={() => answer(() => ipc.approve(sessionId))}>Allow</button>
+              <button disabled={answering} onClick={() => answer(() => ipc.deny(sessionId))}>Deny</button>
+            </>
+          : <em>{agent?.canApprove ? session.state.reason : 'Answer in the terminal below'}</em>)}
         {st === 'finished' && (
           <button onClick={async () => { setError(null); try { setReview(await ipc.reviewSession(sessionId)); } catch (e) { setError(String(e)); } }}>Review</button>
         )}

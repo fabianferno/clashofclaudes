@@ -44,6 +44,8 @@ export interface SessionInfo {
   reachedFinished: boolean;
   worktree: WorktreeInfo | null;
   commandPreview: string;
+  /** A permission prompt can be answered with approve/deny right now. */
+  awaitingDecision: boolean;
 }
 
 export interface ListState {

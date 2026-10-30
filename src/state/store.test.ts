@@ -3,7 +3,7 @@ import type { Builder, SessionInfo, SessionState } from '../api/types';
 
 const sess = (id: string, ws: string, builderId?: string, startedAt = 0, state: SessionState = { kind: 'working' }): SessionInfo => ({
   id, workspaceId: ws, kind: builderId ? { kind: 'agent', builderId } : { kind: 'terminal' },
-  task: null, state, steps: 0, startedAt, lastOutputAt: 0, reachedFinished: false, worktree: null, commandPreview: '',
+  task: null, state, steps: 0, startedAt, lastOutputAt: 0, reachedFinished: false, worktree: null, commandPreview: '', awaitingDecision: false,
 });
 const bld = (id: string): Builder => ({ id, name: id, agent: 'claude', model: null, effort: null, customCommand: null });
 

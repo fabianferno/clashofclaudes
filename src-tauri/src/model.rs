@@ -91,4 +91,7 @@ pub struct SessionInfo {
     pub reached_finished: bool,
     pub worktree: Option<WorktreeInfo>,
     pub command_preview: String,
+    /// A permission prompt is open and can be answered with approve/deny. False after an
+    /// answer until the agent asks again.
+    pub awaiting_decision: bool,
 }

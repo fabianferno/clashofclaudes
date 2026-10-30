@@ -39,6 +39,8 @@ const INITIAL_ROWS: u16 = 32;
 /// At most one `Output` event per session per this interval.
 const FLUSH_EVERY: Duration = Duration::from_millis(16);
 const TICK_EVERY: Duration = Duration::from_secs(1);
+/// Shown after Deny: the agent now waits for typed instructions.
+pub const DENIED_REASON: &str = "Denied — tell Claude what to do in the terminal";
 
 struct SessionEntry {
     info: SessionInfo,
@@ -78,6 +80,16 @@ impl SessionEntry {
             self.quiet_since_ms = now;
             changed = true;
         }
+        // A permission prompt arms Allow/Deny; leaving NeedsYou disarms them.
+        let needs_you = matches!(self.info.state, SessionState::NeedsYou { .. });
+        let awaiting = match ev {
+            StatusEvent::PermissionRequested { .. } => needs_you,
+            _ => self.info.awaiting_decision && needs_you,
+        };
+        if awaiting != self.info.awaiting_decision {
+            self.info.awaiting_decision = awaiting;
+            changed = true;
+        }
         changed
     }
 
@@ -112,7 +124,8 @@ struct Queued {
 
 /// Locking: one mutex over all sessions. Events are sent into a channel while the lock is
 /// held (so their order matches the state order) and a dedicated thread calls `emit`, so
-/// `emit` never runs under the lock. PTY writes/kills, git and file IO run outside the lock.
+/// `emit` never runs under the lock. PTY kills, git and file IO run outside the lock; PTY
+/// writes only enqueue (see `PtyHandle`), so they may happen under it.
 /// Queued output per session is bounded: one in-flight `Output` plus `pending`, each at most
 /// `SCROLLBACK_CAP` bytes.
 pub struct SessionManager {
@@ -253,6 +266,7 @@ impl SessionManager {
             reached_finished: false,
             worktree: None,
             command_preview: command_preview(&spec),
+            awaiting_decision: false,
         };
         {
             // Check and insert atomically so two starts can't share a builder.
@@ -444,29 +458,37 @@ impl SessionManager {
         self.running_pty(id)?.resize(cols, rows)
     }
 
+    /// Answers the open permission prompt with yes; the session reads as `Working` at once
+    /// (the tool runs with no further hook until it finishes).
     pub fn approve(&self, id: &str) -> Result<()> {
-        self.send_keys(id, |a| a.approve_keys())
+        self.answer(id, |a| a.approve_keys(), SessionState::Working)
     }
 
+    /// Answers the open permission prompt with no. The agent then waits for typed
+    /// instructions and no hook fires, so the session stays `NeedsYou` with `DENIED_REASON`.
     pub fn deny(&self, id: &str) -> Result<()> {
-        self.send_keys(id, |a| a.deny_keys())
+        self.answer(id, |a| a.deny_keys(), SessionState::NeedsYou { reason: DENIED_REASON.into() })
     }
 
-    fn send_keys(&self, id: &str, pick: fn(&dyn AgentAdapter) -> Option<&'static [u8]>) -> Result<()> {
-        let (pty, keys) = {
-            let g = self.lock();
-            let e = g.get(id).ok_or_else(|| anyhow!("unknown session {id}"))?;
-            let keys = e
-                .adapter
-                .as_deref()
-                .and_then(pick)
-                .ok_or_else(|| anyhow!("this agent can't be answered from the app; open the terminal"))?;
-            if !matches!(e.info.state, SessionState::NeedsYou { .. }) {
-                bail!("session is not waiting for approval");
-            }
-            (e.pty.clone().ok_or_else(|| anyhow!("session is not running"))?, keys)
-        };
-        pty.write(keys)
+    /// One answer per prompt: a second approve/deny errs until a new `PermissionRequested`.
+    fn answer(&self, id: &str, pick: fn(&dyn AgentAdapter) -> Option<&'static [u8]>, then: SessionState) -> Result<()> {
+        let mut g = self.lock();
+        let e = g.get_mut(id).ok_or_else(|| anyhow!("unknown session {id}"))?;
+        let keys = e
+            .adapter
+            .as_deref()
+            .and_then(pick)
+            .ok_or_else(|| anyhow!("this agent can't be answered from the app; open the terminal"))?;
+        if !e.info.awaiting_decision || !matches!(e.info.state, SessionState::NeedsYou { .. }) {
+            bail!("session is not waiting for approval");
+        }
+        let pty = e.pty.clone().ok_or_else(|| anyhow!("session is not running"))?;
+        pty.write(keys)?; // only enqueues, so it is fine under the lock
+        e.info.awaiting_decision = false;
+        e.info.state = then;
+        e.quiet_since_ms = now_ms();
+        self.send_updated(e);
+        Ok(())
     }
 
     /// Kills the process; the session stays listed and ends as `Ended`.
@@ -809,6 +831,51 @@ mod tests {
         fx.mgr.approve(&s.id).unwrap();
         // Hooks for unknown sessions are ignored.
         fx.mgr.on_hook("nope", fixture_json("stop.json"));
+    }
+
+    fn info(fx: &Fx, id: &str) -> SessionInfo {
+        fx.mgr.list().into_iter().find(|s| s.id == id).unwrap()
+    }
+
+    fn last_update(fx: &Fx, id: &str) -> SessionInfo {
+        fx.events.lock().unwrap().iter().rev().find_map(|e| match e {
+            ManagerEvent::Updated(i) if i.id == id => Some(i.clone()),
+            _ => None,
+        }).unwrap()
+    }
+
+    #[test]
+    fn approve_resumes_working_and_answers_once() {
+        let fx = fixture();
+        let s = fx.mgr.start_with_spec(&fx.ws, &claude("b1"), sleeper(&fx), Arc::new(ClaudeAdapter)).unwrap();
+        fx.mgr.on_hook(&s.id, fixture_json("notification_permission.json"));
+        let i = info(&fx, &s.id);
+        assert!(matches!(i.state, SessionState::NeedsYou { .. }) && i.awaiting_decision);
+        fx.mgr.approve(&s.id).unwrap();
+        let i = info(&fx, &s.id);
+        assert_eq!((i.state.clone(), i.awaiting_decision), (SessionState::Working, false));
+        assert!(wait_until(|| last_update(&fx, &s.id) == i), "Updated(Working) emitted");
+        assert!(fx.mgr.approve(&s.id).is_err(), "already answered");
+        assert!(fx.mgr.deny(&s.id).is_err(), "already answered");
+    }
+
+    #[test]
+    fn deny_needs_typed_answer_until_asked_again() {
+        let fx = fixture();
+        let s = fx.mgr.start_with_spec(&fx.ws, &claude("b1"), sleeper(&fx), Arc::new(ClaudeAdapter)).unwrap();
+        fx.mgr.on_hook(&s.id, fixture_json("notification_permission.json"));
+        fx.mgr.deny(&s.id).unwrap();
+        let i = info(&fx, &s.id);
+        assert_eq!(i.state, SessionState::NeedsYou { reason: DENIED_REASON.into() });
+        assert!(!i.awaiting_decision, "no live Allow/Deny after a deny");
+        assert!(wait_until(|| last_update(&fx, &s.id) == i), "Updated emitted");
+        assert!(fx.mgr.deny(&s.id).is_err());
+        assert!(fx.mgr.approve(&s.id).is_err());
+        // A new permission prompt re-arms the decision.
+        fx.mgr.on_hook(&s.id, fixture_json("notification_permission.json"));
+        assert!(info(&fx, &s.id).awaiting_decision);
+        fx.mgr.approve(&s.id).unwrap();
+        assert_eq!(state(&fx, &s.id), SessionState::Working);
     }
 
     #[test]

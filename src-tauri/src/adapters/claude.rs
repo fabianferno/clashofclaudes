@@ -45,6 +45,20 @@ fn settings_json(hook_url: &str) -> serde_json::Value {
     serde_json::json!({ "hooks": hooks })
 }
 
+/// Writes `bytes` readable by the owner only (the settings carry the hook token).
+fn write_private(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut opts, 0o600);
+    let mut f = opts.open(path)?;
+    // `mode` applies only on create; tighten a file left from before.
+    #[cfg(unix)]
+    f.set_permissions(std::os::unix::fs::PermissionsExt::from_mode(0o600))?;
+    f.write_all(bytes)
+}
+
 impl AgentAdapter for ClaudeAdapter {
     fn kind(&self) -> AgentKind {
         AgentKind::Claude
@@ -75,7 +89,7 @@ impl AgentAdapter for ClaudeAdapter {
         let dir = req.data_dir.join("sessions").join(req.session_id);
         std::fs::create_dir_all(&dir)?;
         let settings_path = dir.join("claude-settings.json");
-        std::fs::write(&settings_path, serde_json::to_vec_pretty(&settings_json(req.hook_url))?)?;
+        write_private(&settings_path, &serde_json::to_vec_pretty(&settings_json(req.hook_url))?)?;
 
         let mut args: Vec<String> = vec![
             "--session-id".into(),
@@ -207,6 +221,16 @@ mod tests {
             assert!(cmd.contains("--data-binary @-"), "{ev}");
         }
         assert_eq!(v["hooks"]["PostToolUse"][0]["matcher"], "*");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn settings_file_is_private() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tempfile::tempdir().unwrap();
+        let spec = ClaudeAdapter.launch(&req("sid-p", d.path(), None, None, None)).unwrap();
+        let mode = std::fs::metadata(&spec.args[3]).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "settings carry the hook token: {mode:o}");
     }
 
     #[test]

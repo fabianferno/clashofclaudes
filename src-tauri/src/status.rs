@@ -101,6 +101,54 @@ pub fn screen_text(bytes: &[u8]) -> String {
     out
 }
 
+/// True when `data` consists only of terminal-generated reports (cursor position, device
+/// attributes, focus in/out, OSC replies) as xterm sends automatically, not typed input.
+/// Empty input counts (nothing typed).
+pub fn is_terminal_report_only(data: &[u8]) -> bool {
+    let mut i = 0;
+    while i < data.len() {
+        if data[i] != 0x1b {
+            return false;
+        }
+        match data.get(i + 1) {
+            Some(b'[') => {
+                let start = i + 2;
+                let mut j = start;
+                while j < data.len() && (0x20..=0x3f).contains(&data[j]) {
+                    j += 1;
+                }
+                let Some(&fin) = data.get(j) else { return false };
+                let ok = match fin {
+                    b'R' | b'c' | b'n' | b't' | b'u' | b'y' => true,
+                    b'I' | b'O' => j == start, // focus events carry no parameters
+                    _ => false,
+                };
+                if !ok {
+                    return false;
+                }
+                i = j + 1;
+            }
+            Some(b']') => {
+                let mut j = i + 2;
+                loop {
+                    match data.get(j) {
+                        None => return false,
+                        Some(0x07) => break,
+                        Some(0x1b) if data.get(j + 1) == Some(&b'\\') => {
+                            j += 1;
+                            break;
+                        }
+                        _ => j += 1,
+                    }
+                }
+                i = j + 1;
+            }
+            _ => return false,
+        }
+    }
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -127,5 +175,13 @@ mod tests {
     #[test] fn plain_user_input_resumes_from_finished() { assert_eq!(next_state(&Finished, &UserInput, &plain()), Working); }
     #[test] fn screen_text_strips_ansi_and_whitespace() {
         assert_eq!(screen_text(b"\x1b[1m Yes,\x1b[0m I  trust\x1b[1C this\r\nfolder\x1b]0;title\x07!"), "YesItrustthisfolder");
+    }
+    #[test] fn terminal_reports_are_not_typing() {
+        for r in [&b"\x1b[12;40R"[..], b"\x1b[?1;2c", b"\x1b[I", b"\x1b[O", b"\x1b]11;rgb:0000/0000/0000\x07", b"\x1b]11;rgb:0/0/0\x1b\\", b"\x1b[?0u", b"\x1b[I\x1b[12;40R", b""] {
+            assert!(is_terminal_report_only(r), "{r:?}");
+        }
+        for t in [&b"\x1b[B"[..], b"\r", b"1", b"\x1b", b"\x1b[12;40R1", b"1\x1b[12;40R", b"\x1b[A", b"\x1b]11;x"] {
+            assert!(!is_terminal_report_only(t), "{t:?}");
+        }
     }
 }

@@ -5,7 +5,7 @@ use crate::hooks::HookServer;
 use crate::model::{Builder, SessionInfo, SessionKind, SessionState, Workspace, WorktreeInfo};
 use crate::pty::{LaunchSpec, PtyHandle};
 use crate::scrollback::{Scrollback, SCROLLBACK_CAP};
-use crate::status::{next_state, screen_text, StatusEvent, StatusPolicy};
+use crate::status::{is_terminal_report_only, next_state, screen_text, StatusEvent, StatusPolicy};
 use anyhow::{anyhow, bail, Result};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -504,8 +504,8 @@ impl SessionManager {
         let mut g = self.lock();
         if let Some(e) = g.get_mut(id) {
             let mut changed = data.contains(&b'\r') && e.apply(&StatusEvent::UserInput, now_ms());
-            // Typing means the user is answering in the terminal; the panel stops offering Allow/Deny.
-            if std::mem::take(&mut e.info.awaiting_decision) {
+            // Typing (not xterm's automatic query replies) means the user is answering in the terminal; the panel stops offering Allow/Deny.
+            if !is_terminal_report_only(data) && std::mem::take(&mut e.info.awaiting_decision) {
                 e.active_prompt = None;
                 changed = true;
             }
@@ -1254,6 +1254,17 @@ mod tests {
         assert!(matches!(i.state, SessionState::NeedsYou { .. }));
         assert!(wait_until(|| last_update(&fx, &s.id).as_ref() == Some(&i)), "Updated emitted");
         assert!(fx.mgr.approve(&s.id).is_err());
+    }
+
+    #[test]
+    fn terminal_reports_do_not_disarm() {
+        let fx = fixture();
+        let s = fx.mgr.start_with_spec(&fx.ws, &claude("b1"), sleeper(&fx), Arc::new(ClaudeAdapter)).unwrap();
+        fx.mgr.on_hook(&s.id, fixture_json("notification_permission.json"));
+        fx.mgr.write(&s.id, b"\x1b[5;1R").unwrap();
+        assert!(info(&fx, &s.id).awaiting_decision, "a cursor report is not the user answering");
+        fx.mgr.write(&s.id, b"\x1b[B").unwrap();
+        assert!(!info(&fx, &s.id).awaiting_decision);
     }
 
     #[test]

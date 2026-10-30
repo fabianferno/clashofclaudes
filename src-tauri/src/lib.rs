@@ -15,13 +15,41 @@ use sessions::{Emit, ManagerEvent, SessionManager};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 use tauri::ipc::InvokeResponseBody;
-use tauri::{Emitter, Manager, WindowEvent};
+use tauri::menu::{Menu, MenuItem};
+use tauri::{AppHandle, Emitter, Manager, Runtime, WindowEvent};
+
+const QUIT_MENU_ID: &str = "app-quit";
+
+/// The default menu, except Quit: the predefined item terminates the process directly (macOS
+/// `terminate:`) and never raises ExitRequested, so it is swapped for one that calls
+/// `app.exit`, which goes through the exit guard in `run`.
+fn app_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
+    let menu = Menu::default(app)?;
+    for top in menu.items()? {
+        let Some(sub) = top.as_submenu() else { continue };
+        for (i, item) in sub.items()?.into_iter().enumerate() {
+            let Some(p) = item.as_predefined_menuitem() else { continue };
+            let text = p.text()?.replace('&', "");
+            if text.starts_with("Quit") || text == "Exit" {
+                sub.remove(p)?;
+                sub.insert(&MenuItem::with_id(app, QUIT_MENU_ID, text, true, Some("CmdOrCtrl+Q"))?, i)?;
+            }
+        }
+    }
+    Ok(menu)
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .menu(app_menu)
+        .on_menu_event(|app, event| {
+            if event.id() == QUIT_MENU_ID {
+                app.exit(0);
+            }
+        })
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
@@ -106,7 +134,8 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {
-            // Cmd+Q / app-menu Quit never raise CloseRequested, so guard the exit itself.
+            // Quit from the menu or Cmd+Q (see `app_menu`) never raises CloseRequested, so guard
+            // the exit itself.
             if let tauri::RunEvent::ExitRequested { api, .. } = event {
                 let st = app.state::<AppState>();
                 let live = st.manager.running_process_count();

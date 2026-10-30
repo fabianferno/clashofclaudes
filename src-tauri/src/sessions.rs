@@ -712,6 +712,10 @@ mod tests {
         String::from_utf8_lossy(&bytes).into_owned()
     }
 
+    fn scrollback(fx: &Fx, id: &str) -> String {
+        String::from_utf8_lossy(&fx.mgr.lock().get(id).unwrap().scrollback.snapshot()).into_owned()
+    }
+
     fn fixture_json(name: &str) -> serde_json::Value {
         let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/claude-hooks").join(name);
         serde_json::from_str(&std::fs::read_to_string(p).unwrap()).unwrap()
@@ -760,6 +764,19 @@ mod tests {
         let err = fx.mgr.start_terminal(&ws).unwrap_err();
         assert!(err.downcast_ref::<WorkspaceMissing>().is_some(), "{err:#}");
         assert!(fx.mgr.list().is_empty());
+    }
+
+    #[test]
+    fn write_returns_fast_when_child_ignores_stdin() {
+        let fx = fixture();
+        // Raw mode, like any TUI: unread input fills the pty queue.
+        let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "stty raw -echo; printf ready; sleep 5"), None).unwrap();
+        assert!(wait_until(|| scrollback(&fx, &s.id).contains("ready")));
+        let t = Instant::now();
+        fx.mgr.write(&s.id, &[b'x'; 128 * 1024]).unwrap();
+        fx.mgr.approve(&s.id).unwrap_err(); // not waiting; must not block either
+        fx.mgr.write(&s.id, b"\r").unwrap();
+        assert!(t.elapsed() < Duration::from_millis(100), "write blocked for {:?}", t.elapsed());
     }
 
     #[test]

@@ -1,9 +1,9 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 use crate::platform;
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use std::io::{Read, Write};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -27,12 +27,24 @@ struct Shared {
     exited: AtomicBool,
 }
 
+/// Unwritten input allowed per session before `write` refuses more.
+pub const INPUT_CAP: usize = 4 * 1024 * 1024;
+
 /// A running child attached to a PTY. `Send + Sync`.
+///
+/// Input goes through a per-handle writer thread fed by a FIFO channel, so `write` never
+/// blocks the caller (Tauri runs sync commands on the main thread, and a pty write stalls once
+/// a raw-mode child stops reading). The thread exits once the handle is dropped and its last
+/// queued write finishes or fails (the child's death closes the pty, failing a stalled write).
 pub struct PtyHandle {
     master: Mutex<Box<dyn MasterPty + Send>>,
-    writer: Mutex<Box<dyn Write + Send>>,
+    input: mpsc::Sender<Vec<u8>>,
+    /// Bytes queued for the writer thread but not yet written.
+    queued_input: Arc<AtomicUsize>,
     shared: Arc<Shared>,
     pid: Option<u32>,
+    #[cfg(test)]
+    writer_alive: Arc<AtomicBool>,
 }
 
 impl PtyHandle {
@@ -46,7 +58,7 @@ impl PtyHandle {
         let pair = native_pty_system().openpty(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 })?;
         // Acquire fallible resources before spawning so a failure can't leak a child.
         let mut reader = pair.master.try_clone_reader()?;
-        let writer = pair.master.take_writer()?;
+        let mut writer = pair.master.take_writer()?;
         let mut cmd = CommandBuilder::new(&spec.program);
         cmd.args(&spec.args);
         cmd.cwd(&spec.cwd);
@@ -70,6 +82,25 @@ impl PtyHandle {
             }
             let _ = done_tx.send(());
         });
+        let (input, input_rx) = mpsc::channel::<Vec<u8>>();
+        let queued_input = Arc::new(AtomicUsize::new(0));
+        let queued = queued_input.clone();
+        #[cfg(test)]
+        let writer_alive = Arc::new(AtomicBool::new(true));
+        #[cfg(test)]
+        let alive = writer_alive.clone();
+        std::thread::spawn(move || {
+            for chunk in input_rx {
+                let ok = writer.write_all(&chunk).and_then(|_| writer.flush()).is_ok();
+                queued.fetch_sub(chunk.len(), Ordering::SeqCst);
+                if !ok {
+                    break; // the pty is gone; later input has nowhere to go
+                }
+            }
+            #[cfg(test)]
+            alive.store(false, Ordering::SeqCst);
+        });
+
         let sh = shared.clone();
         std::thread::spawn(move || {
             let code = loop {
@@ -97,13 +128,30 @@ impl PtyHandle {
             on_exit(code);
         });
 
-        Ok(PtyHandle { master: Mutex::new(pair.master), writer: Mutex::new(writer), shared, pid })
+        Ok(PtyHandle {
+            master: Mutex::new(pair.master),
+            input,
+            queued_input,
+            shared,
+            pid,
+            #[cfg(test)]
+            writer_alive,
+        })
     }
 
+    /// Queues `data` for the child, in call order; returns immediately.
     pub fn write(&self, data: &[u8]) -> Result<()> {
-        let mut w = self.writer.lock().map_err(|_| anyhow!("writer poisoned"))?;
-        w.write_all(data)?;
-        w.flush()?;
+        if data.is_empty() {
+            return Ok(());
+        }
+        if self.queued_input.load(Ordering::SeqCst) + data.len() > INPUT_CAP {
+            bail!("the terminal is not reading input; try again later");
+        }
+        self.queued_input.fetch_add(data.len(), Ordering::SeqCst);
+        if self.input.send(data.to_vec()).is_err() {
+            self.queued_input.fetch_sub(data.len(), Ordering::SeqCst);
+            bail!("the terminal no longer accepts input");
+        }
         Ok(())
     }
 
@@ -192,6 +240,47 @@ mod tests {
         h.resize(100, 30).unwrap();
         h.kill().unwrap();
         rx.recv_timeout(Duration::from_secs(5)).expect("exit observed");
+    }
+
+    #[test]
+    fn write_never_blocks_on_a_child_that_does_not_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let (_b, on_out) = collect();
+        let (tx, rx) = mpsc::channel();
+        let h = PtyHandle::spawn(&spec("/bin/sh", &["-c", "stty raw -echo; echo ready; sleep 5"], dir.path().to_path_buf()), 80, 24, on_out,
+            Box::new(move |c| { let _ = tx.send(c); })).unwrap();
+        // Raw mode, like any TUI: unread input fills the pty queue and a blocking write stalls.
+        assert!(wait_for(&_b, "ready"));
+        let t = Instant::now();
+        for _ in 0..4 {
+            h.write(&[b'x'; 32 * 1024]).unwrap();
+        }
+        assert!(t.elapsed() < Duration::from_millis(100), "write blocked for {:?}", t.elapsed());
+        assert!(h.write(&vec![b'y'; INPUT_CAP]).is_err(), "unread input is capped");
+        h.kill().unwrap();
+        rx.recv_timeout(Duration::from_secs(5)).expect("exit");
+        let alive = h.writer_alive.clone();
+        drop(h);
+        let end = Instant::now() + Duration::from_secs(5);
+        while alive.load(Ordering::SeqCst) && Instant::now() < end { std::thread::sleep(Duration::from_millis(20)); }
+        assert!(!alive.load(Ordering::SeqCst), "writer thread outlived the session");
+    }
+
+    #[test]
+    fn writes_arrive_in_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let (buf, on_out) = collect();
+        let (tx, rx) = mpsc::channel();
+        let h = PtyHandle::spawn(&spec("/bin/cat", &[], dir.path().to_path_buf()), 80, 24, on_out,
+            Box::new(move |c| { let _ = tx.send(c); })).unwrap();
+        for i in 0..50 {
+            h.write(format!("{i},").as_bytes()).unwrap();
+        }
+        h.write(b"end\n").unwrap();
+        let want: String = (0..50).map(|i| format!("{i},")).collect::<String>() + "end";
+        assert!(wait_for(&buf, &want));
+        h.kill().unwrap();
+        rx.recv_timeout(Duration::from_secs(5)).expect("exit");
     }
 
     #[test]

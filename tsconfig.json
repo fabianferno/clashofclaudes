@@ -16,7 +16,7 @@
 
     /* Linting */
     "strict": true,
-    "types": ["vitest/globals"],
+    "types": ["vitest/globals", "node", "vitest-canvas-mock"],
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true

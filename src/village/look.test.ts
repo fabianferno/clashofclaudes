@@ -1,0 +1,44 @@
+import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { classOf, gearOf, stars, houseStage, scaffoldHeight } from './look';
+
+describe('look', () => {
+  it('class_mapping', () => {
+    expect(classOf('claude', 'haiku')).toBe(0);
+    expect(classOf('claude', 'opus')).toBe(2);
+    expect(classOf('claude', 'fable')).toBe(2);
+    expect(classOf('claude', null)).toBe(1);
+    expect(classOf('codex', 'anything')).toBe(1);
+    expect(classOf('custom', null)).toBe(1);
+  });
+
+  it('gear_mapping', () => {
+    const efforts = ['low', 'medium', 'high', 'xhigh', 'max'];
+    expect(efforts.map(gearOf)).toEqual([0, 1, 2, 3, 4]);
+    expect(gearOf(null)).toBe(1);
+    expect(([0, 1, 2, 3, 4] as const).map(stars)).toEqual([1, 2, 3, 4, 4]);
+  });
+
+  it('house_stage_thresholds', () => {
+    expect([1, 2, 3, 4, 6, 8, 20].map(houseStage)).toEqual([0, 1, 1, 2, 3, 4, 4]);
+  });
+
+  it('scaffold_never_full', () => {
+    expect(scaffoldHeight(0)).toBe(0);
+    expect(scaffoldHeight(1e6)).toBeLessThan(0.921);
+    let prev = -1;
+    for (let s = 0; s < 200; s++) {
+      const v = scaffoldHeight(s);
+      expect(v).toBeGreaterThan(prev);
+      prev = v;
+    }
+  });
+
+  it('xp_is_independent_of_look', () => {
+    const src = readFileSync(resolve(__dirname, '../../src-tauri/src/xp.rs'), 'utf8');
+    const code = src.replace(/\/\/.*$/gm, '');
+    expect(code).not.toMatch(/model/i);
+    expect(code).not.toMatch(/effort/i);
+  });
+});

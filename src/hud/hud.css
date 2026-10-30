@@ -1,7 +1,6 @@
 :root {
   --hud-out: #1d130b;
   --hud-working: #f5a623; --hud-needs: #ff4b3e; --hud-stuck: #8e8e8e; --hud-finished: #ffcf33; --hud-idle: #4ab0f0;
-  --hud-sidebar: 280px; /* Plan 1 sidebar, removed in Task 12 */
   --hud-stroke: -1.5px -1.5px 0 var(--hud-out), 1.5px -1.5px 0 var(--hud-out), -1.5px 1.5px 0 var(--hud-out), 1.5px 1.5px 0 var(--hud-out), 0 2.5px 0 var(--hud-out);
 }
 .ol, .ol-lg, .hud-btn, .hud-badge {
@@ -25,7 +24,7 @@
 .hud-btn.sm { font-size: 14px; padding: 5px 12px; border-radius: 10px; }
 
 /* top left */
-.hud-topbar { position: fixed; top: 12px; left: calc(var(--hud-sidebar) + 12px); z-index: 3; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
+.hud-topbar { position: fixed; top: 12px; left: 12px; z-index: 3; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
 .hud-topbar > * { pointer-events: auto; }
 .hud-player { display: flex; align-items: center; }
 .hud-shield {
@@ -49,7 +48,7 @@
 .hud-rbar b { font-weight: 400; font-size: 20px; }
 
 /* bottom roster */
-.hud-roster-zone { position: fixed; left: var(--hud-sidebar); bottom: 10px; z-index: 3; display: flex; justify-content: center; pointer-events: none; transition: right .2s; padding: 0 12px; } /* right padding set inline (rosterReserve) */
+.hud-roster-zone { position: fixed; left: 0; bottom: 10px; z-index: 3; display: flex; justify-content: center; pointer-events: none; transition: right .2s; padding: 0 12px; } /* right padding set inline (rosterReserve) */
 .hud-roster { display: flex; flex-direction: column; align-items: center; gap: 6px; max-width: 100%; pointer-events: auto; transition: transform .3s cubic-bezier(.2,.9,.3,1.2); }
 .hud-roster.collapsed { transform: translateY(calc(100% - 38px)); }
 .hud-cards { display: flex; gap: 8px; padding: 8px; max-width: 100%; overflow-x: auto; scrollbar-width: thin; background: rgba(20,12,6,.55); border: 3px solid var(--hud-out); border-radius: 16px; }

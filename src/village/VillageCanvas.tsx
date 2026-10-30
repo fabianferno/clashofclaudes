@@ -36,6 +36,7 @@ export default function VillageCanvas({ onError }: { onError?: (e: unknown) => v
         s.sync(inputOf(useApp.getState()));
         s.select(useApp.getState().selection);
         unsub = useApp.subscribe((st, prev) => {
+          if (st.zoomRequest !== prev.zoomRequest && st.zoomRequest) s.fitCompound(st.zoomRequest.id);
           if (st.selection !== prev.selection) { s.reveal(st.selection); s.select(st.selection); }
           if (st.workspaces !== prev.workspaces || st.sessions !== prev.sessions || st.builders !== prev.builders || st.lastClosed !== prev.lastClosed)
             s.sync(inputOf(st));

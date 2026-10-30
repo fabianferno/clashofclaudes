@@ -258,6 +258,8 @@ export interface Scene {
   debug(): SceneDebug;
   /** Ease the camera to fit the whole village. */
   fitVillage(): void;
+  /** Ease the camera to fit a workspace's compound into the space left of the panel (as a double-click does). */
+  fitCompound(workspaceId: string): void;
   /** Ease-zoom by `factor` around the centre of the area left of the panel. */
   zoomBy(factor: number): void;
   /** Pan (eased) just enough that the selected thing is not under the panel. */
@@ -963,6 +965,12 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     autoFit = false;
     camTarget = zoomAt(camTarget ?? cam, cx, cy, factor);
   };
+  const fitCompound = (workspaceId: string) => {
+    const ws = workspaces.find((w) => w.id === workspaceId);
+    if (!ws?.compound) return;
+    autoFit = false;
+    camTarget = fitRect(pxRectOfCompound(ws.compound), app.screen.width, app.screen.height, PANEL_W, ZMAX);
+  };
   const reveal = (sel: Selection | null) => {
     if (!sel) return;
     const id = sel.kind === 'hall' ? 'hall' : sel.kind === 'workspace' ? `house:${sel.id}`
@@ -1004,5 +1012,5 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
 
   const select = (sel: Selection | null) => { selected = sel; redrawOverlay(); };
 
-  return { sync, destroy, world, debug, fitVillage, zoomBy, reveal, select };
+  return { sync, destroy, world, debug, fitVillage, fitCompound, zoomBy, reveal, select };
 }

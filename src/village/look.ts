@@ -80,3 +80,8 @@ export function houseColors(workspaceId: string): { roof: string; wall: string }
   for (let i = 0; i < workspaceId.length; i++) h = (h * 31 + workspaceId.charCodeAt(i)) >>> 0;
   return HOUSE_COLORS[h % HOUSE_COLORS.length];
 }
+
+/** XP to go from `level` to the next: round(100 x 1.4^(level-1)); mirrors the Rust `need`. */
+export function xpNeed(level: number): number {
+  return Math.round(100 * Math.pow(1.4, level - 1));
+}

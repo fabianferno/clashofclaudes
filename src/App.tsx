@@ -1,18 +1,15 @@
 import { useEffect, useState } from 'react';
 import { ipc } from './api/ipc';
-import { autoLayout, idleBuilders, useApp } from './state/store';
+import { autoLayout, useApp } from './state/store';
 import VillageCanvas from './village/VillageCanvas';
-import Sidebar from './components/Sidebar';
 import TopBar from './hud/TopBar';
 import BuildersBar from './hud/BuildersBar';
 import BuildButtons from './hud/BuildButtons';
-import SessionPanel from './components/SessionPanel';
-import NewSessionForm from './components/NewSessionForm';
+import SidePanel from './panels/SidePanel';
 import './App.css';
 
 function App() {
   const st = useApp();
-  const [formFor, setFormFor] = useState<string | null>(null);
   const error = st.error;
   const [quit, setQuit] = useState<number | null>(null);
 
@@ -39,32 +36,17 @@ function App() {
     return () => { cancelled = true; stopLayout?.(); unlisten.forEach((u) => u()); };
   }, []);
 
-  const selected = st.selectedSessionId;
   return (
     <>
     <VillageCanvas onError={(e) => useApp.getState().setError(String(e))} />
     <TopBar />
     <BuildersBar />
     <BuildButtons />
-    <div className="layout">
-      <Sidebar onNewSession={(id) => { setFormFor(id); st.select(null); }} />
-      <main className="main">
-        {error && <div className="error">{error}</div>}
-        {st.notices.map((n) => <div key={n.id} className={`notice notice-${n.kind}`}>{n.text}</div>)}
-        {selected && st.sessions[selected] ? (
-          <SessionPanel sessionId={selected} onClosed={(o) => st.onClosed(o, selected)} />
-        ) : formFor ? (
-          <NewSessionForm
-            key={formFor}
-            workspaceId={formFor}
-            agents={st.agents}
-            builders={idleBuilders(st)}
-            onStarted={(s) => { st.upsertSession(s); st.select(s.id); setFormFor(null); }}
-          />
-        ) : (
-          <div className="empty"><h1>Clash of Claudes</h1><p>Open a folder to begin.</p></div>
-        )}
-      </main>
+    <SidePanel />
+    <div className="toasts">
+      {error && <div className="error" onClick={() => st.setError(null)}>{error}</div>}
+      {st.notices.map((n) => <div key={n.id} className={`notice notice-${n.kind}`}>{n.text}</div>)}
+    </div>
       {quit !== null && (
         <div className="modal-bg">
           <div className="modal">
@@ -74,7 +56,6 @@ function App() {
           </div>
         </div>
       )}
-    </div>
     </>
   );
 }

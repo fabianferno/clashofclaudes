@@ -21,12 +21,13 @@ vi.mock('./api/ipc', () => ({
 vi.mock('./components/TerminalView', () => ({ default: () => null }));
 vi.mock('./village/VillageCanvas', () => ({ default: () => null }));
 import App from './App';
+import { useApp } from './state/store';
 import { act } from 'react';
 
-test('renders app title', async () => { render(<App />); expect(await screen.findByText('Clash of Claudes')).toBeTruthy(); });
-
-test('workspace-updated event shows the missing badge', async () => {
+test('town hall panel lists workspaces; workspace-updated event shows the missing badge', async () => {
   render(<App />);
+  await act(async () => { await Promise.resolve(); });
+  act(() => useApp.getState().setSelection({ kind: 'hall' }));
   expect(await screen.findByText('proj')).toBeTruthy();
   expect(screen.queryByText('missing')).toBeNull();
   act(() => onWorkspaceUpdated({ id: 'w1', name: 'proj', path: '/p', createdAt: 0, missing: true, level: 1, xp: 0, compound: null }));

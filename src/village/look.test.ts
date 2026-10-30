@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { classOf, gearOf, stars, houseStage, scaffoldHeight } from './look';
+import { classOf, gearOf, stars, houseStage, scaffoldHeight, xpNeed } from './look';
 
 describe('look', () => {
+  it('xp_need_curve', () => {
+    expect([1, 2, 3, 4, 5].map(xpNeed)).toEqual([100, 140, 196, 274, 384]);
+  });
+
   it('class_mapping', () => {
     expect(classOf('claude', 'haiku')).toBe(0);
     expect(classOf('claude', 'opus')).toBe(2);

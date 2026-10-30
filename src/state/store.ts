@@ -70,6 +70,10 @@ export interface AppState {
   setStats: (s: Stats) => void;
   addBuilder: (b: Builder) => void;
   updateBuilder: (b: Builder) => void;
+  removeBuilder: (id: string) => void;
+  /** Ask the village to fit a workspace's compound (the Workspace panel's Zoom in); `n` makes repeats distinct. */
+  zoomRequest: { id: string; n: number } | null;
+  requestZoom: (workspaceId: string) => void;
 }
 
 export const useApp = create<AppState>((set, get) => ({
@@ -142,6 +146,9 @@ export const useApp = create<AppState>((set, get) => ({
   setStats: (stats) => set({ stats }),
   addBuilder: (b) => set((st) => ({ builders: [...st.builders, b] })),
   updateBuilder: (b) => set((st) => ({ builders: st.builders.map((x) => (x.id === b.id ? b : x)) })),
+  removeBuilder: (id) => set((st) => ({ builders: st.builders.filter((x) => x.id !== id) })),
+  zoomRequest: null,
+  requestZoom: (id) => set((st) => ({ zoomRequest: { id, n: (st.zoomRequest?.n ?? 0) + 1 } })),
 }));
 
 export function sessionsByWorkspace(state: Pick<AppState, 'sessions'>, wsId: string): SessionInfo[] {

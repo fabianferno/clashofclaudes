@@ -1,0 +1,44 @@
+:root { --sp-parch: #f3e7cc; --sp-parch2: #ead9b4; --sp-ink-soft: #6b5538; }
+.side-panel {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 4; display: flex; flex-direction: column;
+  background: var(--sp-parch); color: #2b2018; border-left: 4px solid var(--hud-out);
+  box-shadow: -6px 0 0 rgba(29,19,11,.35), -20px 0 50px rgba(0,0,0,.35);
+  font-family: system-ui, sans-serif;
+}
+.sp-head { background: linear-gradient(#5a4632, #3d2c1c); padding: 10px 14px; display: flex; align-items: center; gap: 10px; border-bottom: 4px solid var(--hud-out); }
+.sp-titles { min-width: 0; flex: 1; }
+.sp-head h2 { margin: 0; font-weight: 400; font-size: 24px; line-height: 1.1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-sub { font: 600 12px ui-monospace, 'JetBrains Mono', monospace; color: #e7d5ad; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-close { width: 38px; height: 38px; padding: 0; flex: none; }
+.sp-body { padding: 14px; overflow-y: auto; flex: 1; min-height: 0; }
+.sp-body-session { display: flex; flex-direction: column; padding: 10px; }
+.sp-body button:not(.hud-btn):not(.sp-row), .sp-body input, .sp-body select { color: #2b2018; }
+.sp-box { background: var(--sp-parch2); border: 3px solid #c8b083; border-radius: 12px; padding: 10px; margin-bottom: 10px; }
+.sp-sec { font: 400 14px 'Lilita One', sans-serif; color: var(--sp-ink-soft); margin: 12px 2px 8px; letter-spacing: .4px; }
+.sp-note, .sp-d { font-size: 12px; color: var(--sp-ink-soft); font-weight: 700; }
+.sp-note { margin: 0 2px 10px; }
+.sp-gap { margin-top: 6px; }
+.sp-t { font-weight: 900; font-size: 14px; }
+.sp-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; font: inherit; color: inherit;
+  background: #fff8e8; border: 3px solid #d8c39a; border-radius: 12px; padding: 8px 10px; margin-bottom: 8px; cursor: pointer;
+}
+.sp-row:hover { border-color: #a8885a; }
+.sp-rowtext { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.sp-rowtext .sp-d { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-av { width: 38px; height: 38px; border-radius: 10px; border: 3px solid var(--hud-out); display: grid; place-items: center; font-size: 18px; flex: none; box-shadow: inset 0 3px 0 rgba(255,255,255,.35); }
+.sp-tag { font: 400 12px 'Lilita One', sans-serif; padding: 3px 9px; border-radius: 99px; border: 2px solid var(--hud-out); white-space: nowrap; letter-spacing: .3px; flex: none; -webkit-text-stroke: 2px var(--hud-out); }
+.sp-xp { height: 14px; border-radius: 8px; background: #2b2018; border: 2px solid var(--hud-out); overflow: hidden; position: relative; margin-top: 6px; }
+.sp-xp i { position: absolute; inset: 0 auto 0 0; background: linear-gradient(#a6ef5a, #4fb82a); box-shadow: inset 0 2px 0 rgba(255,255,255,.45); }
+.sp-btns { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 10px; align-items: center; }
+.sp-btns-top { margin-top: 0; }
+.sp-inline { display: flex; gap: 6px; align-items: center; }
+.sp-inline input, .sp-field input, .sp-field select { border: 2px solid #c8b083; border-radius: 8px; padding: 5px 8px; background: #fff8e8; font: 700 14px system-ui; }
+.sp-inline input { width: 140px; }
+.sp-field { display: flex; flex-direction: column; gap: 3px; margin-bottom: 10px; font: 400 14px 'Lilita One', sans-serif; color: var(--sp-ink-soft); }
+.panel-warn { border-radius: 12px; border: 3px solid var(--hud-needs); background: #fff0ec; padding: 8px 12px; margin-bottom: 10px; font-size: 13px; font-weight: 700; color: #5b1d17; }
+.hud-btn.red { background: linear-gradient(#ff9a8f 0%, #ff5b4d 48%, #e9372a 52%, #d42d21 100%); }
+.hud-btn:disabled { pointer-events: auto; cursor: not-allowed; } /* keep the title tooltip alive */
+.sp-body .new-session { max-width: none; margin-top: 10px; }
+.toasts { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 6; display: flex; flex-direction: column; gap: 6px; align-items: center; pointer-events: none; }
+.toasts > * { pointer-events: auto; background: rgba(20,12,6,.8); border: 3px solid var(--hud-out); border-radius: 12px; padding: 4px 14px; font-family: 'Lilita One', sans-serif; }

@@ -83,7 +83,7 @@ export default function SessionPanel({ sessionId, onClosed }: { sessionId: strin
           )}
         </div>
       )}
-      <TerminalView key={sessionId} sessionId={sessionId} />
+      <TerminalView key={sessionId} sessionId={sessionId} readOnly={st === 'ended'} />
     </section>
   );
 }

@@ -9,9 +9,13 @@ import type { Frame } from '../api/types';
 // Serialize attach/detach per session id so the backend's per-session channel never gets reordered.
 const chains = new Map<string, Promise<void>>();
 
-export default function TerminalView({ sessionId }: { sessionId: string }) {
+/** `readOnly`: the session has ended, so there is no process to resize or type into. */
+export default function TerminalView({ sessionId, readOnly = false }: { sessionId: string; readOnly?: boolean }) {
   const host = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
+  // Read live by the handlers below; the session can end while it is on screen.
+  const readOnlyRef = useRef(readOnly);
+  useEffect(() => { readOnlyRef.current = readOnly; }, [readOnly]);
 
   useEffect(() => {
     const el = host.current;
@@ -29,7 +33,7 @@ export default function TerminalView({ sessionId }: { sessionId: string }) {
     const report = (p: Promise<unknown>) => p.catch((e) => !disposed && setError(String(e)));
     const doFit = () => {
       try { fit.fit(); } catch { return; }
-      report(ipc.resizeSession(sessionId, term.cols, term.rows));
+      if (!readOnlyRef.current) report(ipc.resizeSession(sessionId, term.cols, term.rows));
     };
     doFit();
 
@@ -64,7 +68,9 @@ export default function TerminalView({ sessionId }: { sessionId: string }) {
     chains.set(sessionId, attachP);
 
     const enc = new TextEncoder();
-    const sub = term.onData((d) => report(ipc.writeSession(sessionId, Array.from(enc.encode(d)))));
+    const sub = term.onData((d) => {
+      if (!readOnlyRef.current) report(ipc.writeSession(sessionId, Array.from(enc.encode(d))));
+    });
     const ro = new ResizeObserver(doFit);
     ro.observe(el);
 

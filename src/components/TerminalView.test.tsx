@@ -5,10 +5,13 @@ import type { Frame } from '../api/types';
 const writes: Uint8Array[] = [];
 const writeDone: Array<() => void> = [];
 let disposeCount = 0;
+let typed: (d: string) => void = () => {};
 vi.mock('@xterm/xterm', () => ({
   Terminal: class {
     cols = 80; rows = 24;
-    loadAddon() {} open() {} onData() { return { dispose() {} }; }
+    options: Record<string, unknown> = {};
+    loadAddon() {} open() {}
+    onData(cb: (d: string) => void) { typed = cb; return { dispose() {} }; }
     write(d: Uint8Array, cb?: () => void) { writes.push(d); writeDone.push(cb ?? (() => {})); }
     dispose() { disposeCount++; }
   },
@@ -37,6 +40,8 @@ vi.mock('../api/ipc', async () => {
   };
 });
 import TerminalView from './TerminalView';
+import { ipc } from '../api/ipc';
+import { screen } from '@testing-library/react';
 
 const f = (offset: number, s: string): Frame => ({ offset, data: new TextEncoder().encode(s) });
 const text = () => writes.map((w) => new TextDecoder().decode(w)).join('|');
@@ -94,5 +99,22 @@ test('acks each frame with its end offset only after xterm finished writing it',
   expect(text()).toBe('abc|de|[skipped]|g');
   writeDone[writeDone.length - 1]();
   expect(log.filter((l) => l.startsWith('ack'))).toEqual(['ack 13', 'ack 15', 'ack 14', 'ack 16']);
+  unmount();
+});
+
+test('read-only view of an ended session never resizes or writes', async () => {
+  vi.mocked(ipc.resizeSession).mockClear();
+  vi.mocked(ipc.writeSession).mockClear();
+  vi.mocked(ipc.resizeSession).mockRejectedValue('session is not running');
+  const { unmount, container } = render(<TerminalView sessionId="t4" readOnly />);
+  await vi.waitFor(() => expect(log).toEqual(['attach']));
+  typed('x');
+  resolveSnap(f(0, 'bye'));
+  await vi.waitFor(() => expect(text()).toBe('bye'));
+  expect(ipc.resizeSession).not.toHaveBeenCalled();
+  expect(ipc.writeSession).not.toHaveBeenCalled();
+  expect(container.querySelector('.error')).toBeNull();
+  expect(screen.queryByText(/not running/)).toBeNull();
+  vi.mocked(ipc.resizeSession).mockResolvedValue(undefined);
   unmount();
 });

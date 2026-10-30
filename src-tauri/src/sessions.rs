@@ -467,8 +467,16 @@ impl SessionManager {
         Ok(())
     }
 
+    /// A no-op once the process has exited: a read-only view of a finished session is not an error.
     pub fn resize(&self, id: &str, cols: u16, rows: u16) -> Result<()> {
-        self.running_pty(id)?.resize(cols, rows)
+        let pty = {
+            let g = self.lock();
+            g.get(id).ok_or_else(|| anyhow!("unknown session {id}"))?.pty.clone()
+        };
+        match pty {
+            Some(p) => p.resize(cols, rows),
+            None => Ok(()),
+        }
     }
 
     /// Answers the open permission prompt with yes; the session reads as `Working` at once
@@ -826,6 +834,8 @@ mod tests {
         assert!(wait_until(|| state(&fx, &s.id) == SessionState::Stuck { reason: "exited with code 7".into() }));
         assert!(String::from_utf8_lossy(&fx.mgr.attach(&s.id).unwrap().0).contains("boom"));
         assert!(fx.mgr.write(&s.id, b"x").is_err(), "no process to write to");
+        assert!(fx.mgr.resize(&s.id, 100, 30).is_ok(), "viewing an exited session resizes nothing, quietly");
+        assert!(fx.mgr.resize("nope", 100, 30).is_err());
     }
 
     #[test]

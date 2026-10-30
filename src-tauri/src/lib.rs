@@ -1,5 +1,7 @@
 pub mod adapters;
 pub mod commands;
+#[cfg(debug_assertions)]
+pub mod driver;
 pub mod git;
 pub mod hooks;
 pub mod model;
@@ -86,6 +88,8 @@ pub fn run() {
                     }
                 }
             });
+            #[cfg(debug_assertions)]
+            let data_dir_for_driver = data_dir.clone();
             let manager = SessionManager::new(adapters::AdapterRegistry::new(), Arc::new(hooks), data_dir, emit);
             let _ = cell.set(Arc::downgrade(&manager));
             app.manage(AppState {
@@ -96,6 +100,13 @@ pub fn run() {
                 channels,
                 exit_confirmed: AtomicBool::new(false),
             });
+            #[cfg(debug_assertions)]
+            {
+                app.manage(Arc::new(driver::Driver::default()));
+                if std::env::var("COC_DRIVER").as_deref() == Ok("1") {
+                    driver::start(app.handle().clone(), &data_dir_for_driver)?;
+                }
+            }
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -130,6 +141,7 @@ pub fn run() {
             commands::detach_session,
             commands::ack_output,
             commands::quit_now,
+            commands::driver_result,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

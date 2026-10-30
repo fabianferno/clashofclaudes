@@ -442,3 +442,23 @@ mod tests {
         assert_eq!(frame(258, b"hi"), vec![2, 1, 0, 0, 0, 0, 0, 0, b'h', b'i']);
     }
 }
+
+/// Result of a driver evaluation, reported by the webview. Debug builds only.
+#[cfg(debug_assertions)]
+#[tauri::command]
+pub fn driver_result(
+    driver: State<'_, Arc<crate::driver::Driver>>,
+    id: u64,
+    ok: bool,
+    value: serde_json::Value,
+) -> Result<(), String> {
+    driver.resolve(id, ok, value);
+    Ok(())
+}
+
+#[cfg(not(debug_assertions))]
+#[tauri::command]
+pub fn driver_result(id: u64, ok: bool, value: serde_json::Value) -> Result<(), String> {
+    let _ = (id, ok, value);
+    Err("driver disabled".into())
+}

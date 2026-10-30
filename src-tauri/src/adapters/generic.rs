@@ -30,7 +30,12 @@ impl AgentAdapter for CustomAdapter {
             .filter(|c| !c.is_empty())
             .ok_or_else(|| anyhow::anyhow!("custom agent requires a command"))?;
         // The task travels as $1 (argv), never spliced into the shell string.
-        let mut args = vec!["-lc".to_string(), cmd.to_string()];
+        let mut command = cmd.to_string();
+        if req.task.is_some() && !command.contains("$1") && !command.contains("$@") {
+            // Parameter reference only; the task itself stays an argv element.
+            command.push_str(" \"$@\"");
+        }
+        let mut args = vec!["-lc".to_string(), command];
         if let Some(task) = req.task {
             args.push("coc".into());
             args.push(task.to_string());
@@ -69,7 +74,23 @@ mod tests {
         let spec = CustomAdapter
             .launch(&req_with(Some("aider --yes"), Some("fix \"it\" $(rm -rf /)")))
             .unwrap();
-        assert_eq!(spec.args, vec!["-lc", "aider --yes", "coc", "fix \"it\" $(rm -rf /)"]);
+        assert_eq!(spec.args, vec!["-lc", "aider --yes \"$@\"", "coc", "fix \"it\" $(rm -rf /)"]);
+    }
+
+    #[test]
+    fn custom_appends_task_param_when_unreferenced() {
+        let spec = CustomAdapter
+            .launch(&req_with(Some("aider --yes"), Some("fix \"it\" $(rm -rf /)")))
+            .unwrap();
+        assert_eq!(spec.args, vec!["-lc", "aider --yes \"$@\"", "coc", "fix \"it\" $(rm -rf /)"]);
+    }
+
+    #[test]
+    fn custom_keeps_command_that_references_task() {
+        let spec = CustomAdapter
+            .launch(&req_with(Some("mytool --prompt \"$1\""), Some("hi")))
+            .unwrap();
+        assert_eq!(spec.args, vec!["-lc", "mytool --prompt \"$1\"", "coc", "hi"]);
     }
 
     #[test]

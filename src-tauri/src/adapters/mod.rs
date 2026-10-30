@@ -1,4 +1,5 @@
 //! Agent adapters: how each agent CLI is detected, launched and observed.
+#![allow(dead_code)] // TODO(Task 8): remove once SessionManager consumes adapters
 pub mod generic;
 
 use crate::model::AgentKind;

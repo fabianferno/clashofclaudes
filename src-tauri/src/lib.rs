@@ -1,3 +1,4 @@
+mod adapters;
 mod model;
 mod persist;
 mod platform;

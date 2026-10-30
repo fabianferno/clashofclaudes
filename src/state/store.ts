@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { ipc } from '../api/ipc';
-import type { AgentInfo, Builder, Compound, ListState, SessionInfo, SessionState, Stats, Tile, Workspace } from '../api/types';
+import type { AgentInfo, Builder, CloseOutcome, Compound, ListState, SessionInfo, SessionState, Stats, Tile, Workspace } from '../api/types';
 import { HOUSE, STRUCT, canPlace, placeCompound, spotFor } from '../village/layout';
 
 export type Selection =
@@ -33,7 +33,19 @@ export function moveValid(st: Pick<AppState, 'workspaces' | 'sessions'>, target:
   return canPlace({ ...c, house: { x: -1e6, y: -1e6 } }, mates(null), at, HOUSE);
 }
 
+export interface Notice { id: number; text: string; kind: 'xp' | 'level' | 'info' }
+
+const NOTICE_MS = 3000;
+const OUTCOME_MS = 10000;
+let noticeSeq = 0;
+
 export interface AppState {
+  notices: Notice[];
+  /** XP-earning close outcomes by session id, for the village to play the orbs; cleared once consumed. */
+  lastClosed: Record<string, CloseOutcome>;
+  /** A session was closed: pushes its notice(s) and remembers an earning outcome for the scene. Terminals stay silent. */
+  onClosed: (o: CloseOutcome, sessionId?: string) => void;
+  consumeClosed: (sessionId: string) => void;
   workspaces: Workspace[];
   builders: Builder[];
   sessions: Record<string, SessionInfo>;
@@ -68,6 +80,31 @@ export const useApp = create<AppState>((set, get) => ({
   selection: null,
   panelOpen: false,
   village: villageActions(get),
+  notices: [],
+  lastClosed: {},
+  onClosed: (o, sessionId) => {
+    const push = (text: string, kind: Notice['kind']) => {
+      const id = ++noticeSeq;
+      set((st) => ({ notices: [...st.notices, { id, text, kind }] }));
+      setTimeout(() => set((st) => ({ notices: st.notices.filter((n) => n.id !== id) })), NOTICE_MS);
+    };
+    if (o.stuck) push('Closed while stuck \u2014 no XP', 'info');
+    else if (o.unfinished) push('Closed \u2014 not finished, no XP', 'info');
+    else if (o.earnedXp) {
+      push('+100 XP', 'xp');
+      if (o.levelAfter > o.levelBefore) push(`LEVEL UP! Level ${o.levelAfter}`, 'level');
+      if (sessionId) {
+        set((st) => ({ lastClosed: { ...st.lastClosed, [sessionId]: o } }));
+        setTimeout(() => get().consumeClosed(sessionId), OUTCOME_MS); // never leak if no structure was on screen
+      }
+    }
+  },
+  consumeClosed: (sessionId) =>
+    set((st) => {
+      if (!(sessionId in st.lastClosed)) return st;
+      const { [sessionId]: _gone, ...rest } = st.lastClosed;
+      return { lastClosed: rest };
+    }),
   hydrate: (s) =>
     set({
       workspaces: s.workspaces,

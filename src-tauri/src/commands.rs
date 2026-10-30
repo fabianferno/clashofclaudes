@@ -327,6 +327,8 @@ pub struct CloseOutcome {
     pub workspace_id: String,
     /// An agent was closed before it ever finished (terminals never count).
     pub unfinished: bool,
+    /// An agent was closed while Stuck (earns nothing).
+    pub stuck: bool,
 }
 
 /// Applies the XP rules for a closed session. A finished, not-stuck agent session earns
@@ -340,6 +342,7 @@ pub fn apply_close(d: &mut AppData, closed: &ClosedSession, now_ms: i64) -> Clos
         level_after: 1,
         workspace_id: closed.workspace_id.clone(),
         unfinished: closed.is_agent && !closed.reached_finished,
+        stuck: closed.is_agent && closed.stuck,
     };
     let earns = closed.is_agent && closed.reached_finished && !closed.stuck;
     let Some(w) = d.workspaces.iter_mut().find(|w| w.id == closed.workspace_id) else { return out };
@@ -554,7 +557,7 @@ mod tests {
         let o = apply_close(&mut d, &closed(true, true, false), 5_000);
         assert_eq!(
             o,
-            CloseOutcome { earned_xp: true, xp_gained: 100, level_before: 1, level_after: 2, workspace_id: "w1".into(), unfinished: false }
+            CloseOutcome { earned_xp: true, xp_gained: 100, level_before: 1, level_after: 2, workspace_id: "w1".into(), unfinished: false, stuck: false }
         );
         assert_eq!((d.workspaces[0].level, d.workspaces[0].xp), (2, 0));
         assert_eq!((d.stats.shipped_total, d.stats.recent_ships.clone()), (1, vec![5_000]));
@@ -587,6 +590,19 @@ mod tests {
         let o = apply_close(&mut d, &closed(true, true, true), 1);
         assert!(!o.earned_xp);
         assert_eq!(d.stats.shipped_total, 0);
+    }
+
+    #[test]
+    fn close_reports_stuck_only_for_stuck_agents() {
+        let mut d = village();
+        let o = apply_close(&mut d, &closed(true, true, true), 1);
+        assert!(o.stuck && !o.earned_xp);
+        let o = apply_close(&mut d, &closed(true, false, true), 1);
+        assert!(o.stuck && !o.earned_xp);
+        let o = apply_close(&mut d, &closed(true, true, false), 1);
+        assert!(!o.stuck && o.earned_xp);
+        let o = apply_close(&mut d, &closed(false, false, true), 1);
+        assert!(!o.stuck, "terminals stay quiet");
     }
 
     #[test]

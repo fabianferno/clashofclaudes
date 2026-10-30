@@ -8,6 +8,7 @@ const inputOf = (s: AppState): VillageInput => ({
   workspaces: s.workspaces,
   sessions: Object.values(s.sessions),
   builders: s.builders,
+  closed: s.lastClosed,
 });
 
 /** The Pixi village, full-window; syncs from the store on every change (also while hidden). */
@@ -25,6 +26,7 @@ export default function VillageCanvas({ onError }: { onError?: (e: unknown) => v
       onSelect: (sel) => useApp.getState().setSelection(sel),
       canMove: (t, at) => moveValid(useApp.getState(), t, at),
       onMove: (t, at) => useApp.getState().village.commitMove(t, at, onError),
+      onClosedConsumed: (id) => useApp.getState().consumeClosed(id),
       panelWidth: () => (useApp.getState().panelOpen ? PANEL_W : 0),
     }).then(
       (s) => {
@@ -35,7 +37,7 @@ export default function VillageCanvas({ onError }: { onError?: (e: unknown) => v
         s.select(useApp.getState().selection);
         unsub = useApp.subscribe((st, prev) => {
           if (st.selection !== prev.selection) { s.reveal(st.selection); s.select(st.selection); }
-          if (st.workspaces !== prev.workspaces || st.sessions !== prev.sessions || st.builders !== prev.builders)
+          if (st.workspaces !== prev.workspaces || st.sessions !== prev.sessions || st.builders !== prev.builders || st.lastClosed !== prev.lastClosed)
             s.sync(inputOf(st));
         });
       },

@@ -35,6 +35,11 @@ const ipc = {
     useApp.getState().upsertSession(s);
     return s;
   },
+  closeSession: async (id: string) => {
+    const o = await rawIpc.closeSession(id);
+    useApp.getState().onClosed(o, id);
+    return o;
+  },
   startTerminal: async (workspaceId: string) => {
     const s = await rawIpc.startTerminal(workspaceId);
     useApp.getState().upsertSession(s);

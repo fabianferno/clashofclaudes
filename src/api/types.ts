@@ -115,6 +115,8 @@ export interface CloseOutcome {
   workspaceId: string;
   /** An agent was closed before it finished. */
   unfinished: boolean;
+  /** An agent was closed while Stuck. */
+  stuck: boolean;
 }
 
 export interface ConfirmQuit {

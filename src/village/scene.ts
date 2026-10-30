@@ -1,5 +1,5 @@
 import { Application, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
-import type { AgentKind, Builder, Compound, SessionInfo, SessionState, Tile, Workspace } from '../api/types';
+import type { AgentKind, Builder, CloseOutcome, Compound, SessionInfo, SessionState, Tile, Workspace } from '../api/types';
 import { iso, toGrid } from './iso';
 import { HALL, HOUSE, STRUCT, gateSide, gateTile, wallRect, type Rect } from './layout';
 import { classOf, gearOf, houseColors, houseStage, scaffoldHeight, type ClassTier, type Gear } from './look';
@@ -14,6 +14,7 @@ import {
 } from './camera';
 import { DRAG_PX, createDragController } from './drag';
 import { clickPoint, compoundAt, dragTarget, hitTest } from './input';
+import { FxRenderer, POP_SECONDS, ORB_SECONDS, Particles, RELOCATE_SECONDS, lifecycleEvents, type Snap } from './effects';
 
 // ---------------------------------------------------------------- pure part
 
@@ -21,6 +22,8 @@ export interface VillageInput {
   workspaces: Workspace[];
   sessions: SessionInfo[];
   builders: Builder[];
+  /** XP-earning close outcomes by session id; the scene plays orbs for a structure it sees vanish. */
+  closed?: Record<string, CloseOutcome>;
 }
 
 export type EntityKind = 'hall' | 'house' | 'structure' | 'builder' | 'wall' | 'gate' | 'tree' | 'badge';
@@ -226,6 +229,8 @@ export interface SceneDebug {
   running: boolean;
   entities: Array<{ id: string; kind: EntityKind; x: number; y: number; mode?: Walker['mode']; pose?: string }>;
   groundBakes: number;
+  /** Live particles (dust, smoke, orbs, floating text). */
+  particles: number;
   cam: Cam;
   /** Client (window) position of an entity's clickable middle: an entity id, or a workspace id for its house. */
   screenOf(id: string): { x: number; y: number } | null;
@@ -240,8 +245,10 @@ export interface SceneOptions {
   canMove?: (t: MoveTarget, at: Tile) => boolean;
   /** Persist a move released on a valid tile; resolves false when it was not applied. */
   onMove?: (t: MoveTarget, at: Tile) => Promise<boolean>;
-  /** Hook: a drag was released on a blocked tile (nothing persisted, the object snapped back). Task 10 adds dust here. */
+  /** Hook: a drag was released on a blocked tile (nothing persisted, the object snapped back; the scene adds the dust). */
   onBlockedDrop?: (at: Tile) => void;
+  /** The scene has played (or given up on) the close outcome for this session id. */
+  onClosedConsumed?: (sessionId: string) => void;
 }
 
 export interface Scene {
@@ -309,12 +316,84 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
   let villageTiles: Rect | null = null;
   let workspaces: Workspace[] = [];
 
-  const sprites = new Map<string, { sprite: Sprite; key: string; entity: Entity }>();
+  const sprites = new Map<string, { sprite: Sprite; key: string; entity: Entity; ws?: string; base: { x: number; y: number } }>();
   let entities: Entity[] = [];
   let lastState: VillageInput = { workspaces: [], sessions: [], builders: [] };
   let destroyed = false;
   const views = new Map<string, BuilderView>();
   let time = 0;
+
+  // ---- lifecycle effects (see effects.ts): pooled particles plus a few sprite tweens
+  const fxLayer = new Container({ sortableChildren: true });
+  overlay.addChild(fxLayer);
+  const particles = new Particles();
+  const fxRender = new FxRenderer(fxLayer, particles);
+  let fxClock = 0;
+  const pops = new Map<string, number>(); // structure id -> seconds since it appeared
+  const ghosts: Array<{ sprite: Sprite; t: number }> = []; // closed structures being taken down
+  const relocs = new Map<string, { ox: number; oy: number; t: number }>(); // workspace -> remaining pixel offset
+  const pendingClose = new Map<string, { wsId: string; from: { x: number; y: number }; until: number }>();
+  let prevSnap: Snap | null = null;
+  const OUTCOME_WAIT = 2; // seconds to wait for the close outcome after a structure vanishes
+  const centre = (t: Tile, size: number) => iso(t.x + size / 2, t.y + size / 2);
+  const easeOutBack = (k: number) => { const c = 1.70158; return 1 + (c + 1) * Math.pow(k - 1, 3) + c * Math.pow(k - 1, 2); };
+  const smooth = (k: number) => k * k * (3 - 2 * k);
+  const relocOffset = (ws: string | undefined) => {
+    const r = ws ? relocs.get(ws) : undefined;
+    if (!r) return null;
+    const k = 1 - smooth(Math.min(1, r.t / RELOCATE_SECONDS));
+    return { x: r.ox * k, y: r.oy * k };
+  };
+  const applyRelocs = () => {
+    if (!relocs.size) return;
+    for (const rec of sprites.values()) {
+      const o = relocOffset(rec.ws);
+      if (o) rec.sprite.position.set(rec.base.x + o.x, rec.base.y + o.y);
+    }
+  };
+  const playOrbs = (from: { x: number; y: number }, wsId: string, o: CloseOutcome) => {
+    const c = lastState.workspaces.find((w) => w.id === wsId)?.compound;
+    if (!c) return;
+    const h = iso(c.house.x + HOUSE / 2, c.house.y + HOUSE / 2);
+    const to = { x: h.x, y: h.y - 40 };
+    particles.orbs(from, to, 8);
+    particles.later(ORB_SECONDS + 0.2, () => {
+      particles.floatText({ x: to.x, y: to.y - 30 }, `+${o.xpGained || 100} XP`, '#ffffff');
+      particles.dust(h, 5, false);
+      if (o.levelAfter > o.levelBefore) particles.floatText({ x: to.x, y: to.y - 64 }, 'LEVEL UP!', '#ffe066');
+    });
+  };
+  const updateFx = (dt: number) => {
+    if (!pops.size && !ghosts.length && !relocs.size && !pendingClose.size && particles.idle) return; // nothing playing
+    fxClock += dt;
+    for (const [id, t0] of pops) {
+      const t = t0 + dt, rec = sprites.get(id);
+      if (!rec || t >= POP_SECONDS) { pops.delete(id); rec?.sprite.scale.set(0.5); continue; }
+      pops.set(id, t);
+      rec.sprite.scale.set(0.5 * Math.max(0.01, easeOutBack(t / POP_SECONDS)));
+    }
+    for (let i = ghosts.length - 1; i >= 0; i--) {
+      const g = ghosts[i];
+      g.t += dt;
+      const k = g.t / 0.5;
+      if (k >= 1) { g.sprite.destroy(); ghosts.splice(i, 1); continue; }
+      g.sprite.scale.set(0.5 * (1 + 0.15 * k), 0.5 * (1 - k));
+      g.sprite.alpha = 1 - k;
+    }
+    if (relocs.size) {
+      for (const [ws, r] of relocs) { r.t += dt; if (r.t >= RELOCATE_SECONDS) relocs.delete(ws); }
+      for (const rec of sprites.values()) {
+        if (rec.ws && !relocs.has(rec.ws)) rec.sprite.position.set(rec.base.x, rec.base.y);
+      }
+      applyRelocs();
+      if (!relocs.size) syncGround(lastState.workspaces.flatMap((w) => (w.compound ? [w.compound] : []))); // the one re-bake
+    }
+    for (const [id, p] of pendingClose) {
+      if (fxClock > p.until) { pendingClose.delete(id); opts.onClosedConsumed?.(id); }
+    }
+    particles.update(dt);
+    fxRender.draw();
+  };
 
   // ---- frame policy: 30 fps focused, 15 unfocused, stopped while hidden/minimized
   const ticks: number[] = [];
@@ -484,7 +563,8 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       v.pose = poseOf(w, v.site, time);
       setTex(v.sprite, `builder:${v.agent}:${v.cls}:${v.gear}:${v.pose}:${w.face}`);
       const p = iso(w.x, w.y);
-      v.sprite.position.set(p.x, p.y);
+      const ro = relocOffset(v.site?.workspaceId);
+      v.sprite.position.set(p.x + (ro?.x ?? 0), p.y + (ro?.y ?? 0));
       v.sprite.zIndex = w.x + w.y + KIND_RANK.builder * 0.001;
       if (v.site && w.mode === 'atSite') {
         // the stand tile sits behind the structure and often the house; hammering must stay visible
@@ -526,13 +606,24 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     }
   };
   app.ticker.add((t) => updateBuilders(Math.min(t.deltaMS / 1000, 0.25)));
+  app.ticker.add((t) => updateFx(Math.min(t.deltaMS / 1000, 0.25)));
 
   const sync = (state: VillageInput) => {
     if (destroyed) return;
     workspaces = state.workspaces;
     lastState = state;
     const compounds = state.workspaces.flatMap((w) => (w.compound ? [w.compound] : []));
-    syncGround(compounds);
+    const snap: Snap = { structs: new Map(), compounds: new Map() };
+    for (const w of state.workspaces) if (w.compound) snap.compounds.set(w.id, w.compound);
+    for (const s of state.sessions)
+      if (s.kind.kind === 'agent' && s.spot && snap.compounds.has(s.workspaceId)) snap.structs.set(`struct:${s.id}`, s.workspaceId);
+    const ev = lifecycleEvents(prevSnap, snap);
+    prevSnap = snap;
+    for (const r of ev.relocated) {
+      const d = iso(r.dx, r.dy), cur = relocOffset(r.wsId);
+      relocs.set(r.wsId, { ox: -d.x + (cur?.x ?? 0), oy: -d.y + (cur?.y ?? 0), t: 0 });
+    }
+    if (!relocs.size) syncGround(compounds); // while a compound travels the old ground stays; it is re-baked once at the end
     syncBuilders(state);
     entities = buildEntities(state);
     // Fetch every live texture first: this refreshes their LRU slots before anything new can evict them.
@@ -546,10 +637,12 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
         const sprite = new Sprite();
         sprite.scale.set(0.5); // art is baked at 2x density
         (e.kind === 'badge' ? overlay : world).addChild(sprite);
-        rec = { sprite, key: '', entity: e };
+        rec = { sprite, key: '', entity: e, base: { x: 0, y: 0 } };
         sprites.set(e.id, rec);
       }
       const { sprite } = rec;
+      rec.ws = e.id.startsWith('struct:') ? snap.structs.get(e.id)
+        : e.kind === 'house' || e.kind === 'gate' || e.kind === 'badge' || e.kind === 'wall' ? e.id.split(':')[1] : undefined;
       if (sprite.texture !== t.texture) {
         sprite.texture = t.texture;
         sprite.anchor.set(t.ax / t.texture.width, t.ay / t.texture.height);
@@ -557,14 +650,56 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       rec.key = e.texKey;
       rec.entity = e;
       const p = iso(e.x, e.y);
+      rec.base = p;
       sprite.position.set(p.x, p.y);
       sprite.zIndex = e.depth;
     });
+    const closedIds = new Map(ev.closed.map((c) => [c.id, c.wsId]));
     for (const [id, rec] of sprites) {
       if (seen.has(id)) continue;
-      rec.sprite.destroy(); // textures stay in the shared cache
       sprites.delete(id);
+      pops.delete(id);
+      const wsId = closedIds.get(id);
+      if (wsId === undefined) { rec.sprite.destroy(); continue; } // textures stay in the shared cache
+      // a closed structure comes down in dust; the sprite lingers as a collapsing ghost
+      const at = { x: rec.base.x, y: rec.base.y - 32 };
+      ghosts.push({ sprite: rec.sprite, t: 0 });
+      particles.dust(at, 16, true);
+      particles.smoke(at);
+      particles.smoke(at);
+      pendingClose.set(id.slice('struct:'.length), { wsId, from: { x: at.x, y: at.y - 20 }, until: fxClock + OUTCOME_WAIT });
     }
+    for (const s of ev.spawned) {
+      const rec = sprites.get(s.id);
+      if (!rec) continue;
+      pops.set(s.id, 0);
+      rec.sprite.scale.set(0.5 * 0.01);
+      particles.dust({ x: rec.base.x, y: rec.base.y - 32 }, 8, false);
+    }
+    for (const wsId of ev.expanded) {
+      const c = snap.compounds.get(wsId)!;
+      const r = wallRect(c);
+      const top = iso(r.x0 + r.w / 2, r.y0 + r.h / 2);
+      particles.floatText({ x: top.x, y: top.y - 70 }, 'Walls expanded!', '#ffffff');
+      for (let i = 0; i < 12; i++) {
+        const f = i / 12, per = 2 * (r.w + r.h);
+        let d = f * per, x: number, y: number;
+        if (d < r.w) { x = r.x0 + d; y = r.y0; }
+        else if ((d -= r.w) < r.h) { x = r.x0 + r.w; y = r.y0 + d; }
+        else if ((d -= r.h) < r.w) { x = r.x0 + r.w - d; y = r.y0 + r.h; }
+        else { d -= r.w; x = r.x0; y = r.y0 + r.h - d; }
+        particles.dust(iso(x, y), 2, false);
+      }
+    }
+    // the outcome may arrive before or after the structure vanishes
+    for (const [sid, p] of pendingClose) {
+      const o = state.closed?.[sid];
+      if (!o) continue;
+      pendingClose.delete(sid);
+      if (o.earnedXp) playOrbs(p.from, p.wsId, o);
+      opts.onClosedConsumed?.(sid);
+    }
+    applyRelocs();
     applyDragSprite();
     redrawOverlay();
   };
@@ -579,6 +714,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       })),
     ],
     groundBakes,
+    particles: particles.count,
     cam: { ...cam },
     screenOf: (id) => {
       const e = hitEntities().find((x) => x.id === id) ?? hitEntities().find((x) => x.id === `house:${id}`);
@@ -776,7 +912,10 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
         if (!destroyed) { endDragVisual(); redrawOverlay(); }
       });
     } else {
-      if (ev && !d.valid) opts.onBlockedDrop?.(d.target); // snap back immediately; Task 10 adds dust
+      if (ev && !d.valid) {
+        particles.dust(centre(d.target, d.m.size), 10, false); // snap back immediately, with a puff where it was refused
+        opts.onBlockedDrop?.(d.target);
+      }
       endDragVisual();
     }
     redrawOverlay();
@@ -843,6 +982,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     document.removeEventListener('visibilitychange', onVisibility);
     app.renderer.off('resize', onResize);
     sprites.clear();
+    fxRender.destroy();
     const gt = ground.texture;
     app.destroy({ removeView: true }, { children: true, texture: false });
     if (gt !== Texture.EMPTY) gt.destroy(true);

@@ -1,4 +1,5 @@
 import { vi } from 'vitest';
+import type { CloseOutcome } from '../api/types';
 import { useApp, sessionsByWorkspace, idleBuilders, stateLabel } from './store';
 import type { Builder, Compound, SessionInfo, SessionState, Tile, Workspace } from '../api/types';
 import { ipc } from '../api/ipc';
@@ -192,5 +193,47 @@ describe('commitMove', () => {
     expect(await useApp.getState().village.commitMove({ kind: 'workspace', id: 'w1' }, { x: 7, y: 7 }, (e) => errs.push(e))).toBe(false);
     expect(useApp.getState().workspaces[0]).toBe(ws);
     expect(errs).toHaveLength(2);
+  });
+});
+
+describe('close notices', () => {
+  const out = (o: Partial<CloseOutcome> = {}): CloseOutcome => ({
+    earnedXp: false, xpGained: 0, levelBefore: 1, levelAfter: 1, workspaceId: 'w1', unfinished: false, stuck: false, ...o,
+  });
+  const texts = () => useApp.getState().notices.map((n) => n.text);
+  beforeEach(() => { vi.useFakeTimers(); useApp.setState({ notices: [], lastClosed: {} }); });
+  afterEach(() => vi.useRealTimers());
+
+  test('close_unfinished_shows_notice', () => {
+    useApp.getState().onClosed(out({ unfinished: true }), 's1');
+    expect(texts()).toEqual(['Closed \u2014 not finished, no XP']);
+  });
+  test('stuck beats unfinished', () => {
+    useApp.getState().onClosed(out({ unfinished: true, stuck: true }), 's1');
+    expect(texts()).toEqual(['Closed while stuck \u2014 no XP']);
+  });
+  test('earned shows +100 XP and records the outcome for the scene', () => {
+    useApp.getState().onClosed(out({ earnedXp: true, xpGained: 100 }), 's1');
+    expect(texts()).toEqual(['+100 XP']);
+    expect(useApp.getState().lastClosed.s1.earnedXp).toBe(true);
+    useApp.getState().consumeClosed('s1');
+    expect(useApp.getState().lastClosed.s1).toBeUndefined();
+  });
+  test('level_up_notice', () => {
+    useApp.getState().onClosed(out({ earnedXp: true, xpGained: 100, levelBefore: 1, levelAfter: 2 }), 's1');
+    expect(texts()).toEqual(['+100 XP', 'LEVEL UP! Level 2']);
+    expect(useApp.getState().notices.map((n) => n.kind)).toEqual(['xp', 'level']);
+  });
+  test('terminal_close_is_silent', () => {
+    useApp.getState().onClosed(out(), 's1');
+    expect(texts()).toEqual([]);
+    expect(useApp.getState().lastClosed).toEqual({});
+  });
+  test('notices expire after 3 s', () => {
+    useApp.getState().onClosed(out({ unfinished: true }), 's1');
+    vi.advanceTimersByTime(2999);
+    expect(texts().length).toBe(1);
+    vi.advanceTimersByTime(2);
+    expect(texts()).toEqual([]);
   });
 });

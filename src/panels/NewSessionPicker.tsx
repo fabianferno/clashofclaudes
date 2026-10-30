@@ -84,7 +84,8 @@ export default function NewSessionPicker({ workspaceId }: { workspaceId: string 
       setBusy(true);
       const s = await ipc.startSession(wsId, builderId, task.trim());
       st.upsertSession(s);
-      await st.village.ensureSpot(s.id);
+      // a spot failure must not strand a started session (a second Start would run a duplicate)
+      try { await st.village.ensureSpot(s.id); } catch (e) { st.setError(String(e)); }
       st.setSelection({ kind: 'session', id: s.id });
     } catch (e) {
       st.setError(String(e));

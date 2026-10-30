@@ -111,3 +111,14 @@ test('the preview timer stops on unmount', () => {
   expect(clear).toHaveBeenCalled();
   vi.useRealTimers();
 });
+
+test('ensureSpot failure is non-fatal: session selected, error reported, started once', async () => {
+  setup({ builders: [bld('b1', 'Ada')] });
+  vi.mocked(ipc.startSession).mockResolvedValue(sess('s7', 'b1', { kind: 'working' }));
+  ensureSpot.mockRejectedValueOnce('no room');
+  render(<NewSessionPicker workspaceId="w" />);
+  fireEvent.click(screen.getByText('Start'));
+  await vi.waitFor(() => expect(useApp.getState().selection).toEqual({ kind: 'session', id: 's7' }));
+  expect(useApp.getState().error).toBe('no room');
+  expect(ipc.startSession).toHaveBeenCalledTimes(1);
+});

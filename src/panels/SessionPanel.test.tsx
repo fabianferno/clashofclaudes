@@ -5,7 +5,7 @@ import type { SessionInfo, SessionState } from '../api/types';
 const approve = vi.fn();
 const reviewSession = vi.fn();
 vi.mock('../api/ipc', () => ({ ipc: { approve: (id: string) => approve(id), deny: vi.fn(), reviewSession: (id: string) => reviewSession(id) } }));
-vi.mock('../components/TerminalView', () => ({ default: ({ sessionId }: { sessionId: string }) => <div className="terminal" data-sid={sessionId} /> }));
+vi.mock('../components/TerminalView', () => ({ default: ({ sessionId }: { sessionId: string }) => <div className="terminal" tabIndex={0} data-sid={sessionId} /> }));
 import SessionPanel from './SessionPanel';
 import { useApp } from '../state/store';
 
@@ -103,4 +103,19 @@ test('Esc in the pop-out does not close the side panel', () => {
   fireEvent.keyDown(document.body, { key: 'Escape' });
   expect(onKey).not.toHaveBeenCalled();
   window.removeEventListener('keydown', onKey);
+});
+
+test('Esc with focus inside the popped-out terminal reaches it; the overlay stays open', () => {
+  useApp.getState().upsertSession(sess({ kind: 'working' }, false));
+  render(<SessionPanel sessionId="s1" />);
+  fireEvent.click(screen.getByText('Pop out'));
+  const term = document.querySelector('.popout .terminal') as HTMLElement;
+  term.focus();
+  const seen = vi.fn();
+  term.addEventListener('keydown', seen);
+  fireEvent.keyDown(term, { key: 'Escape' });
+  expect(seen).toHaveBeenCalled();
+  expect(document.querySelector('.popout')).toBeTruthy();
+  fireEvent.click(screen.getByLabelText('Close terminal'));
+  expect(document.querySelector('.popout')).toBeNull();
 });

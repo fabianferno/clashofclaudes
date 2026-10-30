@@ -45,12 +45,12 @@ beforeEach(() => {
 test('queues live frames until snapshot, trims overlap, ignores frames after unmount', async () => {
   const { unmount } = render(<TerminalView sessionId="t1" />);
   await vi.waitFor(() => expect(log).toEqual(['attach']));
-  onFrame(f(3, 'cdef')); // arrives before snapshot; overlaps "c"
+  onFrame(f(2, 'cdef')); // arrives before snapshot; overlaps "c"
   expect(writes).toHaveLength(0);
   resolveSnap(f(0, 'abc'));
   await vi.waitFor(() => expect(text()).toBe('abc|def'));
   unmount();
-  onFrame(f(6, 'late'));
+  onFrame(f(7, 'late'));
   expect(text()).toBe('abc|def');
   expect(disposeCount).toBe(1);
   await vi.waitFor(() => expect(log).toEqual(['attach', 'detach']));

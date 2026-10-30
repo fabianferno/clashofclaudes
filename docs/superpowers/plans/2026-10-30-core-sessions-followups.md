@@ -3,10 +3,19 @@
 Collected from the Plan 1 execution ledger at merge time. All were triaged CAN-WAIT by the final review except where noted.
 
 ## Must land before or with Plan 2
+- Memory after a flood is over budget (owner GUI run, 2026-10-31, debug build): after `yes | head -c 50000000` in one terminal with one Claude session, WebKit WebContent went 51 MB → ~395 MB and stayed there; app core 100 → 147 MB (~540 MB total vs the 250 MB budget). Responsiveness was fine. Unconfirmed suspects: xterm scrollback 5000 lines, WebGL glyph atlas, retained frames. Measure in a release build first.
+- Closing a session that never reached Finished gives no feedback (no XP, no message). Show "closed: unfinished, no XP".
+- Builders are only visible in the New session builder picker; after Close the builder seems to vanish. The Plan 2 builders bar covers this.
 - Claude's first-run "Do you trust this folder?" menu (default "No, exit") appears before any hook fires: the session shows Working, never NeedsYou. Add screen-pattern detection → NeedsYou with its own keys.
 - Add a monotonic `rev` to SessionInfo so stale start responses / hydrate can't overwrite fresher event state.
 - Disarm `awaiting_decision` when the user answers a permission prompt by typing in the terminal (hook agents).
 - Serde shape tests for the tagged enums (SessionState/SessionKind).
+
+## Found in the owner GUI run (2026-10-31)
+- Fixed: Cmd+Q / menu Quit skipped the quit dialog. The predefined Quit item calls `terminate:`, which never raises ExitRequested; replaced with a custom Quit item that calls `app.exit(0)` (`lib.rs::app_menu`).
+- Fixed: the quit dialog's buttons were unclickable over a terminal (xterm's z-indexed layers sat above the unindexed fixed overlay). `.modal-bg` gets `z-index`, `.terminal-wrap` gets `isolation: isolate`.
+- Open: + Session / + Terminal on a missing workspace are disabled with no explanation; add a "folder not found" tooltip.
+- Open: the doc's `pgrep -f "claude --session-id"` check also matches any shell whose command line contains that text; check children of the app pid instead.
 
 ## Final-review minors not yet fixed
 - `start_agent` runs `claude --version` on every start (cache detection).

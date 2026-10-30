@@ -96,3 +96,19 @@ grow without bound.
 **Memory (11).** Start 10 sessions (e.g. custom builders `sleep 600` or terminals) with 2 terminals
 open. In Activity Monitor, filter "Clash of Claudes" and sum Memory for the app and its WebKit helper
 processes (exclude `claude` children). Target: <= 250 MB. Record it here: ______ MB.
+
+## Owner GUI run (2026-10-31, `pnpm tauri dev`, debug build)
+
+The owner clicked the window while Claude watched the save file and the app's child processes.
+
+| # | Item | Result |
+|---|------|--------|
+| 1 | Open folder -> workspace appears | PASS (`~/Documents/coc-check`) |
+| 2-4 | Real Claude session (haiku), Working -> Finished, Review | PASS (session edited README.md in a real repo) |
+| 6 | Close -> session gone, +XP banner | PASS when Finished first. Closing an unfinished session gives no feedback (follow-up) |
+| 6 | No leftover claude process or session dir after Close | PASS |
+| 8 | Missing folder -> badge, cannot start | PASS (buttons disabled, no explanation: follow-up) |
+| 9 | Quit dialog | FAIL then FIXED: Cmd+Q quit without a dialog; dialog buttons unclickable over a terminal. Both fixed, see follow-ups |
+| 9 | No leftover processes after quit | PASS |
+| 10 | Flood responsiveness | PASS |
+| 10/11 | Memory | FAIL: after the flood, WebContent ~395 MB + app 147 MB (~540 MB) with 1 Claude + 1 terminal. Idle at launch: ~180 MB. 10-session figure not measured |

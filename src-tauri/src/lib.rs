@@ -73,7 +73,7 @@ pub fn run() {
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 let st = window.state::<AppState>();
-                let live = st.manager.live_count();
+                let live = st.manager.running_process_count();
                 if commands::should_block_exit(live, st.exit_confirmed.load(Ordering::SeqCst)) {
                     api.prevent_close();
                     commands::emit_confirm_quit(window.app_handle(), live);
@@ -109,7 +109,7 @@ pub fn run() {
             // Cmd+Q / app-menu Quit never raise CloseRequested, so guard the exit itself.
             if let tauri::RunEvent::ExitRequested { api, .. } = event {
                 let st = app.state::<AppState>();
-                let live = st.manager.live_count();
+                let live = st.manager.running_process_count();
                 if commands::should_block_exit(live, st.exit_confirmed.load(Ordering::SeqCst)) {
                     api.prevent_exit();
                     commands::emit_confirm_quit(app, live);

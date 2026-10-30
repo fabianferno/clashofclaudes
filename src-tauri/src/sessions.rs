@@ -626,6 +626,11 @@ impl SessionManager {
         self.lock().values().filter(|e| e.is_live()).count()
     }
 
+    /// Sessions whose process is still running (or starting); what quitting would kill.
+    pub fn running_process_count(&self) -> usize {
+        self.lock().values().filter(|e| !e.exited).count()
+    }
+
     fn remove_session_dir(&self, id: &str) {
         let _ = std::fs::remove_dir_all(self.data_dir.join("sessions").join(id));
     }
@@ -859,6 +864,16 @@ mod tests {
         fx.mgr.approve(&s.id).unwrap_err(); // not waiting; must not block either
         fx.mgr.write(&s.id, b"\r").unwrap();
         assert!(t.elapsed() < Duration::from_millis(100), "write blocked for {:?}", t.elapsed());
+    }
+
+    #[test]
+    fn quit_guard_counts_only_running_processes() {
+        let fx = fixture();
+        let a = fx.mgr.start_agent(&fx.ws, &custom("b1", "exit 4"), None).unwrap();
+        fx.mgr.start_agent(&fx.ws, &custom("b2", "sleep 5"), None).unwrap();
+        assert!(wait_until(|| matches!(state(&fx, &a.id), SessionState::Stuck { .. })));
+        assert_eq!(fx.mgr.live_count(), 2, "a crashed session is still listed as live");
+        assert_eq!(fx.mgr.running_process_count(), 1, "but quitting would only kill one process");
     }
 
     #[test]

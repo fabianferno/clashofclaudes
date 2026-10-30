@@ -1,14 +1,14 @@
-mod adapters;
-mod commands;
-mod git;
-mod hooks;
-mod model;
-mod persist;
-mod platform;
-mod pty;
-mod scrollback;
-mod sessions;
-mod status;
+pub mod adapters;
+pub mod commands;
+pub mod git;
+pub mod hooks;
+pub mod model;
+pub mod persist;
+pub mod platform;
+pub mod pty;
+pub mod scrollback;
+pub mod sessions;
+pub mod status;
 
 use commands::{AppState, Channels, Removed};
 use sessions::{Emit, ManagerEvent, SessionManager};

@@ -1,4 +1,5 @@
 mod adapters;
+mod hooks;
 mod model;
 mod persist;
 mod platform;

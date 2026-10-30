@@ -14,6 +14,7 @@ pub enum StatusEvent {
     PromptSubmitted,
     UserInput,
     Exited { code: Option<i32> },
+    CwdChanged { cwd: std::path::PathBuf },
 }
 
 #[derive(Clone, Debug, PartialEq)]

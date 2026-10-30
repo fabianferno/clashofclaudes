@@ -1,0 +1,9 @@
+{
+  "session_id": "1dfe8c41-1dbf-4d3c-ad66-6854491b40ae",
+  "transcript_path": "/home/user/.claude/projects/-private-tmp-coc-hooks/1dfe8c41-1dbf-4d3c-ad66-6854491b40ae.jsonl",
+  "cwd": "/private/tmp/coc-hooks",
+  "scratchpad_dir": "/private/tmp/claude-502/-private-tmp-coc-hooks/1dfe8c41-1dbf-4d3c-ad66-6854491b40ae/scratchpad",
+  "prompt_id": "92a38c32-5bac-493c-adaa-32a754dcf4c3",
+  "hook_event_name": "SessionEnd",
+  "reason": "prompt_input_exit"
+}

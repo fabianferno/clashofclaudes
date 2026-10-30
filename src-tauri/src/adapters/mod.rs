@@ -1,5 +1,6 @@
 //! Agent adapters: how each agent CLI is detected, launched and observed.
 #![allow(dead_code)] // TODO(Task 8): remove once SessionManager consumes adapters
+pub mod claude;
 pub mod generic;
 
 use crate::model::AgentKind;
@@ -9,6 +10,7 @@ use crate::status::{StatusEvent, StatusPolicy};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+pub use claude::ClaudeAdapter;
 pub use generic::CustomAdapter;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -55,7 +57,7 @@ pub struct AdapterRegistry {
 impl AdapterRegistry {
     pub fn new() -> Self {
         let adapters: Vec<Arc<dyn AgentAdapter>> = vec![
-            // Task 6: register `Arc::new(claude::ClaudeAdapter)` here.
+            Arc::new(ClaudeAdapter),
             Arc::new(CustomAdapter),
         ];
         Self { adapters }
@@ -107,7 +109,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "passes after Task 6 registers ClaudeAdapter"]
     fn registry_has_claude_and_custom() {
         let r = AdapterRegistry::new();
         assert!(r.get(AgentKind::Claude).is_some());

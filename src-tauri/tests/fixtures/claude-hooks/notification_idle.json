@@ -1,0 +1,10 @@
+{
+  "session_id": "1dfe8c41-1dbf-4d3c-ad66-6854491b40ae",
+  "transcript_path": "/home/user/.claude/projects/-private-tmp-coc-hooks/1dfe8c41-1dbf-4d3c-ad66-6854491b40ae.jsonl",
+  "cwd": "/private/tmp/coc-hooks",
+  "scratchpad_dir": "/private/tmp/claude-502/-private-tmp-coc-hooks/1dfe8c41-1dbf-4d3c-ad66-6854491b40ae/scratchpad",
+  "prompt_id": "bf6e3e7e-65cb-4c06-87b3-d3e63fefb157",
+  "hook_event_name": "Notification",
+  "message": "Claude is waiting for your input",
+  "notification_type": "idle_prompt"
+}

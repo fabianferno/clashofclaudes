@@ -30,3 +30,14 @@ test('trimSeen: full overlap yields empty', () => {
   expect(r.data.length).toBe(0);
   expect(r.writtenUntil).toBe(20);
 });
+
+test('decodeFrame: header bit 63 marks a skip-marker frame', () => {
+  const b = new ArrayBuffer(8 + 2);
+  new DataView(b).setBigUint64(0, (1n << 63n) | 300n, true);
+  new Uint8Array(b, 8).set([7, 8]);
+  const f = decodeFrame(b);
+  expect(f.marker).toBe(true);
+  expect(f.offset).toBe(300);
+  expect(Array.from(f.data)).toEqual([7, 8]);
+  expect(decodeFrame(mk(5, [1])).marker).toBe(false);
+});

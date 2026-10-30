@@ -3,12 +3,13 @@ import { vi } from 'vitest';
 import type { Frame } from '../api/types';
 
 const writes: Uint8Array[] = [];
+const writeDone: Array<() => void> = [];
 let disposeCount = 0;
 vi.mock('@xterm/xterm', () => ({
   Terminal: class {
     cols = 80; rows = 24;
     loadAddon() {} open() {} onData() { return { dispose() {} }; }
-    write(d: Uint8Array) { writes.push(d); }
+    write(d: Uint8Array, cb?: () => void) { writes.push(d); writeDone.push(cb ?? (() => {})); }
     dispose() { disposeCount++; }
   },
 }));
@@ -31,6 +32,7 @@ vi.mock('../api/ipc', async () => {
         return new Promise<Frame>((r) => { resolveSnap = r; });
       }),
       detachSession: vi.fn(async () => { log.push('detach'); }),
+      ackOutput: vi.fn(async (_id: string, end: number) => { log.push(`ack ${end}`); }),
     },
   };
 });
@@ -40,7 +42,7 @@ const f = (offset: number, s: string): Frame => ({ offset, data: new TextEncoder
 const text = () => writes.map((w) => new TextDecoder().decode(w)).join('|');
 
 beforeEach(() => {
-  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} }); writes.length = 0; log.length = 0; disposeCount = 0; });
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} }); writes.length = 0; writeDone.length = 0; log.length = 0; disposeCount = 0; });
 
 test('queues live frames until snapshot, trims overlap, ignores frames after unmount', async () => {
   const { unmount } = render(<TerminalView sessionId="t1" />);
@@ -68,4 +70,29 @@ test('detach waits for attach to settle; next attach waits for detach', async ()
   b.unmount();
   resolveSnap(f(0, ''));
   await vi.waitFor(() => expect(log).toEqual(['attach', 'detach', 'attach', 'detach']));
+});
+
+test('acks each frame with its end offset only after xterm finished writing it', async () => {
+  const { unmount } = render(<TerminalView sessionId="t3" />);
+  await vi.waitFor(() => expect(log).toEqual(['attach']));
+  resolveSnap(f(10, 'abc'));
+  await vi.waitFor(() => expect(text()).toBe('abc'));
+  expect(log).toEqual(['attach']); // not acked before the write completes
+  writeDone[0]();
+  expect(log).toEqual(['attach', 'ack 13']);
+  onFrame(f(13, 'de'));
+  expect(text()).toBe('abc|de');
+  expect(log).toEqual(['attach', 'ack 13']);
+  writeDone[1]();
+  expect(log).toEqual(['attach', 'ack 13', 'ack 15']);
+  onFrame(f(12, 'cd')); // fully seen: nothing written, still acked
+  expect(text()).toBe('abc|de');
+  expect(log).toEqual(['attach', 'ack 13', 'ack 15', 'ack 14']);
+  onFrame({ offset: 15, data: new TextEncoder().encode('[skipped]'), marker: true });
+  expect(text()).toBe('abc|de|[skipped]');
+  onFrame(f(15, 'g')); // a marker does not advance the stream position
+  expect(text()).toBe('abc|de|[skipped]|g');
+  writeDone[writeDone.length - 1]();
+  expect(log.filter((l) => l.startsWith('ack'))).toEqual(['ack 13', 'ack 15', 'ack 14', 'ack 16']);
+  unmount();
 });

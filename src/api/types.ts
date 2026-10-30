@@ -87,6 +87,9 @@ export interface ConfirmQuit {
 }
 
 export interface Frame {
+  /** Stream position of data[0] (for a marker: where output resumes). */
   offset: number;
   data: Uint8Array;
+  /** Skip marker: display-only bytes outside the stream; written as-is, never acked. */
+  marker?: boolean;
 }

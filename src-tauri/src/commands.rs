@@ -303,11 +303,21 @@ pub async fn review_session(id: String, state: State<'_, AppState>) -> Result<Re
 /// Returns the scrollback snapshot, then streams the session's output to `on_data`.
 ///
 /// Framing (both the returned body and every channel message): raw bytes
-/// `[u64 little-endian start_offset][payload bytes]`, where `start_offset` is the position,
-/// in bytes since the session started, of the first payload byte. The snapshot is followed
-/// by output starting at `snapshot_start + snapshot_len`, but an output frame already in
+/// `[u64 little-endian header][payload bytes]`. Normally the header is `start_offset`, the
+/// position, in bytes since the session started, of the first payload byte. The snapshot is
+/// followed by output starting at `snapshot_start + snapshot_len`, but a frame already in
 /// flight may overlap the snapshot, so the client must drop payload bytes at positions below
 /// what it has already written (and may see a gap only if the snapshot itself was capped).
+///
+/// Flow control: after one output frame, no further one is sent until the client calls
+/// `ack_output(id, end)` with `end` = that frame's `start_offset + payload_len`, once the
+/// terminal has finished writing it. Acking a fully-overlapped frame is still required.
+///
+/// Skip marker: when the client fell so far behind that buffered output was dropped, the
+/// next output frame is preceded by one frame whose header has bit 63 set (`SKIP_FLAG`); its
+/// low bits are the stream position where output resumes and its payload is a dim
+/// "output skipped" line. The client writes that payload as-is, does not count it in its
+/// stream position and does not ack it.
 #[tauri::command]
 pub fn attach_session(id: String, on_data: Channel<InvokeResponseBody>, state: State<'_, AppState>) -> Result<Response, String> {
     // Register first so no output falls between the snapshot and the channel.
@@ -321,6 +331,17 @@ pub fn attach_session(id: String, on_data: Channel<InvokeResponseBody>, state: S
     }
 }
 
+/// Header bit marking a skip-marker frame (stream offsets never reach 2^63).
+pub const SKIP_FLAG: u64 = 1 << 63;
+const SKIP_MARKER: &str = "\r\n\x1b[2m[… output skipped …]\x1b[0m\r\n";
+
+/// Skip-marker frame: header `SKIP_FLAG | offset` (the stream position where output resumes),
+/// payload a dim marker line. Its bytes are display-only, outside the stream offset space.
+pub fn skip_frame(offset: u64) -> Vec<u8> {
+    frame(SKIP_FLAG | offset, SKIP_MARKER.as_bytes())
+}
+
+/// Output frame: `[u64 LE offset][payload]`.
 pub fn frame(offset: u64, data: &[u8]) -> Vec<u8> {
     let mut f = Vec::with_capacity(8 + data.len());
     f.extend_from_slice(&offset.to_le_bytes());
@@ -328,9 +349,16 @@ pub fn frame(offset: u64, data: &[u8]) -> Vec<u8> {
     f
 }
 
+/// The client finished writing output up to stream position `offset` (see `attach_session`).
+#[tauri::command]
+pub fn ack_output(id: String, offset: u64, state: State<'_, AppState>) -> Result<(), String> {
+    state.manager.ack(&id, offset).map_err(fmt_err)
+}
+
 #[tauri::command]
 pub fn detach_session(id: String, state: State<'_, AppState>) {
     state.channels.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
+    let _ = state.manager.detach(&id);
 }
 
 /// Kills every session and exits (the user confirmed quitting).
@@ -400,6 +428,13 @@ mod tests {
         assert!(!d.workspaces[0].missing && d.workspaces[1].missing);
         assert!(flag_workspace_missing(&mut d, "b").is_none(), "already flagged: nothing to persist");
         assert!(flag_workspace_missing(&mut d, "zzz").is_none());
+    }
+
+    #[test]
+    fn skip_frame_sets_the_flag_bit_and_carries_the_marker() {
+        let f = skip_frame(258);
+        assert_eq!(u64::from_le_bytes(f[..8].try_into().unwrap()), SKIP_FLAG | 258);
+        assert_eq!(&f[8..], "\r\n\x1b[2m[… output skipped …]\x1b[0m\r\n".as_bytes());
     }
 
     #[test]

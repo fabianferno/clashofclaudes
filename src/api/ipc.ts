@@ -5,10 +5,16 @@ import type {
   Review, SessionInfo, Workspace,
 } from './types';
 
-/** Frame layout: [u64 LE start_offset][payload bytes]. */
+const SKIP_FLAG = 1n << 63n;
+
+/**
+ * Frame layout: [u64 LE header][payload bytes]. The header is the stream offset of the first
+ * payload byte; with bit 63 set the frame is a skip marker (see `attach_session` in Rust).
+ */
 export function decodeFrame(buf: ArrayBuffer): Frame {
-  const offset = Number(new DataView(buf).getBigUint64(0, true));
-  return { offset, data: new Uint8Array(buf, 8) };
+  const header = new DataView(buf).getBigUint64(0, true);
+  const marker = (header & SKIP_FLAG) !== 0n;
+  return { offset: Number(header & ~SKIP_FLAG), data: new Uint8Array(buf, 8), marker };
 }
 
 /** Drop bytes at stream positions < writtenUntil; returns data to write and the new high-water mark. */
@@ -40,6 +46,8 @@ export const ipc = {
   closeSession: (id: string) => invoke<CloseOutcome>('close_session', { id }),
   reviewSession: (id: string) => invoke<Review>('review_session', { id }),
   detachSession: (id: string) => invoke<void>('detach_session', { id }),
+  /** The terminal finished writing output up to stream position `offset`; lets the next frame through. */
+  ackOutput: (id: string, offset: number) => invoke<void>('ack_output', { id, offset }),
   quitNow: () => invoke<void>('quit_now'),
   /** Registers a channel for live frames and returns the decoded snapshot frame. */
   attachSession: async (id: string, onFrame: (f: Frame) => void): Promise<Frame> => {

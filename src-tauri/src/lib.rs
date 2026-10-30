@@ -52,6 +52,11 @@ pub fn run() {
                         let _ = ch.send(InvokeResponseBody::Raw(commands::frame(offset, &data)));
                     }
                 }
+                ManagerEvent::Skipped { id, offset } => {
+                    if let Some(ch) = chans.lock().unwrap_or_else(|e| e.into_inner()).get(&id) {
+                        let _ = ch.send(InvokeResponseBody::Raw(commands::skip_frame(offset)));
+                    }
+                }
             });
             let manager = SessionManager::new(adapters::AdapterRegistry::new(), Arc::new(hooks), data_dir, emit);
             let _ = cell.set(Arc::downgrade(&manager));
@@ -95,6 +100,7 @@ pub fn run() {
             commands::review_session,
             commands::attach_session,
             commands::detach_session,
+            commands::ack_output,
             commands::quit_now,
         ])
         .build(tauri::generate_context!())

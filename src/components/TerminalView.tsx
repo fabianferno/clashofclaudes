@@ -33,13 +33,20 @@ export default function TerminalView({ sessionId }: { sessionId: string }) {
     };
     doFit();
 
+    // Flow control: the backend sends the next frame only after we ack this one's end offset,
+    // once xterm has actually written it.
+    const ack = (end: number) => { if (!disposed) ipc.ackOutput(sessionId, end).catch(() => {}); };
+
     // Frames that arrive before the snapshot is written are queued.
     let writtenUntil: number | null = null;
     const queue: Frame[] = [];
     const apply = (f: Frame) => {
+      if (f.marker) { term.write(f.data); return; } // display-only; not in the stream, not acked
+      const end = f.offset + f.data.length;
       const r = trimSeen(f, writtenUntil ?? 0);
       writtenUntil = r.writtenUntil;
-      if (r.data.length) term.write(r.data);
+      if (r.data.length) term.write(r.data, () => ack(end));
+      else ack(end);
     };
     const onFrame = (f: Frame) => disposed ? undefined : (writtenUntil === null ? queue.push(f) : apply(f));
 
@@ -47,8 +54,9 @@ export default function TerminalView({ sessionId }: { sessionId: string }) {
     const attachP = prev.then(() => (disposed ? undefined : ipc.attachSession(sessionId, onFrame))).then(
       (snap) => {
         if (disposed || !snap) return;
-        term.write(snap.data);
-        writtenUntil = snap.offset + snap.data.length;
+        const end = snap.offset + snap.data.length;
+        term.write(snap.data, () => ack(end));
+        writtenUntil = end;
         queue.splice(0).forEach(apply);
       },
       (e) => { if (!disposed) setError(String(e)); },

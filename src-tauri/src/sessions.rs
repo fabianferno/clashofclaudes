@@ -11,7 +11,6 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -23,6 +22,8 @@ pub enum ManagerEvent {
     /// `offset`: stream position (bytes since session start) of the first byte of `data`.
     Output { id: String, offset: u64, data: Vec<u8> },
     Removed { id: String },
+    /// Output before `offset` was dropped (the frontend fell too far behind); shown as a marker.
+    Skipped { id: String, offset: u64 },
 }
 
 pub type Emit = Arc<dyn Fn(ManagerEvent) + Send + Sync>;
@@ -53,11 +54,16 @@ struct SessionEntry {
     adapter: Option<Arc<dyn AgentAdapter>>,
     policy: StatusPolicy,
     baseline: Option<GitBaseline>,
+    /// Output not yet sent as a frame; only collected while a terminal is attached.
     pending: VecDeque<u8>,
     /// Total bytes the process has ever written; `pending` is always the stream's newest suffix.
     out_total: u64,
-    /// Bytes of this session's queued-but-undelivered `Output` (cleared by the emitter thread).
-    in_flight: Arc<AtomicUsize>,
+    /// A terminal view is attached: output is sent as frames (otherwise it only goes to scrollback).
+    attached: bool,
+    /// Stream range `[start, end)` of the one sent frame the frontend has not acked yet.
+    in_flight: Option<(u64, u64)>,
+    /// Pending bytes were dropped since the last frame (a skip marker precedes the next one).
+    skipped: bool,
     last_flush: Instant,
     /// Silence is measured from the latest output or state change.
     quiet_since_ms: i64,
@@ -93,20 +99,31 @@ impl SessionEntry {
         changed
     }
 
-    /// Backpressure: at most one undelivered `Output` per session. While one is in flight,
-    /// bytes keep accumulating in `pending` (capped in `on_output`) and a later flush sends them.
-    fn flush(&mut self, tx: &Sender<Queued>) {
-        if self.in_flight.load(Ordering::SeqCst) > 0 {
+    /// Flow control: at most one un-acked `Output` per session, so the webview (not just this
+    /// process) bounds what is buffered. While one is in flight, bytes accumulate in `pending`
+    /// (capped in `on_output`) and the flush after the frontend's `ack` sends them.
+    fn flush(&mut self, tx: &Sender<ManagerEvent>) {
+        if !self.attached || self.in_flight.is_some() {
             return;
         }
         self.last_flush = Instant::now();
-        if !self.pending.is_empty() {
-            let offset = self.out_total - self.pending.len() as u64;
-            let data = Vec::from(std::mem::take(&mut self.pending));
-            self.in_flight.fetch_add(data.len(), Ordering::SeqCst);
-            let ev = ManagerEvent::Output { id: self.info.id.clone(), offset, data };
-            let _ = tx.send(Queued { ev, in_flight: Some(self.in_flight.clone()) });
+        if self.pending.is_empty() {
+            return;
         }
+        let offset = self.out_total - self.pending.len() as u64;
+        if std::mem::take(&mut self.skipped) {
+            let _ = tx.send(ManagerEvent::Skipped { id: self.info.id.clone(), offset });
+        }
+        let data = Vec::from(std::mem::take(&mut self.pending));
+        self.in_flight = Some((offset, offset + data.len() as u64));
+        let _ = tx.send(ManagerEvent::Output { id: self.info.id.clone(), offset, data });
+    }
+
+    /// Stops framing output (no terminal attached, or a new one replaces the old).
+    fn reset_stream(&mut self) {
+        self.pending.clear();
+        self.in_flight = None;
+        self.skipped = false;
     }
 
     fn is_live(&self) -> bool {
@@ -116,41 +133,28 @@ impl SessionEntry {
 
 type Sessions = HashMap<String, SessionEntry>;
 
-/// An event on its way to the emitter thread; `Output` carries its session's in-flight counter.
-struct Queued {
-    ev: ManagerEvent,
-    in_flight: Option<Arc<AtomicUsize>>,
-}
-
 /// Locking: one mutex over all sessions. Events are sent into a channel while the lock is
 /// held (so their order matches the state order) and a dedicated thread calls `emit`, so
 /// `emit` never runs under the lock. PTY kills, git and file IO run outside the lock; PTY
 /// writes only enqueue (see `PtyHandle`), so they may happen under it.
-/// Queued output per session is bounded: one in-flight `Output` plus `pending`, each at most
+/// Queued output per session is bounded: one un-acked `Output` plus `pending`, each at most
 /// `SCROLLBACK_CAP` bytes.
 pub struct SessionManager {
     registry: AdapterRegistry,
     hooks: Arc<HookServer>,
     data_dir: PathBuf,
     sessions: Mutex<Sessions>,
-    tx: Sender<Queued>,
+    tx: Sender<ManagerEvent>,
     weak: Weak<SessionManager>,
 }
 
 impl SessionManager {
     pub fn new(registry: AdapterRegistry, hooks: Arc<HookServer>, data_dir: PathBuf, emit: Emit) -> Arc<SessionManager> {
-        let (tx, rx) = mpsc::channel::<Queued>();
+        let (tx, rx) = mpsc::channel::<ManagerEvent>();
         // Ends when the manager (the only sender) is dropped.
         std::thread::spawn(move || {
-            for Queued { ev, in_flight } in rx {
-                let n = match &ev {
-                    ManagerEvent::Output { data, .. } => data.len(),
-                    _ => 0,
-                };
+            for ev in rx {
                 emit(ev);
-                if let Some(c) = in_flight {
-                    c.fetch_sub(n, Ordering::SeqCst);
-                }
             }
         });
         let mgr = Arc::new_cyclic(|weak| SessionManager {
@@ -183,7 +187,7 @@ impl SessionManager {
     }
 
     fn send_updated(&self, e: &SessionEntry) {
-        let _ = self.tx.send(Queued { ev: ManagerEvent::Updated(e.info.clone()), in_flight: None });
+        let _ = self.tx.send(ManagerEvent::Updated(e.info.clone()));
     }
 
     pub fn start_agent(&self, ws: &Workspace, builder: &Builder, task: Option<&str>) -> Result<SessionInfo> {
@@ -286,7 +290,9 @@ impl SessionManager {
                 baseline,
                 pending: VecDeque::new(),
                 out_total: 0,
-                in_flight: Arc::default(),
+                attached: false,
+                in_flight: None,
+                skipped: false,
                 last_flush: Instant::now(),
                 quiet_since_ms: now,
                 checked_cwd: None,
@@ -348,10 +354,17 @@ impl SessionManager {
             self.send_updated(e);
         }
         e.out_total += data.len() as u64;
+        if !e.attached {
+            return;
+        }
         e.pending.extend(data);
-        // A frontend this far behind loses the oldest bytes; re-attaching replays scrollback.
+        // A frontend this far behind loses the oldest bytes (marked in-band); re-attaching
+        // replays scrollback.
         let over = e.pending.len().saturating_sub(SCROLLBACK_CAP);
-        e.pending.drain(..over);
+        if over > 0 {
+            e.pending.drain(..over);
+            e.skipped = true;
+        }
         if e.last_flush.elapsed() >= FLUSH_EVERY {
             e.flush(&self.tx);
         }
@@ -512,7 +525,7 @@ impl SessionManager {
         let entry = {
             let mut g = self.lock();
             let e = g.remove(id).ok_or_else(|| anyhow!("unknown session {id}"))?;
-            let _ = self.tx.send(Queued { ev: ManagerEvent::Removed { id: id.to_string() }, in_flight: None });
+            let _ = self.tx.send(ManagerEvent::Removed { id: id.to_string() });
             e
         };
         let earned_xp = entry.info.reached_finished && !matches!(entry.info.state, SessionState::Stuck { .. });
@@ -525,24 +538,50 @@ impl SessionManager {
         Ok(CloseOutcome { earned_xp })
     }
 
-    /// Scrollback snapshot plus the stream offset of its first byte. Bytes not yet emitted are
-    /// dropped from the pending batch, since the snapshot already contains them; the next
-    /// `Output` starts at `start + snapshot.len()`. An `Output` already queued may overlap the
-    /// snapshot, so consumers drop bytes at stream positions they have already written.
+    /// Starts framing output for a terminal view: returns the scrollback snapshot plus the
+    /// stream offset of its first byte; the next `Output` starts at `start + snapshot.len()`.
+    /// Replaces any earlier attachment: pending bytes (already in the snapshot) are dropped and
+    /// an un-acked frame no longer holds output back. A frame queued before this call may
+    /// overlap the snapshot, so consumers drop bytes at stream positions already written.
     pub fn attach(&self, id: &str) -> Result<(Vec<u8>, u64)> {
         let mut g = self.lock();
         let e = g.get_mut(id).ok_or_else(|| anyhow!("unknown session {id}"))?;
-        e.pending.clear();
+        e.reset_stream();
+        e.attached = true;
         let snap = e.scrollback.snapshot();
         let start = e.out_total - snap.len() as u64;
         Ok((snap, start))
+    }
+
+    /// The terminal view finished writing output up to stream position `offset`: once that
+    /// covers the in-flight frame, the next frame may be sent. Acks from an older attachment
+    /// can't release a newer frame, since stream offsets only grow.
+    pub fn ack(&self, id: &str, offset: u64) -> Result<()> {
+        let mut g = self.lock();
+        let e = g.get_mut(id).ok_or_else(|| anyhow!("unknown session {id}"))?;
+        if e.in_flight.is_some_and(|(_, end)| offset >= end) {
+            e.in_flight = None;
+            if !e.pending.is_empty() && e.last_flush.elapsed() >= FLUSH_EVERY {
+                e.flush(&self.tx);
+            }
+        }
+        Ok(())
+    }
+
+    /// No terminal view shows this session any more: output only goes to scrollback.
+    pub fn detach(&self, id: &str) -> Result<()> {
+        let mut g = self.lock();
+        let e = g.get_mut(id).ok_or_else(|| anyhow!("unknown session {id}"))?;
+        e.reset_stream();
+        e.attached = false;
+        Ok(())
     }
 
     /// Output bytes buffered or queued for `emit` but not yet delivered.
     #[cfg(test)]
     fn queued_output_bytes(&self, id: &str) -> usize {
         let g = self.lock();
-        g.get(id).map_or(0, |e| e.pending.len() + e.in_flight.load(Ordering::SeqCst))
+        g.get(id).map_or(0, |e| e.pending.len() + e.in_flight.map_or(0, |(a, b)| (b - a) as usize))
     }
 
     pub fn review(&self, id: &str) -> Result<Review> {
@@ -670,26 +709,39 @@ mod tests {
     }
 
     fn fixture() -> Fx {
-        fixture_with(Duration::ZERO)
+        fixture_with(Duration::ZERO, true)
     }
 
-    /// `output_delay`: how long the recording `emit` blocks on each `Output` (a slow frontend).
-    fn fixture_with(output_delay: Duration) -> Fx {
+    /// A recording `emit` standing in for an attached terminal. `output_delay`: how long it
+    /// blocks on each `Output` (a slow frontend); `auto_ack`: whether it then acks the frame.
+    fn fixture_with(output_delay: Duration, auto_ack: bool) -> Fx {
         let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(1).enable_all().build().unwrap();
         let hooks = Arc::new(rt.block_on(HookServer::start(Arc::new(|_, _| {}))).unwrap());
         let events: Events = Arc::default();
         let e2 = events.clone();
+        let cell: Arc<std::sync::OnceLock<Weak<SessionManager>>> = Arc::default();
+        let c2 = cell.clone();
         let emit: Emit = Arc::new(move |ev| {
-            if matches!(ev, ManagerEvent::Output { .. }) {
-                std::thread::sleep(output_delay);
+            let ack = match &ev {
+                ManagerEvent::Output { id, offset, data } => {
+                    std::thread::sleep(output_delay);
+                    auto_ack.then(|| (id.clone(), offset + data.len() as u64))
+                }
+                _ => None,
+            };
+            e2.lock().unwrap().push(ev);
+            if let Some((id, end)) = ack {
+                if let Some(m) = c2.get().and_then(Weak::upgrade) {
+                    let _ = m.ack(&id, end);
+                }
             }
-            e2.lock().unwrap().push(ev)
         });
         let dir = tempfile::tempdir().unwrap();
         let ws_path = dir.path().join("ws");
         std::fs::create_dir(&ws_path).unwrap();
         let data_dir = dir.path().join("data");
         let mgr = SessionManager::new(AdapterRegistry::new(), hooks, data_dir.clone(), emit);
+        let _ = cell.set(Arc::downgrade(&mgr));
         let ws = Workspace { id: "w1".into(), name: "ws".into(), path: ws_path, created_at: 0, missing: false };
         Fx { mgr, events, ws, data_dir, _dir: dir, _rt: rt }
     }
@@ -734,6 +786,14 @@ mod tests {
         String::from_utf8_lossy(&bytes).into_owned()
     }
 
+    /// (offset, len) of every `Output` for `id`, in emit order.
+    fn frames(fx: &Fx, id: &str) -> Vec<(u64, usize)> {
+        fx.events.lock().unwrap().iter().filter_map(|e| match e {
+            ManagerEvent::Output { id: i, offset, data } if i == id => Some((*offset, data.len())),
+            _ => None,
+        }).collect()
+    }
+
     fn scrollback(fx: &Fx, id: &str) -> String {
         String::from_utf8_lossy(&fx.mgr.lock().get(id).unwrap().scrollback.snapshot()).into_owned()
     }
@@ -751,7 +811,7 @@ mod tests {
         assert!(uuid::Uuid::parse_str(&s.id).is_ok());
         assert!(wait_until(|| fx.events.lock().unwrap().iter().any(
             |e| matches!(e, ManagerEvent::Updated(i) if i.id == s.id && i.state == SessionState::Working))));
-        assert!(wait_until(|| output(&fx, &s.id).contains("ok")));
+        assert!(wait_until(|| scrollback(&fx, &s.id).contains("ok")));
     }
 
     #[test]
@@ -837,11 +897,11 @@ mod tests {
         fx.mgr.list().into_iter().find(|s| s.id == id).unwrap()
     }
 
-    fn last_update(fx: &Fx, id: &str) -> SessionInfo {
+    fn last_update(fx: &Fx, id: &str) -> Option<SessionInfo> {
         fx.events.lock().unwrap().iter().rev().find_map(|e| match e {
             ManagerEvent::Updated(i) if i.id == id => Some(i.clone()),
             _ => None,
-        }).unwrap()
+        })
     }
 
     #[test]
@@ -854,7 +914,7 @@ mod tests {
         fx.mgr.approve(&s.id).unwrap();
         let i = info(&fx, &s.id);
         assert_eq!((i.state.clone(), i.awaiting_decision), (SessionState::Working, false));
-        assert!(wait_until(|| last_update(&fx, &s.id) == i), "Updated(Working) emitted");
+        assert!(wait_until(|| last_update(&fx, &s.id).as_ref() == Some(&i)), "Updated(Working) emitted");
         assert!(fx.mgr.approve(&s.id).is_err(), "already answered");
         assert!(fx.mgr.deny(&s.id).is_err(), "already answered");
     }
@@ -868,7 +928,7 @@ mod tests {
         let i = info(&fx, &s.id);
         assert_eq!(i.state, SessionState::NeedsYou { reason: DENIED_REASON.into() });
         assert!(!i.awaiting_decision, "no live Allow/Deny after a deny");
-        assert!(wait_until(|| last_update(&fx, &s.id) == i), "Updated emitted");
+        assert!(wait_until(|| last_update(&fx, &s.id).as_ref() == Some(&i)), "Updated emitted");
         assert!(fx.mgr.deny(&s.id).is_err());
         assert!(fx.mgr.approve(&s.id).is_err());
         // A new permission prompt re-arms the decision.
@@ -896,6 +956,7 @@ mod tests {
     fn output_is_batched() {
         let fx = fixture();
         let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "yes | head -c 2000000"), None).unwrap();
+        fx.mgr.attach(&s.id).unwrap();
         std::thread::sleep(Duration::from_secs(1));
         let n = fx.events.lock().unwrap().iter().filter(|e| matches!(e, ManagerEvent::Output { id, .. } if *id == s.id)).count();
         assert!(n > 0 && n < 100, "{n} output events");
@@ -904,8 +965,9 @@ mod tests {
 
     #[test]
     fn slow_emit_bounds_queued_output() {
-        let fx = fixture_with(Duration::from_millis(50));
+        let fx = fixture_with(Duration::from_millis(50), true);
         let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "yes | head -c 20000000"), None).unwrap();
+        fx.mgr.attach(&s.id).unwrap();
         let mut peak = 0;
         let end = Instant::now() + Duration::from_secs(60);
         while Instant::now() < end && !matches!(state(&fx, &s.id), SessionState::Ended { .. }) {
@@ -921,28 +983,84 @@ mod tests {
     fn output_offsets_are_contiguous() {
         let fx = fixture();
         let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "printf aaaa; sleep 0.1; printf bbbb; sleep 0.1; printf cccc; sleep 0.4; printf dddd; sleep 5"), None).unwrap();
-        assert!(wait_until(|| output(&fx, &s.id).contains("aaaa")));
-        // Attach mid-stream: the snapshot ends exactly where the next Output begins.
         let (snap, start) = fx.mgr.attach(&s.id).unwrap();
-        let end = start + snap.len() as u64;
-        assert!(wait_until(|| output(&fx, &s.id).contains("dddd")));
-        let evs: Vec<(u64, usize)> = fx.events.lock().unwrap().iter().filter_map(|e| match e {
-            ManagerEvent::Output { id, offset, data } if *id == s.id => Some((*offset, data.len())),
-            _ => None,
-        }).collect();
-        assert!(evs.len() >= 2, "{evs:?}");
-        assert_eq!(evs[0].0, 0);
-        for w in evs.windows(2) {
-            assert_eq!(w[1].0, w[0].0 + w[0].1 as u64, "{evs:?}");
+        assert!(wait_until(|| (String::from_utf8_lossy(&snap).into_owned() + &output(&fx, &s.id)).ends_with("dddd")));
+        // Frames continue exactly where the snapshot ends, with no gaps.
+        let evs = frames(&fx, &s.id);
+        let mut at = start + snap.len() as u64;
+        for (o, n) in &evs {
+            assert_eq!(*o, at, "{evs:?}");
+            at += *n as u64;
         }
-        assert!(evs.iter().any(|(o, _)| *o == end), "attach end {end} not an Output boundary: {evs:?}");
+        let all = String::from_utf8_lossy(&snap).into_owned() + &output(&fx, &s.id);
+        assert_eq!(all, "aaaabbbbccccdddd");
+        // Re-attaching mid-stream: the new snapshot ends where the stream is.
+        let (snap2, start2) = fx.mgr.attach(&s.id).unwrap();
+        assert_eq!((start2, snap2.len()), (0, 16));
+    }
+
+    #[test]
+    fn detached_session_emits_no_frames() {
+        let fx = fixture();
+        let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "printf hello; sleep 5"), None).unwrap();
+        assert!(wait_until(|| scrollback(&fx, &s.id).contains("hello")));
+        std::thread::sleep(FLUSH_EVERY * 4);
+        assert!(frames(&fx, &s.id).is_empty(), "output only goes to scrollback");
+        assert_eq!(fx.mgr.queued_output_bytes(&s.id), 0);
+    }
+
+    #[test]
+    fn unacked_frame_holds_back_output_until_ack() {
+        let fx = fixture_with(Duration::ZERO, false);
+        let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "printf start; sleep 0.3; yes | head -c 8000000; printf END; sleep 5"), None).unwrap();
+        fx.mgr.attach(&s.id).unwrap();
+        assert!(wait_until(|| !frames(&fx, &s.id).is_empty()));
+        let mut peak = 0;
+        let end = Instant::now() + Duration::from_secs(60);
+        while Instant::now() < end && !scrollback(&fx, &s.id).ends_with("END") {
+            peak = peak.max(fx.mgr.queued_output_bytes(&s.id));
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(scrollback(&fx, &s.id).ends_with("END"), "producer finished");
+        std::thread::sleep(FLUSH_EVERY * 4);
+        peak = peak.max(fx.mgr.queued_output_bytes(&s.id));
+        assert!(peak <= 2 * SCROLLBACK_CAP, "peak queued output {peak} bytes");
+        let evs = frames(&fx, &s.id);
+        assert_eq!(evs.len(), 1, "only one frame outstanding without an ack: {:?}", &evs[..evs.len().min(5)]);
+        // Acking the frame lets the next one through, preceded by one skip marker at its offset.
+        fx.mgr.ack(&s.id, evs[0].0 + evs[0].1 as u64).unwrap();
+        assert!(wait_until(|| frames(&fx, &s.id).len() == 2));
+        let ev = fx.events.lock().unwrap();
+        let out: Vec<&ManagerEvent> = ev.iter().filter(|e| matches!(e, ManagerEvent::Output { .. } | ManagerEvent::Skipped { .. })).collect();
+        assert_eq!(out.len(), 3, "{:?}", out.iter().map(|e| std::mem::discriminant(*e)).collect::<Vec<_>>());
+        let ManagerEvent::Skipped { offset: skip_at, .. } = out[1] else { panic!("expected a skip marker before the next frame") };
+        let ManagerEvent::Output { offset, data, .. } = out[2] else { panic!("expected the next frame") };
+        assert_eq!(skip_at, offset);
+        assert!(String::from_utf8_lossy(data).ends_with("END"), "the newest output survives the drop");
+    }
+
+    #[test]
+    fn detach_clears_the_outstanding_frame() {
+        let fx = fixture_with(Duration::ZERO, false);
+        let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "printf one; sleep 0.3; printf two; sleep 5"), None).unwrap();
+        fx.mgr.attach(&s.id).unwrap();
+        assert!(wait_until(|| scrollback(&fx, &s.id).contains("two")));
+        std::thread::sleep(FLUSH_EVERY * 4);
+        assert!(fx.mgr.queued_output_bytes(&s.id) > 0);
+        fx.mgr.detach(&s.id).unwrap();
+        assert_eq!(fx.mgr.queued_output_bytes(&s.id), 0);
+        // Re-attaching starts a fresh window: the next output flows without an ack.
+        fx.mgr.attach(&s.id).unwrap();
+        let before = frames(&fx, &s.id).len();
+        fx.mgr.on_output(&s.id, b"three");
+        assert!(wait_until(|| frames(&fx, &s.id).len() == before + 1));
     }
 
     #[test]
     fn silence_tick_finishes_plain_agent() {
         let fx = fixture();
         let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "printf hi; sleep 30"), None).unwrap();
-        assert!(wait_until(|| output(&fx, &s.id).contains("hi") && state(&fx, &s.id) == SessionState::Working));
+        assert!(wait_until(|| scrollback(&fx, &s.id).contains("hi") && state(&fx, &s.id) == SessionState::Working));
         fx.mgr.tick(now_ms() + 21_000);
         assert_eq!(state(&fx, &s.id), SessionState::Finished);
     }

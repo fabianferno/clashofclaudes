@@ -10,8 +10,9 @@ import {
 import { getTexture, prepareArt } from './textures';
 import type { Selection } from '../state/store';
 import {
-  PANEL_W, ZMAX, dragCam, ease, fitRect, keepVisible, pxRectOfCompound, pxRectOfTiles, screenToWorld, worldToScreen, zoomAt, type Cam,
+  PANEL_W, ZMAX, ease, fitRect, keepVisible, pxRectOfCompound, pxRectOfTiles, screenToWorld, worldToScreen, zoomAt, type Cam,
 } from './camera';
+import { createDragController } from './drag';
 import { clickPoint, compoundAt, hitTest } from './input';
 
 // ---------------------------------------------------------------- pure part
@@ -569,40 +570,37 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     const r = app.canvas.getBoundingClientRect();
     return { x: ev.clientX - r.left, y: ev.clientY - r.top };
   };
-  const DRAG_PX = 4;
-  let down: { id: number; x: number; y: number; cam: Cam; moved: boolean } | null = null;
   const canvas = app.canvas;
+  let pointerId = -1;
+  let downAt = { x: 0, y: 0 };
+  const drag = createDragController({
+    getCam: () => cam,
+    setCam: jumpTo,
+    setTarget: (t) => { camTarget = t; },
+    onAutoFitOff: () => { autoFit = false; canvas.style.cursor = 'grabbing'; },
+  });
   const onDown = (ev: PointerEvent) => {
     if (ev.button !== 0) return;
     const p = localPoint(ev);
-    // a press takes over from any ease in flight: drag from where the camera is now, never from a stale or target pose
-    camTarget = null;
-    autoFit = false;
-    down = { id: ev.pointerId, x: p.x, y: p.y, cam: { ...cam }, moved: false };
+    pointerId = ev.pointerId;
+    downAt = p;
+    drag.down(p.x, p.y);
     try { canvas.setPointerCapture(ev.pointerId); } catch { /* synthetic events have no live pointer */ }
   };
   const onMove = (ev: PointerEvent) => {
-    if (!down || ev.pointerId !== down.id) return;
+    if (!drag.active || ev.pointerId !== pointerId) return;
     const p = localPoint(ev);
-    const dx = p.x - down.x, dy = p.y - down.y;
-    if (!down.moved && Math.hypot(dx, dy) > DRAG_PX) {
-      down.moved = true;
-      autoFit = false;
-      canvas.style.cursor = 'grabbing';
-    }
-    if (down.moved) jumpTo(dragCam(down.cam, dx, dy));
+    drag.move(p.x, p.y);
   };
   const onUp = (ev: PointerEvent) => {
-    if (!down || ev.pointerId !== down.id) return;
-    const d = down;
-    down = null;
+    if (!drag.active || ev.pointerId !== pointerId) return;
     canvas.style.cursor = '';
     try { canvas.releasePointerCapture(ev.pointerId); } catch { /* see onDown */ }
-    if (d.moved) return;
-    const w = screenToWorld(cam, d.x, d.y);
+    if (drag.up() !== 'click') return;
+    const w = screenToWorld(cam, downAt.x, downAt.y);
     opts.onSelect?.(selectionOf(hitTest(hitEntities(), w.x, w.y)));
   };
-  const onCancel = () => { down = null; canvas.style.cursor = ''; };
+  const onCancel = () => { drag.cancel(); canvas.style.cursor = ''; };
   const onWheel = (ev: WheelEvent) => {
     ev.preventDefault();
     const p = localPoint(ev);

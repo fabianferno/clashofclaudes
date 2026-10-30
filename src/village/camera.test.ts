@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ZMAX, ZMIN, dragCam, ease, fitRect, keepVisible, screenToWorld, worldToScreen, zoomAt, type Cam } from './camera';
+import { ZMAX, ZMIN, ease, fitRect, keepVisible, screenToWorld, worldToScreen, zoomAt, type Cam } from './camera';
 
 describe('camera', () => {
   it('zoom_at_keeps_point_fixed', () => {
@@ -80,17 +80,4 @@ describe('camera', () => {
     expect(s.y).toBe(300);
   });
 
-  it('drag_during_ease_continues_from_current_camera', () => {
-    const target: Cam = { x: -500, y: 300, zoom: 2 };
-    let cam: Cam = { x: 0, y: 0, zoom: 1 };
-    for (let i = 0; i < 10; i++) cam = ease(cam, target, 1 / 60); // ease in flight
-    // press cancels the ease: the drag base is the camera now, not the press-time pose or the target
-    const base = { ...cam };
-    const dragged = dragCam(base, 30, -20);
-    expect(dragged.x).toBeCloseTo(cam.x + 30, 9);
-    expect(dragged.y).toBeCloseTo(cam.y - 20, 9);
-    expect(dragged.zoom).toBe(cam.zoom);
-    // and with no ease running, nothing moves the base between frames
-    expect(dragCam(dragged, 0, 0)).toEqual(dragged);
-  });
 });

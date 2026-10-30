@@ -1,5 +1,5 @@
 import { iso } from '../iso';
-import { OUT, bake, ctx, flag, isoBox, line, shadow, up, type Art } from './draw';
+import { OUT, bake, chip, ctx, flag, isoBox, line, shadow, up, type Art } from './draw';
 
 /** One tile of wall running along x or y. Anchor: the tile's front corner, grid point (tx+1, ty+1) for tile (tx, ty). */
 export function drawWallSeg(dir: 'x' | 'y'): Art {
@@ -62,4 +62,14 @@ export function paintTree(pine: boolean, s: number): void {
 export function drawTree(variant: 0 | 1 | 2 | 3): Art {
   const s = [1.05, 1.15, 1.35, 0.95][variant];
   return bake(100, 130, 50, 112, () => paintTree(variant === 1 || variant === 3, s));
+}
+
+/**
+ * Count of a workspace's live plain terminals, shown on its house (spec 5.2). Anchor: the house
+ * footprint's centre, grid point (hx+1.5, hy+1.5); the chip floats above the roof's right side.
+ */
+export function drawBadge(count: number): Art {
+  return bake(160, 180, 50, 170, () => {
+    chip(40, -150, `>_ ${count}`, '#2b2f3a', 20);
+  });
 }

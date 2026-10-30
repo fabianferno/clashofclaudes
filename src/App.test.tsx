@@ -10,10 +10,16 @@ vi.mock('./api/ipc', () => ({
     onSessionUpdated: vi.fn().mockResolvedValue(() => {}),
     onSessionRemoved: vi.fn().mockResolvedValue(() => {}),
     onWorkspaceUpdated: vi.fn(async (cb: (w: Workspace) => void) => { onWorkspaceUpdated = cb; return () => {}; }),
+    onStatsUpdated: vi.fn().mockResolvedValue(() => {}),
+    setCompound: vi.fn(async (id: string, compound: unknown) => {
+      const { useApp } = await import('./state/store');
+      return { ...useApp.getState().workspaces.find((w) => w.id === id), compound };
+    }),
     onConfirmQuit: vi.fn().mockResolvedValue(() => {}),
   },
 }));
 vi.mock('./components/TerminalView', () => ({ default: () => null }));
+vi.mock('./village/VillageCanvas', () => ({ default: () => null }));
 import App from './App';
 import { act } from 'react';
 

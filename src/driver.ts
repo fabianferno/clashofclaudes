@@ -2,7 +2,45 @@
 // Imported from main.tsx only under import.meta.env.DEV; the Rust side (src-tauri/src/driver.rs)
 // evaluates `__cocDriver.run(id, code)` and receives the result through `driver_result`.
 import { invoke } from '@tauri-apps/api/core';
+import { ipc as rawIpc } from './api/ipc';
 import { useApp } from './state/store';
+
+/**
+ * The ipc module for scripted setup, with the store updates the UI would make after each call
+ * (the backend emits no event for these), so the village reflects them without clicks.
+ */
+const ipc = {
+  ...rawIpc,
+  addWorkspace: async (path: string) => {
+    const w = await rawIpc.addWorkspace(path);
+    useApp.getState().addWorkspace(w);
+    return w;
+  },
+  createWorkspace: async (parent: string, name: string) => {
+    const w = await rawIpc.createWorkspace(parent, name);
+    useApp.getState().addWorkspace(w);
+    return w;
+  },
+  removeWorkspace: async (id: string) => {
+    await rawIpc.removeWorkspace(id);
+    useApp.getState().removeWorkspace(id);
+  },
+  createBuilder: async (...a: Parameters<typeof rawIpc.createBuilder>) => {
+    const b = await rawIpc.createBuilder(...a);
+    useApp.getState().addBuilder(b);
+    return b;
+  },
+  startSession: async (...a: Parameters<typeof rawIpc.startSession>) => {
+    const s = await rawIpc.startSession(...a);
+    useApp.getState().upsertSession(s);
+    return s;
+  },
+  startTerminal: async (workspaceId: string) => {
+    const s = await rawIpc.startTerminal(workspaceId);
+    useApp.getState().upsertSession(s);
+    return s;
+  },
+};
 
 let snapshotFn: () => Promise<string> = async () => '';
 let sceneFn: () => unknown = () => null;
@@ -48,6 +86,7 @@ const driver = {
   state: (): unknown => useApp.getState(),
   snapshot: (): Promise<string> => snapshotFn(),
   scene: (): unknown => sceneFn(),
+  ipc,
 };
 
 declare global {

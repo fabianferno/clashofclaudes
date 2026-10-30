@@ -66,3 +66,17 @@ export function houseStage(level: number): 0 | 1 | 2 | 3 | 4 {
 export function scaffoldHeight(steps: number): number {
   return 0.92 * (1 - Math.exp(-steps / 12));
 }
+
+/** Workspace house colours (the mockup's compound palette); picked per workspace id, stable across restarts. */
+export const HOUSE_COLORS: ReadonlyArray<{ roof: string; wall: string }> = [
+  { roof: '#2a9d8f', wall: '#e6d7b8' },
+  { roof: '#f08a2e', wall: '#f4e4c1' },
+  { roof: '#3f7fd6', wall: '#efe0bf' },
+  { roof: '#8a4fd0', wall: '#f2e6c8' },
+];
+
+export function houseColors(workspaceId: string): { roof: string; wall: string } {
+  let h = 0;
+  for (let i = 0; i < workspaceId.length; i++) h = (h * 31 + workspaceId.charCodeAt(i)) >>> 0;
+  return HOUSE_COLORS[h % HOUSE_COLORS.length];
+}

@@ -13,7 +13,9 @@ button, input, select, textarea {
   font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px;
 }
 button { cursor: pointer; }
-.layout { display: flex; height: 100%; }
+.village { position: fixed; inset: 0; z-index: 0; overflow: hidden; }
+.layout { position: relative; z-index: 1; display: flex; height: 100%; }
+.sidebar { background: var(--bg); }
 .sidebar { width: 280px; flex: none; overflow-y: auto; border-right: 1px solid var(--border); padding: 10px; display: flex; flex-direction: column; gap: 10px; }
 .side-actions, .ws-actions, .newfolder { display: flex; gap: 6px; flex-wrap: wrap; }
 .ws { display: flex; flex-direction: column; gap: 4px; }

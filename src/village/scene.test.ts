@@ -1,0 +1,106 @@
+import { describe, expect, it } from 'vitest';
+import type { Builder, Compound, SessionInfo, SessionState, Tile, Workspace } from '../api/types';
+import { findSpot, placeCompound, wallRect } from './layout';
+import { scaffoldHeight } from './look';
+import { buildEntities, structureLook, type VillageInput } from './scene';
+
+const ws = (id: string, compound: Compound | null, level = 1): Workspace => ({
+  id, name: id, path: `/p/${id}`, createdAt: 0, missing: false, level, xp: 0, compound,
+});
+const sess = (
+  id: string, wsId: string, builderId: string | null, spot: Tile | null,
+  state: SessionState = { kind: 'working' }, steps = 0, reachedFinished = false,
+): SessionInfo => ({
+  id, workspaceId: wsId, kind: builderId ? { kind: 'agent', builderId } : { kind: 'terminal' },
+  task: null, state, steps, startedAt: 0, lastOutputAt: 0, reachedFinished, worktree: null,
+  commandPreview: '', awaitingDecision: false, rev: 1, spot,
+});
+const bld = (id: string, agent: Builder['agent'] = 'claude'): Builder =>
+  ({ id, name: id, agent, model: null, effort: null, customCommand: null });
+
+const perimeter = (c: Compound) => {
+  const r = wallRect(c);
+  return 2 * (r.w + r.h) - 4;
+};
+
+describe('buildEntities', () => {
+  it('entities_for_two_workspaces_and_three_sessions', () => {
+    const c1 = placeCompound([]);
+    const c2 = placeCompound([c1]);
+    const s1 = findSpot(c1, [])!;
+    const s2 = findSpot(c1, [s1])!;
+    const s3 = findSpot(c2, [])!;
+    const input: VillageInput = {
+      workspaces: [ws('w1', c1), ws('w2', c2)],
+      builders: [bld('b1'), bld('b2', 'codex'), bld('b3', 'gemini')],
+      sessions: [
+        sess('a1', 'w1', 'b1', s1),
+        sess('a2', 'w1', 'b2', s2),
+        sess('a3', 'w2', 'b3', s3),
+        sess('t1', 'w1', null, null),
+      ],
+    };
+    const es = buildEntities(input);
+    const count = (k: string) => es.filter((e) => e.kind === k).length;
+    expect(count('hall')).toBe(1);
+    expect(count('house')).toBe(2);
+    expect(count('structure')).toBe(3);
+    // every perimeter tile is a wall segment except the one gate tile per compound
+    expect(count('wall')).toBe(perimeter(c1) - 1 + perimeter(c2) - 1);
+    expect(count('gate')).toBe(2);
+    const badges = es.filter((e) => e.kind === 'badge');
+    expect(badges).toHaveLength(1);
+    expect(badges[0].id).toBe('badge:w1');
+    expect(badges[0].texKey).toBe('badge:1');
+    // the terminal session adds no structure
+    expect(es.some((e) => e.id === 'struct:t1')).toBe(false);
+  });
+
+  it('ended terminals do not count; agents without a spot or compound are skipped', () => {
+    const c1 = placeCompound([]);
+    const es = buildEntities({
+      workspaces: [ws('w1', c1), ws('w2', null)],
+      builders: [bld('b1')],
+      sessions: [
+        sess('t1', 'w1', null, null, { kind: 'ended', exitCode: 0 }),
+        sess('a1', 'w1', 'b1', null),
+        sess('a2', 'w2', 'b1', { x: 0, y: 0 }),
+      ],
+    });
+    expect(es.filter((e) => e.kind === 'badge')).toHaveLength(0);
+    expect(es.filter((e) => e.kind === 'structure')).toHaveLength(0);
+    expect(es.filter((e) => e.kind === 'house')).toHaveLength(1);
+  });
+
+  it('depth_orders_front_items_later', () => {
+    const c: Compound = { x0: 4, y0: 4, w: 10, h: 10, house: { x: 4, y: 4 } };
+    const es = buildEntities({
+      workspaces: [ws('w1', c)],
+      builders: [bld('b1')],
+      sessions: [sess('far', 'w1', 'b1', { x: 10, y: 10 }), sess('near', 'w1', 'b1', { x: 5, y: 5 })],
+    });
+    const far = es.findIndex((e) => e.id === 'struct:far');
+    const near = es.findIndex((e) => e.id === 'struct:near');
+    expect(far).toBeGreaterThan(near);
+    expect(es[far].depth).toBeGreaterThan(es[near].depth);
+    // the list is sorted by depth
+    for (let i = 1; i < es.length; i++) expect(es[i].depth).toBeGreaterThanOrEqual(es[i - 1].depth);
+  });
+});
+
+describe('structureLook', () => {
+  it('structure_stage_from_state', () => {
+    const s = (state: SessionState, steps = 0, reached = false) => sess('a', 'w', 'b', { x: 0, y: 0 }, state, steps, reached);
+    expect(structureLook(s({ kind: 'starting' })).stage).toBe('foundation');
+    for (const st of [{ kind: 'working' }, { kind: 'needsYou', reason: 'x' }, { kind: 'stuck', reason: 'x' }] as SessionState[]) {
+      const l = structureLook(s(st, 12));
+      expect(l.stage).toBe('scaffold');
+      expect(l.height).toBeCloseTo(scaffoldHeight(12), 1);
+    }
+    expect(structureLook(s({ kind: 'finished' })).stage).toBe('complete');
+    expect(structureLook(s({ kind: 'ended', exitCode: 0 }, 5, true)).stage).toBe('complete');
+    const ended = structureLook(s({ kind: 'ended', exitCode: 1 }, 5, false));
+    expect(ended.stage).toBe('scaffold');
+    expect(ended.height).toBeCloseTo(scaffoldHeight(5), 1);
+  });
+});

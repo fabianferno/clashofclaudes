@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ipc } from './api/ipc';
-import { idleBuilders, useApp } from './state/store';
+import { autoLayout, idleBuilders, useApp } from './state/store';
+import VillageCanvas from './village/VillageCanvas';
 import Sidebar from './components/Sidebar';
 import SessionPanel from './components/SessionPanel';
 import NewSessionForm from './components/NewSessionForm';
@@ -21,10 +22,19 @@ function App() {
     keep(ipc.onSessionUpdated((s) => useApp.getState().upsertSession(s)));
     keep(ipc.onSessionRemoved((id) => useApp.getState().removeSession(id)));
     keep(ipc.onWorkspaceUpdated((w) => useApp.getState().updateWorkspace(w)));
+    keep(ipc.onStatsUpdated((s) => useApp.getState().setStats(s)));
     keep(ipc.onConfirmQuit((q) => setQuit(q.live)));
-    ipc.listState().then((s) => !cancelled && useApp.getState().hydrate(s)).catch((e) => setError(String(e)));
+    let stopLayout: (() => void) | null = null;
+    ipc.listState()
+      .then((s) => {
+        if (cancelled) return;
+        useApp.getState().hydrate(s);
+        // Compounds for workspaces without one, spots for agent sessions without one (never terminals).
+        stopLayout = autoLayout((e) => setError(String(e)));
+      })
+      .catch((e) => setError(String(e)));
     ipc.detectAgents().then((a) => !cancelled && useApp.getState().setAgents(a)).catch((e) => setError(String(e)));
-    return () => { cancelled = true; unlisten.forEach((u) => u()); };
+    return () => { cancelled = true; stopLayout?.(); unlisten.forEach((u) => u()); };
   }, []);
 
   useEffect(() => {
@@ -35,6 +45,8 @@ function App() {
 
   const selected = st.selectedSessionId;
   return (
+    <>
+    <VillageCanvas />
     <div className="layout">
       <Sidebar onNewSession={(id) => { setFormFor(id); st.select(null); }} />
       <main className="main">
@@ -64,6 +76,7 @@ function App() {
         </div>
       )}
     </div>
+    </>
   );
 }
 

@@ -11,6 +11,7 @@ pub mod pty;
 pub mod scrollback;
 pub mod sessions;
 pub mod status;
+pub mod xp;
 
 use commands::{AppState, Channels, Removed};
 use sessions::{Emit, ManagerEvent, SessionManager};
@@ -136,6 +137,9 @@ pub fn run() {
             commands::deny,
             commands::stop_session,
             commands::close_session,
+            commands::set_compound,
+            commands::set_session_spot,
+            commands::open_in_editor,
             commands::review_session,
             commands::attach_session,
             commands::detach_session,

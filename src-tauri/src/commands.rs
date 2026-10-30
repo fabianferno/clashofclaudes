@@ -1,11 +1,12 @@
 //! Tauri commands, app events and shared state. JS names are the camelCase of these fns.
 //! Events: `session-updated` (SessionInfo), `session-removed` {id}, `workspace-updated`
-//! (Workspace), `confirm-quit` {live}.
+//! (Workspace), `stats-updated` (Stats), `confirm-quit` {live}.
 use crate::adapters::AdapterRegistry;
 use crate::git::{self, Review};
-use crate::model::{AgentKind, AppData, Builder, SessionInfo, SessionKind, Workspace};
+use crate::model::{AgentKind, AppData, Builder, Compound, SessionInfo, SessionKind, Stats, Tile, Workspace};
 use crate::persist;
-use crate::sessions::{CloseOutcome, SessionManager, WorkspaceMissing};
+use crate::sessions::{ClosedSession, SessionManager, WorkspaceMissing};
+use crate::xp;
 use anyhow::{anyhow, bail, Context};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -15,6 +16,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::ipc::{Channel, InvokeResponseBody, Response};
 use tauri::{AppHandle, Emitter, State};
+use tauri_plugin_opener::OpenerExt;
 use uuid::Uuid;
 
 /// Output channels by session id, shared with the manager's emit closure.
@@ -61,7 +63,7 @@ pub fn workspace_from_path(path: &Path, now: i64) -> anyhow::Result<Workspace> {
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .ok_or_else(|| anyhow!("{} has no folder name", path.display()))?;
-    Ok(Workspace { id: Uuid::new_v4().to_string(), name, path: path.to_path_buf(), created_at: now, missing: false })
+    Ok(Workspace { id: Uuid::new_v4().to_string(), name, path: path.to_path_buf(), created_at: now, missing: false, level: 1, xp: 0, compound: None })
 }
 
 /// Trimmed builder name, 1 to 40 characters.
@@ -87,6 +89,7 @@ pub struct StateSnapshot {
     workspaces: Vec<Workspace>,
     builders: Vec<Builder>,
     sessions: Vec<SessionInfo>,
+    stats: Stats,
 }
 
 #[derive(Serialize)]
@@ -114,7 +117,7 @@ pub struct ConfirmQuit {
 #[tauri::command]
 pub fn list_state(state: State<'_, AppState>) -> StateSnapshot {
     let d = state.data();
-    StateSnapshot { workspaces: d.workspaces.clone(), builders: d.builders.clone(), sessions: state.manager.list() }
+    StateSnapshot { workspaces: d.workspaces.clone(), builders: d.builders.clone(), sessions: state.manager.list(), stats: d.stats.clone() }
 }
 
 #[tauri::command]
@@ -290,9 +293,115 @@ pub fn stop_session(id: String, state: State<'_, AppState>) -> Result<(), String
 }
 
 #[tauri::command]
-pub async fn close_session(id: String, state: State<'_, AppState>) -> Result<CloseOutcome, String> {
+pub async fn close_session(id: String, app: AppHandle, state: State<'_, AppState>) -> Result<CloseOutcome, String> {
     state.channels.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
-    state.manager.close(&id).map_err(fmt_err)
+    let closed = state.manager.close(&id).map_err(fmt_err)?;
+    let outcome;
+    let (ws, stats) = {
+        let mut d = state.data();
+        let before = d.workspaces.iter().find(|w| w.id == closed.workspace_id).cloned();
+        outcome = apply_close(&mut d, &closed, now_ms());
+        if outcome.earned_xp {
+            state.save(&d)?;
+        }
+        let after = d.workspaces.iter().find(|w| w.id == closed.workspace_id).cloned();
+        (if before != after { after } else { None }, d.stats.clone())
+    };
+    if outcome.earned_xp {
+        if let Some(w) = ws {
+            let _ = app.emit("workspace-updated", w);
+        }
+        let _ = app.emit("stats-updated", stats);
+    }
+    Ok(outcome)
+}
+
+/// What closing a session did, for the UI notice.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloseOutcome {
+    pub earned_xp: bool,
+    pub xp_gained: u32,
+    pub level_before: u32,
+    pub level_after: u32,
+    pub workspace_id: String,
+    /// An agent was closed before it ever finished (terminals never count).
+    pub unfinished: bool,
+}
+
+/// Applies the XP rules for a closed session. A finished, not-stuck agent session earns
+/// `XP_PER_SESSION` for its workspace and counts as a ship. XP never depends on the
+/// session's builder settings (spec §4).
+pub fn apply_close(d: &mut AppData, closed: &ClosedSession, now_ms: i64) -> CloseOutcome {
+    let mut out = CloseOutcome {
+        earned_xp: false,
+        xp_gained: 0,
+        level_before: 1,
+        level_after: 1,
+        workspace_id: closed.workspace_id.clone(),
+        unfinished: closed.is_agent && !closed.reached_finished,
+    };
+    let earns = closed.is_agent && closed.reached_finished && !closed.stuck;
+    let Some(w) = d.workspaces.iter_mut().find(|w| w.id == closed.workspace_id) else { return out };
+    out.level_before = w.level;
+    out.level_after = w.level;
+    if !earns {
+        return out;
+    }
+    let (level, xp_now) = xp::award(w.level, w.xp, xp::XP_PER_SESSION);
+    w.level = level;
+    w.xp = xp_now;
+    out.earned_xp = true;
+    out.xp_gained = xp::XP_PER_SESSION;
+    out.level_after = level;
+    d.stats.shipped_total += 1;
+    d.stats.recent_ships.push(now_ms);
+    d.stats.recent_ships.retain(|t| now_ms - t <= persist::SHIP_WINDOW_MS);
+    out
+}
+
+/// Sets the compound of workspace `id`.
+pub fn apply_compound(d: &mut AppData, id: &str, compound: Compound) -> Result<Workspace, String> {
+    let w = d.workspaces.iter_mut().find(|w| w.id == id).ok_or("unknown workspace")?;
+    w.compound = Some(compound);
+    Ok(w.clone())
+}
+
+#[tauri::command]
+pub fn set_compound(workspace_id: String, compound: Compound, app: AppHandle, state: State<'_, AppState>) -> Result<Workspace, String> {
+    let ws = {
+        let mut d = state.data();
+        let ws = apply_compound(&mut d, &workspace_id, compound)?;
+        state.save(&d)?;
+        ws
+    };
+    let _ = app.emit("workspace-updated", ws.clone());
+    Ok(ws)
+}
+
+/// Records where a session's builder stands; the manager emits `session-updated`.
+#[tauri::command]
+pub fn set_session_spot(id: String, spot: Tile, state: State<'_, AppState>) -> Result<SessionInfo, String> {
+    state.manager.set_spot(&id, spot).map_err(fmt_err)
+}
+
+/// Opens `path` in VS Code or Cursor if either is on PATH, else with the system opener.
+/// Argv only (no shell); the editor is spawned, not waited for.
+#[tauri::command]
+pub fn open_in_editor(path: String, app: AppHandle) -> Result<(), String> {
+    for editor in ["code", "cursor"] {
+        if let Some(bin) = crate::platform::which(editor) {
+            return std::process::Command::new(bin)
+                .arg(&path)
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+                .map(|_| ())
+                .map_err(|e| format!("cannot start {editor}: {e}"));
+        }
+    }
+    app.opener().open_path(path, None::<&str>).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -421,13 +530,76 @@ mod tests {
 
     #[test]
     fn flag_missing_marks_only_that_workspace_once() {
-        let ws = |id: &str| Workspace { id: id.into(), name: id.into(), path: PathBuf::from("/nope"), created_at: 0, missing: false };
+        let ws = |id: &str| Workspace { id: id.into(), name: id.into(), path: PathBuf::from("/nope"), created_at: 0, missing: false, level: 1, xp: 0, compound: None };
         let mut d = AppData { workspaces: vec![ws("a"), ws("b")], ..AppData::default() };
         let w = flag_workspace_missing(&mut d, "b").unwrap();
         assert!(w.missing && w.id == "b");
         assert!(!d.workspaces[0].missing && d.workspaces[1].missing);
         assert!(flag_workspace_missing(&mut d, "b").is_none(), "already flagged: nothing to persist");
         assert!(flag_workspace_missing(&mut d, "zzz").is_none());
+    }
+
+    fn village() -> AppData {
+        let ws = Workspace { id: "w1".into(), name: "w".into(), path: PathBuf::from("/nope"), created_at: 0, missing: false, level: 1, xp: 0, compound: None };
+        AppData { workspaces: vec![ws], ..AppData::default() }
+    }
+
+    fn closed(is_agent: bool, reached_finished: bool, stuck: bool) -> ClosedSession {
+        ClosedSession { workspace_id: "w1".into(), is_agent, reached_finished, stuck }
+    }
+
+    #[test]
+    fn close_finished_awards_xp_and_stats() {
+        let mut d = village();
+        let o = apply_close(&mut d, &closed(true, true, false), 5_000);
+        assert_eq!(
+            o,
+            CloseOutcome { earned_xp: true, xp_gained: 100, level_before: 1, level_after: 2, workspace_id: "w1".into(), unfinished: false }
+        );
+        assert_eq!((d.workspaces[0].level, d.workspaces[0].xp), (2, 0));
+        assert_eq!((d.stats.shipped_total, d.stats.recent_ships.clone()), (1, vec![5_000]));
+        let json = serde_json::to_value(&o).unwrap();
+        assert_eq!(json["earnedXp"], true);
+        assert_eq!(json["levelAfter"], 2);
+    }
+
+    #[test]
+    fn close_unfinished_reports_reason() {
+        let mut d = village();
+        let before = d.clone();
+        let o = apply_close(&mut d, &closed(true, false, false), 5_000);
+        assert_eq!((o.earned_xp, o.xp_gained, o.unfinished), (false, 0, true));
+        assert_eq!(d, before);
+    }
+
+    #[test]
+    fn close_terminal_is_quiet() {
+        let mut d = village();
+        let before = d.clone();
+        let o = apply_close(&mut d, &closed(false, false, false), 5_000);
+        assert_eq!((o.earned_xp, o.unfinished), (false, false));
+        assert_eq!(d, before);
+    }
+
+    #[test]
+    fn close_stuck_after_finish_earns_nothing() {
+        let mut d = village();
+        let o = apply_close(&mut d, &closed(true, true, true), 1);
+        assert!(!o.earned_xp);
+        assert_eq!(d.stats.shipped_total, 0);
+    }
+
+    #[test]
+    fn set_compound_persists_and_rejects_unknown() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("state.json");
+        let mut d = village();
+        let c = Compound { x0: 2, y0: 3, w: 6, h: 5, house: Tile { x: 4, y: 5 } };
+        let ws = apply_compound(&mut d, "w1", c.clone()).unwrap();
+        assert_eq!(ws.compound, Some(c.clone()));
+        persist::save(&p, &d).unwrap();
+        assert_eq!(persist::load(&p).workspaces[0].compound, Some(c.clone()));
+        assert!(apply_compound(&mut d, "nope", c).is_err());
     }
 
     #[test]

@@ -2,12 +2,11 @@
 use crate::adapters::{terminal_launch, terminal_policy, AdapterRegistry, AgentAdapter, LaunchRequest, ScreenPrompt};
 use crate::git::{self, GitBaseline, Review};
 use crate::hooks::HookServer;
-use crate::model::{Builder, SessionInfo, SessionKind, SessionState, Workspace, WorktreeInfo};
+use crate::model::{Builder, SessionInfo, SessionKind, SessionState, Tile, Workspace, WorktreeInfo};
 use crate::pty::{LaunchSpec, PtyHandle};
 use crate::scrollback::{Scrollback, SCROLLBACK_CAP};
 use crate::status::{is_terminal_report_only, next_state, screen_text, StatusEvent, StatusPolicy};
 use anyhow::{anyhow, bail, Result};
-use serde::Serialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::collections::VecDeque;
@@ -28,10 +27,13 @@ pub enum ManagerEvent {
 
 pub type Emit = Arc<dyn Fn(ManagerEvent) + Send + Sync>;
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CloseOutcome {
-    pub earned_xp: bool,
+/// The facts about a session at the moment it was closed; the XP rules live in `commands::apply_close`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ClosedSession {
+    pub workspace_id: String,
+    pub is_agent: bool,
+    pub reached_finished: bool,
+    pub stuck: bool,
 }
 
 /// Initial PTY size until the UI sends a resize.
@@ -312,6 +314,7 @@ impl SessionManager {
             command_preview: command_preview(&spec),
             awaiting_decision: false,
             rev: 0,
+            spot: None,
         };
         {
             // Check and insert atomically so two starts can't share a builder.
@@ -585,21 +588,35 @@ impl SessionManager {
         }
     }
 
-    pub fn close(&self, id: &str) -> Result<CloseOutcome> {
+    pub fn close(&self, id: &str) -> Result<ClosedSession> {
         let entry = {
             let mut g = self.lock();
             let e = g.remove(id).ok_or_else(|| anyhow!("unknown session {id}"))?;
             let _ = self.tx.send(ManagerEvent::Removed { id: id.to_string() });
             e
         };
-        let earned_xp = entry.info.reached_finished && !matches!(entry.info.state, SessionState::Stuck { .. });
+        let closed = ClosedSession {
+            workspace_id: entry.info.workspace_id.clone(),
+            is_agent: matches!(entry.info.kind, SessionKind::Agent { .. }),
+            reached_finished: entry.info.reached_finished,
+            stuck: matches!(entry.info.state, SessionState::Stuck { .. }),
+        };
         if let Some(p) = &entry.pty {
             let _ = p.kill();
         }
         self.hooks.unregister(id);
         self.remove_session_dir(id);
         drop(entry); // releases the PTY fds
-        Ok(CloseOutcome { earned_xp })
+        Ok(closed)
+    }
+
+    /// Records where the session's builder stands; emitted like any other update.
+    pub fn set_spot(&self, id: &str, spot: Tile) -> Result<SessionInfo> {
+        let mut g = self.lock();
+        let e = g.get_mut(id).ok_or_else(|| anyhow!("unknown session {id}"))?;
+        e.info.spot = Some(spot);
+        self.send_updated(e);
+        Ok(e.info.clone())
     }
 
     /// Starts framing output for a terminal view: returns the scrollback snapshot plus the
@@ -811,7 +828,7 @@ mod tests {
         let data_dir = dir.path().join("data");
         let mgr = SessionManager::new(AdapterRegistry::new(), hooks, data_dir.clone(), emit);
         let _ = cell.set(Arc::downgrade(&mgr));
-        let ws = Workspace { id: "w1".into(), name: "ws".into(), path: ws_path, created_at: 0, missing: false };
+        let ws = Workspace { id: "w1".into(), name: "ws".into(), path: ws_path, created_at: 0, missing: false, level: 1, xp: 0, compound: None };
         Fx { mgr, events, ws, data_dir, _dir: dir, _rt: rt }
     }
 
@@ -1033,13 +1050,27 @@ mod tests {
         let fx = fixture();
         let a = fx.mgr.start_with_spec(&fx.ws, &claude("b1"), sleeper(&fx), Arc::new(ClaudeAdapter)).unwrap();
         fx.mgr.on_hook(&a.id, fixture_json("stop.json"));
-        assert_eq!(fx.mgr.close(&a.id).unwrap(), CloseOutcome { earned_xp: true });
+        let closed = fx.mgr.close(&a.id).unwrap();
+        assert_eq!(closed, ClosedSession { workspace_id: "w1".into(), is_agent: true, reached_finished: true, stuck: false });
         let b = fx.mgr.start_with_spec(&fx.ws, &claude("b2"), sleeper(&fx), Arc::new(ClaudeAdapter)).unwrap();
-        assert_eq!(fx.mgr.close(&b.id).unwrap(), CloseOutcome { earned_xp: false });
+        let closed = fx.mgr.close(&b.id).unwrap();
+        assert!(closed.is_agent && !closed.reached_finished);
         assert!(fx.mgr.list().is_empty());
         assert!(fx.events.lock().unwrap().iter().any(|e| *e == ManagerEvent::Removed { id: a.id.clone() }));
         assert!(fx.mgr.close(&a.id).is_err());
         assert!(!fx.data_dir.join("sessions").join(&a.id).exists());
+    }
+
+    #[test]
+    fn set_spot_emits_an_update_and_rejects_unknown() {
+        let fx = fixture();
+        let a = fx.mgr.start_with_spec(&fx.ws, &claude("b1"), sleeper(&fx), Arc::new(ClaudeAdapter)).unwrap();
+        let before = info(&fx, &a.id).rev;
+        let got = fx.mgr.set_spot(&a.id, Tile { x: 3, y: 4 }).unwrap();
+        assert_eq!(got.spot, Some(Tile { x: 3, y: 4 }));
+        assert!(got.rev > before);
+        assert!(wait_until(|| info(&fx, &a.id).spot == Some(Tile { x: 3, y: 4 })), "Updated emitted");
+        assert!(fx.mgr.set_spot("nope", Tile { x: 0, y: 0 }).is_err());
     }
 
     #[test]

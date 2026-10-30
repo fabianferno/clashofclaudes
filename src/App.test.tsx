@@ -23,6 +23,6 @@ test('workspace-updated event shows the missing badge', async () => {
   render(<App />);
   expect(await screen.findByText('proj')).toBeTruthy();
   expect(screen.queryByText('missing')).toBeNull();
-  act(() => onWorkspaceUpdated({ id: 'w1', name: 'proj', path: '/p', createdAt: 0, missing: true }));
+  act(() => onWorkspaceUpdated({ id: 'w1', name: 'proj', path: '/p', createdAt: 0, missing: true, level: 1, xp: 0, compound: null }));
   expect(await screen.findByText('missing')).toBeTruthy();
 });

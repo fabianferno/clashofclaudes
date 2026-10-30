@@ -10,7 +10,7 @@ import { useApp } from '../state/store';
 
 const sess = (state: SessionState, awaitingDecision: boolean): SessionInfo => ({
   id: 's1', workspaceId: 'w1', kind: { kind: 'agent', builderId: 'b1' }, task: null, state, steps: 0,
-  startedAt: 0, lastOutputAt: 0, reachedFinished: false, worktree: null, commandPreview: '', awaitingDecision, rev: 1,
+  startedAt: 0, lastOutputAt: 0, reachedFinished: false, worktree: null, commandPreview: '', awaitingDecision, rev: 1, spot: null,
 });
 
 beforeEach(() => {

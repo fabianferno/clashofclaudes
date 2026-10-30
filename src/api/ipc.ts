@@ -1,8 +1,8 @@
 import { invoke, Channel } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
-  AgentInfo, AgentKind, Builder, CloseOutcome, ConfirmQuit, Frame, ListState,
-  Review, SessionInfo, Workspace,
+  AgentInfo, AgentKind, Builder, CloseOutcome, Compound, ConfirmQuit, Frame, ListState,
+  Review, SessionInfo, Stats, Tile, Workspace,
 } from './types';
 
 const SKIP_FLAG = 1n << 63n;
@@ -44,6 +44,10 @@ export const ipc = {
   deny: (id: string) => invoke<void>('deny', { id }),
   stopSession: (id: string) => invoke<void>('stop_session', { id }),
   closeSession: (id: string) => invoke<CloseOutcome>('close_session', { id }),
+  setCompound: (workspaceId: string, compound: Compound) =>
+    invoke<Workspace>('set_compound', { workspaceId, compound }),
+  setSessionSpot: (id: string, spot: Tile) => invoke<SessionInfo>('set_session_spot', { id, spot }),
+  openInEditor: (path: string) => invoke<void>('open_in_editor', { path }),
   reviewSession: (id: string) => invoke<Review>('review_session', { id }),
   detachSession: (id: string) => invoke<void>('detach_session', { id }),
   /** The terminal finished writing output up to stream position `offset`; lets the next frame through. */
@@ -63,6 +67,8 @@ export const ipc = {
   /** A workspace changed on the backend (e.g. its folder was found missing when starting). */
   onWorkspaceUpdated: (cb: (w: Workspace) => void): Promise<UnlistenFn> =>
     listen<Workspace>('workspace-updated', (e) => cb(e.payload)),
+  onStatsUpdated: (cb: (s: Stats) => void): Promise<UnlistenFn> =>
+    listen<Stats>('stats-updated', (e) => cb(e.payload)),
   onConfirmQuit: (cb: (q: ConfirmQuit) => void): Promise<UnlistenFn> =>
     listen<ConfirmQuit>('confirm-quit', (e) => cb(e.payload)),
 };

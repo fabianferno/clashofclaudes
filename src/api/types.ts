@@ -1,11 +1,35 @@
 export type AgentKind = 'claude' | 'codex' | 'gemini' | 'opencode' | 'custom';
 
+export interface Tile {
+  x: number;
+  y: number;
+}
+
+/** Walled interior in tiles; (x0, y0) is the top-left interior tile. */
+export interface Compound {
+  x0: number;
+  y0: number;
+  w: number;
+  h: number;
+  house: Tile;
+}
+
+export interface Stats {
+  shippedTotal: number;
+  /** Ship times in ms, last 48 h. */
+  recentShips: number[];
+}
+
 export interface Workspace {
   id: string;
   name: string;
   path: string;
   createdAt: number;
   missing: boolean;
+  level: number;
+  /** XP progress within the current level. */
+  xp: number;
+  compound: Compound | null;
 }
 
 export interface Builder {
@@ -48,12 +72,15 @@ export interface SessionInfo {
   awaitingDecision: boolean;
   /** Strictly increasing per session; the store drops updates older than the one it holds. */
   rev: number;
+  /** Where the builder stands in the village; not persisted. */
+  spot: Tile | null;
 }
 
 export interface ListState {
   workspaces: Workspace[];
   builders: Builder[];
   sessions: SessionInfo[];
+  stats: Stats;
 }
 
 export interface AgentInfo {
@@ -82,6 +109,12 @@ export interface Review {
 
 export interface CloseOutcome {
   earnedXp: boolean;
+  xpGained: number;
+  levelBefore: number;
+  levelAfter: number;
+  workspaceId: string;
+  /** An agent was closed before it finished. */
+  unfinished: boolean;
 }
 
 export interface ConfirmQuit {

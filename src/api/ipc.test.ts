@@ -1,4 +1,9 @@
-import { decodeFrame, trimSeen } from './ipc';
+import { vi } from 'vitest';
+import { invoke } from '@tauri-apps/api/core';
+import { decodeFrame, ipc, trimSeen } from './ipc';
+
+vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(), Channel: class {} }));
+vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn() }));
 
 function mk(offset: number, bytes: number[]): ArrayBuffer {
   const b = new ArrayBuffer(8 + bytes.length);
@@ -40,4 +45,22 @@ test('decodeFrame: header bit 63 marks a skip-marker frame', () => {
   expect(f.offset).toBe(300);
   expect(Array.from(f.data)).toEqual([7, 8]);
   expect(decodeFrame(mk(5, [1])).marker).toBe(false);
+});
+
+test('decodes_close_outcome_shape: new fields pass through untouched', async () => {
+  const outcome = { earnedXp: true, xpGained: 100, levelBefore: 1, levelAfter: 2, workspaceId: 'w1', unfinished: false };
+  vi.mocked(invoke).mockResolvedValueOnce(outcome);
+  await expect(ipc.closeSession('s1')).resolves.toEqual(outcome);
+  expect(invoke).toHaveBeenCalledWith('close_session', { id: 's1' });
+});
+
+test('village commands use camelCase args', async () => {
+  vi.mocked(invoke).mockResolvedValue(undefined);
+  const compound = { x0: 1, y0: 2, w: 3, h: 4, house: { x: 2, y: 3 } };
+  await ipc.setCompound('w1', compound);
+  expect(invoke).toHaveBeenCalledWith('set_compound', { workspaceId: 'w1', compound });
+  await ipc.setSessionSpot('s1', { x: 1, y: 1 });
+  expect(invoke).toHaveBeenCalledWith('set_session_spot', { id: 's1', spot: { x: 1, y: 1 } });
+  await ipc.openInEditor('/p');
+  expect(invoke).toHaveBeenCalledWith('open_in_editor', { path: '/p' });
 });

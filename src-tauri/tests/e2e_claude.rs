@@ -47,7 +47,7 @@ async fn rig() -> Rig {
     std::fs::write(path.join("README.md"), "seed\n").unwrap();
     g(&["add", "-A"]);
     g(&["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "seed"]);
-    let ws = Workspace { id: "w1".into(), name: "e2e".into(), path, created_at: 0, missing: false };
+    let ws = Workspace { id: "w1".into(), name: "e2e".into(), path, created_at: 0, missing: false, level: 1, xp: 0, compound: None };
     Rig { mgr, events, data, _repo: repo, ws }
 }
 
@@ -111,7 +111,7 @@ async fn custom_builder_exit_3_goes_stuck_with_output_retained() {
     let s = r.mgr.start_agent(&r.ws, &builder(AgentKind::Custom, Some("printf partial; exit 3")), None).unwrap();
     wait_for("Stuck exited with code 3", 15, || state(&r, &s.id) == SessionState::Stuck { reason: "exited with code 3".into() });
     assert!(String::from_utf8_lossy(&r.mgr.attach(&s.id).unwrap().0).contains("partial"));
-    assert!(!r.mgr.close(&s.id).unwrap().earned_xp);
+    assert!(!r.mgr.close(&s.id).unwrap().reached_finished);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -221,7 +221,7 @@ async fn real_claude_full_lifecycle() {
     // 6. Close.
     assert!(claude_procs(&id) >= 1, "claude should be running before close");
     let out = r.mgr.close(&id).unwrap();
-    assert!(out.earned_xp);
+    assert!(out.reached_finished && !out.stuck);
     assert!(r.mgr.list().is_empty());
     assert!(!session_dir.exists(), "per-session settings dir removed");
     wait_for("no claude child left", 10, || claude_procs(&id) == 0);

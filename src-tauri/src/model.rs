@@ -14,6 +14,38 @@ pub enum AgentKind {
     Custom,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct Tile {
+    pub x: i32,
+    pub y: i32,
+}
+
+/// A workspace's walled compound: the interior in tiles, `(x0, y0)` the top-left interior tile.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct Compound {
+    pub x0: i32,
+    pub y0: i32,
+    pub w: u32,
+    pub h: u32,
+    pub house: Tile,
+}
+
+/// Village-wide stats. `recent_ships` holds ship times in ms, pruned to the last 48 h on save.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct Stats {
+    #[serde(default)]
+    pub shipped_total: u32,
+    #[serde(default)]
+    pub recent_ships: Vec<i64>,
+}
+
+fn one() -> u32 {
+    1
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Workspace {
@@ -25,6 +57,14 @@ pub struct Workspace {
     /// frontend receives it over IPC.
     #[serde(default)]
     pub missing: bool,
+    /// House level, starting at 1.
+    #[serde(default = "one")]
+    pub level: u32,
+    /// XP progress within the current level.
+    #[serde(default)]
+    pub xp: u32,
+    #[serde(default)]
+    pub compound: Option<Compound>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -44,11 +84,13 @@ pub struct AppData {
     pub version: u32,
     pub workspaces: Vec<Workspace>,
     pub builders: Vec<Builder>,
+    #[serde(default)]
+    pub stats: Stats,
 }
 
 impl Default for AppData {
     fn default() -> Self {
-        Self { version: 1, workspaces: Vec::new(), builders: Vec::new() }
+        Self { version: 2, workspaces: Vec::new(), builders: Vec::new(), stats: Stats::default() }
     }
 }
 
@@ -97,6 +139,9 @@ pub struct SessionInfo {
     /// Strictly increasing per session across every emitted update (first is 1); lets the
     /// frontend drop an update that arrives after a newer one.
     pub rev: u64,
+    /// Where the session's builder stands in the village. Never persisted: sessions do not
+    /// outlive the app.
+    pub spot: Option<Tile>,
 }
 
 #[cfg(test)]

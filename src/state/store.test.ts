@@ -3,7 +3,7 @@ import type { Builder, SessionInfo, SessionState } from '../api/types';
 
 const sess = (id: string, ws: string, builderId?: string, startedAt = 0, state: SessionState = { kind: 'working' }): SessionInfo => ({
   id, workspaceId: ws, kind: builderId ? { kind: 'agent', builderId } : { kind: 'terminal' },
-  task: null, state, steps: 0, startedAt, lastOutputAt: 0, reachedFinished: false, worktree: null, commandPreview: '', awaitingDecision: false, rev: 1,
+  task: null, state, steps: 0, startedAt, lastOutputAt: 0, reachedFinished: false, worktree: null, commandPreview: '', awaitingDecision: false, rev: 1, spot: null,
 });
 const bld = (id: string): Builder => ({ id, name: id, agent: 'claude', model: null, effort: null, customCommand: null });
 
@@ -47,7 +47,7 @@ test('stateLabel maps needsYou', () => {
 });
 
 test('updateWorkspace replaces the matching workspace', () => {
-  const w = (id: string, missing = false) => ({ id, name: id, path: `/p/${id}`, createdAt: 0, missing });
+  const w = (id: string, missing = false) => ({ id, name: id, path: `/p/${id}`, createdAt: 0, missing, level: 1, xp: 0, compound: null });
   useApp.getState().addWorkspace(w('w1'));
   useApp.getState().addWorkspace(w('w2'));
   useApp.getState().updateWorkspace(w('w2', true));

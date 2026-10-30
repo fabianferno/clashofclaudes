@@ -1,5 +1,3 @@
-#![allow(dead_code)] // API consumed by the session manager (Task 8)
-
 use anyhow::{anyhow, Result};
 use crate::platform;
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
@@ -118,6 +116,7 @@ impl PtyHandle {
     }
 
     /// SIGHUP now; SIGKILL after `KILL_GRACE` if still alive (on a background thread).
+    /// Both go to the child's whole process group, so commands it forked die too.
     /// Returns Ok if the child has already exited.
     pub fn kill(&self) -> Result<()> {
         let Some(pid) = self.pid else { return Ok(()) };
@@ -126,7 +125,7 @@ impl PtyHandle {
             if self.shared.exited.load(Ordering::SeqCst) {
                 return Ok(());
             }
-            platform::signal_hup(pid)?;
+            platform::signal_group_hup(pid)?;
         }
         let sh = self.shared.clone();
         std::thread::spawn(move || {
@@ -139,7 +138,7 @@ impl PtyHandle {
             }
             let _g = sh.child.lock().unwrap_or_else(|e| e.into_inner());
             if !sh.exited.load(Ordering::SeqCst) {
-                let _ = platform::signal_kill(pid);
+                let _ = platform::signal_group_kill(pid);
             }
         });
         Ok(())
@@ -222,6 +221,28 @@ mod tests {
         h.kill().unwrap();
         std::thread::sleep(Duration::from_millis(100));
         assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn kill_reaches_grandchildren() {
+        // The grandchild inherits the ignored SIGHUP, so only a group SIGKILL ends it.
+        let dir = tempfile::tempdir().unwrap();
+        let (buf, on_out) = collect();
+        let (tx, rx) = mpsc::channel();
+        let h = PtyHandle::spawn(&spec("/bin/sh", &["-c", "trap '' HUP; sleep 30 & echo pid:$!; wait"], dir.path().to_path_buf()), 80, 24, on_out,
+            Box::new(move |c| { let _ = tx.send(c); })).unwrap();
+        assert!(wait_for(&buf, "pid:"));
+        assert!(wait_for(&buf, "\n"));
+        let text = String::from_utf8_lossy(&buf.lock().unwrap()).into_owned();
+        let pid: i32 = text.split("pid:").nth(1).unwrap().split_whitespace().next().unwrap().parse().unwrap();
+        h.kill().unwrap();
+        rx.recv_timeout(KILL_GRACE + Duration::from_secs(3)).expect("exit");
+        let end = Instant::now() + Duration::from_secs(2);
+        // SAFETY: signal 0 only probes for existence.
+        while unsafe { libc::kill(pid, 0) } == 0 && Instant::now() < end { std::thread::sleep(Duration::from_millis(20)); }
+        let alive = unsafe { libc::kill(pid, 0) } == 0;
+        if alive { unsafe { libc::kill(pid, libc::SIGKILL); } } // don't leak it from a failing run
+        assert!(!alive, "grandchild survived kill()");
     }
 
     #[test]

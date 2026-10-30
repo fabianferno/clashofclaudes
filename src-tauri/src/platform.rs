@@ -1,5 +1,3 @@
-#![allow(dead_code)] // API consumed by the session manager (Task 8)
-
 //! OS-specific helpers (macOS for v1).
 use std::path::PathBuf;
 
@@ -24,12 +22,14 @@ pub fn which(program: &str) -> Option<PathBuf> {
         .find(is_exec)
 }
 
-fn signal(pid: u32, sig: libc::c_int) -> std::io::Result<()> {
-    // SAFETY: plain kill(2) on a pid the caller has verified is not yet reaped.
-    if unsafe { libc::kill(pid as libc::pid_t, sig) } == 0 { Ok(()) } else { Err(std::io::Error::last_os_error()) }
+/// Signals the process group led by `pgid` (a PTY child is a session leader, so its
+/// pgid is its pid), reaching grandchildren such as the commands a shell forked.
+fn signal_group(pgid: u32, sig: libc::c_int) -> std::io::Result<()> {
+    // SAFETY: plain killpg(2) on a group whose leader the caller has verified is not yet reaped.
+    if unsafe { libc::killpg(pgid as libc::pid_t, sig) } == 0 { Ok(()) } else { Err(std::io::Error::last_os_error()) }
 }
-pub fn signal_hup(pid: u32) -> std::io::Result<()> { signal(pid, libc::SIGHUP) }
-pub fn signal_kill(pid: u32) -> std::io::Result<()> { signal(pid, libc::SIGKILL) }
+pub fn signal_group_hup(pgid: u32) -> std::io::Result<()> { signal_group(pgid, libc::SIGHUP) }
+pub fn signal_group_kill(pgid: u32) -> std::io::Result<()> { signal_group(pgid, libc::SIGKILL) }
 
 #[cfg(test)]
 mod tests {

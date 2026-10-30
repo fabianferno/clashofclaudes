@@ -1,5 +1,4 @@
-// Session status state machine. Pure: no I/O, no clocks. Consumed by later tasks.
-#![allow(dead_code)]
+// Session status state machine. Pure: no I/O, no clocks.
 
 use crate::model::SessionState;
 

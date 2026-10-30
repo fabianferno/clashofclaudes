@@ -1,10 +1,14 @@
 mod adapters;
+#[allow(dead_code)] // TODO(Task 9): consumed by the Tauri commands
+mod git;
 mod hooks;
 mod model;
 mod persist;
 mod platform;
 mod pty;
 mod scrollback;
+#[allow(dead_code)] // TODO(Task 9): consumed by the Tauri commands
+mod sessions;
 mod status;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/

@@ -1,5 +1,3 @@
-#![allow(dead_code)] // API consumed by the session manager (Task 8)
-
 use std::collections::VecDeque;
 
 pub const SCROLLBACK_CAP: usize = 2 * 1024 * 1024;
@@ -23,6 +21,7 @@ impl Scrollback {
     pub fn snapshot(&self) -> Vec<u8> {
         self.buf.iter().copied().collect()
     }
+    #[cfg(test)]
     pub fn len(&self) -> usize {
         self.buf.len()
     }

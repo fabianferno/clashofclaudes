@@ -1,5 +1,4 @@
 //! Agent adapters: how each agent CLI is detected, launched and observed.
-#![allow(dead_code)] // TODO(Task 8): remove once SessionManager consumes adapters
 pub mod claude;
 pub mod generic;
 
@@ -35,7 +34,9 @@ pub trait AgentAdapter: Send + Sync {
     fn kind(&self) -> AgentKind;
     fn label(&self) -> &'static str;
     fn detect(&self) -> Detection;
+    #[allow(dead_code)] // TODO(Task 9): read by detect_agents
     fn models(&self) -> Vec<String>;
+    #[allow(dead_code)] // TODO(Task 9): read by detect_agents
     fn efforts(&self) -> Vec<String>;
     fn launch(&self, req: &LaunchRequest) -> anyhow::Result<LaunchSpec>;
     fn policy(&self) -> StatusPolicy;
@@ -67,6 +68,7 @@ impl AdapterRegistry {
         self.adapters.iter().find(|a| a.kind() == kind).cloned()
     }
 
+    #[allow(dead_code)] // TODO(Task 9): read by detect_agents
     pub fn all(&self) -> Vec<Arc<dyn AgentAdapter>> {
         self.adapters.clone()
     }

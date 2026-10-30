@@ -10,6 +10,8 @@ use anyhow::{anyhow, bail, Result};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::collections::VecDeque;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -48,7 +50,9 @@ struct SessionEntry {
     adapter: Option<Arc<dyn AgentAdapter>>,
     policy: StatusPolicy,
     baseline: Option<GitBaseline>,
-    pending: Vec<u8>,
+    pending: VecDeque<u8>,
+    /// Bytes of this session's queued-but-undelivered `Output` (cleared by the emitter thread).
+    in_flight: Arc<AtomicUsize>,
     last_flush: Instant,
     /// Silence is measured from the latest output or state change.
     quiet_since_ms: i64,
@@ -74,11 +78,18 @@ impl SessionEntry {
         changed
     }
 
-    fn flush(&mut self, tx: &Sender<ManagerEvent>) {
+    /// Backpressure: at most one undelivered `Output` per session. While one is in flight,
+    /// bytes keep accumulating in `pending` (capped in `on_output`) and a later flush sends them.
+    fn flush(&mut self, tx: &Sender<Queued>) {
+        if self.in_flight.load(Ordering::SeqCst) > 0 {
+            return;
+        }
         self.last_flush = Instant::now();
         if !self.pending.is_empty() {
-            let data = std::mem::take(&mut self.pending);
-            let _ = tx.send(ManagerEvent::Output { id: self.info.id.clone(), data });
+            let data = Vec::from(std::mem::take(&mut self.pending));
+            self.in_flight.fetch_add(data.len(), Ordering::SeqCst);
+            let ev = ManagerEvent::Output { id: self.info.id.clone(), data };
+            let _ = tx.send(Queued { ev, in_flight: Some(self.in_flight.clone()) });
         }
     }
 
@@ -89,25 +100,40 @@ impl SessionEntry {
 
 type Sessions = HashMap<String, SessionEntry>;
 
+/// An event on its way to the emitter thread; `Output` carries its session's in-flight counter.
+struct Queued {
+    ev: ManagerEvent,
+    in_flight: Option<Arc<AtomicUsize>>,
+}
+
 /// Locking: one mutex over all sessions. Events are sent into a channel while the lock is
 /// held (so their order matches the state order) and a dedicated thread calls `emit`, so
 /// `emit` never runs under the lock. PTY writes/kills, git and file IO run outside the lock.
+/// Queued output per session is bounded: one in-flight `Output` plus `pending`, each at most
+/// `SCROLLBACK_CAP` bytes.
 pub struct SessionManager {
     registry: AdapterRegistry,
     hooks: Arc<HookServer>,
     data_dir: PathBuf,
     sessions: Mutex<Sessions>,
-    tx: Sender<ManagerEvent>,
+    tx: Sender<Queued>,
     weak: Weak<SessionManager>,
 }
 
 impl SessionManager {
     pub fn new(registry: AdapterRegistry, hooks: Arc<HookServer>, data_dir: PathBuf, emit: Emit) -> Arc<SessionManager> {
-        let (tx, rx) = mpsc::channel::<ManagerEvent>();
+        let (tx, rx) = mpsc::channel::<Queued>();
         // Ends when the manager (the only sender) is dropped.
         std::thread::spawn(move || {
-            for ev in rx {
+            for Queued { ev, in_flight } in rx {
+                let n = match &ev {
+                    ManagerEvent::Output { data, .. } => data.len(),
+                    _ => 0,
+                };
                 emit(ev);
+                if let Some(c) = in_flight {
+                    c.fetch_sub(n, Ordering::SeqCst);
+                }
             }
         });
         let mgr = Arc::new_cyclic(|weak| SessionManager {
@@ -140,7 +166,7 @@ impl SessionManager {
     }
 
     fn send_updated(&self, e: &SessionEntry) {
-        let _ = self.tx.send(ManagerEvent::Updated(e.info.clone()));
+        let _ = self.tx.send(Queued { ev: ManagerEvent::Updated(e.info.clone()), in_flight: None });
     }
 
     pub fn start_agent(&self, ws: &Workspace, builder: &Builder, task: Option<&str>) -> Result<SessionInfo> {
@@ -240,7 +266,8 @@ impl SessionManager {
                 adapter,
                 policy,
                 baseline,
-                pending: Vec::new(),
+                pending: VecDeque::new(),
+                in_flight: Arc::default(),
                 last_flush: Instant::now(),
                 quiet_since_ms: now,
                 checked_cwd: None,
@@ -301,7 +328,10 @@ impl SessionManager {
         if e.apply(&StatusEvent::Output, now) {
             self.send_updated(e);
         }
-        e.pending.extend_from_slice(data);
+        e.pending.extend(data);
+        // A frontend this far behind loses the oldest bytes; re-attaching replays scrollback.
+        let over = e.pending.len().saturating_sub(SCROLLBACK_CAP);
+        e.pending.drain(..over);
         if e.last_flush.elapsed() >= FLUSH_EVERY {
             e.flush(&self.tx);
         }
@@ -454,7 +484,7 @@ impl SessionManager {
         let entry = {
             let mut g = self.lock();
             let e = g.remove(id).ok_or_else(|| anyhow!("unknown session {id}"))?;
-            let _ = self.tx.send(ManagerEvent::Removed { id: id.to_string() });
+            let _ = self.tx.send(Queued { ev: ManagerEvent::Removed { id: id.to_string() }, in_flight: None });
             e
         };
         let earned_xp = entry.info.reached_finished && !matches!(entry.info.state, SessionState::Stuck { .. });
@@ -474,6 +504,13 @@ impl SessionManager {
         let e = g.get_mut(id).ok_or_else(|| anyhow!("unknown session {id}"))?;
         e.pending.clear();
         Ok(e.scrollback.snapshot())
+    }
+
+    /// Output bytes buffered or queued for `emit` but not yet delivered.
+    #[cfg(test)]
+    fn queued_output_bytes(&self, id: &str) -> usize {
+        let g = self.lock();
+        g.get(id).map_or(0, |e| e.pending.len() + e.in_flight.load(Ordering::SeqCst))
     }
 
     pub fn review(&self, id: &str) -> Result<Review> {
@@ -587,11 +624,21 @@ mod tests {
     }
 
     fn fixture() -> Fx {
+        fixture_with(Duration::ZERO)
+    }
+
+    /// `output_delay`: how long the recording `emit` blocks on each `Output` (a slow frontend).
+    fn fixture_with(output_delay: Duration) -> Fx {
         let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(1).enable_all().build().unwrap();
         let hooks = Arc::new(rt.block_on(HookServer::start(Arc::new(|_, _| {}))).unwrap());
         let events: Events = Arc::default();
         let e2 = events.clone();
-        let emit: Emit = Arc::new(move |ev| e2.lock().unwrap().push(ev));
+        let emit: Emit = Arc::new(move |ev| {
+            if matches!(ev, ManagerEvent::Output { .. }) {
+                std::thread::sleep(output_delay);
+            }
+            e2.lock().unwrap().push(ev)
+        });
         let dir = tempfile::tempdir().unwrap();
         let ws_path = dir.path().join("ws");
         std::fs::create_dir(&ws_path).unwrap();
@@ -730,6 +777,21 @@ mod tests {
         let n = fx.events.lock().unwrap().iter().filter(|e| matches!(e, ManagerEvent::Output { id, .. } if *id == s.id)).count();
         assert!(n > 0 && n < 100, "{n} output events");
         assert!(fx.mgr.attach(&s.id).unwrap().len() <= SCROLLBACK_CAP);
+    }
+
+    #[test]
+    fn slow_emit_bounds_queued_output() {
+        let fx = fixture_with(Duration::from_millis(50));
+        let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "yes | head -c 20000000"), None).unwrap();
+        let mut peak = 0;
+        let end = Instant::now() + Duration::from_secs(60);
+        while Instant::now() < end && !matches!(state(&fx, &s.id), SessionState::Ended { .. }) {
+            peak = peak.max(fx.mgr.queued_output_bytes(&s.id));
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert_eq!(state(&fx, &s.id), SessionState::Ended { exit_code: Some(0) });
+        assert!(peak <= 2 * SCROLLBACK_CAP, "peak queued output {peak} bytes");
+        assert!(peak > 0);
     }
 
     #[test]

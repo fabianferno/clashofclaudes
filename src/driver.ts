@@ -133,14 +133,11 @@ const driver = {
   async front(): Promise<boolean> {
     const win = getCurrentWindow();
     await win.setAlwaysOnTop(true);
-    await win.setVisibleOnAllWorkspaces(true); // follow the user's current Space (a window left on another Space reports hidden)
     await win.setFocus();
     return !document.hidden;
   },
   async unfront(): Promise<boolean> {
-    const win = getCurrentWindow();
-    await win.setAlwaysOnTop(false);
-    await win.setVisibleOnAllWorkspaces(false);
+    await getCurrentWindow().setAlwaysOnTop(false);
     return true;
   },
   ipc,

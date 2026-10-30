@@ -151,6 +151,21 @@ export const useApp = create<AppState>((set, get) => ({
   requestZoom: (id) => set((st) => ({ zoomRequest: { id, n: (st.zoomRequest?.n ?? 0) + 1 } })),
 }));
 
+/** Whether the selection's target still exists (the hall always does). */
+function selectionAlive(st: Pick<AppState, 'selection' | 'workspaces' | 'builders' | 'sessions'>): boolean {
+  const sel = st.selection;
+  if (!sel || sel.kind === 'hall') return true;
+  if (sel.kind === 'workspace') return st.workspaces.some((w) => w.id === sel.id);
+  if (sel.kind === 'builder') return st.builders.some((b) => b.id === sel.id);
+  return sel.id in st.sessions;
+}
+
+// A selection never outlives its target: the panel (and the scene's/HUD's room for it) goes away with it.
+useApp.subscribe((st, prev) => {
+  if (st.workspaces === prev.workspaces && st.builders === prev.builders && st.sessions === prev.sessions) return;
+  if (!selectionAlive(st)) st.setSelection(null);
+});
+
 export function sessionsByWorkspace(state: Pick<AppState, 'sessions'>, wsId: string): SessionInfo[] {
   return Object.values(state.sessions)
     .filter((s) => s.workspaceId === wsId)

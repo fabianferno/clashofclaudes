@@ -237,3 +237,33 @@ describe('close notices', () => {
     expect(texts()).toEqual([]);
   });
 });
+
+test('selection is cleared (panel closed) when its session disappears', () => {
+  useApp.getState().upsertSession(sess('s1', 'w1', 'b1'));
+  useApp.getState().setSelection({ kind: 'session', id: 's1' });
+  expect(useApp.getState().panelOpen).toBe(true);
+  useApp.getState().removeSession('s1');
+  expect(useApp.getState().selection).toBeNull();
+  expect(useApp.getState().panelOpen).toBe(false);
+});
+
+test('selection is cleared when its workspace disappears', () => {
+  useApp.setState({ workspaces: [{ id: 'w1', name: 'w', path: '/w', createdAt: 0, missing: false, level: 1, xp: 0, compound: null }] });
+  useApp.getState().setSelection({ kind: 'workspace', id: 'w1' });
+  useApp.getState().removeWorkspace('w1');
+  expect(useApp.getState().selection).toBeNull();
+  expect(useApp.getState().panelOpen).toBe(false);
+});
+
+test('selection is cleared when its builder disappears; hall and other targets stay', () => {
+  useApp.setState({ builders: [bld('b1'), bld('b2')] });
+  useApp.getState().setSelection({ kind: 'builder', id: 'b1' });
+  useApp.getState().removeBuilder('b2');
+  expect(useApp.getState().selection).toEqual({ kind: 'builder', id: 'b1' });
+  useApp.getState().removeBuilder('b1');
+  expect(useApp.getState().selection).toBeNull();
+  expect(useApp.getState().panelOpen).toBe(false);
+  useApp.getState().setSelection({ kind: 'hall' });
+  useApp.getState().removeBuilder('zzz');
+  expect(useApp.getState().panelOpen).toBe(true);
+});

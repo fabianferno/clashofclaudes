@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const invoke = vi.fn();
 vi.mock('@tauri-apps/api/core', () => ({ invoke: (...a: unknown[]) => invoke(...a), Channel: class {} }));
 
-const win = { setAlwaysOnTop: vi.fn().mockResolvedValue(undefined), setFocus: vi.fn().mockResolvedValue(undefined), setVisibleOnAllWorkspaces: vi.fn().mockResolvedValue(undefined) };
+const win = { setAlwaysOnTop: vi.fn().mockResolvedValue(undefined), setFocus: vi.fn().mockResolvedValue(undefined) };
 vi.mock('@tauri-apps/api/window', () => ({ getCurrentWindow: () => win }));
 
 describe('__cocDriver', () => {

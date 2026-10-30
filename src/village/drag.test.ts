@@ -16,6 +16,7 @@ function rig() {
     ctl, onAutoFitOff,
     get cam() { return cam; },
     get target() { return target; },
+    setExternal(c: Cam) { cam = c; },
     easeSteps(n: number) { for (let i = 0; i < n; i++) if (target) cam = ease(cam, target, 1 / 60); },
   };
 }
@@ -29,12 +30,14 @@ describe('drag controller', () => {
     expect(atPress.x).not.toBe(preEase.x);
     r.ctl.down(100, 100);
     expect(r.target).toBeNull(); // ease cancelled
+    r.ctl.move(110, 100); // crosses the threshold: rebases, no jump
+    expect(r.cam).toEqual(atPress);
     r.ctl.move(130, 80);
-    expect(r.cam.x).toBeCloseTo(atPress.x + 30, 9);
+    expect(r.cam.x).toBeCloseTo(atPress.x + 20, 9);
     expect(r.cam.y).toBeCloseTo(atPress.y - 20, 9);
     expect(r.cam.zoom).toBe(atPress.zoom);
     r.easeSteps(10); // nothing pulls the camera any more
-    expect(r.cam.x).toBeCloseTo(atPress.x + 30, 9);
+    expect(r.cam.x).toBeCloseTo(atPress.x + 20, 9);
     expect(r.ctl.up()).toBe('drag');
   });
 
@@ -52,5 +55,18 @@ describe('drag controller', () => {
     r.ctl.move(60, 50);
     r.ctl.move(70, 50);
     expect(r.onAutoFitOff).toHaveBeenCalledTimes(1);
+  });
+
+  it('rebases_at_threshold_so_external_camera_moves_do_not_snap_back', () => {
+    const r = rig();
+    r.ctl.down(0, 0);
+    const moved: Cam = { x: 77, y: -9, zoom: 1.5 }; // e.g. auto-fit after a resize
+    r.setExternal(moved);
+    r.ctl.move(10, 0); // crosses the threshold
+    expect(r.cam).toEqual(moved);
+    r.ctl.move(20, 0);
+    expect(r.cam.x).toBeCloseTo(moved.x + 10, 9);
+    expect(r.cam.y).toBeCloseTo(moved.y, 9);
+    expect(r.cam.zoom).toBe(1.5);
   });
 });

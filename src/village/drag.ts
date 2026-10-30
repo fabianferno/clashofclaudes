@@ -20,16 +20,16 @@ export function createDragController(d: DragDeps) {
       d.setTarget(null);
       st = { x, y, base: { ...d.getCam() }, moved: false };
     },
-    /** Returns true once the gesture is a drag (the camera was moved). */
-    move(x: number, y: number): boolean {
-      if (!st) return false;
-      const dx = x - st.x, dy = y - st.y;
-      if (!st.moved && Math.hypot(dx, dy) > DRAG_PX) {
-        st.moved = true;
+    move(x: number, y: number): void {
+      if (!st) return;
+      if (!st.moved) {
+        if (Math.hypot(x - st.x, y - st.y) <= DRAG_PX) return;
+        // Auto-fit may have moved the camera since the press: rebase here so the first pan applies no jump.
+        st = { x, y, base: { ...d.getCam() }, moved: true };
         d.onAutoFitOff();
+        return;
       }
-      if (st.moved) d.setCam(dragCam(st.base, dx, dy));
-      return st.moved;
+      d.setCam(dragCam(st.base, x - st.x, y - st.y));
     },
     up(): 'click' | 'drag' | null {
       if (!st) return null;
@@ -39,6 +39,5 @@ export function createDragController(d: DragDeps) {
     },
     cancel(): void { st = null; },
     get active(): boolean { return st !== null; },
-    get dragging(): boolean { return st?.moved ?? false; },
   };
 }

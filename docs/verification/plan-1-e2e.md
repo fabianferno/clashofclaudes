@@ -111,4 +111,4 @@ The owner clicked the window while Claude watched the save file and the app's ch
 | 9 | Quit dialog | FAIL then FIXED: Cmd+Q quit without a dialog; dialog buttons unclickable over a terminal. Both fixed, see follow-ups |
 | 9 | No leftover processes after quit | PASS |
 | 10 | Flood responsiveness | PASS |
-| 10/11 | Memory | FAIL: after the flood, WebContent ~395 MB + app 147 MB (~540 MB) with 1 Claude + 1 terminal. Idle at launch: ~180 MB. 10-session figure not measured |
+| 10/11 | Memory | Debug build, RSS (overcounts shared system libraries): WebContent 51 -> ~395 MB after the flood. Release build idle, physical footprint (as Activity Monitor counts it): 75 MB for app + WebKit helpers (app 34 MB). Flood and 10-session figures still to measure on release with `footprint` |

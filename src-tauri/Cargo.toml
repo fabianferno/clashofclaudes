@@ -43,3 +43,8 @@ lto = true
 opt-level = 3
 panic = "abort"
 strip = true
+
+# Proc-macro dylibs stripped by the macOS toolchain fail to load ("mis-aligned LINKEDIT string
+# pool"); strip only the final binary.
+[profile.release.build-override]
+strip = false

@@ -3,7 +3,7 @@
 Collected from the Plan 1 execution ledger at merge time. All were triaged CAN-WAIT by the final review except where noted.
 
 ## Must land before or with Plan 2
-- Memory after a flood is over budget (owner GUI run, 2026-10-31, debug build): after `yes | head -c 50000000` in one terminal with one Claude session, WebKit WebContent went 51 MB → ~395 MB and stayed there; app core 100 → 147 MB (~540 MB total vs the 250 MB budget). Responsiveness was fine. Unconfirmed suspects: xterm scrollback 5000 lines, WebGL glyph atlas, retained frames. Measure in a release build first.
+- Memory after a flood is over budget (owner GUI run, 2026-10-31, debug build): after `yes | head -c 50000000` in one terminal with one Claude session, WebKit WebContent went 51 MB → ~395 MB and stayed there; app core 100 → 147 MB (~540 MB total vs the 250 MB budget). Responsiveness was fine. Those are RSS figures from a debug build; release idle is 75 MB physical footprint, so re-measure the flood on release with `footprint` before treating it as a budget failure. Unconfirmed suspects: xterm scrollback 5000 lines, WebGL glyph atlas, retained frames. Measure in a release build first.
 - Closing a session that never reached Finished gives no feedback (no XP, no message). Show "closed: unfinished, no XP".
 - Builders are only visible in the New session builder picker; after Close the builder seems to vanish. The Plan 2 builders bar covers this.
 - Claude's first-run "Do you trust this folder?" menu (default "No, exit") appears before any hook fires: the session shows Working, never NeedsYou. Add screen-pattern detection → NeedsYou with its own keys.

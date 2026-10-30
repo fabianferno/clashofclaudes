@@ -1,0 +1,37 @@
+import { useState } from 'react';
+import { useApp } from '../state/store';
+import { PANEL_W } from '../village/camera';
+import { createFolder, openFolder } from '../state/workspaceActions';
+import './hud.css';
+
+/** Bottom right: Build (new empty folder) and Open (existing folder). */
+export default function BuildButtons() {
+  const panelOpen = useApp((s) => s.panelOpen);
+  const [naming, setNaming] = useState<string | null>(null);
+
+  const pick = async () => {
+    const n = naming;
+    if (!n?.trim()) return;
+    setNaming(null);
+    await createFolder(n);
+  };
+
+  return (
+    <div className="hud-build" style={{ right: (panelOpen ? PANEL_W : 0) + 14 }} data-testid="build-buttons">
+      {naming !== null && (
+        <div className="hud-pop">
+          <input
+            autoFocus
+            placeholder="Folder name"
+            value={naming}
+            onChange={(e) => setNaming(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') void pick(); if (e.key === 'Escape') setNaming(null); }}
+          />
+          <button className="hud-btn green sm" onClick={() => void pick()} disabled={!naming.trim()}>Pick location</button>
+        </div>
+      )}
+      <button className="hud-btn green" onClick={() => setNaming(naming === null ? '' : null)}>Build</button>
+      <button className="hud-btn blue" onClick={() => void openFolder()}>Open</button>
+    </div>
+  );
+}

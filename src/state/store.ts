@@ -41,6 +41,8 @@ let noticeSeq = 0;
 
 export interface AppState {
   notices: Notice[];
+  error: string | null;
+  setError: (e: string | null) => void;
   /** XP-earning close outcomes by session id, for the village to play the orbs; cleared once consumed. */
   lastClosed: Record<string, CloseOutcome>;
   /** A session was closed: pushes its notice(s) and remembers an earning outcome for the scene. Terminals stay silent. */
@@ -81,6 +83,8 @@ export const useApp = create<AppState>((set, get) => ({
   panelOpen: false,
   village: villageActions(get),
   notices: [],
+  error: null,
+  setError: (error) => set({ error }),
   lastClosed: {},
   onClosed: (o, sessionId) => {
     const push = (text: string, kind: Notice['kind']) => {

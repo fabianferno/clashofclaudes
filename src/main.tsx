@@ -1,5 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
+import "@fontsource/lilita-one/400.css";
 import App from "./App";
 
 if (import.meta.env.DEV) {

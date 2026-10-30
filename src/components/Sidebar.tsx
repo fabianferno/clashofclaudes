@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { open } from '@tauri-apps/plugin-dialog';
 import { ipc } from '../api/ipc';
 import { sessionsByWorkspace, useApp } from '../state/store';
+import * as wsActions from '../state/workspaceActions';
 
 const DOT: Record<string, string> = {
   starting: 'var(--c-working)', working: 'var(--c-working)', needsYou: 'var(--c-needs)',
@@ -17,17 +17,12 @@ export default function Sidebar({ onNewSession }: { onNewSession: (workspaceId: 
     setError(null);
     try { await f(); } catch (e) { setError(String(e)); }
   };
-  const openFolder = () => guard(async () => {
-    const dir = await open({ directory: true });
-    if (typeof dir === 'string') st.addWorkspace(await ipc.addWorkspace(dir));
-  });
-  const createFolder = () => guard(async () => {
+  const openFolder = () => wsActions.openFolder();
+  const createFolder = async () => {
     if (!newName?.trim()) return;
-    const parent = await open({ directory: true });
-    if (typeof parent !== 'string') return;
-    st.addWorkspace(await ipc.createWorkspace(parent, newName.trim()));
+    await wsActions.createFolder(newName);
     setNewName(null);
-  });
+  };
   const terminal = (wsId: string) => guard(async () => {
     const s = await ipc.startTerminal(wsId);
     st.upsertSession(s);

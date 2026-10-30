@@ -3,6 +3,9 @@ import { ipc } from './api/ipc';
 import { autoLayout, idleBuilders, useApp } from './state/store';
 import VillageCanvas from './village/VillageCanvas';
 import Sidebar from './components/Sidebar';
+import TopBar from './hud/TopBar';
+import BuildersBar from './hud/BuildersBar';
+import BuildButtons from './hud/BuildButtons';
 import SessionPanel from './components/SessionPanel';
 import NewSessionForm from './components/NewSessionForm';
 import './App.css';
@@ -10,14 +13,14 @@ import './App.css';
 function App() {
   const st = useApp();
   const [formFor, setFormFor] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const error = st.error;
   const [quit, setQuit] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     const unlisten: Array<() => void> = [];
     const keep = (p: Promise<() => void>) =>
-      p.then((u) => (cancelled ? u() : unlisten.push(u)), (e) => setError(String(e)));
+      p.then((u) => (cancelled ? u() : unlisten.push(u)), (e) => useApp.getState().setError(String(e)));
     keep(ipc.onSessionUpdated((s) => useApp.getState().upsertSession(s)));
     keep(ipc.onSessionRemoved((id) => useApp.getState().removeSession(id)));
     keep(ipc.onWorkspaceUpdated((w) => useApp.getState().updateWorkspace(w)));
@@ -29,17 +32,20 @@ function App() {
         if (cancelled) return;
         useApp.getState().hydrate(s);
         // Compounds for workspaces without one, spots for agent sessions without one (never terminals).
-        stopLayout = autoLayout((e) => setError(String(e)));
+        stopLayout = autoLayout((e) => useApp.getState().setError(String(e)));
       })
-      .catch((e) => setError(String(e)));
-    ipc.detectAgents().then((a) => !cancelled && useApp.getState().setAgents(a)).catch((e) => setError(String(e)));
+      .catch((e) => useApp.getState().setError(String(e)));
+    ipc.detectAgents().then((a) => !cancelled && useApp.getState().setAgents(a)).catch((e) => useApp.getState().setError(String(e)));
     return () => { cancelled = true; stopLayout?.(); unlisten.forEach((u) => u()); };
   }, []);
 
   const selected = st.selectedSessionId;
   return (
     <>
-    <VillageCanvas onError={(e) => setError(String(e))} />
+    <VillageCanvas onError={(e) => useApp.getState().setError(String(e))} />
+    <TopBar />
+    <BuildersBar />
+    <BuildButtons />
     <div className="layout">
       <Sidebar onNewSession={(id) => { setFormFor(id); st.select(null); }} />
       <main className="main">
@@ -63,7 +69,7 @@ function App() {
         <div className="modal-bg">
           <div className="modal">
             <p>{quit} sessions are still running. Quit and end them?</p>
-            <button onClick={() => ipc.quitNow().catch((e) => setError(String(e)))}>Quit</button>{' '}
+            <button onClick={() => ipc.quitNow().catch((e) => useApp.getState().setError(String(e)))}>Quit</button>{' '}
             <button onClick={() => setQuit(null)}>Cancel</button>
           </div>
         </div>

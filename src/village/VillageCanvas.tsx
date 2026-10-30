@@ -11,7 +11,7 @@ const inputOf = (s: AppState): VillageInput => ({
 });
 
 /** The Pixi village, full-window; syncs from the store on every change (also while hidden). */
-export default function VillageCanvas() {
+export default function VillageCanvas({ onError }: { onError?: (e: unknown) => void } = {}) {
   const host = useRef<HTMLDivElement>(null);
   const [scene, setScene] = useState<Scene | null>(null);
 
@@ -24,7 +24,7 @@ export default function VillageCanvas() {
     createScene(el, {
       onSelect: (sel) => useApp.getState().setSelection(sel),
       canMove: (t, at) => moveValid(useApp.getState(), t, at),
-      onMove: (t, at) => useApp.getState().village.commitMove(t, at),
+      onMove: (t, at) => useApp.getState().village.commitMove(t, at, onError),
       panelWidth: () => (useApp.getState().panelOpen ? PANEL_W : 0),
     }).then(
       (s) => {

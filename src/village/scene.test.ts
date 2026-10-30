@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Builder, Compound, SessionInfo, SessionState, Tile, Workspace } from '../api/types';
 import { findSpot, placeCompound, wallRect } from './layout';
 import { scaffoldHeight } from './look';
-import { buildEntities, structureLook, type VillageInput } from './scene';
+import { buildEntities, needsRefit, structureLook, type VillageInput } from './scene';
 
 const ws = (id: string, compound: Compound | null, level = 1): Workspace => ({
   id, name: id, path: `/p/${id}`, createdAt: 0, missing: false, level, xp: 0, compound,
@@ -102,5 +102,14 @@ describe('structureLook', () => {
     const ended = structureLook(s({ kind: 'ended', exitCode: 1 }, 5, false));
     expect(ended.stage).toBe('scaffold');
     expect(ended.height).toBeCloseTo(scaffoldHeight(5), 1);
+  });
+});
+
+describe('needsRefit', () => {
+  it('refits_only_when_bounds_change', () => {
+    const r = { x0: -2, y0: -2, w: 20, h: 20 };
+    expect(needsRefit(null, r)).toBe(true);
+    expect(needsRefit(r, { ...r })).toBe(false); // a house move changes tiles, not the fitted bounds
+    expect(needsRefit(r, { ...r, w: 23 })).toBe(true);
   });
 });

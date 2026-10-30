@@ -179,4 +179,18 @@ describe('commitMove', () => {
     expect(ipc.setCompound).toHaveBeenCalledWith('w1', { ...c, house: { x: 7, y: 7 } });
     expect(useApp.getState().workspaces[0].compound?.house).toEqual({ x: 7, y: 7 });
   });
+
+  it('rejected_ipc_returns_false_leaves_state_and_reports', async () => {
+    vi.mocked(ipc.setSessionSpot).mockRejectedValue(new Error('boom'));
+    const errs: unknown[] = [];
+    const before = useApp.getState().sessions.s1;
+    expect(await useApp.getState().village.commitMove({ kind: 'session', id: 's1' }, { x: 10, y: 11 }, (e) => errs.push(e))).toBe(false);
+    expect(useApp.getState().sessions.s1).toBe(before);
+    expect(errs).toHaveLength(1);
+    expect(String(errs[0])).toContain('boom');
+    vi.mocked(ipc.setCompound).mockRejectedValue(new Error('nope'));
+    expect(await useApp.getState().village.commitMove({ kind: 'workspace', id: 'w1' }, { x: 7, y: 7 }, (e) => errs.push(e))).toBe(false);
+    expect(useApp.getState().workspaces[0]).toBe(ws);
+    expect(errs).toHaveLength(2);
+  });
 });

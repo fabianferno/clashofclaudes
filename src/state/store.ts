@@ -15,7 +15,7 @@ export interface VillageActions {
   /** The agent session's spot, finding (expanding the compound if full) and persisting one if it has none. */
   ensureSpot: (sessionId: string) => Promise<Tile>;
   /** Persist a move of a structure (session) or a compound's house (workspace) to `at`; false (and no ipc) when blocked. */
-  commitMove: (target: MoveTarget, at: Tile) => Promise<boolean>;
+  commitMove: (target: MoveTarget, at: Tile, onError?: (e: unknown) => void) => Promise<boolean>;
 }
 
 export type MoveTarget = { kind: 'session'; id: string } | { kind: 'workspace'; id: string };
@@ -178,16 +178,21 @@ function villageActions(get: () => AppState): VillageActions {
   return {
     ensureCompound: (wsId) => serial(() => compoundOf(wsId)),
     ensureSpot: (sessionId) => serial(() => spotOf(sessionId)),
-    commitMove: (target, at) => serial(async () => {
+    commitMove: (target, at, onError) => serial(async () => {
       const st = get();
       if (!moveValid(st, target, at)) return false;
-      if (target.kind === 'session') {
-        st.upsertSession(await ipc.setSessionSpot(target.id, at));
-      } else {
-        const c = st.workspaces.find((w) => w.id === target.id)!.compound!;
-        st.updateWorkspace(await ipc.setCompound(target.id, { ...c, house: at }));
+      try {
+        if (target.kind === 'session') {
+          st.upsertSession(await ipc.setSessionSpot(target.id, at));
+        } else {
+          const c = st.workspaces.find((w) => w.id === target.id)!.compound!;
+          st.updateWorkspace(await ipc.setCompound(target.id, { ...c, house: at }));
+        }
+        return true;
+      } catch (e) {
+        onError?.(e); // state is untouched: the store only updates after ipc succeeds
+        return false;
       }
-      return true;
     }),
   };
 }

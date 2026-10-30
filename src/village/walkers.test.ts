@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Compound } from '../api/types';
 import { gateInside, gateOutside } from './layout';
-import { PLAZA, SPEED, routeHome, routeToSite, standTile, step, type Walker } from './walkers';
+import { PLAZA, SPEED, routeHome, retarget, routeToSite, standTile, step, type Walker } from './walkers';
 
 const mk = (over: Partial<Walker> = {}): Walker =>
   ({ id: 'b', x: 0, y: 0, path: [], mode: 'idle', face: 1, wait: 0, ...over });
@@ -71,5 +71,20 @@ describe('walkers', () => {
     expect(a.face).toBe(1);
     const b = step(mk({ face: 1, path: [{ x: -5, y: 5 }] }), 0.1, lcg());
     expect(b.face).toBe(-1);
+  });
+
+  it('retarget_follows_a_moved_house', () => {
+    const before: Compound = { x0: 9, y0: -3, w: 7, h: 7, house: { x: 9, y: -3 } };
+    const after: Compound = { ...before, house: { x: 12, y: 1 } }; // gate and east stand tile are now different
+    const spot = { x: 10, y: 2 };
+    const at = retarget(mk({ mode: 'atSite', x: 12.45, y: 3.1 }), after, spot);
+    expect(at).toMatchObject({ ...standTile(after, spot, after.house), mode: 'atSite', path: [] });
+    const walking = mk({ mode: 'toSite', path: routeToSite({ x: 0, y: 0 }, before, spot).slice(1) });
+    const re = retarget(walking, after, spot);
+    expect(re.path).toEqual(routeToSite({ x: 0, y: 0 }, after, spot).slice(1));
+    expect(re.path.length).toBe(2);
+    const home = retarget(mk({ mode: 'home', path: routeHome({ x: 0, y: 0 }, before).slice(2) }), after, null);
+    expect(home.path).toEqual(routeHome({ x: 0, y: 0 }, after).slice(2));
+    expect(retarget(mk({ mode: 'idle' }), after, null).mode).toBe('idle');
   });
 });

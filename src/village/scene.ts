@@ -3,7 +3,7 @@ import type { AgentKind, Builder, Compound, SessionInfo, SessionState, Tile, Wor
 import { iso, toGrid } from './iso';
 import { HALL, HOUSE, STRUCT, gateSide, gateTile, wallRect, type Rect } from './layout';
 import { classOf, gearOf, houseColors, houseStage, scaffoldHeight, type ClassTier, type Gear } from './look';
-import { routeHome, routeToSite, standTile, step, type Walker } from './walkers';
+import { retarget, routeHome, routeToSite, standTile, step, type Walker } from './walkers';
 import {
   drawBadge, drawBubble, drawBuilder, drawGate, drawGround, drawHall, drawHouse, drawPuff, drawRing, drawStructure, drawWallSeg, groundOrigin, type Art, type Pose,
 } from './art/entities';
@@ -120,6 +120,11 @@ export function villageRect(compounds: Compound[]): Rect {
   return { x0, y0, w: x1 - x0, h: y1 - y0 };
 }
 
+/** Whether the fitted bounds changed (a house move re-bakes the ground but must not re-fit the camera). */
+export function needsRefit(prev: Rect | null, next: Rect): boolean {
+  return !prev || prev.x0 !== next.x0 || prev.y0 !== next.y0 || prev.w !== next.w || prev.h !== next.h;
+}
+
 export const GROUND_PAD = 12;
 
 /** Ground bake bounds: the village rect padded by GROUND_PAD tiles. */
@@ -170,6 +175,8 @@ interface BuilderView {
   bubble: Sprite | null;
   ring: Sprite | null;
   puffs: Sprite[];
+  /** The compound a builder is walking home from, to re-aim if its house (and gate) moves. */
+  leaving: { wsId: string; c: Compound } | null;
 }
 
 const HEAD_HEIGHT: Record<ClassTier, number> = { 0: 46, 1: 56, 2: 80 };
@@ -382,8 +389,10 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     ground.position.set(o.x, o.y);
     groundBakes++;
     const first = villageTiles === null;
-    villageTiles = villageRect(compounds);
-    if (autoFit) {
+    const next = villageRect(compounds);
+    const changed = needsRefit(villageTiles, next);
+    villageTiles = next;
+    if (autoFit && changed) {
       if (first) fit();
       else fitVillage(); // the village grew: ease to the new extent
     }
@@ -422,7 +431,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
         v = {
           walker: { id: b.id, x: 0.5 + Math.cos(a) * 5.1, y: 0.5 + Math.sin(a) * 5.1, path: [], mode: 'idle', face: 1, wait: 0.5 },
           agent: b.agent, cls: classOf(b.agent, b.model), gear: gearOf(b.effort), site: null,
-          pose: 'idle', sprite, bubble: null, ring: null, puffs: [],
+          pose: 'idle', sprite, bubble: null, ring: null, puffs: [], leaving: null,
         };
         views.set(b.id, v);
       }
@@ -434,15 +443,27 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
         } else if (was.spot.x !== site.spot.x || was.spot.y !== site.spot.y) {
           const st = standTile(site.compound, site.spot, site.compound.house); // moved structure: the builder is simply there
           v.walker = { ...w, x: st.x, y: st.y, path: [], mode: 'atSite', face: -1 };
+        } else if (JSON.stringify(was.compound) !== JSON.stringify(site.compound)) {
+          v.walker = retarget(w, site.compound, site.spot); // the house moved: stand tile and gate may have changed
         }
       } else if (was) {
         const c = compounds.get(was.workspaceId);
         if (!c) v.walker = { ...w, path: [], mode: 'idle', wait: 0.5 };
         else {
+          v.leaving = { wsId: was.workspaceId, c };
           const route = routeHome(w, c);
           // a builder that has not reached the gate yet turns around on the plaza side
           v.walker = { ...w, mode: 'home', path: w.mode === 'toSite' && w.path.length >= 3 ? route.slice(2) : route };
         }
+      }
+      if (site) v.leaving = null;
+      else if (v.leaving) {
+        const c = compounds.get(v.leaving.wsId);
+        if (c && JSON.stringify(c) !== JSON.stringify(v.leaving.c)) {
+          if (v.walker.mode === 'home') v.walker = retarget(v.walker, c, null);
+          v.leaving = { wsId: v.leaving.wsId, c };
+        }
+        if (v.walker.mode !== 'home') v.leaving = null;
       }
       v.site = site;
     }
@@ -585,6 +606,8 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     return null;
   };
   let selected: Selection | null = null;
+  /** A committed move awaiting the store: glow, chip and ghost all stay on the new tile meanwhile. */
+  let pending: { m: Movable; tile: Tile } | null = null;
   let od: { m: Movable; grab: { x: number; y: number }; moved: boolean; target: Tile; valid: boolean } | null = null;
 
   const ARROW_DIRS = [{ x: 1, y: 0 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 0, y: -1 }];
@@ -615,7 +638,8 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
   };
   let overlayKey = '';
   const redrawOverlay = () => {
-    const m = movableOf(selected);
+    const m0 = movableOf(selected);
+    const m = m0 && pending && pending.m.entityId === m0.entityId ? { ...m0, tile: pending.tile } : m0;
     const dragging = !!(od && od.moved);
     const key = JSON.stringify([m && [m.target, m.tile, m.compound], dragging && od && [od.target, od.valid]]);
     if (key === overlayKey) return;
@@ -655,10 +679,11 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
   });
   /** While dragging, the object's sprite follows the snapped target tile. */
   const applyDragSprite = () => {
-    if (!od?.moved) return;
-    const rec = sprites.get(od.m.entityId);
+    const g = od?.moved ? { m: od.m, t: od.target } : pending ? { m: pending.m, t: pending.tile } : null;
+    if (!g) return;
+    const rec = sprites.get(g.m.entityId);
     if (!rec) return;
-    const p = iso(od.target.x + od.m.size, od.target.y + od.m.size);
+    const p = iso(g.t.x + g.m.size, g.t.y + g.m.size);
     rec.sprite.position.set(p.x, p.y);
     rec.sprite.zIndex = 10000;
     rec.sprite.alpha = 0.85;
@@ -721,6 +746,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       if (!od.moved) {
         if (Math.hypot(p.x - downAt.x, p.y - downAt.y) <= DRAG_PX) return;
         od.moved = true;
+        autoFit = false; // a deliberate edit: stop following the village rect
         canvas.style.cursor = 'grabbing';
       }
       const w = screenToWorld(cam, p.x, p.y), g = toGrid(w.x, w.y);
@@ -743,7 +769,12 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     const same = d.target.x === d.m.tile.x && d.target.y === d.m.tile.y;
     if (ev && d.valid && !same && opts.onMove) {
       // the sprite stays on the new tile until the store confirms; either way sync puts it where the store says
-      void opts.onMove(d.m.target, d.target).catch(() => false).finally(() => { if (!destroyed) endDragVisual(); });
+      pending = { m: d.m, tile: d.target };
+      // a rejection is reported by the store action (onError); either way the sprite ends where the store says
+      void opts.onMove(d.m.target, d.target).catch(() => false).finally(() => {
+        pending = null;
+        if (!destroyed) { endDragVisual(); redrawOverlay(); }
+      });
     } else {
       if (ev && !d.valid) opts.onBlockedDrop?.(d.target); // snap back immediately; Task 10 adds dust
       endDragVisual();

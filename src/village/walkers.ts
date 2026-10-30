@@ -62,6 +62,21 @@ export function routeHome(_from: Tile, c: Compound): Tile[] {
   return [centre(gateInside(c)), out, plazaPoint(out)];
 }
 
+/**
+ * The compound's house moved (so the gate and stand tile may have too): re-aim a walker that is at
+ * the site, walking to it, or walking home. `spot` is the site's structure (null when heading home).
+ */
+export function retarget(w: Walker, c: Compound, spot: Tile | null): Walker {
+  if (w.mode === 'atSite' && spot) {
+    const st = standTile(c, spot, c.house);
+    return { ...w, x: st.x, y: st.y, path: [] };
+  }
+  const keep = (route: Tile[]) => route.slice(Math.max(0, route.length - w.path.length));
+  if (w.mode === 'toSite' && spot && w.path.length) return { ...w, path: keep(routeToSite(w, c, spot)) };
+  if (w.mode === 'home' && w.path.length) return { ...w, path: keep(routeHome(w, c)) };
+  return w;
+}
+
 /** Advance `dt` seconds: walk the path; when idle with an empty path, rest then pick a new plaza target. */
 export function step(w: Walker, dt: number, rnd: () => number): Walker {
   let { x, y, face, mode, wait } = w;

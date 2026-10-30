@@ -46,7 +46,7 @@ function App() {
   const selected = st.selectedSessionId;
   return (
     <>
-    <VillageCanvas />
+    <VillageCanvas onError={(e) => setError(String(e))} />
     <div className="layout">
       <Sidebar onNewSession={(id) => { setFormFor(id); st.select(null); }} />
       <main className="main">

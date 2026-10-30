@@ -1,0 +1,168 @@
+import { useState } from 'react';
+import { ipc } from '../api/ipc';
+import { idleBuilders, useApp } from '../state/store';
+import type { AgentInfo, AgentKind, Builder } from '../api/types';
+import { CLASS_NAMES, classOf } from '../village/look';
+import BuilderPreview from './BuilderPreview';
+
+export const RECRUIT_NAMES = ['Ivy', 'Jax', 'Kai', 'Lu', 'Mo', 'Nia', 'Oz', 'Pip', 'Quin', 'Rex'];
+
+const q = (s: string) => `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+
+/** Display-only preview of the command that will be run. */
+export function commandPreview(
+  agent: AgentInfo, model?: string, effort?: string, task?: string, customCommand?: string,
+): string {
+  if (agent.kind === 'custom') {
+    return [customCommand?.trim() ?? '', task ? q(task) : ''].filter(Boolean).join(' ');
+  }
+  const parts: string[] = [agent.kind];
+  if (agent.kind === 'claude') parts.push('…');
+  if (model) parts.push('--model', model);
+  if (effort) parts.push('--effort', effort);
+  if (task) parts.push(q(task));
+  return parts.join(' ');
+}
+
+const RECRUIT = '__recruit__';
+const DEFAULT = '';
+
+function unusedName(builders: Builder[]): string {
+  const used = new Set(builders.map((b) => b.name.toLowerCase()));
+  return RECRUIT_NAMES.find((n) => !used.has(n.toLowerCase())) ?? '';
+}
+
+export default function NewSessionPicker({ workspaceId }: { workspaceId: string }) {
+  const workspaces = useApp((s) => s.workspaces);
+  const allBuilders = useApp((s) => s.builders);
+  const sessions = useApp((s) => s.sessions);
+  const agents = useApp((s) => s.agents);
+  const idle = idleBuilders({ builders: allBuilders, sessions });
+  const offered = agents.filter((a) => a.installed || a.kind === 'custom');
+
+  const [wsId, setWsId] = useState(workspaceId);
+  const [picked, setPicked] = useState<string | null>(null);
+  const [nameEdit, setNameEdit] = useState<string | null>(null);
+  const [kind, setKind] = useState<AgentKind>(offered[0]?.kind ?? 'custom');
+  const [model, setModel] = useState(DEFAULT);
+  const [effort, setEffort] = useState(DEFAULT);
+  const [command, setCommand] = useState('');
+  const [task, setTask] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  // Recruit is the default when nobody is idle.
+  const choice = picked !== null && (picked === RECRUIT || idle.some((b) => b.id === picked))
+    ? picked : idle[0]?.id ?? RECRUIT;
+  const recruiting = choice === RECRUIT;
+  const name = nameEdit ?? unusedName(allBuilders);
+  const existing = idle.find((b) => b.id === choice);
+  const agent = agents.find((a) => a.kind === (recruiting ? kind : existing?.agent));
+  const isCustom = agent?.kind === 'custom';
+  const pModel = (recruiting ? model : existing?.model) || null;
+  const pEffort = (recruiting ? effort : existing?.effort) || null;
+  const pCmd = recruiting ? command : existing?.customCommand ?? '';
+  const preview = agent ? commandPreview(agent, pModel ?? undefined, pEffort ?? undefined, task.trim() || undefined, pCmd) : '';
+
+  async function start() {
+    const st = useApp.getState();
+    setError(null);
+    let builderId = choice;
+    try {
+      if (recruiting) {
+        if (!name.trim()) return setError('Name your builder');
+        if (isCustom && !command.trim()) return setError('Enter the custom command');
+        setBusy(true);
+        // the new builder is a valid roster entry even if the start below fails
+        const b = await ipc.createBuilder(name.trim(), kind, model.trim() || null, effort.trim() || null, isCustom ? command.trim() : null);
+        st.addBuilder(b);
+        setPicked(b.id);
+        builderId = b.id;
+      } else if (!existing) {
+        return setError('Choose a builder');
+      }
+      setBusy(true);
+      const s = await ipc.startSession(wsId, builderId, task.trim());
+      st.upsertSession(s);
+      await st.village.ensureSpot(s.id);
+      st.setSelection({ kind: 'session', id: s.id });
+    } catch (e) {
+      st.setError(String(e));
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const select = (list: string[], value: string, set: (v: string) => void, label: string) => (
+    <label className="sp-field">{label}
+      <select value={value} onChange={(e) => set(e.target.value)}>
+        <option value={DEFAULT}>default</option>
+        {list.map((m) => <option key={m} value={m}>{m}</option>)}
+      </select>
+    </label>
+  );
+
+  const tier = agent ? `${CLASS_NAMES[classOf(agent.kind, pModel)]}` : '';
+
+  return (
+    <form className="new-session" onSubmit={(e) => { e.preventDefault(); void start(); }}>
+      <label className="sp-field">Workspace
+        <select value={wsId} onChange={(e) => setWsId(e.target.value)}>
+          {workspaces.filter((w) => !w.missing).map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+        </select>
+      </label>
+      <label className="sp-field">Task (optional)
+        <textarea rows={3} value={task} onChange={(e) => setTask(e.target.value)} />
+      </label>
+
+      <div className="sp-sec">Builder</div>
+      {idle.length > 0 && (
+        <div className="picker-list" data-testid="idle-list">
+          {idle.map((b) => (
+            <button key={b.id} type="button" className={`sp-row${choice === b.id ? ' picked' : ''}`} onClick={() => setPicked(b.id)}>
+              <span className="sp-rowtext">
+                <span className="sp-t">{b.name}</span>
+                <span className="sp-d">{CLASS_NAMES[classOf(b.agent, b.model)]} · {b.agent}</span>
+              </span>
+            </button>
+          ))}
+          <button type="button" className={`sp-row${recruiting ? ' picked' : ''}`} onClick={() => setPicked(RECRUIT)}>
+            <span className="sp-t">Recruit new</span>
+          </button>
+        </div>
+      )}
+      {recruiting && (
+        <>
+          <label className="sp-field">Name <input value={name} onChange={(e) => setNameEdit(e.target.value)} /></label>
+          <label className="sp-field">Agent
+            <select value={kind} onChange={(e) => { setKind(e.target.value as AgentKind); setModel(DEFAULT); setEffort(DEFAULT); }}>
+              {offered.map((a) => <option key={a.kind} value={a.kind}>{a.label}</option>)}
+            </select>
+          </label>
+          {isCustom ? (
+            <>
+              <label className="sp-field">Model (optional) <input value={model} onChange={(e) => setModel(e.target.value)} /></label>
+              <label className="sp-field">Effort (optional) <input value={effort} onChange={(e) => setEffort(e.target.value)} /></label>
+              <label className="sp-field">Command <input value={command} onChange={(e) => setCommand(e.target.value)} /></label>
+            </>
+          ) : (
+            <>
+              {select(agent?.models ?? [], model, setModel, 'Model')}
+              {select(agent?.efforts ?? [], effort, setEffort, 'Effort')}
+            </>
+          )}
+        </>
+      )}
+      {agent && (
+        <div className="picker-preview">
+          <BuilderPreview agent={agent.kind} model={pModel} effort={pEffort} />
+          <span className="sp-d">{tier}</span>
+        </div>
+      )}
+      <code className="preview">{preview}</code>
+      {error && <div className="panel-warn">{error}</div>}
+      <button type="submit" className="hud-btn sm" disabled={busy}>Start</button>
+    </form>
+  );
+}

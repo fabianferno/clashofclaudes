@@ -42,3 +42,20 @@
 .sp-body .new-session { max-width: none; margin-top: 10px; }
 .toasts { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 6; display: flex; flex-direction: column; gap: 6px; align-items: center; pointer-events: none; }
 .toasts > * { pointer-events: auto; background: rgba(20,12,6,.8); border: 3px solid var(--hud-out); border-radius: 12px; padding: 4px 14px; font-family: 'Lilita One', sans-serif; }
+.session-panel { gap: 6px; }
+.session-panel .panel-head { gap: 8px; font-size: 13px; font-weight: 700; color: #2b2018; }
+.session-tier { flex-basis: 100%; }
+.session-panel .chip { font: 700 11px ui-monospace, monospace; background: var(--sp-parch2); border: 2px solid #c8b083; border-radius: 99px; padding: 1px 8px; }
+.session-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; font-size: 13px; font-weight: 700; color: var(--sp-ink-soft); }
+.session-panel .terminal-wrap { flex: 1; min-height: 0; }
+.terminal-placeholder { flex: 1; display: grid; place-items: center; background: #1d130b; color: #e7d5ad; border-radius: 10px; font-weight: 700; }
+.popout { position: fixed; inset: 0; z-index: 8; display: flex; flex-direction: column; background: #14100c; }
+.popout-head { display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: linear-gradient(#5a4632, #3d2c1c); border-bottom: 4px solid var(--hud-out); }
+.popout-head h2 { margin: 0; flex: 1; font-weight: 400; font-size: 22px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.popout-body { flex: 1; min-height: 0; display: flex; padding: 8px; }
+.popout-body .terminal-wrap { flex: 1; min-height: 0; }
+.picker-list { margin-bottom: 8px; }
+.sp-row.picked { border-color: #4fb82a; background: #f1ffe0; }
+.picker-preview { display: flex; align-items: center; gap: 10px; margin: 6px 0; background: var(--sp-parch2); border: 3px solid #c8b083; border-radius: 12px; padding: 4px 10px; }
+.new-session .preview { display: block; margin: 6px 0 10px; padding: 6px 8px; background: #2b2018; color: #f3e7cc; border-radius: 8px; font-size: 12px; word-break: break-all; }
+.new-session textarea { border: 2px solid #c8b083; border-radius: 8px; padding: 5px 8px; background: #fff8e8; font: 600 13px system-ui; color: #2b2018; resize: vertical; }

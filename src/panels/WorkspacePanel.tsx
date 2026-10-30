@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ipc } from '../api/ipc';
-import NewSessionForm from '../components/NewSessionForm';
-import { idleBuilders, sessionsByWorkspace, useApp } from '../state/store';
+import NewSessionPicker from './NewSessionPicker';
+import { sessionsByWorkspace, useApp } from '../state/store';
 import { xpNeed } from '../village/look';
 import { StateTag } from './tags';
 
@@ -9,7 +9,6 @@ export default function WorkspacePanel({ workspaceId }: { workspaceId: string })
   const ws = useApp((s) => s.workspaces.find((w) => w.id === workspaceId));
   const sessionMap = useApp((s) => s.sessions);
   const builders = useApp((s) => s.builders);
-  const agents = useApp((s) => s.agents);
   const [form, setForm] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -31,13 +30,7 @@ export default function WorkspacePanel({ workspaceId }: { workspaceId: string })
     return (
       <>
         <button className="hud-btn grey sm" onClick={() => setForm(false)}>‹ Back</button>
-        <NewSessionForm
-          key={workspaceId}
-          workspaceId={workspaceId}
-          agents={agents}
-          builders={idleBuilders({ builders, sessions: sessionMap })}
-          onStarted={(s) => { st.upsertSession(s); st.setSelection({ kind: 'session', id: s.id }); }}
-        />
+        <NewSessionPicker key={workspaceId} workspaceId={workspaceId} />
       </>
     );
   }

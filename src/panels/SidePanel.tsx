@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { useApp, type Selection } from '../state/store';
 import { CLASS_NAMES, classOf } from '../village/look';
 import { PANEL_W } from '../village/camera';
-import SessionPanel from '../components/SessionPanel';
+import SessionPanel from './SessionPanel';
 import BuilderPanel from './BuilderPanel';
 import TownHallPanel from './TownHallPanel';
 import WorkspacePanel from './WorkspacePanel';

@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { ipc } from '../api/ipc';
 import { stateLabel, useApp } from '../state/store';
 import type { CloseOutcome, Review } from '../api/types';
-import TerminalView from './TerminalView';
+import TerminalView from '../components/TerminalView';
+import { CLASS_NAMES, GEAR_NAMES, classOf, gearOf } from '../village/look';
+import PopOutTerminal from './PopOutTerminal';
 
 function elapsed(from: number, now: number): string {
   const s = Math.max(0, Math.floor((now - from) / 1000));
@@ -18,12 +20,13 @@ export default function SessionPanel({ sessionId, onClosed }: { sessionId: strin
   const [error, setError] = useState<string | null>(null);
   const [review, setReview] = useState<Review | null>(null);
   const [answering, setAnswering] = useState(false);
+  const [popped, setPopped] = useState(false);
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
-  useEffect(() => { setReview(null); setError(null); }, [sessionId]);
+  useEffect(() => { setReview(null); setError(null); setPopped(false); }, [sessionId]);
 
   if (!session) return null;
   const builder = session.kind.kind === 'agent' ? builders.find((b) => b.id === (session.kind as { builderId: string }).builderId) : undefined;
@@ -47,33 +50,44 @@ export default function SessionPanel({ sessionId, onClosed }: { sessionId: strin
     } catch (e) { setError(String(e)); }
   }
 
+  const title = builder ? `${builder.name} · ${session.task ?? 'session'}` : 'Terminal';
+  const tier = builder
+    ? `${builder.model ? `${builder.model} · ` : ''}${builder.effort ? `${builder.effort} ` : ''}→ ${CLASS_NAMES[classOf(builder.agent, builder.model)]} with ${GEAR_NAMES[gearOf(builder.effort)].toLowerCase()}`
+    : null;
+  const readOnly = st === 'ended';
+
   return (
-    <section className="panel">
+    <section className="panel session-panel">
       <header className="panel-head">
         <strong>{builder?.name ?? 'Terminal'}</strong>
-        {builder && <span>{agent?.label ?? builder.agent}{builder.model ? ` · ${builder.model}` : ''}{builder.effort ? ` · ${builder.effort}` : ''}</span>}
+        {builder && <span>{agent?.label ?? builder.agent}</span>}
         <span className={`state state-${st}`}>{stateLabel(session.state)}</span>
         {session.kind.kind === 'agent' && <span>{session.steps} steps</span>}
         <span>{elapsed(session.startedAt, now)}</span>
-        <span className="spacer" />
+        {session.worktree?.branch && <span className="chip">{session.worktree.branch}</span>}
+        {tier && <div className="sp-d session-tier">{tier}</div>}
+      </header>
+      <div className="session-actions">
         {session.state.kind === 'needsYou' && (agent?.canApprove && session.awaitingDecision
           ? <>
-              <button disabled={answering} onClick={() => answer(() => ipc.approve(sessionId))}>Allow</button>
-              <button disabled={answering} onClick={() => answer(() => ipc.deny(sessionId))}>Deny</button>
+              <button className="hud-btn sm" disabled={answering} onClick={() => answer(() => ipc.approve(sessionId))}>Allow</button>
+              <button className="hud-btn red sm" disabled={answering} onClick={() => answer(() => ipc.deny(sessionId))}>Deny</button>
             </>
-          : <em>{agent?.canApprove ? session.state.reason : 'Answer in the terminal below'}</em>)}
+          : <><em>Answer in the terminal</em>{agent?.canApprove && session.state.reason && <span className="sp-d">{session.state.reason}</span>}</>)}
         {st === 'finished' && (
-          <button onClick={async () => { setError(null); try { setReview(await ipc.reviewSession(sessionId)); } catch (e) { setError(String(e)); } }}>Review</button>
+          <button className="hud-btn sm" onClick={async () => { setError(null); try { setReview(await ipc.reviewSession(sessionId)); } catch (e) { setError(String(e)); } }}>Review</button>
         )}
-        <button onClick={() => run(ipc.stopSession(sessionId))}>Stop</button>
-        <button onClick={close}>Close</button>
-      </header>
-      {error && <div className="error">{error}</div>}
+        <button className="hud-btn grey sm" onClick={() => run(ipc.stopSession(sessionId))}>Stop</button>
+        <button className="hud-btn grey sm" onClick={close}>Close</button>
+        <button className="hud-btn blue sm" onClick={() => setPopped(true)}>Pop out</button>
+      </div>
+      {error && <div className="panel-warn">{error}</div>}
       {review && (
-        <div className="review">
-          {!review.isGit ? <div>not a git folder</div> : (
+        <div className="review sp-box">
+          {!review.isGit ? <div>No git history; open the folder to review</div> : (
             <>
               {review.branch && <div>Branch: {review.branch}</div>}
+              {review.files.length === 0 && review.untracked.length === 0 && <div>No changes since this session started</div>}
               <ul>{review.files.map((f) => <li key={f.path}>{f.path} +{f.added} −{f.removed}</li>)}</ul>
               {review.untracked.length > 0 && (
                 <div>Untracked:<ul>{review.untracked.map((p) => <li key={p}>{p}</li>)}</ul></div>
@@ -83,7 +97,14 @@ export default function SessionPanel({ sessionId, onClosed }: { sessionId: strin
           )}
         </div>
       )}
-      <TerminalView key={sessionId} sessionId={sessionId} readOnly={st === 'ended'} />
+      {popped ? (
+        <>
+          <div className="terminal-placeholder">Terminal popped out — Esc to return</div>
+          <PopOutTerminal sessionId={sessionId} readOnly={readOnly} title={title} onClose={() => setPopped(false)} />
+        </>
+      ) : (
+        <TerminalView key={sessionId} sessionId={sessionId} readOnly={readOnly} />
+      )}
     </section>
   );
 }

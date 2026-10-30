@@ -10,8 +10,8 @@ const ipc = vi.hoisted(() => ({
   openInEditor: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock('../api/ipc', () => ({ ipc }));
-vi.mock('../components/SessionPanel', () => ({ default: () => null }));
-vi.mock('../components/NewSessionForm', () => ({ default: () => null }));
+vi.mock('./SessionPanel', () => ({ default: () => null }));
+vi.mock('./NewSessionPicker', () => ({ default: () => null }));
 import { useApp } from '../state/store';
 import SidePanel from './SidePanel';
 import WorkspacePanel from './WorkspacePanel';

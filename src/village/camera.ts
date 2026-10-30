@@ -74,3 +74,6 @@ export function pxRectOfTiles(r: Rect): PxRect {
 }
 
 export const pxRectOfCompound = (c: Compound): PxRect => pxRectOfTiles(wallRect(c));
+
+/** The camera after dragging by (dx, dy) screen px from `base` (the camera at press time). */
+export const dragCam = (base: Cam, dx: number, dy: number): Cam => ({ ...base, x: base.x + dx, y: base.y + dy });

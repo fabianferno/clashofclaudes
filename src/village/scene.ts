@@ -10,7 +10,7 @@ import {
 import { getTexture, prepareArt } from './textures';
 import type { Selection } from '../state/store';
 import {
-  PANEL_W, ZMAX, ease, fitRect, keepVisible, pxRectOfCompound, pxRectOfTiles, screenToWorld, worldToScreen, zoomAt, type Cam,
+  PANEL_W, ZMAX, dragCam, ease, fitRect, keepVisible, pxRectOfCompound, pxRectOfTiles, screenToWorld, worldToScreen, zoomAt, type Cam,
 } from './camera';
 import { clickPoint, compoundAt, hitTest } from './input';
 
@@ -575,6 +575,9 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
   const onDown = (ev: PointerEvent) => {
     if (ev.button !== 0) return;
     const p = localPoint(ev);
+    // a press takes over from any ease in flight: drag from where the camera is now, never from a stale or target pose
+    camTarget = null;
+    autoFit = false;
     down = { id: ev.pointerId, x: p.x, y: p.y, cam: { ...cam }, moved: false };
     try { canvas.setPointerCapture(ev.pointerId); } catch { /* synthetic events have no live pointer */ }
   };
@@ -587,7 +590,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       autoFit = false;
       canvas.style.cursor = 'grabbing';
     }
-    if (down.moved) jumpTo({ ...down.cam, x: down.cam.x + dx, y: down.cam.y + dy });
+    if (down.moved) jumpTo(dragCam(down.cam, dx, dy));
   };
   const onUp = (ev: PointerEvent) => {
     if (!down || ev.pointerId !== down.id) return;

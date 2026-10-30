@@ -30,7 +30,12 @@ export const useApp = create<AppState>((set) => ({
       builders: s.builders,
       sessions: Object.fromEntries(s.sessions.map((x) => [x.id, x])),
     }),
-  upsertSession: (s) => set((st) => ({ sessions: { ...st.sessions, [s.id]: s } })),
+  upsertSession: (s) =>
+    set((st) => {
+      const cur = st.sessions[s.id];
+      if (cur && s.rev < cur.rev) return st; // stale: a newer update already landed
+      return { sessions: { ...st.sessions, [s.id]: s } };
+    }),
   removeSession: (id) =>
     set((st) => {
       const { [id]: _removed, ...rest } = st.sessions;

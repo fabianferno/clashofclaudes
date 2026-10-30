@@ -11,7 +11,7 @@
 //! `cwd` and `hook_event_name`. `Notification` carries `notification_type`
 //! (`permission_prompt` | `idle_prompt` observed) and a `message`.
 //! Fixture paths: `/Users/<name>/` was rewritten to `/home/user/` to avoid leaking a username.
-use super::{AgentAdapter, Detection, LaunchRequest};
+use super::{AgentAdapter, Detection, LaunchRequest, ScreenPrompt};
 use crate::model::AgentKind;
 use crate::platform::which;
 use crate::pty::LaunchSpec;
@@ -140,6 +140,12 @@ impl AgentAdapter for ClaudeAdapter {
     }
     fn deny_keys(&self) -> Option<&'static [u8]> {
         Some(b"\x1b")
+    }
+    fn screen_prompts(&self) -> Vec<ScreenPrompt> {
+        // First-run trust menu; hooks stay silent until it is answered. The default selection
+        // is "No, exit": approve moves Down to "Yes, I trust this folder" and presses Enter;
+        // deny presses Enter on "No, exit", so Claude quits and the session ends.
+        vec![ScreenPrompt { needle: "YesItrustthisfolder", reason: "Trust this folder?", approve: b"\x1b[B\r", deny: b"\r" }]
     }
 }
 

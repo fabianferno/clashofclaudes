@@ -46,6 +46,8 @@ export interface SessionInfo {
   commandPreview: string;
   /** A permission prompt can be answered with approve/deny right now. */
   awaitingDecision: boolean;
+  /** Strictly increasing per session; the store drops updates older than the one it holds. */
+  rev: number;
 }
 
 export interface ListState {

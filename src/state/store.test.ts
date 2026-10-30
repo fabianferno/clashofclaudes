@@ -3,7 +3,7 @@ import type { Builder, SessionInfo, SessionState } from '../api/types';
 
 const sess = (id: string, ws: string, builderId?: string, startedAt = 0, state: SessionState = { kind: 'working' }): SessionInfo => ({
   id, workspaceId: ws, kind: builderId ? { kind: 'agent', builderId } : { kind: 'terminal' },
-  task: null, state, steps: 0, startedAt, lastOutputAt: 0, reachedFinished: false, worktree: null, commandPreview: '', awaitingDecision: false,
+  task: null, state, steps: 0, startedAt, lastOutputAt: 0, reachedFinished: false, worktree: null, commandPreview: '', awaitingDecision: false, rev: 1,
 });
 const bld = (id: string): Builder => ({ id, name: id, agent: 'claude', model: null, effort: null, customCommand: null });
 
@@ -52,4 +52,13 @@ test('updateWorkspace replaces the matching workspace', () => {
   useApp.getState().addWorkspace(w('w2'));
   useApp.getState().updateWorkspace(w('w2', true));
   expect(useApp.getState().workspaces.map((x) => [x.id, x.missing])).toEqual([['w1', false], ['w2', true]]);
+});
+
+test('stale_rev_is_ignored', () => {
+  useApp.getState().upsertSession({ ...sess('s1', 'w1'), rev: 5, steps: 5 });
+  useApp.getState().upsertSession({ ...sess('s1', 'w1'), rev: 4, steps: 4 });
+  expect(useApp.getState().sessions.s1.rev).toBe(5);
+  expect(useApp.getState().sessions.s1.steps).toBe(5);
+  useApp.getState().upsertSession({ ...sess('s1', 'w1'), rev: 5, steps: 6 });
+  expect(useApp.getState().sessions.s1.steps).toBe(6);
 });

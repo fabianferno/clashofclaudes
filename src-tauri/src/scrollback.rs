@@ -21,6 +21,10 @@ impl Scrollback {
     pub fn snapshot(&self) -> Vec<u8> {
         self.buf.iter().copied().collect()
     }
+    /// The newest `n` bytes (fewer if less is stored).
+    pub fn tail(&self, n: usize) -> Vec<u8> {
+        self.buf.range(self.buf.len().saturating_sub(n)..).copied().collect()
+    }
     #[cfg(test)]
     pub fn len(&self) -> usize {
         self.buf.len()

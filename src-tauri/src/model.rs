@@ -94,4 +94,25 @@ pub struct SessionInfo {
     /// A permission prompt is open and can be answered with approve/deny. False after an
     /// answer until the agent asks again.
     pub awaiting_decision: bool,
+    /// Strictly increasing per session across every emitted update (first is 1); lets the
+    /// frontend drop an update that arrives after a newer one.
+    pub rev: u64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn serde_shapes_are_stable() {
+        let v = |x: &dyn Jsonable| x.json();
+        assert_eq!(v(&SessionState::NeedsYou { reason: "x".into() }), json!({"kind":"needsYou","reason":"x"}));
+        assert_eq!(v(&SessionState::Ended { exit_code: Some(3) }), json!({"kind":"ended","exitCode":3}));
+        assert_eq!(v(&SessionKind::Agent { builder_id: "b".into() }), json!({"kind":"agent","builderId":"b"}));
+        assert_eq!(v(&SessionKind::Terminal), json!({"kind":"terminal"}));
+    }
+
+    trait Jsonable { fn json(&self) -> serde_json::Value; }
+    impl<T: Serialize> Jsonable for T { fn json(&self) -> serde_json::Value { serde_json::to_value(self).unwrap() } }
 }

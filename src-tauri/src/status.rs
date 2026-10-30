@@ -68,6 +68,39 @@ pub fn next_state(state: &SessionState, ev: &StatusEvent, policy: &StatusPolicy)
     }
 }
 
+/// Terminal text with ANSI CSI/OSC sequences removed and everything but letters/digits dropped
+/// (whitespace and punctuation), so matching survives cursor-move sequences that stand in for
+/// spaces.
+pub fn screen_text(bytes: &[u8]) -> String {
+    let text = String::from_utf8_lossy(bytes);
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '\x1b' => match chars.next() {
+                Some('[') => {
+                    for n in chars.by_ref() {
+                        if ('\u{40}'..='\u{7e}').contains(&n) {
+                            break;
+                        }
+                    }
+                }
+                Some(']') => {
+                    for n in chars.by_ref() {
+                        if n == '\x07' || n == '\\' {
+                            break;
+                        }
+                    }
+                }
+                _ => {}
+            },
+            c if c.is_alphanumeric() => out.push(c),
+            _ => {}
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -92,4 +125,7 @@ mod tests {
         assert_eq!(next_state(&Starting, &Exited{code:None}, &term()), Ended{exit_code:None});
     }
     #[test] fn plain_user_input_resumes_from_finished() { assert_eq!(next_state(&Finished, &UserInput, &plain()), Working); }
+    #[test] fn screen_text_strips_ansi_and_whitespace() {
+        assert_eq!(screen_text(b"\x1b[1m Yes,\x1b[0m I  trust\x1b[1C this\r\nfolder\x1b]0;title\x07!"), "YesItrustthisfolder");
+    }
 }

@@ -1,11 +1,11 @@
 //! SessionManager: owns every session's PTY, scrollback and status.
-use crate::adapters::{terminal_launch, terminal_policy, AdapterRegistry, AgentAdapter, LaunchRequest};
+use crate::adapters::{terminal_launch, terminal_policy, AdapterRegistry, AgentAdapter, LaunchRequest, ScreenPrompt};
 use crate::git::{self, GitBaseline, Review};
 use crate::hooks::HookServer;
 use crate::model::{Builder, SessionInfo, SessionKind, SessionState, Workspace, WorktreeInfo};
 use crate::pty::{LaunchSpec, PtyHandle};
 use crate::scrollback::{Scrollback, SCROLLBACK_CAP};
-use crate::status::{next_state, StatusEvent, StatusPolicy};
+use crate::status::{next_state, screen_text, StatusEvent, StatusPolicy};
 use anyhow::{anyhow, bail, Result};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -40,6 +40,8 @@ const INITIAL_ROWS: u16 = 32;
 /// At most one `Output` event per session per this interval.
 const FLUSH_EVERY: Duration = Duration::from_millis(16);
 const TICK_EVERY: Duration = Duration::from_secs(1);
+/// Screen prompts are looked for in this much of the newest output.
+const PROMPT_WINDOW: usize = 8 * 1024;
 /// Shown after Deny: the agent now waits for typed instructions.
 pub const DENIED_REASON: &str = "Denied — tell Claude what to do in the terminal";
 
@@ -69,6 +71,13 @@ struct SessionEntry {
     quiet_since_ms: i64,
     /// Last hook cwd sent for worktree detection (avoids re-running git per hook).
     checked_cwd: Option<PathBuf>,
+    /// The adapter's screen prompts (empty for terminals and most agents: no scanning then).
+    prompts: Vec<ScreenPrompt>,
+    /// The prompt currently on screen; set while it is armed (and until it leaves the window).
+    active_prompt: Option<ScreenPrompt>,
+    /// Needle of the prompt seen in the window last time, so one that stays visible after an
+    /// answer (old bytes linger in the window) is not armed again.
+    prompt_seen: Option<&'static str>,
 }
 
 impl SessionEntry {
@@ -92,11 +101,40 @@ impl SessionEntry {
             StatusEvent::PermissionRequested { .. } => needs_you,
             _ => self.info.awaiting_decision && needs_you,
         };
+        if matches!(ev, StatusEvent::PermissionRequested { .. }) || !awaiting {
+            self.active_prompt = None; // a hook prompt uses the adapter's normal keys
+        }
         if awaiting != self.info.awaiting_decision {
             self.info.awaiting_decision = awaiting;
             changed = true;
         }
         changed
+    }
+
+    /// Looks for the adapter's screen prompts in the newest output; returns true when `info`
+    /// changed. Cheap for sessions without prompts (no work at all).
+    fn scan_prompts(&mut self, now: i64) -> bool {
+        if self.prompts.is_empty() {
+            return false;
+        }
+        let text = screen_text(&self.scrollback.tail(PROMPT_WINDOW));
+        let found = self.prompts.iter().find(|p| text.contains(p.needle)).copied();
+        let was_seen = std::mem::replace(&mut self.prompt_seen, found.map(|p| p.needle));
+        match found {
+            Some(p) if was_seen != Some(p.needle) && self.is_live() && !matches!(self.info.state, SessionState::NeedsYou { .. }) => {
+                self.info.state = SessionState::NeedsYou { reason: p.reason.into() };
+                self.info.awaiting_decision = true;
+                self.active_prompt = Some(p);
+                self.quiet_since_ms = now;
+                true
+            }
+            Some(_) => false,
+            None => {
+                // The prompt is gone: drop it; hooks and output move the state on from here.
+                let was_active = self.active_prompt.take().is_some();
+                was_active && std::mem::take(&mut self.info.awaiting_decision)
+            }
+        }
     }
 
     /// Flow control: at most one un-acked `Output` per session, so the webview (not just this
@@ -186,7 +224,9 @@ impl SessionManager {
         self.sessions.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    fn send_updated(&self, e: &SessionEntry) {
+    /// Stamps the next `rev` and queues the update; every emitted info goes through here.
+    fn send_updated(&self, e: &mut SessionEntry) {
+        e.info.rev += 1;
         let _ = self.tx.send(ManagerEvent::Updated(e.info.clone()));
     }
 
@@ -271,6 +311,7 @@ impl SessionManager {
             worktree: None,
             command_preview: command_preview(&spec),
             awaiting_decision: false,
+            rev: 0,
         };
         {
             // Check and insert atomically so two starts can't share a builder.
@@ -285,7 +326,6 @@ impl SessionManager {
                 exited: false,
                 stop_requested: false,
                 scrollback: Scrollback::new(SCROLLBACK_CAP),
-                adapter,
                 policy,
                 baseline,
                 pending: VecDeque::new(),
@@ -296,6 +336,10 @@ impl SessionManager {
                 last_flush: Instant::now(),
                 quiet_since_ms: now,
                 checked_cwd: None,
+                prompts: adapter.as_ref().map(|a| a.screen_prompts()).unwrap_or_default(),
+                active_prompt: None,
+                prompt_seen: None,
+                adapter,
             });
         }
         // The entry exists before the child does, so early output and exit find it.
@@ -350,7 +394,8 @@ impl SessionManager {
         e.scrollback.push(data);
         e.info.last_output_at = now;
         e.quiet_since_ms = now;
-        if e.apply(&StatusEvent::Output, now) {
+        let changed = e.apply(&StatusEvent::Output, now);
+        if e.scan_prompts(now) || changed {
             self.send_updated(e);
         }
         e.out_total += data.len() as u64;
@@ -456,12 +501,16 @@ impl SessionManager {
 
     pub fn write(&self, id: &str, data: &[u8]) -> Result<()> {
         self.running_pty(id)?.write(data)?;
-        if data.contains(&b'\r') {
-            let mut g = self.lock();
-            if let Some(e) = g.get_mut(id) {
-                if e.apply(&StatusEvent::UserInput, now_ms()) {
-                    self.send_updated(e);
-                }
+        let mut g = self.lock();
+        if let Some(e) = g.get_mut(id) {
+            let mut changed = data.contains(&b'\r') && e.apply(&StatusEvent::UserInput, now_ms());
+            // Typing means the user is answering in the terminal; the panel stops offering Allow/Deny.
+            if std::mem::take(&mut e.info.awaiting_decision) {
+                e.active_prompt = None;
+                changed = true;
+            }
+            if changed {
+                self.send_updated(e);
             }
         }
         Ok(())
@@ -482,31 +531,38 @@ impl SessionManager {
     /// Answers the open permission prompt with yes; the session reads as `Working` at once
     /// (the tool runs with no further hook until it finishes).
     pub fn approve(&self, id: &str) -> Result<()> {
-        self.answer(id, |a| a.approve_keys(), SessionState::Working)
+        self.answer(id, true)
     }
 
     /// Answers the open permission prompt with no. The agent then waits for typed
     /// instructions and no hook fires, so the session stays `NeedsYou` with `DENIED_REASON`.
     pub fn deny(&self, id: &str) -> Result<()> {
-        self.answer(id, |a| a.deny_keys(), SessionState::NeedsYou { reason: DENIED_REASON.into() })
+        self.answer(id, false)
     }
 
     /// One answer per prompt: a second approve/deny errs until a new `PermissionRequested`.
-    fn answer(&self, id: &str, pick: fn(&dyn AgentAdapter) -> Option<&'static [u8]>, then: SessionState) -> Result<()> {
+    fn answer(&self, id: &str, approve: bool) -> Result<()> {
         let mut g = self.lock();
         let e = g.get_mut(id).ok_or_else(|| anyhow!("unknown session {id}"))?;
-        let keys = e
-            .adapter
-            .as_deref()
-            .and_then(pick)
-            .ok_or_else(|| anyhow!("this agent can't be answered from the app; open the terminal"))?;
+        // A screen prompt (e.g. the trust menu) has its own keys; otherwise the adapter's.
+        let keys = match (&e.active_prompt, e.adapter.as_deref()) {
+            (Some(p), _) => Some(if approve { p.approve } else { p.deny }),
+            (None, Some(a)) => if approve { a.approve_keys() } else { a.deny_keys() },
+            (None, None) => None,
+        }
+        .ok_or_else(|| anyhow!("this agent can't be answered from the app; open the terminal"))?;
         if !e.info.awaiting_decision || !matches!(e.info.state, SessionState::NeedsYou { .. }) {
             bail!("session is not waiting for approval");
         }
         let pty = e.pty.clone().ok_or_else(|| anyhow!("session is not running"))?;
         pty.write(keys)?; // only enqueues, so it is fine under the lock
         e.info.awaiting_decision = false;
-        e.info.state = then;
+        let screen_prompt = e.active_prompt.take().is_some();
+        if approve {
+            e.info.state = SessionState::Working;
+        } else if !screen_prompt {
+            e.info.state = SessionState::NeedsYou { reason: DENIED_REASON.into() };
+        } // denying a screen prompt (trust menu) exits the agent: the exit moves the state on
         e.quiet_since_ms = now_ms();
         self.send_updated(e);
         Ok(())
@@ -1117,6 +1173,87 @@ mod tests {
         let t = fx.mgr.start_with_spec(&fx.ws, &claude("b2"), sleeper(&fx), Arc::new(ClaudeAdapter)).unwrap();
         assert!(fx.mgr.review(&s.id).unwrap().other_sessions_active);
         fx.mgr.close(&t.id).unwrap();
+    }
+
+    /// Claude's launch/policy/prompts, but launched through an injected spec.
+    struct PromptAdapter;
+    impl AgentAdapter for PromptAdapter {
+        fn kind(&self) -> AgentKind { AgentKind::Claude }
+        fn label(&self) -> &'static str { "prompt-test" }
+        fn detect(&self) -> crate::adapters::Detection { ClaudeAdapter.detect() }
+        fn models(&self) -> Vec<String> { vec![] }
+        fn efforts(&self) -> Vec<String> { vec![] }
+        fn launch(&self, _: &LaunchRequest) -> Result<LaunchSpec> { unreachable!() }
+        fn policy(&self) -> StatusPolicy { ClaudeAdapter.policy() }
+        fn approve_keys(&self) -> Option<&'static [u8]> { ClaudeAdapter.approve_keys() }
+        fn deny_keys(&self) -> Option<&'static [u8]> { ClaudeAdapter.deny_keys() }
+        fn screen_prompts(&self) -> Vec<crate::adapters::ScreenPrompt> { ClaudeAdapter.screen_prompts() }
+    }
+
+    fn sh(fx: &Fx, script: &str) -> LaunchSpec {
+        LaunchSpec { program: "/bin/sh".into(), args: vec!["-c".into(), script.into()], env: vec![], cwd: fx.ws.path.clone() }
+    }
+
+    const TRUST_PRINT: &str = r"printf '\033[1m Yes,\033[0m I  trust\033[1C this folder'";
+
+    #[test]
+    fn rev_increments_on_each_update() {
+        let fx = fixture();
+        let s = fx.mgr.start_with_spec(&fx.ws, &claude("b1"), sh(&fx, "printf a; sleep 0.2; exit 3"), Arc::new(ClaudeAdapter)).unwrap();
+        assert_eq!(s.rev, 1, "the first emitted info starts at 1");
+        fx.mgr.on_hook(&s.id, fixture_json("post_tool_use.json"));
+        fx.mgr.on_hook(&s.id, fixture_json("notification_permission.json"));
+        fx.mgr.write(&s.id, b"x").ok();
+        assert!(wait_until(|| matches!(state(&fx, &s.id), SessionState::Stuck { .. })));
+        assert!(wait_until(|| last_update(&fx, &s.id).is_some_and(|i| i.state == info(&fx, &s.id).state)));
+        let revs: Vec<u64> = fx.events.lock().unwrap().iter().filter_map(|e| match e {
+            ManagerEvent::Updated(i) if i.id == s.id => Some(i.rev),
+            _ => None,
+        }).collect();
+        assert!(revs.len() >= 4, "{revs:?}");
+        assert_eq!(revs[0], 1);
+        assert!(revs.windows(2).all(|w| w[0] < w[1]), "{revs:?}");
+        assert_eq!(info(&fx, &s.id).rev, *revs.last().unwrap());
+    }
+
+    #[test]
+    fn trust_screen_prompt_goes_needs_you() {
+        let fx = fixture();
+        let s = fx.mgr.start_with_spec(&fx.ws, &claude("b1"), sh(&fx, &format!("{TRUST_PRINT}; sleep 5")), Arc::new(PromptAdapter)).unwrap();
+        assert!(wait_until(|| state(&fx, &s.id) == SessionState::NeedsYou { reason: "Trust this folder?".into() }));
+        assert!(info(&fx, &s.id).awaiting_decision);
+        assert!(wait_until(|| last_update(&fx, &s.id).is_some_and(|i| i.awaiting_decision)), "update emitted");
+    }
+
+    #[test]
+    fn trust_prompt_approve_sends_down_enter() {
+        let fx = fixture();
+        let out = fx.ws.path.parent().unwrap().join("keys.txt");
+        let script = format!("stty raw -echo; {TRUST_PRINT}; head -c 4 | cat -v > '{}'; sleep 5", out.display());
+        let s = fx.mgr.start_with_spec(&fx.ws, &claude("b1"), sh(&fx, &script), Arc::new(PromptAdapter)).unwrap();
+        assert!(wait_until(|| info(&fx, &s.id).awaiting_decision));
+        fx.mgr.approve(&s.id).unwrap();
+        assert_eq!(state(&fx, &s.id), SessionState::Working);
+        assert!(wait_until(|| std::fs::read_to_string(&out).unwrap_or_default().contains("^[[B^M")),
+            "got {:?}", std::fs::read_to_string(&out));
+        // The old menu text is still in the tail; it must not re-arm.
+        std::thread::sleep(Duration::from_millis(100));
+        assert!(!info(&fx, &s.id).awaiting_decision);
+        assert_eq!(state(&fx, &s.id), SessionState::Working);
+    }
+
+    #[test]
+    fn typing_disarms_awaiting_decision() {
+        let fx = fixture();
+        let s = fx.mgr.start_with_spec(&fx.ws, &claude("b1"), sleeper(&fx), Arc::new(ClaudeAdapter)).unwrap();
+        fx.mgr.on_hook(&s.id, fixture_json("notification_permission.json"));
+        assert!(info(&fx, &s.id).awaiting_decision);
+        fx.mgr.write(&s.id, b"1").unwrap();
+        let i = info(&fx, &s.id);
+        assert!(!i.awaiting_decision);
+        assert!(matches!(i.state, SessionState::NeedsYou { .. }));
+        assert!(wait_until(|| last_update(&fx, &s.id).as_ref() == Some(&i)), "Updated emitted");
+        assert!(fx.mgr.approve(&s.id).is_err());
     }
 
     #[test]

@@ -30,6 +30,16 @@ pub struct LaunchRequest<'a> {
     pub custom_command: Option<&'a str>,
 }
 
+/// A full-screen prompt the agent shows without any hook (e.g. a first-run trust menu).
+/// `needle` is matched against `status::screen_text` of the recent output.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ScreenPrompt {
+    pub needle: &'static str,
+    pub reason: &'static str,
+    pub approve: &'static [u8],
+    pub deny: &'static [u8],
+}
+
 pub trait AgentAdapter: Send + Sync {
     fn kind(&self) -> AgentKind;
     fn label(&self) -> &'static str;
@@ -46,6 +56,9 @@ pub trait AgentAdapter: Send + Sync {
     }
     fn deny_keys(&self) -> Option<&'static [u8]> {
         None
+    }
+    fn screen_prompts(&self) -> Vec<ScreenPrompt> {
+        vec![]
     }
 }
 

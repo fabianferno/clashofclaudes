@@ -3,7 +3,21 @@
 Collected from the Plan 1 execution ledger at merge time. All were triaged CAN-WAIT by the final review except where noted.
 
 ## Must land before or with Plan 2
-- Memory after a flood is over budget (owner GUI run, 2026-10-31, debug build): after `yes | head -c 50000000` in one terminal with one Claude session, WebKit WebContent went 51 MB → ~395 MB and stayed there; app core 100 → 147 MB (~540 MB total vs the 250 MB budget). Responsiveness was fine. Those are RSS figures from a debug build; release idle is 75 MB physical footprint, so re-measure the flood on release with `footprint` before treating it as a budget failure. Unconfirmed suspects: xterm scrollback 5000 lines, WebGL glyph atlas, retained frames. Measure in a release build first.
+- Memory after a flood: RESOLVED, re-measured in Plan 2 Task 14 (docs/verification/plan-2-village.md).
+  - Measured with `footprint` (physical footprint), the flood is within budget: dev 247 MB after
+    a 30 s settle, release estimated at about 220 MB. Plan 1's 395 MB was an RSS figure.
+  - The real over-budget cost was the village canvas' 4x MSAA, about 120 MB of graphics memory.
+    Release idle went from 299 to 178 MB with `antialias: false`.
+  - Checked and cleared: the WebglAddon is disposed with the terminal, the glyph atlas is not
+    growing, frames are not retained, and disposed terminals are collected.
+  - Scrollback stays at 5000.
+- Terminal remount churn (from Task 14): each remount of a terminal whose 2 MiB scrollback is full
+  allocates a new xterm buffer of about 4.7 MB (5000 lines). JSC frees the old one only at a full
+  GC, so 40 remounts of a flooded terminal reached 340 MB (dev).
+  - It is garbage, not a leak.
+  - Options: scrollback 2000 (measured at about 1.9 MB per remount), or reuse one `Terminal` per
+    session across mounts.
+  - Not done, per the ruling "scrollback >= 1000, prefer leak fixes".
 - Closing a session that never reached Finished gives no feedback (no XP, no message). Show "closed: unfinished, no XP".
 - Builders are only visible in the New session builder picker; after Close the builder seems to vanish. The Plan 2 builders bar covers this.
 - Claude's first-run "Do you trust this folder?" menu (default "No, exit") appears before any hook fires: the session shows Working, never NeedsYou. Add screen-pattern detection → NeedsYou with its own keys.

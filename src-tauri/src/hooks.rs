@@ -54,7 +54,6 @@ async fn handle(
 }
 
 impl HookServer {
-    #[allow(dead_code)] // TODO(Task 9): started at app startup
     pub async fn start(sink: HookSink) -> anyhow::Result<HookServer> {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
         let addr = listener.local_addr()?;

@@ -20,7 +20,8 @@ use uuid::Uuid;
 #[derive(Clone, Debug, PartialEq)]
 pub enum ManagerEvent {
     Updated(SessionInfo),
-    Output { id: String, data: Vec<u8> },
+    /// `offset`: stream position (bytes since session start) of the first byte of `data`.
+    Output { id: String, offset: u64, data: Vec<u8> },
     Removed { id: String },
 }
 
@@ -51,6 +52,8 @@ struct SessionEntry {
     policy: StatusPolicy,
     baseline: Option<GitBaseline>,
     pending: VecDeque<u8>,
+    /// Total bytes the process has ever written; `pending` is always the stream's newest suffix.
+    out_total: u64,
     /// Bytes of this session's queued-but-undelivered `Output` (cleared by the emitter thread).
     in_flight: Arc<AtomicUsize>,
     last_flush: Instant,
@@ -86,9 +89,10 @@ impl SessionEntry {
         }
         self.last_flush = Instant::now();
         if !self.pending.is_empty() {
+            let offset = self.out_total - self.pending.len() as u64;
             let data = Vec::from(std::mem::take(&mut self.pending));
             self.in_flight.fetch_add(data.len(), Ordering::SeqCst);
-            let ev = ManagerEvent::Output { id: self.info.id.clone(), data };
+            let ev = ManagerEvent::Output { id: self.info.id.clone(), offset, data };
             let _ = tx.send(Queued { ev, in_flight: Some(self.in_flight.clone()) });
         }
     }
@@ -267,6 +271,7 @@ impl SessionManager {
                 policy,
                 baseline,
                 pending: VecDeque::new(),
+                out_total: 0,
                 in_flight: Arc::default(),
                 last_flush: Instant::now(),
                 quiet_since_ms: now,
@@ -328,6 +333,7 @@ impl SessionManager {
         if e.apply(&StatusEvent::Output, now) {
             self.send_updated(e);
         }
+        e.out_total += data.len() as u64;
         e.pending.extend(data);
         // A frontend this far behind loses the oldest bytes; re-attaching replays scrollback.
         let over = e.pending.len().saturating_sub(SCROLLBACK_CAP);
@@ -497,13 +503,17 @@ impl SessionManager {
         Ok(CloseOutcome { earned_xp })
     }
 
-    /// Scrollback snapshot. Bytes not yet emitted are dropped from the pending batch,
-    /// since the snapshot already contains them.
-    pub fn attach(&self, id: &str) -> Result<Vec<u8>> {
+    /// Scrollback snapshot plus the stream offset of its first byte. Bytes not yet emitted are
+    /// dropped from the pending batch, since the snapshot already contains them; the next
+    /// `Output` starts at `start + snapshot.len()`. An `Output` already queued may overlap the
+    /// snapshot, so consumers drop bytes at stream positions they have already written.
+    pub fn attach(&self, id: &str) -> Result<(Vec<u8>, u64)> {
         let mut g = self.lock();
         let e = g.get_mut(id).ok_or_else(|| anyhow!("unknown session {id}"))?;
         e.pending.clear();
-        Ok(e.scrollback.snapshot())
+        let snap = e.scrollback.snapshot();
+        let start = e.out_total - snap.len() as u64;
+        Ok((snap, start))
     }
 
     /// Output bytes buffered or queued for `emit` but not yet delivered.
@@ -680,7 +690,7 @@ mod tests {
         let bytes: Vec<u8> = ev
             .iter()
             .filter_map(|e| match e {
-                ManagerEvent::Output { id: i, data } if i == id => Some(data.clone()),
+                ManagerEvent::Output { id: i, data, .. } if i == id => Some(data.clone()),
                 _ => None,
             })
             .flatten()
@@ -709,7 +719,7 @@ mod tests {
         let fx = fixture();
         let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "printf boom; exit 7"), None).unwrap();
         assert!(wait_until(|| state(&fx, &s.id) == SessionState::Stuck { reason: "exited with code 7".into() }));
-        assert!(String::from_utf8_lossy(&fx.mgr.attach(&s.id).unwrap()).contains("boom"));
+        assert!(String::from_utf8_lossy(&fx.mgr.attach(&s.id).unwrap().0).contains("boom"));
         assert!(fx.mgr.write(&s.id, b"x").is_err(), "no process to write to");
     }
 
@@ -776,7 +786,7 @@ mod tests {
         std::thread::sleep(Duration::from_secs(1));
         let n = fx.events.lock().unwrap().iter().filter(|e| matches!(e, ManagerEvent::Output { id, .. } if *id == s.id)).count();
         assert!(n > 0 && n < 100, "{n} output events");
-        assert!(fx.mgr.attach(&s.id).unwrap().len() <= SCROLLBACK_CAP);
+        assert!(fx.mgr.attach(&s.id).unwrap().0.len() <= SCROLLBACK_CAP);
     }
 
     #[test]
@@ -792,6 +802,27 @@ mod tests {
         assert_eq!(state(&fx, &s.id), SessionState::Ended { exit_code: Some(0) });
         assert!(peak <= 2 * SCROLLBACK_CAP, "peak queued output {peak} bytes");
         assert!(peak > 0);
+    }
+
+    #[test]
+    fn output_offsets_are_contiguous() {
+        let fx = fixture();
+        let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "printf aaaa; sleep 0.1; printf bbbb; sleep 0.1; printf cccc; sleep 0.4; printf dddd; sleep 5"), None).unwrap();
+        assert!(wait_until(|| output(&fx, &s.id).contains("aaaa")));
+        // Attach mid-stream: the snapshot ends exactly where the next Output begins.
+        let (snap, start) = fx.mgr.attach(&s.id).unwrap();
+        let end = start + snap.len() as u64;
+        assert!(wait_until(|| output(&fx, &s.id).contains("dddd")));
+        let evs: Vec<(u64, usize)> = fx.events.lock().unwrap().iter().filter_map(|e| match e {
+            ManagerEvent::Output { id, offset, data } if *id == s.id => Some((*offset, data.len())),
+            _ => None,
+        }).collect();
+        assert!(evs.len() >= 2, "{evs:?}");
+        assert_eq!(evs[0].0, 0);
+        for w in evs.windows(2) {
+            assert_eq!(w[1].0, w[0].0 + w[0].1 as u64, "{evs:?}");
+        }
+        assert!(evs.iter().any(|(o, _)| *o == end), "attach end {end} not an Output boundary: {evs:?}");
     }
 
     #[test]

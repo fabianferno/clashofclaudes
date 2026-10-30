@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Builder, Compound, SessionInfo, SessionState, Tile, Workspace } from '../api/types';
 import { findSpot, placeCompound, wallRect } from './layout';
 import { scaffoldHeight } from './look';
-import { buildEntities, needsRefit, structureLook, type VillageInput } from './scene';
+import { buildEntities, needsRefit, rendererOptions, structureLook, type VillageInput } from './scene';
 
 const ws = (id: string, compound: Compound | null, level = 1): Workspace => ({
   id, name: id, path: `/p/${id}`, createdAt: 0, missing: false, level, xp: 0, compound,
@@ -111,5 +111,16 @@ describe('needsRefit', () => {
     expect(needsRefit(null, r)).toBe(true);
     expect(needsRefit(r, { ...r })).toBe(false); // a house move changes tiles, not the fitted bounds
     expect(needsRefit(r, { ...r, w: 23 })).toBe(true);
+  });
+});
+
+describe('rendererOptions', () => {
+  it('renderer_has_no_msaa', () => {
+    // 4x MSAA at 2x density multiplies the canvas' colour and depth/stencil buffers by 4: ~120 MB
+    // of graphics memory on a release build (docs/verification/plan-2-village.md). Baked art needs none.
+    const o = rendererOptions(2);
+    expect(o.antialias).toBe(false);
+    expect(o.resolution).toBe(2);
+    expect(o.preference).toBe('webgl');
   });
 });

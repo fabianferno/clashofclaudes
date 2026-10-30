@@ -286,16 +286,24 @@ function publishToDriver(): void {
 const FPS_FOCUSED = 30;
 const FPS_BLURRED = 15;
 
+/**
+ * Renderer settings. No MSAA: the art is baked at 2x density, and 4x multisampling at 2x
+ * resolution multiplies the canvas' colour and depth/stencil buffers by 4. Measured on a release
+ * build: ~120 MB of graphics memory (app total 299 -> 178 MB idle; the budget is 250 MB).
+ */
+export function rendererOptions(dpr: number) {
+  return {
+    resolution: dpr,
+    autoDensity: true,
+    antialias: false,
+    preference: 'webgl' as const,
+    background: '#3f7d22',
+  };
+}
+
 export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = {}): Promise<Scene> {
   const app = new Application();
-  await app.init({
-    resizeTo: canvasHost,
-    resolution: window.devicePixelRatio || 1,
-    autoDensity: true,
-    antialias: true,
-    preference: 'webgl',
-    background: '#3f7d22',
-  });
+  await app.init({ resizeTo: canvasHost, ...rendererOptions(window.devicePixelRatio || 1) });
   await prepareArt();
   canvasHost.appendChild(app.canvas);
 

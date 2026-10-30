@@ -21,6 +21,8 @@ pub struct StatusPolicy {
     pub uses_hooks: bool,
     pub finished_after_silence_secs: Option<u64>,
     pub stuck_after_silence_secs: Option<u64>,
+    /// Any exit is a normal end (plain terminals: `exit` after a failed command is not a crash).
+    pub any_exit_ends: bool,
 }
 
 const SILENCE_STUCK_PREFIX: &str = "no output for ";
@@ -34,6 +36,7 @@ pub fn next_state(state: &SessionState, ev: &StatusEvent, policy: &StatusPolicy)
         return state.clone();
     }
     match (state, ev) {
+        (_, E::Exited { code }) if policy.any_exit_ends => S::Ended { exit_code: *code },
         (_, E::Exited { code: Some(0) }) => S::Ended { exit_code: Some(0) },
         (_, E::Exited { code: Some(c) }) => S::Stuck { reason: format!("exited with code {c}") },
         (_, E::Exited { code: None }) => S::Stuck { reason: "process ended".into() },
@@ -71,8 +74,9 @@ mod tests {
     use crate::model::SessionState::*;
     use StatusEvent::*;
 
-    fn hooks() -> StatusPolicy { StatusPolicy { uses_hooks: true, finished_after_silence_secs: None, stuck_after_silence_secs: Some(900) } }
-    fn plain() -> StatusPolicy { StatusPolicy { uses_hooks: false, finished_after_silence_secs: Some(20), stuck_after_silence_secs: Some(900) } }
+    fn hooks() -> StatusPolicy { StatusPolicy { uses_hooks: true, finished_after_silence_secs: None, stuck_after_silence_secs: Some(900), any_exit_ends: false } }
+    fn plain() -> StatusPolicy { StatusPolicy { uses_hooks: false, finished_after_silence_secs: Some(20), stuck_after_silence_secs: Some(900), any_exit_ends: false } }
+    fn term() -> StatusPolicy { crate::adapters::terminal_policy() }
     #[test] fn starting_output_is_working() { assert_eq!(next_state(&Starting, &Output, &hooks()), Working); }
     #[test] fn permission_needs_you() { assert_eq!(next_state(&Working, &PermissionRequested{message:"Bash".into()}, &hooks()), NeedsYou{reason:"Bash".into()}); }
     #[test] fn tool_after_permission_resumes() { assert_eq!(next_state(&NeedsYou{reason:"x".into()}, &ToolUsed, &hooks()), Working); }
@@ -83,5 +87,9 @@ mod tests {
     #[test] fn nonzero_exit_is_stuck() { assert_eq!(next_state(&Working, &Exited{code:Some(1)}, &hooks()), Stuck{reason:"exited with code 1".into()}); }
     #[test] fn clean_exit_ends() { assert_eq!(next_state(&Finished, &Exited{code:Some(0)}, &hooks()), Ended{exit_code:Some(0)}); }
     #[test] fn ended_is_terminal() { assert_eq!(next_state(&Ended{exit_code:Some(0)}, &PromptSubmitted, &hooks()), Ended{exit_code:Some(0)}); }
+    #[test] fn terminal_any_exit_ends() {
+        assert_eq!(next_state(&Working, &Exited{code:Some(3)}, &term()), Ended{exit_code:Some(3)});
+        assert_eq!(next_state(&Starting, &Exited{code:None}, &term()), Ended{exit_code:None});
+    }
     #[test] fn plain_user_input_resumes_from_finished() { assert_eq!(next_state(&Finished, &UserInput, &plain()), Working); }
 }

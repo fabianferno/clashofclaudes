@@ -877,6 +877,15 @@ mod tests {
     }
 
     #[test]
+    fn terminal_ends_on_any_exit() {
+        let fx = fixture();
+        let s = fx.mgr.start_terminal(&fx.ws).unwrap();
+        fx.mgr.write(&s.id, b"exit 3\r").unwrap();
+        assert!(wait_until(|| fx.mgr.running_process_count() == 0));
+        assert_eq!(state(&fx, &s.id), SessionState::Ended { exit_code: Some(3) });
+    }
+
+    #[test]
     fn one_session_per_builder() {
         let fx = fixture();
         let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "sleep 5"), None).unwrap();

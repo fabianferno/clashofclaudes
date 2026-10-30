@@ -93,6 +93,7 @@ pub fn terminal_policy() -> StatusPolicy {
         uses_hooks: false,
         finished_after_silence_secs: None,
         stuck_after_silence_secs: None,
+        any_exit_ends: true,
     }
 }
 

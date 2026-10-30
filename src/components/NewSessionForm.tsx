@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ipc } from '../api/ipc';
+import { useApp } from '../state/store';
 import type { AgentInfo, AgentKind, Builder, SessionInfo } from '../api/types';
 
 const q = (s: string) => `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
@@ -40,9 +41,10 @@ export default function NewSessionForm({ workspaceId, agents, builders, onStarte
   const [task, setTask] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [created, setCreated] = useState<Builder | null>(null);
 
   const recruiting = choice === RECRUIT;
-  const existing = builders.find((b) => b.id === choice);
+  const existing = builders.find((b) => b.id === choice) ?? (created?.id === choice ? created : undefined);
   const agent = agents.find((a) => a.kind === (recruiting ? kind : existing?.agent));
   const isCustom = agent?.kind === 'custom';
   const pModel = recruiting ? model : existing?.model ?? '';
@@ -61,6 +63,9 @@ export default function NewSessionForm({ workspaceId, agents, builders, onStarte
         const b = await ipc.createBuilder(
           name.trim(), kind, model.trim() || null, effort.trim() || null, isCustom ? command.trim() : null,
         );
+        useApp.getState().addBuilder(b);
+        setCreated(b);
+        setChoice(b.id);
         builderId = b.id;
       } else if (!existing) {
         return setError('Choose a builder');
@@ -88,6 +93,7 @@ export default function NewSessionForm({ workspaceId, agents, builders, onStarte
       <h3>New session</h3>
       <label>Builder
         <select value={choice} onChange={(e) => setChoice(e.target.value)}>
+          {created && !builders.some((b) => b.id === created.id) && <option value={created.id}>{created.name}</option>}
           {builders.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
           <option value={RECRUIT}>Recruit new</option>
         </select>

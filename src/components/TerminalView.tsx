@@ -6,6 +6,9 @@ import '@xterm/xterm/css/xterm.css';
 import { ipc, trimSeen } from '../api/ipc';
 import type { Frame } from '../api/types';
 
+// Serialize attach/detach per session id so the backend's per-session channel never gets reordered.
+const chains = new Map<string, Promise<void>>();
+
 export default function TerminalView({ sessionId }: { sessionId: string }) {
   const host = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -38,17 +41,19 @@ export default function TerminalView({ sessionId }: { sessionId: string }) {
       writtenUntil = r.writtenUntil;
       if (r.data.length) term.write(r.data);
     };
-    const onFrame = (f: Frame) => (writtenUntil === null ? queue.push(f) : apply(f));
+    const onFrame = (f: Frame) => disposed ? undefined : (writtenUntil === null ? queue.push(f) : apply(f));
 
-    ipc.attachSession(sessionId, onFrame).then(
+    const prev = chains.get(sessionId) ?? Promise.resolve();
+    const attachP = prev.then(() => (disposed ? undefined : ipc.attachSession(sessionId, onFrame))).then(
       (snap) => {
-        if (disposed) return;
+        if (disposed || !snap) return;
         term.write(snap.data);
         writtenUntil = snap.offset + snap.data.length;
         queue.splice(0).forEach(apply);
       },
-      (e) => !disposed && setError(String(e)),
+      (e) => { if (!disposed) setError(String(e)); },
     );
+    chains.set(sessionId, attachP);
 
     const enc = new TextEncoder();
     const sub = term.onData((d) => report(ipc.writeSession(sessionId, Array.from(enc.encode(d)))));
@@ -59,7 +64,8 @@ export default function TerminalView({ sessionId }: { sessionId: string }) {
       disposed = true;
       ro.disconnect();
       sub.dispose();
-      ipc.detachSession(sessionId).catch(() => {});
+      const detachP = attachP.then(() => ipc.detachSession(sessionId)).catch(() => {});
+      chains.set(sessionId, detachP);
       term.dispose();
     };
   }, [sessionId]);

@@ -35,3 +35,20 @@ test('only installed agents are offered', () => {
   expect(opts).toContain('Custom command');
   expect(opts).not.toContain('Codex');
 });
+
+import { useApp } from '../state/store';
+test('recruit adds builder to store and a failed start does not recreate it', async () => {
+  const b = { id: 'b1', name: 'Ann', agent: 'claude' as const, model: null, effort: null, customCommand: null };
+  vi.mocked(ipc.createBuilder).mockResolvedValue(b);
+  vi.mocked(ipc.startSession).mockRejectedValueOnce('boom').mockResolvedValueOnce({ id: 's' } as never);
+  const onStarted = vi.fn();
+  render(<NewSessionForm workspaceId="w" agents={[claude]} builders={[]} onStarted={onStarted} />);
+  fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Ann' } });
+  fireEvent.click(screen.getByText('Start'));
+  expect(await screen.findByText('boom')).toBeTruthy();
+  expect(useApp.getState().builders).toContainEqual(b);
+  fireEvent.click(screen.getByText('Start'));
+  await vi.waitFor(() => expect(onStarted).toHaveBeenCalled());
+  expect(ipc.createBuilder).toHaveBeenCalledTimes(1);
+  expect(ipc.startSession).toHaveBeenLastCalledWith('w', 'b1', '');
+});

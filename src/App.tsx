@@ -10,6 +10,7 @@ function App() {
   const st = useApp();
   const [formFor, setFormFor] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [xp, setXp] = useState(false);
   const [quit, setQuit] = useState<number | null>(null);
 
   useEffect(() => {
@@ -25,14 +26,21 @@ function App() {
     return () => { cancelled = true; unlisten.forEach((u) => u()); };
   }, []);
 
+  useEffect(() => {
+    if (!xp) return;
+    const t = setTimeout(() => setXp(false), 3000);
+    return () => clearTimeout(t);
+  }, [xp]);
+
   const selected = st.selectedSessionId;
   return (
     <div className="layout">
       <Sidebar onNewSession={(id) => { setFormFor(id); st.select(null); }} />
       <main className="main">
         {error && <div className="error">{error}</div>}
+        {xp && <div className="notice">+XP earned</div>}
         {selected && st.sessions[selected] ? (
-          <SessionPanel sessionId={selected} />
+          <SessionPanel sessionId={selected} onClosed={(o) => { if (o.earnedXp) setXp(true); }} />
         ) : formFor ? (
           <NewSessionForm
             key={formFor}

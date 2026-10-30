@@ -10,21 +10,19 @@ function elapsed(from: number, now: number): string {
   return h ? `${h}h ${m}m` : m ? `${m}m ${s % 60}s` : `${s}s`;
 }
 
-export default function SessionPanel({ sessionId }: { sessionId: string }) {
+export default function SessionPanel({ sessionId, onClosed }: { sessionId: string; onClosed?: (o: CloseOutcome) => void }) {
   const session = useApp((s) => s.sessions[sessionId]);
   const builders = useApp((s) => s.builders);
   const agents = useApp((s) => s.agents);
-  const select = useApp((s) => s.select);
   const [now, setNow] = useState(Date.now());
   const [error, setError] = useState<string | null>(null);
   const [review, setReview] = useState<Review | null>(null);
-  const [outcome, setOutcome] = useState<CloseOutcome | null>(null);
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
-  useEffect(() => { setReview(null); setOutcome(null); setError(null); }, [sessionId]);
+  useEffect(() => { setReview(null); setError(null); }, [sessionId]);
 
   if (!session) return null;
   const builder = session.kind.kind === 'agent' ? builders.find((b) => b.id === (session.kind as { builderId: string }).builderId) : undefined;
@@ -39,7 +37,7 @@ export default function SessionPanel({ sessionId }: { sessionId: string }) {
     setError(null);
     try {
       const o = await ipc.closeSession(sessionId);
-      if (o.earnedXp) { setOutcome(o); setTimeout(() => select(null), 1500); } else select(null);
+      onClosed?.(o);
     } catch (e) { setError(String(e)); }
   }
 
@@ -61,7 +59,6 @@ export default function SessionPanel({ sessionId }: { sessionId: string }) {
         <button onClick={() => run(ipc.stopSession(sessionId))}>Stop</button>
         <button onClick={close}>Close</button>
       </header>
-      {outcome?.earnedXp && <div className="notice">+XP earned</div>}
       {error && <div className="error">{error}</div>}
       {review && (
         <div className="review">

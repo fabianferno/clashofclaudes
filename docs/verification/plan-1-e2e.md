@@ -12,7 +12,7 @@ cargo test --manifest-path src-tauri/Cargo.toml
   lib:        71 passed
   e2e_claude: 2 passed; 1 ignored (real Claude)
 cargo test --manifest-path src-tauri/Cargo.toml --test e2e_claude real_claude -- --ignored --nocapture
-  test real_claude_full_lifecycle ... ok   (finished in 15.58s)
+  test real_claude_full_lifecycle ... ok   (finished in 19.17s, "trust menu seen: true")
 pnpm test
   Test Files 5 passed (5), Tests 17 passed (17)
 ```
@@ -30,11 +30,14 @@ The ignored test (`src-tauri/tests/e2e_claude.rs::real_claude_full_lifecycle`) a
 Non-ignored: `custom_builder_exit_3_goes_stuck_with_output_retained`, `missing_workspace_start_errors`
 (plus the in-crate `immediate_nonzero_exit_goes_stuck`, `start_in_missing_workspace_errors`).
 
-Finding (no code change needed): in a never-trusted folder Claude first shows its
-"Do you trust this folder?" menu, with "No, exit" preselected. Hooks do not fire until the user
-answers it, so a new session in a new folder looks Working (output) but cannot reach NeedsYou/Finished
-until the user picks "Yes, I trust this folder" in the terminal (Down, Enter). The test does this
-itself. Allow/Deny buttons do not apply to this menu.
+FOLLOW-UP (product): in a never-trusted folder Claude first shows its "Do you trust this folder?"
+menu ("No, exit" preselected). Hooks stay silent until it is answered, so the app shows Working while
+Claude is actually blocked. Candidate: a screen-pattern NeedsYou with its own keys. Allow/Deny do not
+apply to this menu. The test handles it as an optional step (menu text, ANSI stripped, or hook-driven
+progress; verifies it went away, retries once).
+
+Side effect: accepting the menu makes Claude itself record trust for the temp path in the user's
+`~/.claude.json`. The app and the test never write it.
 
 Fixes: none were required. Only change to product code: `src-tauri/src/lib.rs` modules made `pub`
 so the integration test can reach them (no behavior change).

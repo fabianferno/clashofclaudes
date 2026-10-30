@@ -13,7 +13,7 @@ struct Rig {
     mgr: Arc<SessionManager>,
     events: Arc<Mutex<Vec<ManagerEvent>>>,
     data: tempfile::TempDir,
-    repo: tempfile::TempDir,
+    _repo: tempfile::TempDir,
     ws: Workspace,
 }
 
@@ -48,7 +48,47 @@ async fn rig() -> Rig {
     g(&["add", "-A"]);
     g(&["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "seed"]);
     let ws = Workspace { id: "w1".into(), name: "e2e".into(), path, created_at: 0, missing: false };
-    Rig { mgr, events, data, repo, ws }
+    Rig { mgr, events, data, _repo: repo, ws }
+}
+
+impl Drop for Rig {
+    /// Best-effort: never leave a real `claude` behind, even when an assert panics.
+    fn drop(&mut self) {
+        for s in self.mgr.list() {
+            let _ = self.mgr.close(&s.id);
+        }
+    }
+}
+
+/// Terminal text with ANSI escapes removed and everything but letters/digits dropped, so matching
+/// survives cursor-move sequences that replace spaces.
+fn plain(bytes: &[u8]) -> String {
+    let mut out = String::new();
+    let mut chars = String::from_utf8_lossy(bytes).chars().collect::<Vec<_>>().into_iter().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\x1b' {
+            match chars.next() {
+                Some('[') => {
+                    for n in chars.by_ref() {
+                        if ('\u{40}'..='\u{7e}').contains(&n) {
+                            break;
+                        }
+                    }
+                }
+                Some(']') => {
+                    for n in chars.by_ref() {
+                        if n == '\x07' || n == '\\' {
+                            break;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        } else if c.is_alphanumeric() {
+            out.push(c);
+        }
+    }
+    out
 }
 
 fn builder(agent: AgentKind, cmd: Option<&str>) -> Builder {
@@ -130,20 +170,38 @@ async fn real_claude_full_lifecycle() {
     let session_dir = r.data.path().join("sessions").join(&id);
     assert!(session_dir.exists());
 
-    // 1. Working. A fresh temp folder shows Claude's folder-trust menu (default "No, exit");
-    //    answer it like a user would (Down, Enter) once, then wait for the hooks to take over.
-    let mut answered_trust = false;
-    wait_session(&r, &id, "trust prompt answered", 60, || {
-        let text = String::from_utf8_lossy(&r.mgr.attach(&id).unwrap().0).to_string();
-        if text.contains("trust") && text.contains("Enter") {
-            std::thread::sleep(Duration::from_millis(500));
-            let _ = r.mgr.write(&id, b"\x1b[B");
-            std::thread::sleep(Duration::from_millis(300));
-            let _ = r.mgr.write(&id, b"\r");
-            answered_trust = true;
-        }
-        answered_trust
+    // 1. Working. The trust step is optional: a never-trusted folder shows Claude's first-run
+    //    trust menu (hooks stay silent until it is answered); a trusted one goes straight on.
+    //    Race: trust menu text vs hook-driven progress (NeedsYou/Finished or a counted tool use).
+    let hook_progress = || {
+        r.mgr.list().iter().any(|s| {
+            s.id == id && (matches!(s.state, SessionState::NeedsYou { .. } | SessionState::Finished) || s.steps > 0)
+        })
+    };
+    let menu_shown = || plain(&r.mgr.attach(&id).unwrap().0).contains("YesItrustthisfolder");
+    let mut trust_menu_seen = false;
+    wait_session(&r, &id, "trust menu or hook progress", 90, || {
+        trust_menu_seen = menu_shown();
+        trust_menu_seen || hook_progress()
     });
+    if trust_menu_seen && !hook_progress() {
+        // Default selection is "No, exit": Down moves to "Yes, I trust this folder", Enter accepts.
+        std::thread::sleep(Duration::from_secs(1)); // let the menu finish drawing and start reading keys
+        for attempt in 1..=2 {
+            r.mgr.write(&id, b"\x1b[B").unwrap();
+            std::thread::sleep(Duration::from_millis(300));
+            r.mgr.write(&id, b"\r").unwrap();
+            let end = Instant::now() + Duration::from_secs(30);
+            while Instant::now() < end && !hook_progress() {
+                std::thread::sleep(Duration::from_millis(200));
+            }
+            if hook_progress() {
+                break;
+            }
+            assert!(attempt < 2, "trust menu did not go away after two attempts");
+        }
+    }
+    eprintln!("trust menu seen: {trust_menu_seen}");
     wait_session(&r, &id, "Working", 120, || {
         r.events.lock().unwrap().iter().any(|e| matches!(e, ManagerEvent::Updated(i) if i.id == id && i.state == SessionState::Working))
     });
@@ -189,5 +247,4 @@ async fn real_claude_full_lifecycle() {
     assert!(r.mgr.list().is_empty());
     assert!(!session_dir.exists(), "per-session settings dir removed");
     wait_for("no claude child left", 10, || claude_procs(&id) == 0);
-    drop(r.repo);
 }

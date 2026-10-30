@@ -141,3 +141,42 @@ describe('village', () => {
     expect(useApp.getState().workspaces[0].compound).toEqual(pre.compound);
   });
 });
+
+describe('commitMove', () => {
+  const c: Compound = { x0: 6, y0: 6, w: 8, h: 8, house: { x: 6, y: 6 } };
+  const ws = { id: 'w1', compound: c } as unknown as Workspace;
+  beforeEach(() => {
+    vi.mocked(ipc.setSessionSpot).mockReset();
+    vi.mocked(ipc.setCompound).mockReset();
+    useApp.setState({ workspaces: [ws], sessions: {} });
+    useApp.getState().upsertSession({ ...sess('s1', 'w1', 'b1'), spot: { x: 10, y: 10 } });
+    useApp.getState().upsertSession({ ...sess('s2', 'w1', 'b2'), spot: { x: 12, y: 6 } });
+  });
+
+  it('release_on_red_does_not_persist', async () => {
+    const t = { kind: 'session', id: 's1' } as const;
+    expect(await useApp.getState().village.commitMove(t, { x: 12, y: 6 })).toBe(false); // on s2
+    expect(await useApp.getState().village.commitMove(t, { x: 6, y: 6 })).toBe(false); // on the house
+    expect(await useApp.getState().village.commitMove(t, { x: 13, y: 10 })).toBe(false); // out of the compound
+    expect(ipc.setSessionSpot).not.toHaveBeenCalled();
+    expect(ipc.setCompound).not.toHaveBeenCalled();
+  });
+
+  it('release_on_green_persists_once', async () => {
+    vi.mocked(ipc.setSessionSpot).mockImplementation(async (id, spot) => ({ ...sess(id, 'w1', 'b1'), spot, rev: 2 }));
+    expect(await useApp.getState().village.commitMove({ kind: 'session', id: 's1' }, { x: 10, y: 11 })).toBe(true);
+    expect(ipc.setSessionSpot).toHaveBeenCalledTimes(1);
+    expect(ipc.setSessionSpot).toHaveBeenCalledWith('s1', { x: 10, y: 11 });
+    expect(useApp.getState().sessions.s1.spot).toEqual({ x: 10, y: 11 });
+  });
+
+  it('house_move_persists_compound_and_ignores_its_own_tile', async () => {
+    vi.mocked(ipc.setCompound).mockImplementation(async (_id, comp) => ({ ...ws, compound: comp }) as Workspace);
+    const t = { kind: 'workspace', id: 'w1' } as const;
+    expect(await useApp.getState().village.commitMove(t, { x: 9, y: 9 })).toBe(false); // covers s1 (10,10)
+    expect(ipc.setCompound).not.toHaveBeenCalled();
+    expect(await useApp.getState().village.commitMove(t, { x: 7, y: 7 })).toBe(true); // overlaps its own old tile only
+    expect(ipc.setCompound).toHaveBeenCalledWith('w1', { ...c, house: { x: 7, y: 7 } });
+    expect(useApp.getState().workspaces[0].compound?.house).toEqual({ x: 7, y: 7 });
+  });
+});

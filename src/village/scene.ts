@@ -1,4 +1,4 @@
-import { Application, Container, Sprite, Texture } from 'pixi.js';
+import { Application, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import type { AgentKind, Builder, Compound, SessionInfo, SessionState, Tile, Workspace } from '../api/types';
 import { iso, toGrid } from './iso';
 import { HALL, HOUSE, STRUCT, gateSide, gateTile, wallRect, type Rect } from './layout';
@@ -8,12 +8,12 @@ import {
   drawBadge, drawBubble, drawBuilder, drawGate, drawGround, drawHall, drawHouse, drawPuff, drawRing, drawStructure, drawWallSeg, groundOrigin, type Art, type Pose,
 } from './art/entities';
 import { getTexture, prepareArt } from './textures';
-import type { Selection } from '../state/store';
+import type { MoveTarget, Selection } from '../state/store';
 import {
   PANEL_W, ZMAX, ease, fitRect, keepVisible, pxRectOfCompound, pxRectOfTiles, screenToWorld, worldToScreen, zoomAt, type Cam,
 } from './camera';
-import { createDragController } from './drag';
-import { clickPoint, compoundAt, hitTest } from './input';
+import { DRAG_PX, createDragController } from './drag';
+import { clickPoint, compoundAt, dragTarget, hitTest } from './input';
 
 // ---------------------------------------------------------------- pure part
 
@@ -229,6 +229,12 @@ export interface SceneOptions {
   onSelect?: (sel: Selection | null) => void;
   /** Width of the panel currently covering the right of the window (0 when closed). */
   panelWidth?: () => number;
+  /** Whether the structure/house may stand with its top-left on this tile (drives the green/red footprint). */
+  canMove?: (t: MoveTarget, at: Tile) => boolean;
+  /** Persist a move released on a valid tile; resolves false when it was not applied. */
+  onMove?: (t: MoveTarget, at: Tile) => Promise<boolean>;
+  /** Hook: a drag was released on a blocked tile (nothing persisted, the object snapped back). Task 10 adds dust here. */
+  onBlockedDrop?: (at: Tile) => void;
 }
 
 export interface Scene {
@@ -242,6 +248,8 @@ export interface Scene {
   zoomBy(factor: number): void;
   /** Pan (eased) just enough that the selected thing is not under the panel. */
   reveal(sel: Selection | null): void;
+  /** Tell the scene which thing is selected (draws the move affordance for structures and houses). */
+  select(sel: Selection | null): void;
 }
 
 const GROUND_SEED = 7;
@@ -285,6 +293,10 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
 
   const ground = new Sprite(Texture.EMPTY);
   groundLayer.addChild(ground);
+  const fx = new Graphics(); // footprint glow, tile grid, green/red footprint: redrawn only when it changes
+  groundLayer.addChild(fx);
+  const fxTop = new Graphics(); // the green/red drag footprint, above the sprites so a blocking building cannot hide it
+  overlay.addChild(fxTop);
   let groundKey = '';
   let groundBakes = 0;
   let villageTiles: Rect | null = null;
@@ -292,6 +304,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
 
   const sprites = new Map<string, { sprite: Sprite; key: string; entity: Entity }>();
   let entities: Entity[] = [];
+  let lastState: VillageInput = { workspaces: [], sessions: [], builders: [] };
   let destroyed = false;
   const views = new Map<string, BuilderView>();
   let time = 0;
@@ -419,7 +432,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
         if (!was || was.sessionId !== site.sessionId) {
           v.walker = { ...w, mode: 'toSite', path: routeToSite(w, site.compound, site.spot) };
         } else if (was.spot.x !== site.spot.x || was.spot.y !== site.spot.y) {
-          const st = standTile(site.spot); // moved structure: the builder is simply there
+          const st = standTile(site.compound, site.spot, site.compound.house); // moved structure: the builder is simply there
           v.walker = { ...w, x: st.x, y: st.y, path: [], mode: 'atSite', face: -1 };
         }
       } else if (was) {
@@ -496,6 +509,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
   const sync = (state: VillageInput) => {
     if (destroyed) return;
     workspaces = state.workspaces;
+    lastState = state;
     const compounds = state.workspaces.flatMap((w) => (w.compound ? [w.compound] : []));
     syncGround(compounds);
     syncBuilders(state);
@@ -530,6 +544,8 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       rec.sprite.destroy(); // textures stay in the shared cache
       sprites.delete(id);
     }
+    applyDragSprite();
+    redrawOverlay();
   };
 
   const debug = (): SceneDebug => ({
@@ -550,6 +566,107 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       return { x: q.x + r.left, y: q.y + r.top };
     },
   });
+
+
+  // ---- move affordance: selected structure/house shows a glow, arrows and a chip; dragging shows the grid
+  interface Movable { target: MoveTarget; entityId: string; size: number; tile: Tile; compound: Compound; height: number }
+  const movableOf = (s: Selection | null): Movable | null => {
+    if (s?.kind === 'workspace') {
+      const w = lastState.workspaces.find((x) => x.id === s.id);
+      if (!w?.compound) return null;
+      return { target: { kind: 'workspace', id: w.id }, entityId: `house:${w.id}`, size: HOUSE, tile: w.compound.house, compound: w.compound, height: 130 };
+    }
+    if (s?.kind === 'session') {
+      const x = lastState.sessions.find((q) => q.id === s.id);
+      const c = x && lastState.workspaces.find((w) => w.id === x.workspaceId)?.compound;
+      if (!x || !c || x.kind.kind !== 'agent' || !x.spot) return null;
+      return { target: { kind: 'session', id: x.id }, entityId: `struct:${x.id}`, size: STRUCT, tile: x.spot, compound: c, height: 100 };
+    }
+    return null;
+  };
+  let selected: Selection | null = null;
+  let od: { m: Movable; grab: { x: number; y: number }; moved: boolean; target: Tile; valid: boolean } | null = null;
+
+  const ARROW_DIRS = [{ x: 1, y: 0 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 0, y: -1 }];
+  const arrows = ARROW_DIRS.map(() => {
+    const g = new Graphics().poly([11, 0, -7, -8, -7, 8]).fill({ color: 0xffd84a }).stroke({ width: 2, color: 0x1d130b });
+    g.visible = false;
+    overlay.addChild(g);
+    return g;
+  });
+  const arrowBase = ARROW_DIRS.map(() => ({ x: 0, y: 0, dx: 0, dy: 0 }));
+  const chip = new Container();
+  {
+    const label = new Text({
+      text: 'Drag to move',
+      style: { fontFamily: 'Lilita One', fontSize: 16, fill: '#ffffff', stroke: { color: '#1d130b', width: 4 } },
+      resolution: 2,
+    });
+    label.anchor.set(0.5);
+    const bg = new Graphics().roundRect(-label.width / 2 - 10, -label.height / 2 - 3, label.width + 20, label.height + 6, 10)
+      .fill({ color: 0x2b1d12, alpha: 0.85 }).stroke({ width: 2, color: 0xffd84a });
+    chip.addChild(bg, label);
+    chip.visible = false;
+    overlay.addChild(chip);
+  }
+  const footprint = (t: Tile, size: number) => {
+    const a = iso(t.x, t.y), b = iso(t.x + size, t.y), c = iso(t.x + size, t.y + size), d = iso(t.x, t.y + size);
+    return [a.x, a.y, b.x, b.y, c.x, c.y, d.x, d.y];
+  };
+  let overlayKey = '';
+  const redrawOverlay = () => {
+    const m = movableOf(selected);
+    const dragging = !!(od && od.moved);
+    const key = JSON.stringify([m && [m.target, m.tile, m.compound], dragging && od && [od.target, od.valid]]);
+    if (key === overlayKey) return;
+    overlayKey = key;
+    fx.clear();
+    fxTop.clear();
+    chip.visible = false;
+    for (const a of arrows) a.visible = false;
+    if (!m) return;
+    if (dragging && od) {
+      const c = m.compound;
+      for (let i = 0; i <= c.w; i++) { const a = iso(c.x0 + i, c.y0), b = iso(c.x0 + i, c.y0 + c.h); fx.moveTo(a.x, a.y).lineTo(b.x, b.y); }
+      for (let j = 0; j <= c.h; j++) { const a = iso(c.x0, c.y0 + j), b = iso(c.x0 + c.w, c.y0 + j); fx.moveTo(a.x, a.y).lineTo(b.x, b.y); }
+      fx.stroke({ width: 1, color: 0xffffff, alpha: 0.3 });
+      fxTop.poly(footprint(od.target, m.size)).fill({ color: od.valid ? 0x5cf05c : 0xff3b2f, alpha: 0.4 })
+        .stroke({ width: 4, color: od.valid ? 0x1f8a1f : 0xb02218 });
+      return;
+    }
+    fx.poly(footprint(m.tile, m.size)).fill({ color: 0xffd84a, alpha: 0.35 }).stroke({ width: 3, color: 0xffd84a, alpha: 0.9 });
+    const cx = m.tile.x + m.size / 2, cy = m.tile.y + m.size / 2;
+    ARROW_DIRS.forEach((d, i) => {
+      const r = m.size / 2 + 0.6;
+      const p = iso(cx + d.x * r, cy + d.y * r), v = iso(d.x, d.y), n = Math.hypot(v.x, v.y);
+      arrowBase[i] = { x: p.x, y: p.y, dx: v.x / n, dy: v.y / n };
+      arrows[i].rotation = Math.atan2(v.y, v.x);
+      arrows[i].position.set(p.x, p.y);
+      arrows[i].visible = true;
+    });
+    const top = iso(cx, cy);
+    chip.position.set(top.x, top.y - m.height - 22);
+    chip.visible = true;
+  };
+  app.ticker.add(() => {
+    if (!arrows[0].visible) return;
+    const k = Math.sin(time * 4) * 3;
+    arrows.forEach((a, i) => a.position.set(arrowBase[i].x + arrowBase[i].dx * k, arrowBase[i].y + arrowBase[i].dy * k));
+  });
+  /** While dragging, the object's sprite follows the snapped target tile. */
+  const applyDragSprite = () => {
+    if (!od?.moved) return;
+    const rec = sprites.get(od.m.entityId);
+    if (!rec) return;
+    const p = iso(od.target.x + od.m.size, od.target.y + od.m.size);
+    rec.sprite.position.set(p.x, p.y);
+    rec.sprite.zIndex = 10000;
+    rec.sprite.alpha = 0.85;
+  };
+  const endDragVisual = () => {
+    for (const r of sprites.values()) r.sprite.alpha = 1;
+    sync(lastState);
+  };
 
   // ---- input: drag pans, wheel zooms to the cursor, click selects, double-click zooms to a compound
   const hitEntities = (): Entity[] => [
@@ -584,15 +701,57 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     const p = localPoint(ev);
     pointerId = ev.pointerId;
     downAt = p;
+    const m = movableOf(selected);
+    if (m) {
+      // a press on the selected object drags the object; anywhere else pans the camera
+      const w = screenToWorld(cam, p.x, p.y);
+      if (hitTest(entities, w.x, w.y)?.id === m.entityId) {
+        const g = toGrid(w.x, w.y);
+        od = { m, grab: { x: g.x - m.tile.x, y: g.y - m.tile.y }, moved: false, target: m.tile, valid: true };
+        try { canvas.setPointerCapture(ev.pointerId); } catch { /* synthetic events have no live pointer */ }
+        return;
+      }
+    }
     drag.down(p.x, p.y);
     try { canvas.setPointerCapture(ev.pointerId); } catch { /* synthetic events have no live pointer */ }
   };
   const onMove = (ev: PointerEvent) => {
+    if (od && ev.pointerId === pointerId) {
+      const p = localPoint(ev);
+      if (!od.moved) {
+        if (Math.hypot(p.x - downAt.x, p.y - downAt.y) <= DRAG_PX) return;
+        od.moved = true;
+        canvas.style.cursor = 'grabbing';
+      }
+      const w = screenToWorld(cam, p.x, p.y), g = toGrid(w.x, w.y);
+      od.target = dragTarget(od.m.tile, od.grab, g);
+      od.valid = opts.canMove?.(od.m.target, od.target) ?? false;
+      applyDragSprite();
+      redrawOverlay();
+      return;
+    }
     if (!drag.active || ev.pointerId !== pointerId) return;
     const p = localPoint(ev);
     drag.move(p.x, p.y);
   };
+  const endObjectDrag = (ev: PointerEvent | null) => {
+    const d = od;
+    od = null;
+    canvas.style.cursor = '';
+    if (ev) { try { canvas.releasePointerCapture(ev.pointerId); } catch { /* see onDown */ } }
+    if (!d || !d.moved) { redrawOverlay(); return; } // a plain click on the selected object changes nothing
+    const same = d.target.x === d.m.tile.x && d.target.y === d.m.tile.y;
+    if (ev && d.valid && !same && opts.onMove) {
+      // the sprite stays on the new tile until the store confirms; either way sync puts it where the store says
+      void opts.onMove(d.m.target, d.target).catch(() => false).finally(() => { if (!destroyed) endDragVisual(); });
+    } else {
+      if (ev && !d.valid) opts.onBlockedDrop?.(d.target); // snap back immediately; Task 10 adds dust
+      endDragVisual();
+    }
+    redrawOverlay();
+  };
   const onUp = (ev: PointerEvent) => {
+    if (od && ev.pointerId === pointerId) { endObjectDrag(ev); return; }
     if (!drag.active || ev.pointerId !== pointerId) return;
     canvas.style.cursor = '';
     try { canvas.releasePointerCapture(ev.pointerId); } catch { /* see onDown */ }
@@ -600,7 +759,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     const w = screenToWorld(cam, downAt.x, downAt.y);
     opts.onSelect?.(selectionOf(hitTest(hitEntities(), w.x, w.y)));
   };
-  const onCancel = () => { drag.cancel(); canvas.style.cursor = ''; };
+  const onCancel = () => { if (od) endObjectDrag(null); drag.cancel(); canvas.style.cursor = ''; };
   const onWheel = (ev: WheelEvent) => {
     ev.preventDefault();
     const p = localPoint(ev);
@@ -672,5 +831,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
   liveScenes.push(hooks);
   publishToDriver();
 
-  return { sync, destroy, world, debug, fitVillage, zoomBy, reveal };
+  const select = (sel: Selection | null) => { selected = sel; redrawOverlay(); };
+
+  return { sync, destroy, world, debug, fitVillage, zoomBy, reveal, select };
 }

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { ipc } from '../api/ipc';
 import type { AgentInfo, Builder, Compound, ListState, SessionInfo, SessionState, Stats, Tile, Workspace } from '../api/types';
-import { placeCompound, spotFor } from '../village/layout';
+import { HOUSE, STRUCT, canPlace, placeCompound, spotFor } from '../village/layout';
 
 export type Selection =
   | { kind: 'hall' }
@@ -14,6 +14,23 @@ export interface VillageActions {
   ensureCompound: (wsId: string) => Promise<Compound>;
   /** The agent session's spot, finding (expanding the compound if full) and persisting one if it has none. */
   ensureSpot: (sessionId: string) => Promise<Tile>;
+  /** Persist a move of a structure (session) or a compound's house (workspace) to `at`; false (and no ipc) when blocked. */
+  commitMove: (target: MoveTarget, at: Tile) => Promise<boolean>;
+}
+
+export type MoveTarget = { kind: 'session'; id: string } | { kind: 'workspace'; id: string };
+
+/** Whether the structure or house may stand with its top-left on `at`: inside its compound, clear of everything else. */
+export function moveValid(st: Pick<AppState, 'workspaces' | 'sessions'>, target: MoveTarget, at: Tile): boolean {
+  const wsId = target.kind === 'workspace' ? target.id : st.sessions[target.id]?.workspaceId;
+  const c = st.workspaces.find((w) => w.id === wsId)?.compound;
+  if (!c) return false;
+  const mates = (except: string | null) => Object.values(st.sessions)
+    .filter((x) => x.workspaceId === wsId && x.kind.kind === 'agent' && x.spot && x.id !== except)
+    .map((x) => x.spot!);
+  if (target.kind === 'session') return st.sessions[target.id]?.spot ? canPlace(c, mates(target.id), at, STRUCT) : false;
+  // the house is checked against every structure, but not against its own current tile
+  return canPlace({ ...c, house: { x: -1e6, y: -1e6 } }, mates(null), at, HOUSE);
 }
 
 export interface AppState {
@@ -161,6 +178,17 @@ function villageActions(get: () => AppState): VillageActions {
   return {
     ensureCompound: (wsId) => serial(() => compoundOf(wsId)),
     ensureSpot: (sessionId) => serial(() => spotOf(sessionId)),
+    commitMove: (target, at) => serial(async () => {
+      const st = get();
+      if (!moveValid(st, target, at)) return false;
+      if (target.kind === 'session') {
+        st.upsertSession(await ipc.setSessionSpot(target.id, at));
+      } else {
+        const c = st.workspaces.find((w) => w.id === target.id)!.compound!;
+        st.updateWorkspace(await ipc.setCompound(target.id, { ...c, house: at }));
+      }
+      return true;
+    }),
   };
 }
 

@@ -1,5 +1,5 @@
 import type { Compound, Tile } from '../api/types';
-import { gateInside, gateOutside } from './layout';
+import { HOUSE, gateInside, gateOutside } from './layout';
 
 export interface Walker {
   id: string;
@@ -26,9 +26,21 @@ const RING_MAX = 5.6;
 
 const centre = (t: Tile): Tile => ({ x: t.x + 0.5, y: t.y + 0.5 });
 
-/** Where a builder stands beside a structure: the mockup's offset from the spot. */
-export function standTile(spot: Tile): Tile {
-  return { x: spot.x + 2.45, y: spot.y + 1.1 };
+/**
+ * Where a builder stands beside a structure: the mockup's east offset when that point is inside the
+ * compound and clear of the house, else the first of south, west, north that is.
+ */
+export function standTile(c: Compound, spot: Tile, house: Tile): Tile {
+  const sides: Tile[] = [
+    { x: spot.x + 2.45, y: spot.y + 1.1 }, // east
+    { x: spot.x + 1.1, y: spot.y + 2.45 }, // south
+    { x: spot.x - 0.45, y: spot.y + 1.1 }, // west
+    { x: spot.x + 1.1, y: spot.y - 0.45 }, // north
+  ];
+  const ok = (p: Tile) =>
+    p.x >= c.x0 && p.x < c.x0 + c.w && p.y >= c.y0 && p.y < c.y0 + c.h
+    && !(p.x >= house.x && p.x < house.x + HOUSE && p.y >= house.y && p.y < house.y + HOUSE);
+  return sides.find(ok) ?? sides[0];
 }
 
 /** Point on the plaza ring in the direction of `p` from the hall. */
@@ -41,7 +53,7 @@ function plazaPoint(p: Tile): Tile {
 
 /** Plaza -> gate (outside, then inside) -> the stand tile beside the spot. */
 export function routeToSite(_from: Tile, c: Compound, spot: Tile): Tile[] {
-  return [centre(gateOutside(c)), centre(gateInside(c)), standTile(spot)];
+  return [centre(gateOutside(c)), centre(gateInside(c)), standTile(c, spot, c.house)];
 }
 
 /** Back out through the gate (inside, then outside) to the plaza. */

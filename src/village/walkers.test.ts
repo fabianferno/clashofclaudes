@@ -17,7 +17,7 @@ describe('walkers', () => {
     const i = r.findIndex((p) => p.x === centre(gateInside(east)).x && p.y === centre(gateInside(east)).y);
     expect(o).toBeGreaterThanOrEqual(0);
     expect(i).toBeGreaterThan(o);
-    expect(r[r.length - 1]).toEqual(standTile(spot));
+    expect(r[r.length - 1]).toEqual(standTile(east, spot, east.house));
     const h = routeHome({ x: 12, y: 1 }, east);
     const ho = h.findIndex((p) => p.x === centre(gateOutside(east)).x && p.y === centre(gateOutside(east)).y);
     const hi = h.findIndex((p) => p.x === centre(gateInside(east)).x && p.y === centre(gateInside(east)).y);
@@ -26,7 +26,21 @@ describe('walkers', () => {
   });
 
   it('standTile_offset', () => {
-    expect(standTile({ x: 3, y: 4 })).toEqual({ x: 5.45, y: 5.1 });
+    const c: Compound = { x0: 0, y0: 0, w: 12, h: 12, house: { x: 0, y: 0 } };
+    expect(standTile(c, { x: 5, y: 6 }, c.house)).toEqual({ x: 7.45, y: 7.1 });
+  });
+
+  it('standTile_not_east_in_last_columns', () => {
+    const c: Compound = { x0: 9, y0: -3, w: 7, h: 7, house: { x: 9, y: -3 } };
+    const st = standTile(c, { x: 14, y: 0 }, c.house); // east would be x=16.45, outside
+    expect(st.x).toBeLessThan(c.x0 + c.w);
+    expect(st).toEqual({ x: 15.1, y: 2.45 });
+  });
+
+  it('standTile_south_wall_falls_to_west', () => {
+    const c: Compound = { x0: 9, y0: -3, w: 7, h: 7, house: { x: 12, y: 1 } };
+    // east is on the house, south is outside the wall -> west
+    expect(standTile(c, { x: 10, y: 2 }, c.house)).toEqual({ x: 9.55, y: 3.1 });
   });
 
   it('step_reaches_target_at_speed', () => {

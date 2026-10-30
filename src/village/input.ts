@@ -1,4 +1,4 @@
-import type { Compound } from '../api/types';
+import type { Compound, Tile } from '../api/types';
 import { iso } from './iso';
 import { wallRect } from './layout';
 import type { Entity } from './scene';
@@ -58,4 +58,10 @@ export function clickPoint(e: Entity): { x: number; y: number } {
   if (!b) { const p = iso(e.x, e.y); return { x: p.x, y: p.y }; }
   const c = iso(e.x - b.w / 2, e.y - b.w / 2);
   return { x: c.x, y: c.y - b.h / 3 };
+}
+
+/** The tile a dragged object's top-left lands on: the pointer's grid point minus where it grabbed, rounded. */
+export function dragTarget(start: Tile, grabOffset: { x: number; y: number }, pointerGrid: { x: number; y: number }): Tile {
+  void start; // the grab offset is relative to start already; kept for a self-describing signature
+  return { x: Math.round(pointerGrid.x - grabOffset.x), y: Math.round(pointerGrid.y - grabOffset.y) };
 }

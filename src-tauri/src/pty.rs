@@ -1,11 +1,13 @@
 #![allow(dead_code)] // API consumed by the session manager (Task 8)
 
 use anyhow::{anyhow, Result};
-use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
+use crate::platform;
+use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use std::io::{Read, Write};
 use std::path::PathBuf;
-use std::sync::{mpsc, Mutex};
-use std::time::Duration;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc, Mutex};
+use std::time::{Duration, Instant};
 
 /// Everything needed to start a process; adapters build this.
 #[derive(Debug, Clone)]
@@ -16,11 +18,23 @@ pub struct LaunchSpec {
     pub cwd: PathBuf,
 }
 
+/// Grace between SIGHUP and the SIGKILL escalation in `kill()`.
+pub const KILL_GRACE: Duration = Duration::from_secs(2);
+const REAP_POLL: Duration = Duration::from_millis(20);
+
+struct Shared {
+    /// Reaping happens only while this lock is held, so a signal sent under the
+    /// lock after checking `exited` can never hit a recycled pid.
+    child: Mutex<Option<Box<dyn Child + Send + Sync>>>,
+    exited: AtomicBool,
+}
+
 /// A running child attached to a PTY. `Send + Sync`.
 pub struct PtyHandle {
     master: Mutex<Box<dyn MasterPty + Send>>,
     writer: Mutex<Box<dyn Write + Send>>,
-    killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
+    shared: Arc<Shared>,
+    pid: Option<u32>,
 }
 
 impl PtyHandle {
@@ -32,6 +46,9 @@ impl PtyHandle {
         on_exit: Box<dyn FnOnce(Option<i32>) + Send>,
     ) -> Result<PtyHandle> {
         let pair = native_pty_system().openpty(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 })?;
+        // Acquire fallible resources before spawning so a failure can't leak a child.
+        let mut reader = pair.master.try_clone_reader()?;
+        let writer = pair.master.take_writer()?;
         let mut cmd = CommandBuilder::new(&spec.program);
         cmd.args(&spec.args);
         cmd.cwd(&spec.cwd);
@@ -39,11 +56,10 @@ impl PtyHandle {
         for (k, v) in &spec.env {
             cmd.env(k, v);
         }
-        let mut child = pair.slave.spawn_command(cmd)?;
+        let child = pair.slave.spawn_command(cmd)?;
         drop(pair.slave); // so the reader sees EOF once the child exits
-        let killer = child.clone_killer();
-        let mut reader = pair.master.try_clone_reader()?;
-        let writer = pair.master.take_writer()?;
+        let pid = child.process_id();
+        let shared = Arc::new(Shared { child: Mutex::new(Some(child)), exited: AtomicBool::new(false) });
 
         let (done_tx, done_rx) = mpsc::channel::<()>();
         std::thread::spawn(move || {
@@ -56,14 +72,34 @@ impl PtyHandle {
             }
             let _ = done_tx.send(());
         });
+        let sh = shared.clone();
         std::thread::spawn(move || {
-            let code = child.wait().ok().map(|s| s.exit_code() as i32);
+            let code = loop {
+                {
+                    let mut g = sh.child.lock().unwrap_or_else(|e| e.into_inner());
+                    let Some(c) = g.as_mut() else { break None };
+                    match c.try_wait() {
+                        Ok(Some(st)) => {
+                            *g = None;
+                            sh.exited.store(true, Ordering::SeqCst);
+                            break Some(st.exit_code() as i32);
+                        }
+                        Ok(None) => {}
+                        Err(_) => {
+                            *g = None;
+                            sh.exited.store(true, Ordering::SeqCst);
+                            break None;
+                        }
+                    }
+                }
+                std::thread::sleep(REAP_POLL);
+            };
             // Let the reader drain trailing output; don't hang if a grandchild holds the PTY.
             let _ = done_rx.recv_timeout(Duration::from_millis(500));
             on_exit(code);
         });
 
-        Ok(PtyHandle { master: Mutex::new(pair.master), writer: Mutex::new(writer), killer: Mutex::new(killer) })
+        Ok(PtyHandle { master: Mutex::new(pair.master), writer: Mutex::new(writer), shared, pid })
     }
 
     pub fn write(&self, data: &[u8]) -> Result<()> {
@@ -81,8 +117,31 @@ impl PtyHandle {
         Ok(())
     }
 
+    /// SIGHUP now; SIGKILL after `KILL_GRACE` if still alive (on a background thread).
+    /// Returns Ok if the child has already exited.
     pub fn kill(&self) -> Result<()> {
-        self.killer.lock().map_err(|_| anyhow!("killer poisoned"))?.kill()?;
+        let Some(pid) = self.pid else { return Ok(()) };
+        {
+            let _g = self.shared.child.lock().unwrap_or_else(|e| e.into_inner());
+            if self.shared.exited.load(Ordering::SeqCst) {
+                return Ok(());
+            }
+            platform::signal_hup(pid)?;
+        }
+        let sh = self.shared.clone();
+        std::thread::spawn(move || {
+            let end = Instant::now() + KILL_GRACE;
+            while Instant::now() < end {
+                if sh.exited.load(Ordering::SeqCst) {
+                    return;
+                }
+                std::thread::sleep(REAP_POLL);
+            }
+            let _g = sh.child.lock().unwrap_or_else(|e| e.into_inner());
+            if !sh.exited.load(Ordering::SeqCst) {
+                let _ = platform::signal_kill(pid);
+            }
+        });
         Ok(())
     }
 }
@@ -147,5 +206,33 @@ mod tests {
             Box::new(move |c| { let _ = tx.send(c); })).unwrap();
         rx.recv_timeout(Duration::from_secs(5)).expect("exit");
         assert!(wait_for(&buf, "my dir"));
+    }
+
+    #[test]
+    fn kill_after_exit_is_ok_and_on_exit_fires_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let (_b, on_out) = collect();
+        let count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let c2 = count.clone();
+        let (tx, rx) = mpsc::channel();
+        let h = PtyHandle::spawn(&spec("/bin/sh", &["-c", "exit 0"], dir.path().to_path_buf()), 80, 24, on_out,
+            Box::new(move |c| { c2.fetch_add(1, std::sync::atomic::Ordering::SeqCst); let _ = tx.send(c); })).unwrap();
+        rx.recv_timeout(Duration::from_secs(5)).expect("exit");
+        h.kill().unwrap();
+        h.kill().unwrap();
+        std::thread::sleep(Duration::from_millis(100));
+        assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn kill_escalates_when_sighup_ignored() {
+        let dir = tempfile::tempdir().unwrap();
+        let (buf, on_out) = collect();
+        let (tx, rx) = mpsc::channel();
+        let h = PtyHandle::spawn(&spec("/bin/sh", &["-c", "trap '' HUP; echo ready; sleep 30"], dir.path().to_path_buf()), 80, 24, on_out,
+            Box::new(move |c| { let _ = tx.send(c); })).unwrap();
+        assert!(wait_for(&buf, "ready"));
+        h.kill().unwrap();
+        rx.recv_timeout(KILL_GRACE + Duration::from_secs(3)).expect("child gone after escalation");
     }
 }

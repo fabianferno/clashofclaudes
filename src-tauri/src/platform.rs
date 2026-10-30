@@ -24,6 +24,13 @@ pub fn which(program: &str) -> Option<PathBuf> {
         .find(is_exec)
 }
 
+fn signal(pid: u32, sig: libc::c_int) -> std::io::Result<()> {
+    // SAFETY: plain kill(2) on a pid the caller has verified is not yet reaped.
+    if unsafe { libc::kill(pid as libc::pid_t, sig) } == 0 { Ok(()) } else { Err(std::io::Error::last_os_error()) }
+}
+pub fn signal_hup(pid: u32) -> std::io::Result<()> { signal(pid, libc::SIGHUP) }
+pub fn signal_kill(pid: u32) -> std::io::Result<()> { signal(pid, libc::SIGKILL) }
+
 #[cfg(test)]
 mod tests {
     use super::*;

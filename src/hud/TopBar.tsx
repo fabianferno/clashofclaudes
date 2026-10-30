@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useApp, type Selection } from '../state/store';
 import { badgeOf, idleOf, liveAgentSessions, startOfToday, type BadgeState } from './hudState';
+import { RES_MARGIN, panelInset } from './layout';
 import './hud.css';
 
 interface PillDef { id: string; badge: BadgeState; label: string; pulse?: boolean }
@@ -17,6 +18,7 @@ export default function TopBar() {
   const builders = useApp((s) => s.builders);
   const sessionMap = useApp((s) => s.sessions);
   const stats = useApp((s) => s.stats);
+  const panelOpen = useApp((s) => s.panelOpen);
   const setSelection = useApp((s) => s.setSelection);
 
   const { live, byState } = useMemo(() => {
@@ -59,7 +61,7 @@ export default function TopBar() {
           })}
         </div>
       </div>
-      <div id="resources" className="hud-res">
+      <div id="resources" className="hud-res" style={{ right: panelInset(panelOpen) + RES_MARGIN }}>
         <div className="hud-rbar ol">
           <span>Builders busy</span>
           <b>{busy} / {builders.length}</b>

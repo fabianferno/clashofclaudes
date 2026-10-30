@@ -43,13 +43,13 @@
 .hud-pill.pulse { animation: hud-nudge 1.4s ease-in-out infinite; }
 @keyframes hud-nudge { 0%,100% { transform: translateX(0) } 50% { transform: translateX(4px) } }
 
-/* top right (leave room for the open panel: the panel covers the right edge, so shift left of it) */
-.hud-res { position: fixed; top: 14px; right: 64px; z-index: 3; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; pointer-events: none; }
+/* top right; `right` is set inline (RES_MARGIN + panel width when the panel is open) */
+.hud-res { position: fixed; top: 14px; transition: right .2s; z-index: 3; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; pointer-events: none; }
 .hud-rbar { display: flex; align-items: center; gap: 14px; justify-content: space-between; min-width: 210px; padding: 5px 14px; font-size: 16px; background: rgba(20,12,6,.65); border: 3px solid var(--hud-out); border-radius: 12px; }
 .hud-rbar b { font-weight: 400; font-size: 20px; }
 
 /* bottom roster */
-.hud-roster-zone { position: fixed; left: var(--hud-sidebar); bottom: 10px; z-index: 3; display: flex; justify-content: center; pointer-events: none; transition: right .2s; padding: 0 130px 0 12px; }
+.hud-roster-zone { position: fixed; left: var(--hud-sidebar); bottom: 10px; z-index: 3; display: flex; justify-content: center; pointer-events: none; transition: right .2s; padding: 0 12px; } /* right padding set inline (rosterReserve) */
 .hud-roster { display: flex; flex-direction: column; align-items: center; gap: 6px; max-width: 100%; pointer-events: auto; transition: transform .3s cubic-bezier(.2,.9,.3,1.2); }
 .hud-roster.collapsed { transform: translateY(calc(100% - 38px)); }
 .hud-cards { display: flex; gap: 8px; padding: 8px; max-width: 100%; overflow-x: auto; scrollbar-width: thin; background: rgba(20,12,6,.55); border: 3px solid var(--hud-out); border-radius: 16px; }

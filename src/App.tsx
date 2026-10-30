@@ -20,6 +20,7 @@ function App() {
       p.then((u) => (cancelled ? u() : unlisten.push(u)), (e) => setError(String(e)));
     keep(ipc.onSessionUpdated((s) => useApp.getState().upsertSession(s)));
     keep(ipc.onSessionRemoved((id) => useApp.getState().removeSession(id)));
+    keep(ipc.onWorkspaceUpdated((w) => useApp.getState().updateWorkspace(w)));
     keep(ipc.onConfirmQuit((q) => setQuit(q.live)));
     ipc.listState().then((s) => !cancelled && useApp.getState().hydrate(s)).catch((e) => setError(String(e)));
     ipc.detectAgents().then((a) => !cancelled && useApp.getState().setAgents(a)).catch((e) => setError(String(e)));

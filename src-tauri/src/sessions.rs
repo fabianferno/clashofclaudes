@@ -583,9 +583,23 @@ impl Drop for SessionManager {
     }
 }
 
+/// Starting failed because the workspace folder is gone (deleted or moved).
+#[derive(Debug)]
+pub struct WorkspaceMissing(pub PathBuf);
+
+impl std::fmt::Display for WorkspaceMissing {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Workspace folder not found: {}", self.0.display())
+    }
+}
+
+impl std::error::Error for WorkspaceMissing {}
+
+/// The folder can vanish while the app runs, so check the filesystem, not just the load-time
+/// `missing` flag (a PTY spawned in a missing cwd silently falls back to `$HOME`).
 fn ensure_present(ws: &Workspace) -> Result<()> {
-    if ws.missing {
-        bail!("workspace folder is missing: {}", ws.path.display());
+    if ws.missing || !ws.path.is_dir() {
+        return Err(WorkspaceMissing(ws.path.clone()).into());
     }
     Ok(())
 }
@@ -730,6 +744,21 @@ mod tests {
         ws.missing = true;
         assert!(fx.mgr.start_agent(&ws, &custom("b1", "true"), None).is_err());
         assert!(fx.mgr.start_terminal(&ws).is_err());
+        assert!(fx.mgr.list().is_empty());
+    }
+
+    #[test]
+    fn start_in_vanished_workspace_errors() {
+        let fx = fixture();
+        let dir = fx.ws.path.parent().unwrap().join("gone");
+        std::fs::create_dir(&dir).unwrap();
+        let ws = Workspace { path: dir.clone(), ..fx.ws.clone() };
+        std::fs::remove_dir(&dir).unwrap(); // deleted while the app runs; `missing` is stale
+        let err = fx.mgr.start_agent(&ws, &custom("b1", "true"), None).unwrap_err();
+        assert!(err.downcast_ref::<WorkspaceMissing>().is_some(), "{err:#}");
+        assert_eq!(err.to_string(), format!("Workspace folder not found: {}", dir.display()));
+        let err = fx.mgr.start_terminal(&ws).unwrap_err();
+        assert!(err.downcast_ref::<WorkspaceMissing>().is_some(), "{err:#}");
         assert!(fx.mgr.list().is_empty());
     }
 

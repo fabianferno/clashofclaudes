@@ -1,9 +1,11 @@
 //! Tauri commands, app events and shared state. JS names are the camelCase of these fns.
+//! Events: `session-updated` (SessionInfo), `session-removed` {id}, `workspace-updated`
+//! (Workspace), `confirm-quit` {live}.
 use crate::adapters::AdapterRegistry;
 use crate::git::{self, Review};
 use crate::model::{AgentKind, AppData, Builder, SessionInfo, SessionKind, Workspace};
 use crate::persist;
-use crate::sessions::{CloseOutcome, SessionManager};
+use crate::sessions::{CloseOutcome, SessionManager, WorkspaceMissing};
 use anyhow::{anyhow, bail, Context};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -224,22 +226,42 @@ pub fn delete_builder(id: String, state: State<'_, AppState>) -> Result<(), Stri
     state.save(&d)
 }
 
+/// Sets `missing` on workspace `id`; returns it when the flag changed (so it must be saved and sent).
+pub fn flag_workspace_missing(d: &mut AppData, id: &str) -> Option<Workspace> {
+    let w = d.workspaces.iter_mut().find(|w| w.id == id && !w.missing)?;
+    w.missing = true;
+    Some(w.clone())
+}
+
 fn find_workspace(state: &AppState, id: &str) -> Result<Workspace, String> {
     state.data().workspaces.iter().find(|w| w.id == id).cloned().ok_or_else(|| "unknown workspace".to_string())
 }
 
-#[tauri::command]
-pub async fn start_session(workspace_id: String, builder_id: String, task: String, state: State<'_, AppState>) -> Result<SessionInfo, String> {
-    let ws = find_workspace(&state, &workspace_id)?;
-    let builder = state.data().builders.iter().find(|b| b.id == builder_id).cloned().ok_or("unknown builder")?;
-    let task = task.trim();
-    state.manager.start_agent(&ws, &builder, (!task.is_empty()).then_some(task)).map_err(fmt_err)
+/// Maps a start error; a vanished folder also flags the workspace missing (saved and sent as
+/// `workspace-updated`) so the UI shows its badge.
+fn start_err(app: &AppHandle, state: &AppState, workspace_id: &str, e: anyhow::Error) -> String {
+    if e.downcast_ref::<WorkspaceMissing>().is_some() {
+        let mut d = state.data();
+        if let Some(w) = flag_workspace_missing(&mut d, workspace_id) {
+            let _ = state.save(&d);
+            let _ = app.emit("workspace-updated", w);
+        }
+    }
+    fmt_err(e)
 }
 
 #[tauri::command]
-pub async fn start_terminal(workspace_id: String, state: State<'_, AppState>) -> Result<SessionInfo, String> {
+pub async fn start_session(workspace_id: String, builder_id: String, task: String, app: AppHandle, state: State<'_, AppState>) -> Result<SessionInfo, String> {
     let ws = find_workspace(&state, &workspace_id)?;
-    state.manager.start_terminal(&ws).map_err(fmt_err)
+    let builder = state.data().builders.iter().find(|b| b.id == builder_id).cloned().ok_or("unknown builder")?;
+    let task = task.trim();
+    state.manager.start_agent(&ws, &builder, (!task.is_empty()).then_some(task)).map_err(|e| start_err(&app, &state, &workspace_id, e))
+}
+
+#[tauri::command]
+pub async fn start_terminal(workspace_id: String, app: AppHandle, state: State<'_, AppState>) -> Result<SessionInfo, String> {
+    let ws = find_workspace(&state, &workspace_id)?;
+    state.manager.start_terminal(&ws).map_err(|e| start_err(&app, &state, &workspace_id, e))
 }
 
 #[tauri::command]
@@ -367,6 +389,17 @@ mod tests {
         assert!(!should_block_exit(0, false));
         assert!(should_block_exit(2, false));
         assert!(!should_block_exit(2, true));
+    }
+
+    #[test]
+    fn flag_missing_marks_only_that_workspace_once() {
+        let ws = |id: &str| Workspace { id: id.into(), name: id.into(), path: PathBuf::from("/nope"), created_at: 0, missing: false };
+        let mut d = AppData { workspaces: vec![ws("a"), ws("b")], ..AppData::default() };
+        let w = flag_workspace_missing(&mut d, "b").unwrap();
+        assert!(w.missing && w.id == "b");
+        assert!(!d.workspaces[0].missing && d.workspaces[1].missing);
+        assert!(flag_workspace_missing(&mut d, "b").is_none(), "already flagged: nothing to persist");
+        assert!(flag_workspace_missing(&mut d, "zzz").is_none());
     }
 
     #[test]

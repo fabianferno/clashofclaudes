@@ -1,14 +1,28 @@
 import { render, screen } from '@testing-library/react';
 import { vi } from 'vitest';
+import type { Workspace } from './api/types';
+
+let onWorkspaceUpdated: (w: Workspace) => void = () => {};
 vi.mock('./api/ipc', () => ({
   ipc: {
-    listState: vi.fn().mockResolvedValue({ workspaces: [], builders: [], sessions: [] }),
+    listState: vi.fn().mockResolvedValue({ workspaces: [{ id: 'w1', name: 'proj', path: '/p', createdAt: 0, missing: false }], builders: [], sessions: [] }),
     detectAgents: vi.fn().mockResolvedValue([]),
     onSessionUpdated: vi.fn().mockResolvedValue(() => {}),
     onSessionRemoved: vi.fn().mockResolvedValue(() => {}),
+    onWorkspaceUpdated: vi.fn(async (cb: (w: Workspace) => void) => { onWorkspaceUpdated = cb; return () => {}; }),
     onConfirmQuit: vi.fn().mockResolvedValue(() => {}),
   },
 }));
 vi.mock('./components/TerminalView', () => ({ default: () => null }));
 import App from './App';
+import { act } from 'react';
+
 test('renders app title', async () => { render(<App />); expect(await screen.findByText('Clash of Claudes')).toBeTruthy(); });
+
+test('workspace-updated event shows the missing badge', async () => {
+  render(<App />);
+  expect(await screen.findByText('proj')).toBeTruthy();
+  expect(screen.queryByText('missing')).toBeNull();
+  act(() => onWorkspaceUpdated({ id: 'w1', name: 'proj', path: '/p', createdAt: 0, missing: true }));
+  expect(await screen.findByText('missing')).toBeTruthy();
+});

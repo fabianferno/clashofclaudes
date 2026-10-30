@@ -45,3 +45,11 @@ test('sessionsByWorkspace sorts by startedAt', () => {
 test('stateLabel maps needsYou', () => {
   expect(stateLabel({ kind: 'needsYou', reason: 'x' })).toBe('Needs you');
 });
+
+test('updateWorkspace replaces the matching workspace', () => {
+  const w = (id: string, missing = false) => ({ id, name: id, path: `/p/${id}`, createdAt: 0, missing });
+  useApp.getState().addWorkspace(w('w1'));
+  useApp.getState().addWorkspace(w('w2'));
+  useApp.getState().updateWorkspace(w('w2', true));
+  expect(useApp.getState().workspaces.map((x) => [x.id, x.missing])).toEqual([['w1', false], ['w2', true]]);
+});

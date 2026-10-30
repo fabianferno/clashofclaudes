@@ -52,6 +52,9 @@ export const ipc = {
     listen<SessionInfo>('session-updated', (e) => cb(e.payload)),
   onSessionRemoved: (cb: (id: string) => void): Promise<UnlistenFn> =>
     listen<{ id: string }>('session-removed', (e) => cb(e.payload.id)),
+  /** A workspace changed on the backend (e.g. its folder was found missing when starting). */
+  onWorkspaceUpdated: (cb: (w: Workspace) => void): Promise<UnlistenFn> =>
+    listen<Workspace>('workspace-updated', (e) => cb(e.payload)),
   onConfirmQuit: (cb: (q: ConfirmQuit) => void): Promise<UnlistenFn> =>
     listen<ConfirmQuit>('confirm-quit', (e) => cb(e.payload)),
 };

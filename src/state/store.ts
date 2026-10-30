@@ -13,6 +13,7 @@ export interface AppState {
   select: (id: string | null) => void;
   setAgents: (a: AgentInfo[]) => void;
   addWorkspace: (w: Workspace) => void;
+  updateWorkspace: (w: Workspace) => void;
   addBuilder: (b: Builder) => void;
   updateBuilder: (b: Builder) => void;
 }
@@ -38,6 +39,7 @@ export const useApp = create<AppState>((set) => ({
   select: (id) => set({ selectedSessionId: id }),
   setAgents: (agents) => set({ agents }),
   addWorkspace: (w) => set((st) => ({ workspaces: [...st.workspaces, w] })),
+  updateWorkspace: (w) => set((st) => ({ workspaces: st.workspaces.map((x) => (x.id === w.id ? w : x)) })),
   addBuilder: (b) => set((st) => ({ builders: [...st.builders, b] })),
   updateBuilder: (b) => set((st) => ({ builders: st.builders.map((x) => (x.id === b.id ? b : x)) })),
 }));

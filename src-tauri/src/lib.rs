@@ -3,6 +3,7 @@ mod persist;
 mod platform;
 mod pty;
 mod scrollback;
+mod status;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]

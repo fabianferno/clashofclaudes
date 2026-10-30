@@ -1,10 +1,11 @@
 import { Application, Container, Sprite, Texture } from 'pixi.js';
-import type { AgentKind, Builder, Compound, SessionInfo, Tile, Workspace } from '../api/types';
+import type { AgentKind, Builder, Compound, SessionInfo, SessionState, Tile, Workspace } from '../api/types';
 import { iso } from './iso';
-import { HALL, HOUSE, STRUCT, gateSide, wallRect, type Rect } from './layout';
-import { houseColors, houseStage, scaffoldHeight } from './look';
+import { HALL, HOUSE, STRUCT, gateSide, gateTile, wallRect, type Rect } from './layout';
+import { classOf, gearOf, houseColors, houseStage, scaffoldHeight, type ClassTier, type Gear } from './look';
+import { routeHome, routeToSite, standTile, step, type Walker } from './walkers';
 import {
-  drawBadge, drawGate, drawGround, drawHall, drawHouse, drawStructure, drawWallSeg, groundOrigin, type Art,
+  drawBadge, drawBubble, drawBuilder, drawGate, drawGround, drawHall, drawHouse, drawPuff, drawRing, drawStructure, drawWallSeg, groundOrigin, type Art, type Pose,
 } from './art/entities';
 import { getTexture, prepareArt } from './textures';
 
@@ -50,18 +51,6 @@ export function structureLook(s: SessionInfo): { stage: StructStage; height: num
     case 'ended':
       return s.reachedFinished ? { stage: 'complete', height: 1 } : { stage: 'scaffold', height: scaffoldHeight(s.steps) };
     default: return { stage: 'scaffold', height: scaffoldHeight(s.steps) };
-  }
-}
-
-/** The wall tile replaced by the gate: the middle of the side facing the hall. */
-export function gateTile(c: Compound): Tile {
-  const r = wallRect(c);
-  const mx = r.x0 + Math.floor(r.w / 2), my = r.y0 + Math.floor(r.h / 2);
-  switch (gateSide(c)) {
-    case 'n': return { x: mx, y: r.y0 };
-    case 's': return { x: mx, y: r.y0 + r.h - 1 };
-    case 'w': return { x: r.x0, y: my };
-    default: return { x: r.x0 + r.w - 1, y: my };
   }
 }
 
@@ -135,7 +124,7 @@ export function groundBounds(compounds: Compound[]): Rect {
 
 /** Art for a texture key produced by buildEntities. */
 export function artFor(key: string): Art {
-  const [kind, a, b, c] = key.split(':');
+  const [kind, a, b, c, d, e] = key.split(':');
   switch (kind) {
     case 'hall': return drawHall();
     case 'house': return drawHouse(Number(a) as 0 | 1 | 2 | 3 | 4, b, c);
@@ -143,7 +132,77 @@ export function artFor(key: string): Art {
     case 'wall': return drawWallSeg(a as 'x' | 'y');
     case 'gate': return drawGate(a as 'n' | 's' | 'e' | 'w');
     case 'badge': return drawBadge(Number(a));
+    case 'builder': return drawBuilder(a as AgentKind, Number(b) as ClassTier, Number(c) as Gear, d as Pose, Number(e) as 1 | -1);
+    case 'bubble': return drawBubble(a as 'needs' | 'stuck');
+    case 'ring': return drawRing();
+    case 'puff': return drawPuff();
     default: throw new Error(`no art for ${key}`);
+  }
+}
+
+
+// ---------------------------------------------------------------- builders
+
+/** Where a builder's live session stands; null when it has none (idle on the plaza). */
+interface Site {
+  sessionId: string;
+  workspaceId: string;
+  compound: Compound;
+  spot: Tile;
+  state: SessionState['kind'];
+  reachedFinished: boolean;
+}
+
+interface BuilderView {
+  walker: Walker;
+  agent: AgentKind;
+  cls: ClassTier;
+  gear: Gear;
+  site: Site | null;
+  pose: Pose;
+  sprite: Sprite;
+  bubble: Sprite | null;
+  ring: Sprite | null;
+  puffs: Sprite[];
+}
+
+const HEAD_HEIGHT: Record<ClassTier, number> = { 0: 46, 1: 56, 2: 80 };
+const HAMMER_PERIOD = 0.18;
+const WALK_PERIOD = 0.25;
+
+const hashOf = (id: string) => {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return h;
+};
+
+/** The session a builder is working: its newest live one, else its newest ended one. */
+function siteOf(b: Builder, state: VillageInput, compounds: Map<string, Compound>): Site | null {
+  let best: SessionInfo | null = null;
+  for (const s of state.sessions) {
+    if (s.kind.kind !== 'agent' || s.kind.builderId !== b.id || !s.spot || !compounds.has(s.workspaceId)) continue;
+    const rank = (x: SessionInfo) => (x.state.kind === 'ended' ? 0 : 1);
+    const better = !best || rank(s) > rank(best) || (rank(s) === rank(best) && s.startedAt > best.startedAt);
+    if (better) best = s;
+  }
+  if (!best || !best.spot) return null;
+  return {
+    sessionId: best.id, workspaceId: best.workspaceId, compound: compounds.get(best.workspaceId)!,
+    spot: best.spot, state: best.state.kind, reachedFinished: best.reachedFinished,
+  };
+}
+
+/** Pose from what the builder is doing and what its session is doing. */
+export function poseOf(w: Walker, site: Site | null, time: number): Pose {
+  if (w.path.length) return Math.floor(time / WALK_PERIOD) % 2 ? 'walk1' : 'walk0';
+  if (w.mode !== 'atSite' || !site) return 'idle';
+  switch (site.state) {
+    case 'starting':
+    case 'working': return Math.floor(time / HAMMER_PERIOD) % 2 ? 'hammer1' : 'hammer0';
+    case 'finished': return 'cheer';
+    case 'stuck': return 'sad';
+    case 'ended': return site.reachedFinished ? 'cheer' : 'sad';
+    default: return 'idle';
   }
 }
 
@@ -152,7 +211,7 @@ export function artFor(key: string): Art {
 export interface SceneDebug {
   fps: number;
   running: boolean;
-  entities: Array<{ id: string; kind: EntityKind; x: number; y: number }>;
+  entities: Array<{ id: string; kind: EntityKind; x: number; y: number; mode?: Walker['mode']; pose?: string }>;
   groundBakes: number;
 }
 
@@ -211,6 +270,8 @@ export async function createScene(canvasHost: HTMLElement): Promise<Scene> {
   const sprites = new Map<string, { sprite: Sprite; key: string; entity: Entity }>();
   let entities: Entity[] = [];
   let destroyed = false;
+  const views = new Map<string, BuilderView>();
+  let time = 0;
 
   // ---- frame policy: 30 fps focused, 15 unfocused, stopped while hidden/minimized
   const ticks: number[] = [];
@@ -269,10 +330,128 @@ export async function createScene(canvasHost: HTMLElement): Promise<Scene> {
     fit();
   };
 
+
+  const texOf = (key: string) => getTexture(key, () => artFor(key));
+  const setTex = (sp: Sprite, key: string) => {
+    const t = texOf(key);
+    if (sp.texture === t.texture) return;
+    sp.texture = t.texture;
+    sp.anchor.set(t.ax / t.texture.width, t.ay / t.texture.height);
+  };
+  const makeSprite = (layer: Container, key: string) => {
+    const sp = new Sprite();
+    sp.scale.set(0.5);
+    setTex(sp, key);
+    layer.addChild(sp);
+    return sp;
+  };
+
+  /** Bring the walkers in line with the store. The walk is cosmetic: nothing here waits on it. */
+  const syncBuilders = (state: VillageInput) => {
+    const compounds = new Map<string, Compound>();
+    for (const w of state.workspaces) if (w.compound) compounds.set(w.id, w.compound);
+    const live = new Set<string>();
+    for (const b of state.builders) {
+      live.add(b.id);
+      const site = siteOf(b, state, compounds);
+      let v = views.get(b.id);
+      if (!v) {
+        const a = (hashOf(b.id) % 360) * (Math.PI / 180);
+        const sprite = new Sprite();
+        sprite.scale.set(0.5);
+        world.addChild(sprite);
+        v = {
+          walker: { id: b.id, x: 0.5 + Math.cos(a) * 5.1, y: 0.5 + Math.sin(a) * 5.1, path: [], mode: 'idle', face: 1, wait: 0.5 },
+          agent: b.agent, cls: classOf(b.agent, b.model), gear: gearOf(b.effort), site: null,
+          pose: 'idle', sprite, bubble: null, ring: null, puffs: [],
+        };
+        views.set(b.id, v);
+      }
+      v.agent = b.agent; v.cls = classOf(b.agent, b.model); v.gear = gearOf(b.effort);
+      const w = v.walker, was = v.site;
+      if (site) {
+        if (!was || was.sessionId !== site.sessionId) {
+          v.walker = { ...w, mode: 'toSite', path: routeToSite(w, site.compound, site.spot) };
+        } else if (was.spot.x !== site.spot.x || was.spot.y !== site.spot.y) {
+          const st = standTile(site.spot); // moved structure: the builder is simply there
+          v.walker = { ...w, x: st.x, y: st.y, path: [], mode: 'atSite', face: -1 };
+        }
+      } else if (was) {
+        const c = compounds.get(was.workspaceId);
+        if (!c) v.walker = { ...w, path: [], mode: 'idle', wait: 0.5 };
+        else {
+          const route = routeHome(w, c);
+          // a builder that has not reached the gate yet turns around on the plaza side
+          v.walker = { ...w, mode: 'home', path: w.mode === 'toSite' && w.path.length >= 3 ? route.slice(2) : route };
+        }
+      }
+      v.site = site;
+    }
+    for (const [id, v] of views) {
+      if (live.has(id)) continue;
+      for (const sp of [v.sprite, v.bubble, v.ring, ...v.puffs]) sp?.destroy();
+      views.delete(id);
+    }
+  };
+
+  const updateBuilders = (dt: number) => {
+    time += dt;
+    for (const v of views.values()) {
+      const before = v.walker.mode;
+      v.walker = step(v.walker, dt, Math.random);
+      const w = v.walker;
+      if (before !== 'atSite' && w.mode === 'atSite') w.face = -1; // look at the structure
+      v.pose = poseOf(w, v.site, time);
+      setTex(v.sprite, `builder:${v.agent}:${v.cls}:${v.gear}:${v.pose}:${w.face}`);
+      const p = iso(w.x, w.y);
+      v.sprite.position.set(p.x, p.y);
+      v.sprite.zIndex = w.x + w.y + KIND_RANK.builder * 0.001;
+      if (v.site && w.mode === 'atSite') {
+        // the stand tile sits behind the structure and often the house; hammering must stay visible
+        const c = v.site.compound, sp = v.site.spot;
+        v.sprite.zIndex = Math.max(sp.x + sp.y + STRUCT, c.house.x + c.house.y + 2 * HOUSE) + 0.002;
+      }
+
+      const st = v.site?.state;
+      const needs = st === 'needsYou', stuck = st === 'stuck';
+      if ((needs || stuck) && !v.bubble) v.bubble = makeSprite(overlay, 'bubble:needs');
+      if (v.bubble) {
+        v.bubble.visible = needs || stuck;
+        if (needs || stuck) {
+          setTex(v.bubble, `bubble:${needs ? 'needs' : 'stuck'}`);
+          v.bubble.position.set(p.x, p.y - HEAD_HEIGHT[v.cls] + Math.sin(time * 6) * 2);
+        }
+      }
+      if (needs && !v.ring) v.ring = makeSprite(groundLayer, 'ring');
+      if (v.ring) {
+        v.ring.visible = needs;
+        if (needs && v.site) {
+          const c = iso(v.site.spot.x + 1, v.site.spot.y + 1);
+          const k = 0.5 * (0.92 + 0.12 * Math.sin(time * 4));
+          v.ring.position.set(c.x, c.y);
+          v.ring.scale.set(k);
+          v.ring.alpha = 0.6 + 0.4 * Math.sin(time * 4 + 1);
+        }
+      }
+      if (stuck && !v.puffs.length) for (let i = 0; i < 3; i++) v.puffs.push(makeSprite(overlay, 'puff'));
+      v.puffs.forEach((pf, i) => {
+        pf.visible = stuck;
+        if (!stuck || !v.site) return;
+        const f = (time * 0.35 + i / 3) % 1;
+        const c = iso(v.site.spot.x + 1, v.site.spot.y + 1);
+        pf.position.set(c.x + Math.sin(f * 6 + i) * 6, c.y - 40 - f * 46);
+        pf.alpha = 1 - f;
+        pf.scale.set(0.5 * (0.6 + f));
+      });
+    }
+  };
+  app.ticker.add((t) => updateBuilders(Math.min(t.deltaMS / 1000, 0.25)));
+
   const sync = (state: VillageInput) => {
     if (destroyed) return;
     const compounds = state.workspaces.flatMap((w) => (w.compound ? [w.compound] : []));
     syncGround(compounds);
+    syncBuilders(state);
     entities = buildEntities(state);
     // Fetch every live texture first: this refreshes their LRU slots before anything new can evict them.
     const tex = entities.map((e) => getTexture(e.texKey, () => artFor(e.texKey)));
@@ -309,7 +488,12 @@ export async function createScene(canvasHost: HTMLElement): Promise<Scene> {
   const debug = (): SceneDebug => ({
     fps: app.ticker.started ? ticks.filter((t) => t >= performance.now() - 1000).length : 0,
     running: app.ticker.started,
-    entities: entities.map((e) => ({ id: e.id, kind: e.kind, x: e.x, y: e.y })),
+    entities: [
+      ...entities.map((e) => ({ id: e.id, kind: e.kind, x: e.x, y: e.y })),
+      ...[...views].map(([id, v]) => ({
+        id: `builder:${id}`, kind: 'builder' as const, x: v.walker.x, y: v.walker.y, mode: v.walker.mode, pose: v.pose,
+      })),
+    ],
     groundBakes,
   });
 

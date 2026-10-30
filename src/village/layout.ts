@@ -86,6 +86,46 @@ export function gateSide(c: Compound): 'n' | 's' | 'e' | 'w' {
   return dy > 0 ? 'n' : 's';
 }
 
+/**
+ * The wall tile replaced by the gate: on the hall-facing side, at the position along that wall
+ * farthest from the house's 3-tile span (at least 1 tile from the wall corners), so the house
+ * never covers or touches it. Ties go to the lower coordinate.
+ */
+export function gateTile(c: Compound): Tile {
+  const r = wallRect(c);
+  const side = gateSide(c);
+  const alongX = side === 'n' || side === 's';
+  const lo = (alongX ? r.x0 : r.y0) + 1;
+  const hi = (alongX ? r.x0 + r.w : r.y0 + r.h) - 2;
+  const s0 = alongX ? c.house.x : c.house.y;
+  const s1 = s0 + HOUSE - 1;
+  let best = lo, bestD = -1;
+  for (let t = lo; t <= hi; t++) {
+    const d = Math.max(s0 - t, t - s1, 0);
+    if (d > bestD) { bestD = d; best = t; }
+  }
+  switch (side) {
+    case 'n': return { x: best, y: r.y0 };
+    case 's': return { x: best, y: r.y0 + r.h - 1 };
+    case 'w': return { x: r.x0, y: best };
+    default: return { x: r.x0 + r.w - 1, y: best };
+  }
+}
+
+const SIDE_OUT = { n: { x: 0, y: -1 }, s: { x: 0, y: 1 }, w: { x: -1, y: 0 }, e: { x: 1, y: 0 } } as const;
+
+/** Interior tile just inside the gate. */
+export function gateInside(c: Compound): Tile {
+  const g = gateTile(c), d = SIDE_OUT[gateSide(c)];
+  return { x: g.x - d.x, y: g.y - d.y };
+}
+
+/** Tile just outside the gate. */
+export function gateOutside(c: Compound): Tile {
+  const g = gateTile(c), d = SIDE_OUT[gateSide(c)];
+  return { x: g.x + d.x, y: g.y + d.y };
+}
+
 /** Inside the interior and not overlapping the house or any taken 2x2 structure. */
 export function canPlace(c: Compound, taken: Tile[], at: Tile, size: number): boolean {
   if (at.x < c.x0 || at.y < c.y0 || at.x + size > c.x0 + c.w || at.y + size > c.y0 + c.h) return false;

@@ -1,5 +1,5 @@
 import { iso } from '../iso';
-import { OUT, bake, chip, ctx, flag, isoBox, line, shadow, up, type Art } from './draw';
+import { OUT, bake, chip, ctx, dot, flag, isoBox, line, outlinedText, roundRect, shadow, up, type Art } from './draw';
 
 /** One tile of wall running along x or y. Anchor: the tile's front corner, grid point (tx+1, ty+1) for tile (tx, ty). */
 export function drawWallSeg(dir: 'x' | 'y'): Art {
@@ -71,5 +71,37 @@ export function drawTree(variant: 0 | 1 | 2 | 3): Art {
 export function drawBadge(count: number): Art {
   return bake(160, 180, 50, 170, () => {
     chip(40, -150, `>_ ${count}`, '#2b2f3a', 20);
+  });
+}
+
+/** Speech bubble over a builder's head: "!" (needs you) or "?!" (stuck). Anchor: the tail tip. */
+export function drawBubble(kind: 'needs' | 'stuck'): Art {
+  return bake(60, 60, 30, 56, () => {
+    const g = ctx();
+    const col = kind === 'needs' ? '#ff4b3e' : '#8e8e8e';
+    g.beginPath(); g.moveTo(-6, -14); g.lineTo(0, 0); g.lineTo(6, -14); g.closePath();
+    g.fillStyle = col; g.fill(); g.strokeStyle = OUT; g.lineWidth = 2.5; g.lineJoin = 'round'; g.stroke();
+    roundRect(-19, -46, 38, 34, 12);
+    g.fillStyle = col; g.fill(); g.stroke();
+    g.beginPath(); g.moveTo(-5, -14); g.lineTo(5, -14); g.strokeStyle = col; g.lineWidth = 3; g.stroke();
+    outlinedText(kind === 'needs' ? '!' : '?!', 0, -20, 26, '#fff', 4);
+  });
+}
+
+/** Pulsing ring on the ground around a structure that needs you. Anchor: its centre. */
+export function drawRing(): Art {
+  return bake(180, 100, 90, 50, () => {
+    const g = ctx();
+    g.beginPath(); g.ellipse(0, 0, 76, 38, 0, 0, Math.PI * 2);
+    g.strokeStyle = OUT; g.lineWidth = 9; g.stroke();
+    g.strokeStyle = '#ff4b3e'; g.lineWidth = 5; g.stroke();
+  });
+}
+
+/** One smoke puff for a stuck structure. Anchor: its centre. */
+export function drawPuff(): Art {
+  return bake(40, 40, 20, 20, () => {
+    dot(0, 0, 11, 'rgba(120,120,120,.75)', 'rgba(60,60,60,.5)', 1.5);
+    dot(-3, -3, 5, 'rgba(190,190,190,.6)');
   });
 }

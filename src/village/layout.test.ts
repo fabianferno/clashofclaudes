@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Compound, Tile } from '../api/types';
 import {
   GAP, GROW, HALL, HOUSE, START, STRUCT, Rect, assertNoCollisions, canPlace, expand,
-  findSpot, gapBetween, gateSide, placeCompound, spotFor, wallRect,
+  findSpot, gapBetween, gateInside, gateOutside, gateSide, gateTile, placeCompound, spotFor, wallRect,
 } from './layout';
 
 const sq = (t: Tile, s: number): Rect => ({ x0: t.x, y0: t.y, w: s, h: s });
@@ -155,5 +155,53 @@ describe('canPlace / gate', () => {
     expect(gateSide({ x0: -15, y0: -3, w: 7, h: 7, house: { x: -9, y: -3 } })).toBe('e');
     expect(gateSide({ x0: -3, y0: 8, w: 7, h: 7, house: { x: -3, y: 8 } })).toBe('n');
     expect(gateSide({ x0: -3, y0: -15, w: 7, h: 7, house: { x: -3, y: -9 } })).toBe('s');
+  });
+});
+
+describe('gate geometry', () => {
+  const hallSideOnWall = (c: Compound) => {
+    const r = wallRect(c), g = gateTile(c);
+    switch (gateSide(c)) {
+      case 'n': return g.y === r.y0;
+      case 's': return g.y === r.y0 + r.h - 1;
+      case 'w': return g.x === r.x0;
+      default: return g.x === r.x0 + r.w - 1;
+    }
+  };
+  const compounds = (): Compound[] => {
+    const e: Compound = { x0: 9, y0: -3, w: 7, h: 7, house: { x: 9, y: -3 } };
+    return [
+      e,
+      { ...e, x0: -16, house: { x: -16 + 4, y: -3 + 4 } },
+      { x0: -3, y0: -16, w: 7, h: 7, house: { x: -3, y: -16 + 4 } },
+      { x0: -3, y0: 9, w: 7, h: 7, house: { x: -3 + 4, y: 9 } },
+      ...placeN(6),
+    ];
+  };
+  it('gate_is_on_hall_wall_clear_of_house', () => {
+    for (const c of compounds()) {
+      const r = wallRect(c), g = gateTile(c);
+      expect(hallSideOnWall(c)).toBe(true);
+      const alongX = gateSide(c) === 'n' || gateSide(c) === 's';
+      const t = alongX ? g.x - r.x0 : g.y - r.y0, len = alongX ? r.w : r.h;
+      expect(t).toBeGreaterThanOrEqual(1);
+      expect(t).toBeLessThanOrEqual(len - 2);
+      // the wall tile does not touch the house footprint (gap >= 1 including diagonals)
+      expect(gapBetween({ x0: g.x, y0: g.y, w: 1, h: 1 }, sq(c.house, HOUSE))).toBeGreaterThanOrEqual(1);
+    }
+  });
+  it('inside_is_interior_and_free_outside_is_beyond_wall', () => {
+    for (const c of compounds()) {
+      const i = gateInside(c), o = gateOutside(c), g = gateTile(c);
+      expect(i.x).toBeGreaterThanOrEqual(c.x0);
+      expect(i.y).toBeGreaterThanOrEqual(c.y0);
+      expect(i.x).toBeLessThan(c.x0 + c.w);
+      expect(i.y).toBeLessThan(c.y0 + c.h);
+      expect(gapBetween({ x0: i.x, y0: i.y, w: 1, h: 1 }, sq(c.house, HOUSE))).toBeGreaterThanOrEqual(0);
+      expect(Math.abs(i.x - g.x) + Math.abs(i.y - g.y)).toBe(1);
+      expect(Math.abs(o.x - g.x) + Math.abs(o.y - g.y)).toBe(1);
+      const r = wallRect(c);
+      expect(o.x < r.x0 || o.y < r.y0 || o.x >= r.x0 + r.w || o.y >= r.y0 + r.h).toBe(true);
+    }
   });
 });

@@ -1,6 +1,6 @@
 import type { Compound } from '../../api/types';
 import { iso } from '../iso';
-import { GAP, HALL, wallRect, gateSide, type Rect } from '../layout';
+import { GAP, HALL, wallRect, gateTile, type Rect } from '../layout';
 import { bake, ctx, poly, type Pt } from './draw';
 import { paintTree } from './scenery';
 
@@ -14,16 +14,6 @@ export function groundOrigin(b: Rect): Pt {
 
 const inRect = (x: number, y: number, r: Rect, pad = 0) =>
   x > r.x0 - pad && x < r.x0 + r.w + pad && y > r.y0 - pad && y < r.y0 + r.h + pad;
-
-function gatePoint(c: Compound): Pt {
-  const w = wallRect(c);
-  switch (gateSide(c)) {
-    case 'n': return { x: w.x0 + w.w / 2, y: w.y0 };
-    case 's': return { x: w.x0 + w.w / 2, y: w.y0 + w.h };
-    case 'w': return { x: w.x0, y: w.y0 + w.h / 2 };
-    default: return { x: w.x0 + w.w, y: w.y0 + w.h / 2 };
-  }
-}
 
 /**
  * Grass, dirt paths hall -> each gate, and forest cleared from every wall rect (+GAP) and the hall.
@@ -70,7 +60,7 @@ export function drawGround(b: Rect, compounds: Compound[], seed: number): HTMLCa
     poly(rect(HALL.x0 - 0.1, HALL.y0 - 0.1, HALL.x0 + HALL.w + 0.1, HALL.y0 + HALL.h + 0.1), '#dcbb80');
     // paths hall -> gate
     for (const c of compounds) {
-      const gp = gatePoint(c);
+      const gt = gateTile(c), gp = { x: gt.x + 0.5, y: gt.y + 0.5 };
       const steps = Math.ceil(Math.hypot(gp.x - cx, gp.y - cy) * 3);
       for (const [r, col] of [[0.6, '#b48c55'], [0.46, '#dcbb80']] as [number, string][])
         for (let i = 0; i <= steps; i++) {

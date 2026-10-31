@@ -27,7 +27,7 @@ const HOOK_EVENTS: [&str; 6] = ["SessionStart", "UserPromptSubmit", "PostToolUse
 pub struct ClaudeAdapter;
 
 /// Shell command run by Claude for each hook: posts the JSON payload (stdin) to the app.
-fn hook_command(hook_url: &str) -> String {
+pub(super) fn hook_command(hook_url: &str) -> String {
     // The URL is app-generated; still quote it safely for `sh`.
     let quoted = hook_url.replace('\'', "'\\''");
     format!("curl -s -m 2 -o /dev/null -X POST -H 'Content-Type: application/json' --data-binary @- '{quoted}'")

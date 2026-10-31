@@ -1,6 +1,7 @@
 //! Agent adapters: how each agent CLI is detected, launched and observed.
 pub mod claude;
 pub mod codex;
+pub mod gemini;
 pub mod generic;
 pub mod opencode;
 
@@ -15,6 +16,7 @@ use std::time::{Duration, Instant};
 
 pub use claude::ClaudeAdapter;
 pub use codex::CodexAdapter;
+pub use gemini::GeminiAdapter;
 pub use generic::CustomAdapter;
 pub use opencode::OpenCodeAdapter;
 
@@ -111,6 +113,7 @@ impl AdapterRegistry {
         let adapters: Vec<Arc<dyn AgentAdapter>> = vec![
             Arc::new(ClaudeAdapter),
             Arc::new(CodexAdapter),
+            Arc::new(GeminiAdapter),
             Arc::new(OpenCodeAdapter),
             Arc::new(CustomAdapter),
         ];
@@ -185,6 +188,7 @@ mod tests {
         let r = AdapterRegistry::new();
         assert!(r.get(AgentKind::Codex).is_some());
         assert!(r.get(AgentKind::OpenCode).is_some());
+        assert!(r.get(AgentKind::Gemini).is_some());
         assert!(r.get(AgentKind::Claude).is_some());
         assert!(r.get(AgentKind::Custom).is_some());
     }

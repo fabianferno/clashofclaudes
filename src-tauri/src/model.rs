@@ -86,11 +86,31 @@ pub struct AppData {
     pub builders: Vec<Builder>,
     #[serde(default)]
     pub stats: Stats,
+    #[serde(default)]
+    pub settings: Settings,
+}
+
+/// User preferences. `updates_enabled` gates the updater, the app's only network access.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Settings {
+    #[serde(default = "default_true")]
+    pub updates_enabled: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self { updates_enabled: true }
+    }
 }
 
 impl Default for AppData {
     fn default() -> Self {
-        Self { version: 2, workspaces: Vec::new(), builders: Vec::new(), stats: Stats::default() }
+        Self { version: 2, workspaces: Vec::new(), builders: Vec::new(), stats: Stats::default(), settings: Settings::default() }
     }
 }
 

@@ -121,6 +121,18 @@ export interface CloseOutcome {
 
 export interface ConfirmQuit {
   live: number;
+  /** The confirmation is for an update restart, not a quit. */
+  restart?: boolean;
+}
+
+export interface Settings {
+  updatesEnabled: boolean;
+}
+
+export interface UpdateStatus {
+  available: boolean;
+  version?: string | null;
+  notes?: string | null;
 }
 
 export interface Frame {

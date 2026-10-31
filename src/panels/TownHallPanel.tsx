@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { ipc } from '../api/ipc';
 import { idleBuilders, useApp } from '../state/store';
 import * as wsActions from '../state/workspaceActions';
 import AgentsStatus from './AgentsStatus';
@@ -10,6 +11,16 @@ export default function TownHallPanel() {
   const builders = useApp((s) => s.builders);
   const setSelection = useApp((s) => s.setSelection);
   const [newName, setNewName] = useState<string | null>(null);
+  const [updatesEnabled, setUpdatesEnabled] = useState(true);
+  useEffect(() => {
+    let live = true;
+    ipc.getSettings().then((s) => live && setUpdatesEnabled(s.updatesEnabled)).catch(() => {});
+    return () => { live = false; };
+  }, []);
+  const toggleUpdates = (on: boolean) => {
+    setUpdatesEnabled(on);
+    ipc.setSettings({ updatesEnabled: on }).catch((e) => { setUpdatesEnabled(!on); useApp.getState().setError(String(e)); });
+  };
   const idle = idleBuilders({ builders, sessions });
   const count = (id: string) => Object.values(sessions).filter((s) => s.workspaceId === id).length;
 
@@ -54,6 +65,12 @@ export default function TownHallPanel() {
       ))}
       <div className="sp-sec">Agents</div>
       <AgentsStatus />
+      <div className="sp-sec">Settings</div>
+      <label className="sp-note" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <input type="checkbox" checked={updatesEnabled} onChange={(e) => toggleUpdates(e.target.checked)} />
+        Check for updates automatically
+      </label>
+      <div className="sp-note">This is the only time the app uses the network: it fetches a signed update manifest from GitHub.</div>
     </>
   );
 }

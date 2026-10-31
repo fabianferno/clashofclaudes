@@ -6,6 +6,7 @@ import TopBar from './hud/TopBar';
 import BuildersBar from './hud/BuildersBar';
 import BuildButtons from './hud/BuildButtons';
 import WelcomeCard from './panels/WelcomeCard';
+import UpdateToast from './hud/UpdateToast';
 import SidePanel from './panels/SidePanel';
 import './App.css';
 
@@ -14,7 +15,7 @@ function App() {
   const error = useApp((s) => s.error);
   const notices = useApp((s) => s.notices);
   const setError = useApp((s) => s.setError);
-  const [quit, setQuit] = useState<number | null>(null);
+  const [quit, setQuit] = useState<{ live: number; restart: boolean } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -28,7 +29,7 @@ function App() {
     keep(ipc.onSelectSession((id) => {
       if (useApp.getState().sessions[id]) useApp.getState().setSelection({ kind: 'session', id });
     }));
-    keep(ipc.onConfirmQuit((q) => setQuit(q.live)));
+    keep(ipc.onConfirmQuit((q) => setQuit({ live: q.live, restart: !!q.restart })));
     let stopLayout: (() => void) | null = null;
     ipc.listState()
       .then((s) => {
@@ -50,6 +51,7 @@ function App() {
     <BuildButtons />
     <WelcomeCard />
     <SidePanel />
+    <UpdateToast />
     <div className="toasts">
       {error && <div className="error" onClick={() => setError(null)}>{error}</div>}
       {notices.map((n) => <div key={n.id} className={`notice notice-${n.kind}`}>{n.text}</div>)}
@@ -57,8 +59,8 @@ function App() {
       {quit !== null && (
         <div className="modal-bg">
           <div className="modal">
-            <p>{quit} sessions are still running. Quit and end them?</p>
-            <button onClick={() => ipc.quitNow().catch((e) => useApp.getState().setError(String(e)))}>Quit</button>{' '}
+            <p>{quit.live} sessions are still running. {quit.restart ? 'Restart and end them?' : 'Quit and end them?'}</p>
+            <button onClick={() => ipc.quitNow(quit.restart).catch((e) => useApp.getState().setError(String(e)))}>{quit.restart ? 'Restart' : 'Quit'}</button>{' '}
             <button onClick={() => setQuit(null)}>Cancel</button>
           </div>
         </div>

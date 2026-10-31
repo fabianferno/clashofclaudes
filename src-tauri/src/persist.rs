@@ -70,6 +70,7 @@ mod tests {
         AppData {
             version: 2,
             stats: Stats::default(),
+            settings: Settings::default(),
             workspaces: vec![Workspace {
                 id: "w1".into(),
                 name: "Café".into(),
@@ -146,6 +147,7 @@ mod tests {
         let w = &d.workspaces[0];
         assert_eq!((w.level, w.xp, w.compound.clone()), (1, 0, None));
         assert_eq!(d.stats, Stats::default());
+        assert!(d.settings.updates_enabled, "old files default to updates on");
         save(&p, &d).unwrap();
         let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&p).unwrap()).unwrap();
         assert_eq!(v["version"], 2);

@@ -12,6 +12,7 @@ pub mod pty;
 pub mod scrollback;
 pub mod sessions;
 pub mod status;
+pub mod updater;
 pub mod xp;
 
 use commands::{AppState, Channels, Removed};
@@ -104,6 +105,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .menu(app_menu)
         .on_menu_event(|app, event| {
             if event.id() == QUIT_MENU_ID {
@@ -196,6 +198,7 @@ pub fn run() {
                 registry: adapters::AdapterRegistry::new(),
                 channels,
                 exit_confirmed: AtomicBool::new(false),
+                pending_update: Mutex::new(None),
             });
             #[cfg(debug_assertions)]
             {
@@ -217,7 +220,7 @@ pub fn run() {
                 let live = st.manager.running_process_count();
                 if commands::should_block_exit(live, st.exit_confirmed.load(Ordering::SeqCst)) {
                     api.prevent_close();
-                    commands::emit_confirm_quit(window.app_handle(), live);
+                    commands::emit_confirm_quit(window.app_handle(), live, false);
                 }
             }
         })
@@ -246,6 +249,10 @@ pub fn run() {
             commands::detach_session,
             commands::ack_output,
             commands::quit_now,
+            commands::get_settings,
+            commands::set_settings,
+            commands::check_for_update,
+            commands::install_update,
             commands::driver_result,
         ])
         .build(tauri::generate_context!())
@@ -258,7 +265,7 @@ pub fn run() {
                 let live = st.manager.running_process_count();
                 if commands::should_block_exit(live, st.exit_confirmed.load(Ordering::SeqCst)) {
                     api.prevent_exit();
-                    commands::emit_confirm_quit(app, live);
+                    commands::emit_confirm_quit(app, live, false);
                 }
             }
         });

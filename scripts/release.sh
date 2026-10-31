@@ -2,10 +2,16 @@
 # Universal macOS release build. Signs/notarizes only when credentials are present.
 # Usage: scripts/release.sh [--dry-run]
 set -euo pipefail
+{ set +x; } 2>/dev/null   # never trace: secrets live in the environment
 cd "$(dirname "$0")/.."
 
 DRY=0
-[[ "${1:-}" == "--dry-run" ]] && DRY=1
+for a in "$@"; do
+  case "$a" in
+    --dry-run) DRY=1 ;;
+    *) echo "unknown argument: $a (usage: scripts/release.sh [--dry-run])" >&2; exit 2 ;;
+  esac
+done
 
 have() { [[ -n "${!1:-}" ]]; }   # never echoes values
 
@@ -21,6 +27,9 @@ SIGN=0; NOTARY="none"
 if have APPLE_ID && have APPLE_PASSWORD && have APPLE_TEAM_ID; then NOTARY="apple-id"; fi
 if have APPLE_API_ISSUER && have APPLE_API_KEY && have APPLE_API_KEY_PATH; then NOTARY="api-key"; fi
 if have APPLE_SIGNING_IDENTITY && [[ "$NOTARY" != "none" ]]; then SIGN=1; fi
+if have APPLE_ID && have APPLE_PASSWORD && have APPLE_TEAM_ID && have APPLE_API_ISSUER && have APPLE_API_KEY && have APPLE_API_KEY_PATH; then
+  echo "WARNING: both notarization credential sets are present; using the API key (api-key) and ignoring the Apple ID set." >&2
+fi
 
 UPDATER=0; have TAURI_SIGNING_PRIVATE_KEY && UPDATER=1
 
@@ -37,14 +46,17 @@ fi
 
 ARGS=(tauri build --target universal-apple-darwin)
 if [[ $UPDATER == 1 ]]; then
-  ARGS+=(--config '{"bundle":{"createUpdaterArtifacts":true}}')
+  UPDATER_CONFIG='{"bundle":{"createUpdaterArtifacts":true}}'
+  ARGS+=(--config "$UPDATER_CONFIG")
 fi
 
 if [[ $DRY == 1 ]]; then
   echo "-- dry run; steps:"
   echo "1. rustup target add ${missing[*]:-(none needed)}"
-  echo "2. pnpm ${ARGS[*]}"
-  echo "3. print artifact paths + shasum -a 256"
+  printf '2. pnpm'; printf ' %q' "${ARGS[@]}"; printf '\n'
+  echo "3. lipo -archs on the built binary (must be: x86_64 arm64)"
+  echo "4. print artifact paths + shasum -a 256"
+  [[ $UPDATER == 1 ]] && echo "5. node scripts/make-latest-json.mjs -> latest.json (updater key is set)"
   exit 0
 fi
 
@@ -55,7 +67,11 @@ fi
 
 if [[ $SIGN == 0 ]]; then
   # An empty/partial identity must not leak into an unsigned build.
-  unset APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID APPLE_API_ISSUER APPLE_API_KEY APPLE_API_KEY_PATH
+  unset APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID APPLE_API_ISSUER APPLE_API_KEY APPLE_API_KEY_PATH
+fi
+
+if [[ $SIGN == 1 && "$NOTARY" == "api-key" ]]; then
+  unset APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID   # make the warning true: only the API key is used
 fi
 
 pnpm "${ARGS[@]}"
@@ -64,6 +80,29 @@ OUT="src-tauri/target/universal-apple-darwin/release/bundle"
 echo "== Artifacts =="
 find "$OUT" -maxdepth 2 \( -name '*.dmg' -o -name '*.app.tar.gz' -o -name '*.sig' \) -print0 \
   | while IFS= read -r -d '' f; do shasum -a 256 "$f"; done
-find "$OUT/macos" -maxdepth 1 -name '*.app' -print 2>/dev/null
+APP="$(find "$OUT/macos" -maxdepth 1 -name '*.app' -print -quit 2>/dev/null || true)"
+[[ -n "$APP" ]] && echo "$APP"
+
+# Both architectures must be in the binary.
+BIN="$(find "$APP/Contents/MacOS" -maxdepth 1 -type f -print -quit 2>/dev/null || true)"
+if [[ -z "$BIN" ]]; then echo "ERROR: no binary found in $APP" >&2; exit 1; fi
+ARCHS="$(lipo -archs "$BIN")"
+echo "lipo -archs: $ARCHS"
+if [[ "$ARCHS" != "x86_64 arm64" ]]; then echo "ERROR: expected 'x86_64 arm64', got '$ARCHS'" >&2; exit 1; fi
+
+# Updater manifest (only when the updater key signed the tarball).
+if [[ $UPDATER == 1 ]]; then
+  VERSION="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+  ENDPOINT="$(node -p "require('./src-tauri/tauri.conf.json').plugins.updater.endpoints[0]")"
+  TARBALL="$(find "$OUT/macos" -maxdepth 1 -name '*.app.tar.gz' -print -quit)"
+  [[ -n "$TARBALL" && -f "$TARBALL.sig" ]] || { echo "ERROR: updater tarball/.sig missing in $OUT/macos" >&2; exit 1; }
+  # .../releases/latest/download/latest.json -> .../releases/download/v<version>/<asset>
+  # GitHub renames uploaded assets: spaces become dots.
+  ASSET="$(basename "$TARBALL" | tr ' ' '.')"
+  DL_URL="${RELEASE_DOWNLOAD_URL:-${ENDPOINT%/latest/download/*}/download/v$VERSION/$ASSET}"
+  node scripts/make-latest-json.mjs --version "$VERSION" --notes "${RELEASE_NOTES:-Release v$VERSION}" \
+    --tarball "$TARBALL" --sig "$TARBALL.sig" --url "$DL_URL" --out "$OUT/latest.json"
+  echo "Upload $ASSET (the .app.tar.gz) and latest.json to the v$VERSION GitHub Release; url in manifest: $DL_URL"
+fi
 [[ $SIGN == 1 ]] || echo "UNSIGNED BUILD — not for distribution"
 [[ $UPDATER == 1 ]] || echo "Updater artifacts skipped (TAURI_SIGNING_PRIVATE_KEY unset)"

@@ -1,10 +1,11 @@
 //! Tauri commands, app events and shared state. JS names are the camelCase of these fns.
 //! Events: `session-updated` (SessionInfo), `session-removed` {id}, `workspace-updated`
-//! (Workspace), `stats-updated` (Stats), `confirm-quit` {live}.
+//! (Workspace), `stats-updated` (Stats), `confirm-quit` {live, restart}.
 use crate::adapters::AdapterRegistry;
 use crate::git::{self, Review};
-use crate::model::{AgentKind, AppData, Builder, Compound, SessionInfo, SessionKind, Stats, Tile, Workspace};
+use crate::model::{AgentKind, AppData, Builder, Compound, SessionInfo, SessionKind, Settings, Stats, Tile, Workspace};
 use crate::persist;
+use crate::updater::{self, UpdateStatus};
 use crate::sessions::{ClosedSession, SessionManager, WorkspaceMissing};
 use crate::xp;
 use anyhow::{anyhow, bail, Context};
@@ -30,6 +31,8 @@ pub struct AppState {
     pub channels: Channels,
     /// Set once the user confirmed quitting, so the exit guard lets the exit through.
     pub exit_confirmed: AtomicBool,
+    /// A found-but-not-yet-installed update (set by `check_for_update`).
+    pub pending_update: Mutex<Option<tauri_plugin_updater::Update>>,
 }
 
 impl AppState {
@@ -112,6 +115,8 @@ pub struct Removed {
 #[derive(Serialize, Clone)]
 pub struct ConfirmQuit {
     pub live: usize,
+    /// The confirmation is for an update restart, not a quit.
+    pub restart: bool,
 }
 
 #[tauri::command]
@@ -476,15 +481,78 @@ pub fn detach_session(id: String, state: State<'_, AppState>) {
     let _ = state.manager.detach(&id);
 }
 
-/// Kills every session and exits (the user confirmed quitting): SIGHUP, up to `KILL_GRACE` for
-/// the process groups to exit, SIGKILL for the survivors, then exit. The wait runs on a blocking
-/// worker, never on the UI thread, so the window keeps responding until the app exits.
-#[tauri::command]
-pub async fn quit_now(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+/// Kills every session, then exits (or restarts into the new version when `restart`): SIGHUP, up
+/// to `KILL_GRACE` for the process groups to exit, SIGKILL for the survivors. The wait runs on a
+/// blocking worker, never on the UI thread, so the window keeps responding until the app exits.
+async fn shutdown_and_exit(app: &AppHandle, state: &AppState, restart: bool) {
     state.exit_confirmed.store(true, Ordering::SeqCst);
     let manager = state.manager.clone();
     let _ = tauri::async_runtime::spawn_blocking(move || manager.shutdown(crate::pty::KILL_GRACE)).await;
+    if restart {
+        app.restart();
+    }
     app.exit(0);
+}
+
+/// The user confirmed quitting (or restarting for an update, `restart`).
+#[tauri::command]
+pub async fn quit_now(restart: Option<bool>, app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    shutdown_and_exit(&app, &state, restart.unwrap_or(false)).await;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_settings(state: State<'_, AppState>) -> Settings {
+    state.data().settings.clone()
+}
+
+#[tauri::command]
+pub fn set_settings(settings: Settings, state: State<'_, AppState>) -> Result<Settings, String> {
+    let mut d = state.data();
+    d.settings = settings;
+    state.save(&d)?;
+    Ok(d.settings.clone())
+}
+
+/// Checks for an update. Refuses with "disabled" BEFORE any network call in debug builds, with
+/// the placeholder pubkey, or when the user turned updates off. Failures are logged, not shown.
+#[tauri::command]
+pub async fn check_for_update(app: AppHandle, state: State<'_, AppState>) -> Result<UpdateStatus, String> {
+    use tauri_plugin_updater::UpdaterExt;
+    let enabled = state.data().settings.updates_enabled;
+    let pubkey = app
+        .config()
+        .plugins
+        .0
+        .get("updater")
+        .and_then(|u| u.get("pubkey"))
+        .and_then(|k| k.as_str())
+        .unwrap_or("")
+        .to_string();
+    updater::gate(cfg!(debug_assertions), &pubkey, enabled).map_err(String::from)?;
+    let found = match app.updater() {
+        Ok(u) => u.check().await.map_err(|e| e.to_string()),
+        Err(e) => Err(e.to_string()),
+    };
+    let status = updater::outcome(found.as_ref().map(|o| o.as_ref().map(|u| (u.version.clone(), u.body.clone()))));
+    *state.pending_update.lock().unwrap_or_else(|e| e.into_inner()) = found.ok().flatten();
+    Ok(status)
+}
+
+/// Downloads and installs the pending update, then restarts through the quit guard: with running
+/// sessions it asks first (`confirm-quit` with `restart`), otherwise it restarts at once.
+#[tauri::command]
+pub async fn install_update(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let update = state.pending_update.lock().unwrap_or_else(|e| e.into_inner()).take();
+    let Some(update) = update else { return Err("no update pending".into()) };
+    if let Err(e) = update.download_and_install(|_, _| {}, || {}).await {
+        eprintln!("update install failed: {e}");
+        return Err("update failed".into());
+    }
+    match updater::restart_plan(state.manager.running_process_count()) {
+        updater::RestartPlan::Now => shutdown_and_exit(&app, &state, true).await,
+        updater::RestartPlan::AskUser { live } => emit_confirm_quit(&app, live, true),
+    }
     Ok(())
 }
 
@@ -493,8 +561,8 @@ pub fn should_block_exit(live: usize, confirmed: bool) -> bool {
     live > 0 && !confirmed
 }
 
-pub fn emit_confirm_quit(app: &AppHandle, live: usize) {
-    let _ = app.emit("confirm-quit", ConfirmQuit { live });
+pub fn emit_confirm_quit(app: &AppHandle, live: usize, restart: bool) {
+    let _ = app.emit("confirm-quit", ConfirmQuit { live, restart });
 }
 
 #[cfg(test)]

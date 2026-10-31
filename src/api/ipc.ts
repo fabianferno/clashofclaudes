@@ -2,7 +2,7 @@ import { invoke, Channel } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
   AgentInfo, AgentKind, Builder, CloseOutcome, Compound, ConfirmQuit, Frame, ListState,
-  Review, SessionInfo, Stats, Tile, Workspace,
+  Review, SessionInfo, Settings, Stats, Tile, UpdateStatus, Workspace,
 } from './types';
 
 const SKIP_FLAG = 1n << 63n;
@@ -53,7 +53,14 @@ export const ipc = {
   detachSession: (id: string) => invoke<void>('detach_session', { id }),
   /** The terminal finished writing output up to stream position `offset`; lets the next frame through. */
   ackOutput: (id: string, offset: number) => invoke<void>('ack_output', { id, offset }),
-  quitNow: () => invoke<void>('quit_now'),
+  /** `restart`: relaunch into an installed update instead of exiting. */
+  quitNow: (restart = false) => invoke<void>('quit_now', { restart }),
+  getSettings: () => invoke<Settings>('get_settings'),
+  setSettings: (settings: Settings) => invoke<Settings>('set_settings', { settings }),
+  /** Rejects with "disabled" (no network call made) in debug builds, with the placeholder key, or when updates are off. */
+  checkForUpdate: () => invoke<UpdateStatus>('check_for_update'),
+  /** Downloads and installs the pending update; the backend then asks (if sessions run) before restarting. */
+  installUpdate: () => invoke<void>('install_update'),
   /** Registers a channel for live frames and returns the decoded snapshot frame. */
   attachSession: async (id: string, onFrame: (f: Frame) => void): Promise<Frame> => {
     const ch = new Channel<ArrayBuffer>();

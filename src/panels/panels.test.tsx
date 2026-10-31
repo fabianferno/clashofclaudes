@@ -8,6 +8,8 @@ const ipc = vi.hoisted(() => ({
   startTerminal: vi.fn(),
   removeWorkspace: vi.fn().mockResolvedValue(undefined),
   openInEditor: vi.fn().mockResolvedValue(undefined),
+  getSettings: vi.fn().mockResolvedValue({ updatesEnabled: true }),
+  setSettings: vi.fn(async (s: unknown) => s),
 }));
 vi.mock('../api/ipc', () => ({ ipc }));
 const sessionPanel = vi.hoisted(() => ({ mounts: 0 }));
@@ -194,4 +196,14 @@ test('town hall: no-builders copy vs all-busy copy', () => {
   act(() => useApp.setState({ builders: [builder()], sessions: { s1: sess() } }));
   render(<TownHallPanel />);
   expect(screen.getByText('Every builder is in a session.')).toBeTruthy();
+});
+
+test('settings_toggle_disables_updates: Town Hall checkbox persists via set_settings', async () => {
+  ipc.getSettings.mockResolvedValue({ updatesEnabled: true });
+  render(<TownHallPanel />);
+  const box = (await screen.findByLabelText('Check for updates automatically')) as HTMLInputElement;
+  expect(box.checked).toBe(true);
+  await act(async () => { fireEvent.click(box); });
+  expect(ipc.setSettings).toHaveBeenCalledWith({ updatesEnabled: false });
+  expect((screen.getByLabelText('Check for updates automatically') as HTMLInputElement).checked).toBe(false);
 });

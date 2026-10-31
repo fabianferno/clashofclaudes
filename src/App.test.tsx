@@ -8,6 +8,8 @@ vi.mock('./api/ipc', () => ({
   ipc: {
     listState: vi.fn().mockResolvedValue({ workspaces: [{ id: 'w1', name: 'proj', path: '/p', createdAt: 0, missing: false }], builders: [], sessions: [] }),
     detectAgents: vi.fn().mockResolvedValue([]),
+    getSettings: vi.fn().mockResolvedValue({ updatesEnabled: true }),
+    checkForUpdate: vi.fn().mockResolvedValue({ available: false }),
     onSessionUpdated: vi.fn().mockResolvedValue(() => {}),
     onSessionRemoved: vi.fn().mockResolvedValue(() => {}),
     onWorkspaceUpdated: vi.fn(async (cb: (w: Workspace) => void) => { onWorkspaceUpdated = cb; return () => {}; }),

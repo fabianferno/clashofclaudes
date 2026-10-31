@@ -7,7 +7,7 @@ import type { AgentKind } from '../api/types';
 const PATHS = {
   claude: 'M21 10.5h3v3h-3v3h-1.5v3H18v-3h-1.5v3H15v-3H9v3H7.5v-3H6v3H4.5v-3H3v-3H0v-3h3v-6h18Zm-15 0h1.5v-3H6Zm10.5 0H18v-3h-1.5z',
   // Original: an upward chevron over a hovering dot ("anti-gravity").
-  antigravity: 'M12 2.5 21 13.5h-5.2L12 8.9l-3.8 4.6H3Zm0 13a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7z',
+  antigravity: 'M12 .5 23.5 14.5h-6.8L12 8.8l-4.7 5.7H.5Zm0 14.3a4.35 4.35 0 1 1 0 8.7 4.35 4.35 0 0 1 0-8.7z',
   opencode: 'M22 24H2V0h20zM17 4.8H7v14.4h10z',
 } as const;
 

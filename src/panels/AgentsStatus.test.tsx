@@ -33,7 +33,7 @@ test('agents show as app icons only, marked ready or not set up', () => {
   expect(tile('claude').getAttribute('aria-label')).toBe('Claude Code: ready');
   expect(tile('codex').getAttribute('aria-label')).toBe('Codex: not set up');
   expect(tile('custom').getAttribute('aria-label')).toBe('Custom: ready');
-  expect(tile('antigravity').textContent).toBe('+Antigravity CLI');
+  expect(tile('antigravity').textContent).toBe('+Antigravity');
   // No commands or versions until a tile is clicked.
   expect(screen.queryByText(/npm i -g/)).toBeNull();
   expect(screen.queryByRole('dialog')).toBeNull();

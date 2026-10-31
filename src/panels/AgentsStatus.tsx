@@ -19,8 +19,8 @@ export const SETUP: Partial<Record<AgentKind, { install?: string; installNote?: 
 /** How long a Copy button reads "Copied". */
 export const COPIED_MS = 2000;
 
-/** The label without a parenthetical ("Codex (beta)" → "Codex"), for the tile. */
-const shortLabel = (a: AgentInfo) => (a.kind === 'custom' ? 'Custom' : a.label.replace(/\s*\(.*\)$/, ''));
+/** A tile-sized name: no parenthetical and no trailing "CLI" ("Antigravity CLI" → "Antigravity"). */
+const shortLabel = (a: AgentInfo) => (a.kind === 'custom' ? 'Custom' : a.label.replace(/\s*\(.*\)$/, '').replace(/ CLI$/, ''));
 /** The version without a repeat of the agent name ("2.1.0 (Claude Code)" → "2.1.0"). */
 const version = (a: AgentInfo) => a.version?.replace(` (${a.label})`, '') ?? null;
 const ready = (a: AgentInfo) => a.kind === 'custom' || a.installed;

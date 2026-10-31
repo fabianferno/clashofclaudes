@@ -5,9 +5,9 @@
 //! done and error. Nothing is written anywhere: agy's hooks can only be injected through a
 //! workspace folder or `~/.gemini/config`, both off limits, and a HOME override breaks its
 //! keychain login (docs/superpowers/research/2026-10-31-antigravity.md). The permission prompt
-//! is also matched on screen as a fallback. Verified so far against agy 1.4.6's help, model list
-//! and embedded docs; the exact report body and the prompt keys await an owner run, so
-//! `canApprove` stays false (answer in the terminal).
+//! is also matched on screen as a fallback. Verified against a live agy 1.4.12 run: its trust and
+//! permission prompts are arrow-key menus with the cursor on "Yes", so Enter approves; Esc
+//! cancels (a tool prompt interrupts the turn, the trust menu exits agy).
 use super::claude::SHARED_FOLDER_NOTE;
 use super::codex::parse_version;
 use super::{AgentAdapter, Detection, DetectionCache, LaunchRequest, ScreenPrompt, DETECTION_TTL};
@@ -83,12 +83,18 @@ impl AgentAdapter for AntigravityAdapter {
     fn reads_osc_status(&self) -> bool {
         true
     }
+    fn approve_keys(&self) -> Option<&'static [u8]> {
+        Some(b"\r")
+    }
+    fn deny_keys(&self) -> Option<&'static [u8]> {
+        Some(b"\x1b")
+    }
     fn screen_prompts(&self) -> Vec<ScreenPrompt> {
-        // `status::screen_text` keeps letters and digits only. Keys per agy's docs (y / n);
-        // unused until `canApprove` is turned on.
+        // `status::screen_text` keeps letters and digits only. Tool prompts (run a command, create
+        // or edit a file) all end in "↑/↓ Navigate · tab Amend"; the trust menu has its own text.
         vec![
-            ScreenPrompt { needle: "Yesandalwaysallow", reason: "Antigravity wants permission", approve: b"y", deny: b"n" },
-            ScreenPrompt { needle: "Doyoutrustthecontentsofthisproject", reason: "Asks whether you trust this folder", approve: b"y", deny: b"n" },
+            ScreenPrompt { needle: "NavigatetabAmend", reason: "Antigravity wants permission", approve: b"\r", deny: b"\x1b" },
+            ScreenPrompt { needle: "Doyoutrustthecontentsofthisproject", reason: "Asks whether you trust this folder", approve: b"\r", deny: b"\x1b" },
         ]
     }
 }
@@ -122,12 +128,17 @@ mod tests {
         let p = AntigravityAdapter.policy();
         assert!(p.silence_needs_you_until_first_event && p.finished_after_silence_secs.is_some());
         assert!(AntigravityAdapter.reads_osc_status());
-        assert!(AntigravityAdapter.approve_keys().is_none(), "canApprove stays off until verified");
+        assert_eq!(AntigravityAdapter.approve_keys(), Some(&b"\r"[..]), "Enter takes the default Yes");
+        assert_eq!(AntigravityAdapter.deny_keys(), Some(&b"\x1b"[..]), "Esc cancels");
     }
 
     #[test]
     fn permission_prompt_matches_on_screen() {
-        let text = crate::status::screen_text(b"\x1b[1m> Yes, and always allow tool 'run_command' in this conversation\x1b[0m");
-        assert!(AntigravityAdapter.screen_prompts().iter().any(|p| text.contains(p.needle)));
+        // As agy 1.4.12 draws a file prompt and the trust menu.
+        let file = crate::status::screen_text("Allow creation of this file?\r\n> 1. Yes, allow creation\r\n  2. No, deny creation\r\n\r\n  ↑/↓ Navigate · tab Amend · f full diff".as_bytes());
+        let trust = crate::status::screen_text(b"Do you trust the contents of this project?\r\n\r\n> Yes, I trust this folder");
+        let prompts = AntigravityAdapter.screen_prompts();
+        assert_eq!(prompts.iter().find(|p| file.contains(p.needle)).unwrap().reason, "Antigravity wants permission");
+        assert_eq!(prompts.iter().find(|p| trust.contains(p.needle)).unwrap().reason, "Asks whether you trust this folder");
     }
 }

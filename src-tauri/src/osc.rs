@@ -16,10 +16,12 @@ const START: &[u8] = b"\x1b]7501;";
 /// Longest sequence kept while waiting for its terminator; longer ones are dropped.
 const MAX_SEQ: usize = 8 * 1024;
 
-/// Stream scanner; keeps at most one partial sequence between `feed` calls.
+/// Stream scanner; keeps at most one partial sequence between `feed` calls, and whether a turn
+/// is under way (for `events`).
 #[derive(Default)]
 pub struct Osc7501 {
     carry: Vec<u8>,
+    in_turn: bool,
 }
 
 impl Osc7501 {
@@ -115,22 +117,41 @@ fn base64(s: &str) -> Option<Vec<u8>> {
     Some(out)
 }
 
-/// The status events a report stands for.
-pub fn events_for(r: &StatusReport) -> Vec<StatusEvent> {
-    match r.state.as_str() {
-        "working" => vec![StatusEvent::PromptSubmitted],
-        "blocked" => {
-            let why = match r.kind.as_deref() {
-                Some("question") => "Has a question for you",
-                Some("auth") => "Needs you to sign in",
-                _ => "Wants permission",
-            };
-            vec![StatusEvent::PermissionRequested { message: r.msg.clone().unwrap_or_else(|| why.into()) }]
+impl Osc7501 {
+    /// The status events a report stands for. Observed from agy 1.4.12: `blocked` (kind
+    /// `permission` for tool and trust menus; kind `auth` at every launch while the keychain
+    /// login loads, so it is ignored: a sign-in that really waits falls to the silence rule),
+    /// `working` after each submit or approval, `done` with the turn's summary, and `idle`
+    /// whenever it is back at its prompt: at launch (no news) and after an interrupt mid-turn
+    /// (Esc, or Deny).
+    pub fn events(&mut self, r: &StatusReport) -> Vec<StatusEvent> {
+        let msg = |why: &str| r.msg.clone().unwrap_or_else(|| why.into());
+        match r.state.as_str() {
+            // Each `working` follows a submit or an approved tool call: it counts as a step.
+            "working" => {
+                self.in_turn = true;
+                vec![StatusEvent::ToolUsed, StatusEvent::PromptSubmitted]
+            }
+            "blocked" => match r.kind.as_deref() {
+                Some("question") => vec![StatusEvent::AskedInTerminal { message: msg("Has a question for you") }],
+                Some("auth") => vec![],
+                _ => {
+                    self.in_turn = true; // a prompt is answered or cancelled before the prompt returns
+                    vec![StatusEvent::PermissionRequested { message: msg("Wants permission") }]
+                }
+            },
+            "done" => {
+                self.in_turn = false;
+                vec![StatusEvent::TurnFinished]
+            }
+            "idle" if std::mem::take(&mut self.in_turn) => vec![StatusEvent::Idle],
+            "error" => {
+                self.in_turn = false;
+                vec![StatusEvent::Failed { reason: msg("reported an error") }]
+            }
+            // Idle outside a turn, `clear` and unknown states move nothing.
+            _ => vec![],
         }
-        "done" => vec![StatusEvent::TurnFinished],
-        "error" => vec![StatusEvent::Failed { reason: r.msg.clone().unwrap_or_else(|| "reported an error".into()) }],
-        // idle (after a cancel) and clear move nothing: the next report or the user decides.
-        _ => vec![],
     }
 }
 
@@ -180,18 +201,38 @@ mod tests {
 
     #[test]
     fn reports_map_to_status_events() {
-        assert_eq!(events_for(&rep("working", None, None)), vec![StatusEvent::PromptSubmitted]);
-        assert_eq!(events_for(&rep("done", None, None)), vec![StatusEvent::TurnFinished]);
+        let mut p = Osc7501::default();
+        assert!(p.events(&rep("blocked", Some("auth"), Some("Sign in required"))).is_empty(), "sent at every launch");
+        assert!(p.events(&rep("idle", None, None)).is_empty(), "idle at launch is no news");
+        assert_eq!(p.events(&rep("working", None, None)), vec![StatusEvent::ToolUsed, StatusEvent::PromptSubmitted]);
         assert_eq!(
-            events_for(&rep("blocked", Some("question"), None)),
-            vec![StatusEvent::PermissionRequested { message: "Has a question for you".into() }]
+            p.events(&rep("blocked", Some("permission"), Some("Approve RunCommand: pwd"))),
+            vec![StatusEvent::PermissionRequested { message: "Approve RunCommand: pwd".into() }]
+        );
+        assert_eq!(p.events(&rep("idle", None, None)), vec![StatusEvent::Idle], "interrupted mid-turn");
+        assert!(p.events(&rep("idle", None, None)).is_empty(), "once");
+        p.events(&rep("working", None, None));
+        assert_eq!(p.events(&rep("done", None, Some("Created hello.txt."))), vec![StatusEvent::TurnFinished]);
+        assert!(p.events(&rep("idle", None, None)).is_empty(), "after a finished turn");
+        assert_eq!(
+            p.events(&rep("blocked", Some("question"), None)),
+            vec![StatusEvent::AskedInTerminal { message: "Has a question for you".into() }]
+        );
+        assert_eq!(p.events(&rep("error", None, None)), vec![StatusEvent::Failed { reason: "reported an error".into() }]);
+        assert!(p.events(&rep("clear", None, None)).is_empty());
+    }
+
+    #[test]
+    fn real_agy_bodies_parse() {
+        // Captured from agy 1.4.12 (a trust menu, then a tool permission).
+        assert_eq!(
+            parse_body("state=blocked:kind=permission:app=antigravity:msg=VHJ1c3QgdGhpcyBmb2xkZXI/"),
+            Some(rep("blocked", Some("permission"), Some("Trust this folder?")))
         );
         assert_eq!(
-            events_for(&rep("blocked", Some("permission"), Some("Run rm -rf build?"))),
-            vec![StatusEvent::PermissionRequested { message: "Run rm -rf build?".into() }]
+            parse_body("state=blocked:kind=permission:app=antigravity:msg=QXBwcm92ZSBSdW5Db21tYW5kOiBwd2Q="),
+            Some(rep("blocked", Some("permission"), Some("Approve RunCommand: pwd")))
         );
-        assert_eq!(events_for(&rep("error", None, None)), vec![StatusEvent::Failed { reason: "reported an error".into() }]);
-        assert!(events_for(&rep("idle", None, None)).is_empty());
-        assert!(events_for(&rep("clear", None, None)).is_empty());
+        assert_eq!(parse_body("state=idle:app=antigravity"), Some(rep("idle", None, None)));
     }
 }

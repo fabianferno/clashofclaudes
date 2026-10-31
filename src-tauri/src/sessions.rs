@@ -2,7 +2,7 @@
 use crate::adapters::{terminal_launch, terminal_policy, AdapterRegistry, AgentAdapter, LaunchRequest, ScreenPrompt};
 use crate::git::{self, GitBaseline, Review};
 use crate::hooks::HookServer;
-use crate::osc::{self, Osc7501};
+use crate::osc::Osc7501;
 use crate::model::{Builder, SessionInfo, SessionKind, SessionState, Tile, Workspace, WorktreeInfo};
 use crate::pty::{LaunchSpec, PtyHandle, REAP_POLL};
 use crate::scrollback::{Scrollback, SCROLLBACK_CAP};
@@ -46,8 +46,7 @@ const FLUSH_EVERY: Duration = Duration::from_millis(16);
 const TICK_EVERY: Duration = Duration::from_secs(1);
 /// Screen prompts are looked for in this much of the newest output.
 const PROMPT_WINDOW: usize = 8 * 1024;
-/// Shown after Deny: the agent now waits for typed instructions.
-pub const DENIED_REASON: &str = "Denied — tell Claude what to do in the terminal";
+pub use crate::status::DENIED_REASON;
 
 struct SessionEntry {
     info: SessionInfo,
@@ -105,6 +104,8 @@ impl SessionEntry {
         let needs_you = matches!(self.info.state, SessionState::NeedsYou { .. });
         let awaiting = match ev {
             StatusEvent::PermissionRequested { .. } => needs_you,
+            // Nothing left to answer from the app: the agent waits for typing.
+            StatusEvent::AskedInTerminal { .. } | StatusEvent::Idle => false,
             _ => self.info.awaiting_decision && needs_you,
         };
         if matches!(ev, StatusEvent::PermissionRequested { .. }) || !awaiting {
@@ -485,8 +486,10 @@ impl SessionManager {
         e.quiet_since_ms = now;
         let mut changed = e.apply(&StatusEvent::Output, now);
         // In-band status reports: the agent's own word, like a hook event.
-        let reports = e.osc.as_mut().map(|p| p.feed(data)).unwrap_or_default();
-        let events: Vec<StatusEvent> = reports.iter().flat_map(osc::events_for).collect();
+        let events: Vec<StatusEvent> = match e.osc.as_mut() {
+            Some(p) => p.feed(data).iter().flat_map(|r| p.events(r)).collect(),
+            None => vec![],
+        };
         if !events.is_empty() {
             e.policy = e.policy.after_first_event();
         }
@@ -1680,6 +1683,34 @@ mod tests {
         // After a report, silence no longer reads as "Waiting in the terminal".
         fx.mgr.tick(info(&fx, &s.id).started_at + 120_000);
         assert_eq!(state(&fx, &s.id), SessionState::Finished);
+    }
+
+    #[test]
+    fn antigravity_answers_from_the_app_with_enter_and_esc() {
+        let fx = fixture();
+        let b = Builder { id: "b1".into(), name: "b1".into(), agent: AgentKind::Antigravity, model: None, effort: None, custom_command: None };
+        // agy 1.4.12's sequence: a tool prompt (Enter approves), work, another prompt (Esc
+        // denies), then `idle`. Single raw bytes are read so the Esc arrives on its own.
+        let script = r#"stty -icanon -icrnl -echo min 1; key() { dd bs=1 count=1 2>/dev/null | od -An -tx1 | tr -d ' \n'; }
+printf '\033]7501;state=blocked:kind=permission:app=antigravity:msg=QXBwcm92ZSBSdW5Db21tYW5kOiBwd2Q=\033\\'
+[ "$(key)" = 0d ] || exit 3
+printf '\033]7501;state=working:app=antigravity\033\\'
+printf '\033]7501;state=blocked:kind=permission:app=antigravity:msg=V3JpdGUgaGVsbG8udHh0\033\\'
+[ "$(key)" = 1b ] || exit 4
+printf '\033]7501;state=idle:app=antigravity\033\\'; sleep 5"#;
+        let spec = LaunchSpec { program: "/bin/sh".into(), args: vec!["-c".into(), script.into()], env: vec![], cwd: fx.ws.path.clone() };
+        let s = fx.mgr.start_with_spec(&fx.ws, &b, spec, Arc::new(crate::adapters::AntigravityAdapter)).unwrap();
+        assert!(wait_until(|| state(&fx, &s.id) == SessionState::NeedsYou { reason: "Approve RunCommand: pwd".into() }));
+        assert!(info(&fx, &s.id).awaiting_decision);
+        fx.mgr.approve(&s.id).unwrap();
+        assert!(wait_until(|| state(&fx, &s.id) == SessionState::NeedsYou { reason: "Write hello.txt".into() }));
+        assert_eq!(info(&fx, &s.id).steps, 1, "each working report is a step");
+        fx.mgr.deny(&s.id).unwrap();
+        // The `idle` after the Esc keeps the denial's reason and arms no buttons.
+        std::thread::sleep(Duration::from_millis(600));
+        let i = info(&fx, &s.id);
+        assert_eq!(i.state, SessionState::NeedsYou { reason: DENIED_REASON.into() }, "script exits non-zero on a wrong key");
+        assert!(!i.awaiting_decision);
     }
 
     #[test]

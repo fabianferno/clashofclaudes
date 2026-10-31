@@ -47,11 +47,11 @@ test('Allow/Deny only while a decision is awaited; disabled while answering', as
 });
 
 test('after a deny the reason shows instead of live buttons', () => {
-  useApp.getState().upsertSession(sess({ kind: 'needsYou', reason: 'Denied — tell Claude what to do in the terminal' }, false));
+  useApp.getState().upsertSession(sess({ kind: 'needsYou', reason: 'Denied — say what to do instead in the terminal' }, false));
   render(<SessionPanel sessionId="s1" />);
   expect(screen.queryByText('Allow')).toBeNull();
   expect(screen.queryByText('Deny')).toBeNull();
-  expect(screen.getByText('Denied — tell Claude what to do in the terminal')).toBeTruthy();
+  expect(screen.getByText('Denied — say what to do instead in the terminal')).toBeTruthy();
 });
 
 test('class_and_gear_text', () => {

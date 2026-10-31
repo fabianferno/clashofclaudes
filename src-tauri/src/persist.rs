@@ -60,11 +60,12 @@ pub fn mark_missing(data: &mut AppData) {
     }
 }
 
-/// Like `mark_missing`, during a run: returns the workspaces whose flag changed (to save and send).
-pub fn refresh_missing(data: &mut AppData) -> Vec<Workspace> {
+/// Applies freshly checked `missing` flags (workspace id, missing) during a run; returns the
+/// workspaces whose flag changed (to save and send). Ids no longer present are ignored.
+pub fn apply_missing(data: &mut AppData, checked: &[(String, bool)]) -> Vec<Workspace> {
     let mut changed = Vec::new();
     for w in &mut data.workspaces {
-        let missing = !w.path.is_dir();
+        let Some(&(_, missing)) = checked.iter().find(|(id, _)| *id == w.id) else { continue };
         if missing != w.missing {
             w.missing = missing;
             changed.push(w.clone());
@@ -143,17 +144,15 @@ mod tests {
     }
 
     #[test]
-    fn refresh_missing_reports_only_changes_both_ways() {
-        let dir = tempfile::tempdir().unwrap();
-        let ws = dir.path().join("ws");
+    fn apply_missing_reports_only_changes_both_ways() {
         let mut data = AppData::default();
-        data.workspaces.push(Workspace { id: "w".into(), name: "w".into(), path: ws.clone(), created_at: 0, missing: false, level: 1, xp: 0, compound: None });
-        let gone = refresh_missing(&mut data);
+        data.workspaces.push(Workspace { id: "w".into(), name: "w".into(), path: "/nope".into(), created_at: 0, missing: false, level: 1, xp: 0, compound: None });
+        let gone = apply_missing(&mut data, &[("w".into(), true), ("removed".into(), true)]);
         assert_eq!(gone.len(), 1);
         assert!(gone[0].missing && data.workspaces[0].missing);
-        assert!(refresh_missing(&mut data).is_empty(), "unchanged: nothing to send");
-        std::fs::create_dir(&ws).unwrap();
-        let back = refresh_missing(&mut data);
+        assert!(apply_missing(&mut data, &[("w".into(), true)]).is_empty(), "unchanged: nothing to send");
+        assert!(apply_missing(&mut data, &[]).is_empty(), "unchecked: left alone");
+        let back = apply_missing(&mut data, &[("w".into(), false)]);
         assert_eq!(back.len(), 1);
         assert!(!back[0].missing && !data.workspaces[0].missing);
     }

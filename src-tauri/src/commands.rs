@@ -210,18 +210,27 @@ pub fn remove_workspace(id: String, state: State<'_, AppState>) -> Result<(), St
 }
 
 /// Re-checks every workspace folder (run when the window gains focus): a folder that came back
-/// clears its `missing` badge, one that vanished gets it. Changes are saved and sent.
+/// clears its `missing` badge, one that vanished gets it. Changes are saved and sent. The
+/// folders are checked without the data lock (`is_dir` can stall on a network mount), and only
+/// one recheck runs at a time.
 pub fn recheck_workspaces(app: &AppHandle, state: &AppState) {
-    let mut d = state.data();
-    let changed = persist::refresh_missing(&mut d);
-    if changed.is_empty() {
+    static RUNNING: AtomicBool = AtomicBool::new(false);
+    if RUNNING.swap(true, Ordering::SeqCst) {
         return;
     }
-    let _ = state.save(&d);
-    drop(d);
-    for w in changed {
-        let _ = app.emit("workspace-updated", w);
+    let paths: Vec<(String, PathBuf)> = state.data().workspaces.iter().map(|w| (w.id.clone(), w.path.clone())).collect();
+    let checked: Vec<(String, bool)> = paths.into_iter().map(|(id, p)| (id, !p.is_dir())).collect();
+    let mut d = state.data();
+    let changed = persist::apply_missing(&mut d, &checked);
+    if !changed.is_empty() {
+        let _ = state.save(&d);
+        // Sent under the lock, so a newer update to the same workspace can't be overtaken.
+        for w in changed {
+            let _ = app.emit("workspace-updated", w);
+        }
     }
+    drop(d);
+    RUNNING.store(false, Ordering::SeqCst);
 }
 
 #[tauri::command]

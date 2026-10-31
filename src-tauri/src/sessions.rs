@@ -463,7 +463,10 @@ impl SessionManager {
         self.send_updated(e);
         let info = e.info.clone();
         drop(g);
-        if stop_now {
+        if self.quitting.load(AtomicOrdering::SeqCst) {
+            // Recorded after `shutdown` collected its PTYs: its final SIGKILL can't reach this one.
+            handle.kill_now();
+        } else if stop_now {
             let _ = handle.kill();
         }
         Ok(info)

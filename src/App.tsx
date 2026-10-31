@@ -42,6 +42,8 @@ function App() {
         if (cancelled) return;
         useApp.getState().markLoaded(); // the welcome card must not stay hidden forever
         useApp.getState().setError(String(e));
+        // Workspaces added from here on still need compounds and spots.
+        stopLayout = autoLayout((err) => useApp.getState().setError(String(err)));
       });
     ipc.detectAgents().then((a) => !cancelled && useApp.getState().setAgents(a)).catch((e) => useApp.getState().setError(String(e)));
     return () => { cancelled = true; stopLayout?.(); unlisten.forEach((u) => u()); };

@@ -101,6 +101,10 @@ fn app_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // A Dock/Finder launch inherits launchd's minimal PATH: import the login shell's before
+    // anything else, so `which`, the adapters' probes and PTY spawns find the agent CLIs.
+    // SAFETY: first statement of `run`; no other thread exists yet.
+    unsafe { platform::import_login_path() };
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())

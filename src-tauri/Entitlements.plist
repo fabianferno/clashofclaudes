@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Hardened runtime only. App sandbox stays OFF: the app spawns CLIs in PTYs.
+       com.apple.security.cs.allow-jit is intentionally absent (WKWebView does not need it);
+       add it only if the notarization log asks. -->
+</dict>
+</plist>

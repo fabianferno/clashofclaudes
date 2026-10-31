@@ -119,7 +119,7 @@ impl AgentAdapter for CodexAdapter {
             format!("notify={}", notify_array(req.hook_url)),
         ]);
         if let Some(t) = req.task.filter(|t| !t.is_empty()) {
-            args.push(t.into());
+            args.extend(["--".into(), t.into()]); // a task like `--help` is not an option
         }
         Ok(LaunchSpec { program: "codex".into(), args, env: vec![], cwd: req.cwd.to_path_buf() })
     }
@@ -192,6 +192,7 @@ mod tests {
             format!("developer_instructions=\"{SHARED_FOLDER_NOTE}\""),
             "-c".into(),
             expected_notify(),
+            "--".into(),
             task.into(),
         ];
         assert_eq!(spec.args, expected);
@@ -253,6 +254,14 @@ mod tests {
         let t = "say \"hi\" && $(whoami)\nline2 🚀";
         let spec = CodexAdapter.launch(&req(d.path(), None, None, Some(t))).unwrap();
         assert_eq!(spec.args.last().unwrap(), t);
+        assert_eq!(spec.args[spec.args.len() - 2], "--");
+    }
+
+    #[test]
+    fn task_starting_with_dash_is_not_an_option() {
+        let d = tempfile::tempdir().unwrap();
+        let spec = CodexAdapter.launch(&req(d.path(), None, None, Some("--help -c x=y"))).unwrap();
+        assert_eq!(&spec.args[spec.args.len() - 2..], &["--", "--help -c x=y"]);
     }
 
     #[test]

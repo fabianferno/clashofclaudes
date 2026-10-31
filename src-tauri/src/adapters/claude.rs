@@ -115,7 +115,7 @@ impl AgentAdapter for ClaudeAdapter {
             args.extend(["--effort".into(), e.into()]);
         }
         if let Some(t) = req.task {
-            args.push(t.into());
+            args.extend(["--".into(), t.into()]); // a task like `--help` is not an option
         }
         Ok(LaunchSpec { program: "claude".into(), args, env: vec![], cwd: req.cwd.to_path_buf() })
     }
@@ -202,7 +202,7 @@ mod tests {
         assert_eq!(&spec.args[0..2], &["--session-id", "sid-1"]);
         assert_eq!(spec.args[2], "--settings");
         assert_eq!(&spec.args[4..6], &["--append-system-prompt", SHARED_FOLDER_NOTE]);
-        assert_eq!(&spec.args[6..], &["--model", "opus", "--effort", "max", "fix bug"]);
+        assert_eq!(&spec.args[6..], &["--model", "opus", "--effort", "max", "--", "fix bug"]);
         assert_eq!(spec.cwd, PathBuf::from("/tmp"));
     }
 
@@ -219,6 +219,13 @@ mod tests {
         let t = "say \"hi\" && $(whoami)\nline2 🚀";
         let spec = ClaudeAdapter.launch(&req("s", d.path(), None, None, Some(t))).unwrap();
         assert_eq!(spec.args.last().unwrap(), t);
+    }
+
+    #[test]
+    fn task_starting_with_dash_is_not_an_option() {
+        let d = tempfile::tempdir().unwrap();
+        let spec = ClaudeAdapter.launch(&req("s", d.path(), None, None, Some("--help -c x=y"))).unwrap();
+        assert_eq!(&spec.args[spec.args.len() - 2..], &["--", "--help -c x=y"]);
     }
 
     #[test]

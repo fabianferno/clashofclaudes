@@ -112,11 +112,12 @@ test('builder_effort_change_updates', async () => {
   expect(ipc.updateBuilder).toHaveBeenCalledWith({ ...builder(), effort: 'low' });
 });
 
-test('builder_model_is_a_row_of_buttons', async () => {
+test('builder_model_is_a_slider', async () => {
   render(<BuilderPanel builderId="b1" />);
-  const radios = screen.getAllByRole('radio').map((r) => [r.textContent, r.getAttribute('aria-checked')]);
-  expect(radios).toEqual([['Default', 'false'], ['haiku', 'false'], ['sonnet', 'false'], ['opus', 'true']]);
-  await act(async () => { fireEvent.click(screen.getByRole('radio', { name: 'sonnet' })); });
+  const slider = screen.getByLabelText('Model') as HTMLInputElement;
+  expect(slider.type).toBe('range');
+  expect([slider.max, slider.value, slider.getAttribute('aria-valuetext')]).toEqual(['3', '3', 'opus']); // Default, haiku, sonnet, opus
+  await act(async () => { fireEvent.change(slider, { target: { value: '2' } }); });
   expect(ipc.updateBuilder).toHaveBeenCalledWith({ ...builder(), model: 'sonnet' });
 });
 
@@ -124,7 +125,7 @@ test('builder_model_and_effort_reset_to_default', async () => {
   act(() => useApp.setState({ builders: [builder({ model: null, effort: 'high' })] }));
   render(<BuilderPanel builderId="b1" />);
   // null shows as Default, not as the first model
-  expect(screen.getByRole('radio', { name: 'Default' }).getAttribute('aria-checked')).toBe('true');
+  expect(screen.getByLabelText('Model').getAttribute('aria-valuetext')).toBe('Default');
   await act(async () => { fireEvent.change(screen.getByLabelText('Effort'), { target: { value: '0' } }); });
   expect(ipc.updateBuilder).toHaveBeenCalledWith({ ...builder({ model: null, effort: 'high' }), effort: null });
 });
@@ -161,7 +162,6 @@ test('agent_model_effort_locked_while_busy', () => {
   act(() => useApp.setState({ sessions: { s1: sess() } }));
   render(<BuilderPanel builderId="b1" />);
   for (const l of ['Agent', 'Model', 'Effort']) expect((screen.getByLabelText(l) as HTMLSelectElement).disabled).toBe(true);
-  expect((screen.getByRole('radio', { name: 'sonnet' }) as HTMLButtonElement).matches(':disabled')).toBe(true);
   expect((screen.getByLabelText('Name') as HTMLInputElement).disabled).toBe(false);
   expect(screen.getByTestId('builder-busy-note').textContent).toMatch(/locked until it ends/);
   fireEvent.click(screen.getByText('Open session'));

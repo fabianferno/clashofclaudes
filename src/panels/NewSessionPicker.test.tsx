@@ -180,14 +180,15 @@ test('ensureSpot failure is non-fatal: session selected, error reported, started
   expect(ipc.startSession).toHaveBeenCalledTimes(1);
 });
 
-test('recruiting picks the model with buttons and the effort with a slider', async () => {
+test('recruiting picks the model and the effort with sliders', async () => {
   setup();
   vi.mocked(ipc.createBuilder).mockResolvedValue(bld('b1', 'Kai'));
   vi.mocked(ipc.startSession).mockResolvedValue(sess('s', 'b1', { kind: 'working' }));
   render(<NewSessionPicker workspaceId="w" />);
-  expect(screen.getAllByRole('radio').map((r) => r.textContent)).toEqual(['Default', 'haiku', 'sonnet', 'opus']);
-  fireEvent.click(screen.getByRole('radio', { name: 'opus' }));
-  expect(screen.getByRole('radio', { name: 'opus' }).getAttribute('aria-checked')).toBe('true');
+  const model = screen.getByLabelText('Model') as HTMLInputElement;
+  expect(model.max).toBe('3'); // Default, haiku, sonnet, opus
+  fireEvent.change(model, { target: { value: '3' } });
+  expect(model.getAttribute('aria-valuetext')).toBe('opus');
   const slider = screen.getByLabelText('Effort') as HTMLInputElement;
   fireEvent.change(slider, { target: { value: '2' } }); // Default, Low, Max
   expect(slider.getAttribute('aria-valuetext')).toBe('Max');
@@ -199,4 +200,13 @@ test('an agent without efforts shows no effort slider', () => {
   setup({ agents: [{ ...claude, efforts: [] }, custom] });
   render(<NewSessionPicker workspaceId="w" />);
   expect(screen.queryByLabelText('Effort')).toBeNull();
+});
+
+test('a long model list hides the tick labels and names only the chosen model', () => {
+  const many = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'];
+  setup({ agents: [{ ...claude, models: many }, custom] });
+  const { container } = render(<NewSessionPicker workspaceId="w" />);
+  fireEvent.change(screen.getByLabelText('Model'), { target: { value: '4' } });
+  expect(screen.getByLabelText('Model').getAttribute('aria-valuetext')).toBe('m4');
+  expect(container.querySelectorAll('.slider-ticks')).toHaveLength(1); // the effort slider's only
 });

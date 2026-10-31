@@ -5,7 +5,7 @@ import type { AgentInfo, AgentKind, Builder } from '../api/types';
 import { CLASS_NAMES, classOf } from '../village/look';
 import BuilderPreview from './BuilderPreview';
 import { modelPlaceholder } from './BuilderPanel';
-import { EffortSlider, ModelButtons } from './Choosers';
+import { EffortSlider, ModelSlider } from './Choosers';
 
 export const RECRUIT_NAMES = ['Ivy', 'Jax', 'Kai', 'Lu', 'Mo', 'Nia', 'Oz', 'Pip', 'Quin', 'Rex'];
 
@@ -160,7 +160,7 @@ export default function NewSessionPicker({ workspaceId }: { workspaceId: string 
           ) : (
             <>
               {(agent?.models.length ?? 0) > 0
-                ? <ModelButtons label="Model" options={agent!.models} value={model} onChange={setModel} />
+                ? <ModelSlider label="Model" options={agent!.models} value={model} onChange={setModel} />
                 : (
                   <label className="sp-field">Model (optional)
                     <input value={model} placeholder={modelPlaceholder(kind)} onChange={(e) => setModel(e.target.value)} />

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { EffortSlider, ModelButtons } from './Choosers';
+import { EffortSlider, ModelSlider } from './Choosers';
 import { ipc } from '../api/ipc';
 import type { AgentKind, Builder } from '../api/types';
 import { liveSessionOf } from '../hud/hudState';
@@ -76,7 +76,7 @@ export default function BuilderPanel({ builderId }: { builderId: string }) {
         </select>
       </label>
       {(info?.models.length ?? 0) > 0 && (
-        <ModelButtons label="Model" options={info!.models} value={b.model ?? ''} disabled={busy}
+        <ModelSlider label="Model" options={info!.models} value={b.model ?? ''} disabled={busy}
           onChange={(m) => { if (m !== (b.model ?? '')) void save({ ...b, model: m || null }); }} />
       )}
       {info && info.models.length === 0 && b.agent !== 'custom' && (

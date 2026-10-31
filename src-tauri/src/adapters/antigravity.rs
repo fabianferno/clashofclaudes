@@ -26,15 +26,16 @@ fn probe() -> Detection {
 pub static DETECTION: DetectionCache = DetectionCache::new(DETECTION_TTL);
 
 /// Model ids as `agy models` lists them (account-dependent; each embeds its effort level).
+/// Ordered roughly from fastest to most capable (the model slider runs in this order).
 const MODELS: [&str; 8] = [
+    "gpt-oss-120b-medium",
     "gemini-3.8-flash-medium",
     "gemini-3.8-flash-high",
-    "gemini-4-argon-medium",
-    "gemini-4-argon-high",
     "claude-sonnet-5-5-medium",
     "claude-sonnet-5-5-high",
+    "gemini-4-argon-medium",
+    "gemini-4-argon-high",
     "claude-opus-5-5-high",
-    "gpt-oss-120b-medium",
 ];
 
 impl AgentAdapter for AntigravityAdapter {

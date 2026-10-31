@@ -1,6 +1,6 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useApp, type Selection } from '../state/store';
-import { badgeOf, idleOf, liveAgentSessions, startOfToday, type BadgeState } from './hudState';
+import { badgeOf, idleOf, liveAgentSessions, msToNextMidnight, startOfToday, type BadgeState } from './hudState';
 import { RES_MARGIN, panelInset } from './layout';
 import './hud.css';
 
@@ -20,6 +20,12 @@ export default function TopBar() {
   const stats = useApp((s) => s.stats);
   const panelOpen = useApp((s) => s.panelOpen);
   const setSelection = useApp((s) => s.setSelection);
+  // "Shipped today" must roll over at local midnight even if nothing else re-renders the bar.
+  const [day, setDay] = useState(0);
+  useEffect(() => {
+    const t = setTimeout(() => setDay((d) => d + 1), msToNextMidnight() + 50);
+    return () => clearTimeout(t);
+  }, [day]);
 
   const { live, byState } = useMemo(() => {
     const live = liveAgentSessions(Object.values(sessionMap)).sort((a, b) => a.startedAt - b.startedAt);

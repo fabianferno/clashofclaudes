@@ -12,8 +12,13 @@ export type Selection =
 export interface VillageActions {
   /** The workspace's compound, placing and persisting one first if it has none. */
   ensureCompound: (wsId: string) => Promise<Compound>;
-  /** The agent session's spot, finding (expanding the compound if full) and persisting one if it has none. */
-  ensureSpot: (sessionId: string) => Promise<Tile>;
+  /**
+   * The agent session's spot, finding (expanding the compound if full) and persisting one if it has none.
+   * Shifting the other structures of a relocated compound never stops at one failure (a mate may have
+   * closed meanwhile): the rest are still shifted and the failures are reported once via `onError`
+   * (default: the app's error toast).
+   */
+  ensureSpot: (sessionId: string, onError?: (e: unknown) => void) => Promise<Tile>;
   /** Persist a move of a structure (session) or a compound's house (workspace) to `at`; false (and no ipc) when blocked. */
   commitMove: (target: MoveTarget, at: Tile, onError?: (e: unknown) => void) => Promise<boolean>;
 }
@@ -99,7 +104,7 @@ export const useApp = create<AppState>((set, get) => ({
     if (o.stuck) push('Closed while stuck \u2014 no XP', 'info');
     else if (o.unfinished) push('Closed \u2014 not finished, no XP', 'info');
     else if (o.earnedXp) {
-      push('+100 XP', 'xp');
+      push(`+${o.xpGained} XP`, 'xp');
       if (o.levelAfter > o.levelBefore) push(`LEVEL UP! Level ${o.levelAfter}`, 'level');
       if (sessionId) {
         set((st) => ({ lastClosed: { ...st.lastClosed, [sessionId]: o } }));
@@ -215,7 +220,7 @@ function villageActions(get: () => AppState): VillageActions {
     return c;
   };
 
-  const spotOf = async (sessionId: string): Promise<Tile> => {
+  const spotOf = async (sessionId: string, onError: (e: unknown) => void): Promise<Tile> => {
     const s = get().sessions[sessionId];
     if (!s) throw new Error(`unknown session ${sessionId}`);
     if (s.kind.kind === 'terminal') throw new Error('terminal sessions have no spot');
@@ -229,10 +234,13 @@ function villageActions(get: () => AppState): VillageActions {
     const r = spotFor(c, all, mates.map((x) => x.spot!));
     if (r.expanded) get().updateWorkspace(await ipc.setCompound(s.workspaceId, r.compound));
     if (r.shift.x !== 0 || r.shift.y !== 0) {
+      const failed: unknown[] = [];
       for (const m of mates) {
         const moved = { x: m.spot!.x + r.shift.x, y: m.spot!.y + r.shift.y };
-        get().upsertSession(await ipc.setSessionSpot(m.id, moved));
+        try { get().upsertSession(await ipc.setSessionSpot(m.id, moved)); } catch (e) { failed.push(e); }
       }
+      if (failed.length)
+        onError(new Error(`Could not move ${failed.length} of ${mates.length} structures with their compound: ${String(failed[0])}`));
     }
     get().upsertSession(await ipc.setSessionSpot(sessionId, r.spot));
     return r.spot;
@@ -240,7 +248,7 @@ function villageActions(get: () => AppState): VillageActions {
 
   return {
     ensureCompound: (wsId) => serial(() => compoundOf(wsId)),
-    ensureSpot: (sessionId) => serial(() => spotOf(sessionId)),
+    ensureSpot: (sessionId, onError) => serial(() => spotOf(sessionId, onError ?? ((e) => get().setError(String(e))))),
     commitMove: (target, at, onError) => serial(async () => {
       const st = get();
       if (!moveValid(st, target, at)) return false;
@@ -274,7 +282,7 @@ export function autoLayout(onError: (e: unknown) => void = () => {}): () => void
   const check = (st: AppState) => {
     for (const w of st.workspaces) if (!w.compound) run(`ws:${w.id}`, () => st.village.ensureCompound(w.id));
     for (const s of Object.values(st.sessions))
-      if (s.kind.kind === 'agent' && !s.spot) run(`s:${s.id}`, () => st.village.ensureSpot(s.id));
+      if (s.kind.kind === 'agent' && !s.spot) run(`s:${s.id}`, () => st.village.ensureSpot(s.id, onError));
   };
   check(useApp.getState());
   return useApp.subscribe(check);

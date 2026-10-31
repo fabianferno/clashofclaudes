@@ -9,8 +9,10 @@ import SidePanel from './panels/SidePanel';
 import './App.css';
 
 function App() {
-  const st = useApp();
-  const error = st.error;
+  // Narrow selectors: App must not re-render on every session update (only these two fields matter here).
+  const error = useApp((s) => s.error);
+  const notices = useApp((s) => s.notices);
+  const setError = useApp((s) => s.setError);
   const [quit, setQuit] = useState<number | null>(null);
 
   useEffect(() => {
@@ -44,8 +46,8 @@ function App() {
     <BuildButtons />
     <SidePanel />
     <div className="toasts">
-      {error && <div className="error" onClick={() => st.setError(null)}>{error}</div>}
-      {st.notices.map((n) => <div key={n.id} className={`notice notice-${n.kind}`}>{n.text}</div>)}
+      {error && <div className="error" onClick={() => setError(null)}>{error}</div>}
+      {notices.map((n) => <div key={n.id} className={`notice notice-${n.kind}`}>{n.text}</div>)}
     </div>
       {quit !== null && (
         <div className="modal-bg">

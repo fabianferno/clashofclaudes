@@ -57,6 +57,18 @@ test('shipped_today_counts_since_midnight', () => {
   expect(screen.getByTestId('village-level').textContent).toContain('12');
 });
 
+test('shipped_today_resets_at_local_midnight', () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date(2026, 9, 31, 23, 59, 0));
+  put([], [], { shippedTotal: 2, recentShips: [Date.now() - 60_000, Date.now()] });
+  const { unmount } = render(<TopBar />);
+  expect(screen.getByTestId('shipped-today').textContent).toBe('2');
+  act(() => { vi.advanceTimersByTime(61_000); }); // past midnight, with no store change
+  expect(screen.getByTestId('shipped-today').textContent).toBe('0');
+  unmount();
+  expect(vi.getTimerCount()).toBe(0); // the midnight timer is cleaned up
+});
+
 test('no_tokens_shown', () => {
   render(<TopBar />);
   expect(screen.queryByText(/token/i)).toBeNull();

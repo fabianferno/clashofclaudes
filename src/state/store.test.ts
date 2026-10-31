@@ -117,6 +117,34 @@ describe('village', () => {
     expect(ipc.setSessionSpot).toHaveBeenCalledTimes(1);
   });
 
+  it('relocation keeps shifting past a failed mate and reports the failure once', async () => {
+    const c: Compound = { x0: 8, y0: -3, w: 7, h: 7, house: { x: 8, y: 1 } };
+    const other: Compound = { x0: 8 + 7 + 1 + GAP + 1, y0: -3, w: 7, h: 7, house: { x: 21, y: 1 } };
+    const taken: Tile[] = [];
+    for (let t = findSpot(c, taken); t; t = findSpot(c, taken)) taken.push(t);
+    const pre = spotFor(c, [c, other], taken);
+    expect(taken.length).toBeGreaterThan(2);
+    useApp.setState({ workspaces: [W('w1', c), W('w2', other)] });
+    taken.forEach((t, i) => useApp.getState().upsertSession({ ...sess(`s${i}`, 'w1', 'b1'), spot: t }));
+    useApp.getState().upsertSession(sess('new', 'w1', 'b1'));
+    const setS = vi.mocked(ipc.setSessionSpot);
+    const ok = setS.getMockImplementation()!;
+    setS.mockImplementation(async (id, spot) => {
+      if (id === 's0') throw 'unknown session s0'; // closed mid-relocation
+      return ok(id, spot);
+    });
+    const errs: unknown[] = [];
+    const spot = await useApp.getState().village.ensureSpot('new', (e) => errs.push(e));
+    expect(spot).toEqual(pre.spot);
+    expect(errs).toHaveLength(1);
+    expect(String(errs[0])).toMatch(/1 of \d+ structures.*unknown session s0/);
+    taken.forEach((t, i) => {
+      if (i === 0) return;
+      expect(useApp.getState().sessions[`s${i}`].spot).toEqual({ x: t.x + pre.shift.x, y: t.y + pre.shift.y });
+    });
+    expect(useApp.getState().sessions.new.spot).toEqual(pre.spot);
+  });
+
   it('relocation persists the compound first, then shifts the other spots', async () => {
     // East of the hall, hemmed in: the hall blocks growth west, a neighbour blocks growth east.
     const c: Compound = { x0: 8, y0: -3, w: 7, h: 7, house: { x: 8, y: 1 } };
@@ -218,6 +246,10 @@ describe('close notices', () => {
     expect(useApp.getState().lastClosed.s1.earnedXp).toBe(true);
     useApp.getState().consumeClosed('s1');
     expect(useApp.getState().lastClosed.s1).toBeUndefined();
+  });
+  test('xp notice shows the XP actually gained', () => {
+    useApp.getState().onClosed(out({ earnedXp: true, xpGained: 140 }), 's1');
+    expect(texts()).toEqual(['+140 XP']);
   });
   test('level_up_notice', () => {
     useApp.getState().onClosed(out({ earnedXp: true, xpGained: 100, levelBefore: 1, levelAfter: 2 }), 's1');

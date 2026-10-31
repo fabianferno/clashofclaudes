@@ -45,6 +45,18 @@ test('only installed agents are offered', () => {
   expect(opts).not.toContain('Codex');
 });
 
+test('agent default follows agents detected after mount until the user picks', () => {
+  setup({ agents: [] });
+  render(<NewSessionPicker workspaceId="w" />);
+  act(() => useApp.setState({ agents: [claude, custom] }));
+  const agentSelect = screen.getByText('Agent').querySelector('select') as HTMLSelectElement;
+  expect(agentSelect.value).toBe('claude');
+  expect(screen.getByText(/^claude …/)).toBeTruthy();
+  fireEvent.change(agentSelect, { target: { value: 'custom' } });
+  act(() => useApp.setState({ agents: [claude, custom, { ...codex, installed: true }] }));
+  expect((screen.getByText('Agent').querySelector('select') as HTMLSelectElement).value).toBe('custom');
+});
+
 test('recruit_default_when_all_busy', () => {
   setup({ builders: [bld('b1', 'Ada')], sessions: { s1: sess('s1', 'b1', { kind: 'working' }) } });
   render(<NewSessionPicker workspaceId="w" />);

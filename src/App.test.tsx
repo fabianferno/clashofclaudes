@@ -19,7 +19,8 @@ vi.mock('./api/ipc', () => ({
   },
 }));
 vi.mock('./components/TerminalView', () => ({ default: () => null }));
-vi.mock('./village/VillageCanvas', () => ({ default: () => null }));
+let appRenders = 0; // VillageCanvas is not memoized: it renders exactly when App does
+vi.mock('./village/VillageCanvas', () => ({ default: () => { appRenders++; return null; } }));
 import App from './App';
 import { useApp } from './state/store';
 import { act } from 'react';
@@ -32,4 +33,20 @@ test('town hall panel lists workspaces; workspace-updated event shows the missin
   expect(screen.queryByText('missing')).toBeNull();
   act(() => onWorkspaceUpdated({ id: 'w1', name: 'proj', path: '/p', createdAt: 0, missing: true, level: 1, xp: 0, compound: null }));
   expect(await screen.findByText('missing')).toBeTruthy();
+});
+
+test('App does not re-render on session updates; error and notices still show', async () => {
+  render(<App />);
+  await act(async () => { await Promise.resolve(); });
+  const before = appRenders;
+  act(() => useApp.getState().upsertSession({
+    id: 's1', workspaceId: 'w1', kind: { kind: 'terminal' }, task: null, state: { kind: 'working' }, steps: 0, startedAt: 0,
+    lastOutputAt: 0, reachedFinished: false, worktree: null, commandPreview: '', awaitingDecision: false, rev: 1, spot: null,
+  }));
+  act(() => useApp.getState().upsertSession({ ...useApp.getState().sessions.s1, steps: 1, rev: 2 }));
+  expect(appRenders).toBe(before);
+  act(() => useApp.getState().setError('boom'));
+  expect(screen.getByText('boom')).toBeTruthy();
+  act(() => screen.getByText('boom').click());
+  expect(screen.queryByText('boom')).toBeNull();
 });

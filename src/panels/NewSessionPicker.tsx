@@ -43,7 +43,9 @@ export default function NewSessionPicker({ workspaceId }: { workspaceId: string 
   const [wsId, setWsId] = useState(workspaceId);
   const [picked, setPicked] = useState<string | null>(null);
   const [nameEdit, setNameEdit] = useState<string | null>(null);
-  const [kind, setKind] = useState<AgentKind>(offered[0]?.kind ?? 'custom');
+  // Derived until the user picks one: agents may be detected after the picker mounts.
+  const [kindPick, setKind] = useState<AgentKind | null>(null);
+  const kind: AgentKind = (kindPick && offered.some((a) => a.kind === kindPick) ? kindPick : null) ?? offered[0]?.kind ?? 'custom';
   const [model, setModel] = useState(DEFAULT);
   const [effort, setEffort] = useState(DEFAULT);
   const [command, setCommand] = useState('');

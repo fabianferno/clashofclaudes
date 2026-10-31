@@ -55,9 +55,14 @@ When the app is in the background, it shows a macOS notification when a session 
 
 ## Development
 
+Three ways to run it, fastest first:
+
+- `pnpm app`: development mode. Frontend edits show up instantly, and Rust edits rebuild and relaunch the window by themselves. It keeps its own data (`~/Library/Application Support/dev.clashofclaudes.app.dev`), so experiments never touch your real workspaces; `COC_DATA_DIR= pnpm app` uses the real data (quit the installed app first).
+- `pnpm app:install`: a real installed app for this Mac only, in `/Applications`, about 40 s from scratch and seconds after a small change. Use it for what only an installed app does: launching from the Dock, notifications, macOS permission prompts. If the app is open, it waits for you to quit it.
+- `pnpm release`: the universal (Intel + Apple Silicon) DMG for other people. Slow (full optimization, both architectures); only for shipping.
+
 ```
 pnpm install
-pnpm tauri dev          # run the app
 cargo test --manifest-path src-tauri/Cargo.toml
 pnpm vitest run && pnpm exec tsc --noEmit
 node --test scripts/*.test.mjs

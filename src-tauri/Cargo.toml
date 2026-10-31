@@ -51,3 +51,12 @@ strip = true
 # pool"); strip only the final binary.
 [profile.release.build-override]
 strip = false
+
+# Fast local installs (scripts/install-local.sh): release speed without LTO's long link, and
+# incremental rebuilds. Never used for distributed builds.
+[profile.local]
+inherits = "release"
+codegen-units = 16
+lto = false
+incremental = true
+strip = false

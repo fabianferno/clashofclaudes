@@ -10,6 +10,8 @@
     "tauri": "tauri",
     "test": "vitest run",
     "test:scripts": "node --test scripts/*.test.mjs",
+    "app": "bash scripts/dev.sh",
+    "app:install": "bash scripts/install-local.sh",
     "release": "bash scripts/release.sh",
     "release:dry": "bash scripts/release.sh --dry-run"
   },

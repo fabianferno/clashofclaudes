@@ -69,6 +69,9 @@ export const ipc = {
     listen<Workspace>('workspace-updated', (e) => cb(e.payload)),
   onStatsUpdated: (cb: (s: Stats) => void): Promise<UnlistenFn> =>
     listen<Stats>('stats-updated', (e) => cb(e.payload)),
+  /** A notification was clicked: select that session (and open its panel). */
+  onSelectSession: (cb: (id: string) => void): Promise<UnlistenFn> =>
+    listen<{ id: string }>('select-session', (e) => cb(e.payload.id)),
   onConfirmQuit: (cb: (q: ConfirmQuit) => void): Promise<UnlistenFn> =>
     listen<ConfirmQuit>('confirm-quit', (e) => cb(e.payload)),
 };

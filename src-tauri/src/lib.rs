@@ -5,6 +5,7 @@ pub mod driver;
 pub mod git;
 pub mod hooks;
 pub mod model;
+pub mod notify;
 pub mod persist;
 pub mod platform;
 pub mod pty;
@@ -20,6 +21,50 @@ use std::sync::{Arc, Mutex, OnceLock, Weak};
 use tauri::ipc::InvokeResponseBody;
 use tauri::menu::{Menu, MenuItem};
 use tauri::{AppHandle, Emitter, Manager, Runtime, WindowEvent};
+use tauri_plugin_notification::{NotificationExt, PermissionState};
+
+/// `denied`: set once permission was refused, so it is never asked again this run.
+struct NotifyState {
+    notifier: notify::Notifier,
+    denied: AtomicBool,
+}
+
+/// Shows `note` (lazily asking permission the first time); silent when refused or on error.
+fn show_note<R: Runtime>(app: &AppHandle<R>, st: &NotifyState, note: notify::Note, session_id: &str) {
+    if st.denied.load(Ordering::SeqCst) {
+        return;
+    }
+    let n = app.notification();
+    if !matches!(n.permission_state(), Ok(PermissionState::Granted)) {
+        match n.request_permission() {
+            Ok(PermissionState::Granted) => {}
+            _ => {
+                st.denied.store(true, Ordering::SeqCst);
+                return;
+            }
+        }
+    }
+    let _ = n.builder().title(note.title).body(note.body).extra("sessionId", session_id).show();
+}
+
+/// Recomputes the dock badge from the live sessions.
+fn refresh_badge<R: Runtime>(app: &AppHandle<R>) {
+    let Some(state) = app.try_state::<AppState>() else { return };
+    let n = notify::badge_count(&state.manager.list());
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.set_badge_count(notify::badge_value(n));
+    }
+}
+
+/// A notification was clicked: bring the window up and ask the frontend to select the session.
+fn focus_and_select<R: Runtime>(app: &AppHandle<R>, session_id: &str) {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+    }
+    let _ = app.emit("select-session", serde_json::json!({ "id": session_id }));
+}
 
 const QUIT_MENU_ID: &str = "app-quit";
 
@@ -47,6 +92,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .menu(app_menu)
         .on_menu_event(|app, event| {
             if event.id() == QUIT_MENU_ID {
@@ -73,10 +119,37 @@ pub fn run() {
             let (handle, chans) = (app.handle().clone(), channels.clone());
             let emit: Emit = Arc::new(move |ev| match ev {
                 ManagerEvent::Updated(info) => {
+                    if let Some(ns) = handle.try_state::<NotifyState>()
+                        && let Some(st) = handle.try_state::<AppState>()
+                        && let model::SessionKind::Agent { builder_id: bid } = &info.kind
+                    {
+                        // Minimized or hidden counts as unfocused; errors too.
+                        let obscured = handle
+                            .get_webview_window("main")
+                            .is_none_or(|w| w.is_minimized().unwrap_or(true) || !w.is_visible().unwrap_or(false));
+                        ns.notifier.set_obscured(obscured);
+                        let name = st
+                            .data
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .builders
+                            .iter()
+                            .find(|b| &b.id == bid)
+                            .map(|b| b.name.clone())
+                            .unwrap_or_else(|| "Builder".to_string());
+                        if let Some(note) = ns.notifier.on_update(None, &info, &name) {
+                            show_note(&handle, &ns, note, &info.id);
+                        }
+                    }
                     let _ = handle.emit("session-updated", info);
+                    refresh_badge(&handle);
                 }
                 ManagerEvent::Removed { id } => {
+                    if let Some(ns) = handle.try_state::<NotifyState>() {
+                        ns.notifier.forget(&id);
+                    }
                     let _ = handle.emit("session-removed", Removed { id });
+                    refresh_badge(&handle);
                 }
                 ManagerEvent::Output { id, offset, data } => {
                     if let Some(ch) = chans.lock().unwrap_or_else(|e| e.into_inner()).get(&id) {
@@ -95,6 +168,16 @@ pub fn run() {
             let _ = cell.set(Arc::downgrade(&manager));
             // Session dirs left by a crash; none is live yet, so this only removes leftovers.
             manager.sweep_stale_session_dirs();
+            app.manage(NotifyState { notifier: notify::Notifier::new(), denied: AtomicBool::new(false) });
+            let click_handle = app.handle().clone();
+            let _ = app.notification().on_action(move |a| {
+                if a.action_id() != "tap" {
+                    return;
+                }
+                if let Some(id) = a.notification().and_then(|n| n.extra().get("sessionId")).and_then(|v| v.as_str()) {
+                    focus_and_select(&click_handle, id);
+                }
+            });
             app.manage(AppState {
                 data: Mutex::new(data),
                 data_path,
@@ -113,6 +196,11 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            if let WindowEvent::Focused(f) = event
+                && let Some(ns) = window.try_state::<NotifyState>()
+            {
+                ns.notifier.set_focused(*f);
+            }
             if let WindowEvent::CloseRequested { api, .. } = event {
                 let st = window.state::<AppState>();
                 let live = st.manager.running_process_count();

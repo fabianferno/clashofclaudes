@@ -24,6 +24,9 @@ function App() {
     keep(ipc.onSessionRemoved((id) => useApp.getState().removeSession(id)));
     keep(ipc.onWorkspaceUpdated((w) => useApp.getState().updateWorkspace(w)));
     keep(ipc.onStatsUpdated((s) => useApp.getState().setStats(s)));
+    keep(ipc.onSelectSession((id) => {
+      if (useApp.getState().sessions[id]) useApp.getState().setSelection({ kind: 'session', id });
+    }));
     keep(ipc.onConfirmQuit((q) => setQuit(q.live)));
     let stopLayout: (() => void) | null = null;
     ipc.listState()

@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { vi } from 'vitest';
 import type { Workspace } from './api/types';
 
+let onSelectSession: (id: string) => void = () => {};
 let onWorkspaceUpdated: (w: Workspace) => void = () => {};
 vi.mock('./api/ipc', () => ({
   ipc: {
@@ -16,6 +17,7 @@ vi.mock('./api/ipc', () => ({
       return { ...useApp.getState().workspaces.find((w) => w.id === id), compound };
     }),
     onConfirmQuit: vi.fn().mockResolvedValue(() => {}),
+    onSelectSession: vi.fn(async (cb: (id: string) => void) => { onSelectSession = cb; return () => {}; }),
   },
 }));
 vi.mock('./components/TerminalView', () => ({ default: () => null }));
@@ -49,4 +51,15 @@ test('App does not re-render on session updates; error and notices still show', 
   expect(screen.getByText('boom')).toBeTruthy();
   act(() => screen.getByText('boom').click());
   expect(screen.queryByText('boom')).toBeNull();
+});
+
+test('select-session selects that session and opens the panel; unknown ids are ignored', async () => {
+  render(<App />);
+  await act(async () => { await Promise.resolve(); });
+  act(() => useApp.getState().upsertSession({ id: 's9', workspaceId: 'w1', kind: { kind: 'terminal' }, task: null, state: { kind: 'working' }, steps: 0, startedAt: 0, lastOutputAt: 0, reachedFinished: false, worktree: null, commandPreview: '', awaitingDecision: false, rev: 1, spot: null }));
+  act(() => onSelectSession('nope'));
+  expect(useApp.getState().selection).not.toEqual({ kind: 'session', id: 'nope' });
+  act(() => onSelectSession('s9'));
+  expect(useApp.getState().selection).toEqual({ kind: 'session', id: 's9' });
+  expect(useApp.getState().panelOpen).toBe(true);
 });

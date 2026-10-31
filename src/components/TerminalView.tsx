@@ -76,15 +76,21 @@ export default function TerminalView({ sessionId, readOnly = false }: { sessionI
     const t = termRef.current;
     if (!t) return;
     const { term } = t;
-    sessionRef.current = sessionId;
     setError(null); // an error from an earlier visit to this session is stale now
     let disposed = false;
     const report = (e: unknown) => { if (!disposed) fail(sessionId)(e); };
 
     if (shownIn.current === term) {
-      // Output still queued for the previous session is parsed first; then screen and scrollback
-      // are cleared. Everything for this session is written after.
-      term.write('', () => term.reset());
+      // Output still queued for the previous session is parsed first, and xterm's automatic
+      // replies to it (cursor reports, device attributes) still go to that session. Only then
+      // does input switch to this session, and screen and scrollback are cleared. Everything
+      // for this session is written after. (A later switch queues its own callback after this.)
+      term.write('', () => {
+        if (!disposed) sessionRef.current = sessionId;
+        term.reset();
+      });
+    } else {
+      sessionRef.current = sessionId;
     }
     shownIn.current = term;
     fitTo(sessionId, report);

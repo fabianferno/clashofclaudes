@@ -188,3 +188,22 @@ test('an error belongs to the session it happened in', async () => {
   expect(container.querySelector('.error')).toBeNull();
   unmount();
 });
+
+test('replies xterm generates for the previous session\'s queued output go to that session', async () => {
+  vi.mocked(ipc.writeSession).mockClear();
+  const { rerender, unmount } = render(<TerminalView sessionId="t11" />);
+  await vi.waitFor(() => expect(log).toEqual(['attach']));
+  resolveSnap(f(0, 'old\x1b[6n')); // asks for a cursor report
+  await vi.waitFor(() => expect(text()).toBe('old\x1b[6n'));
+  rerender(<TerminalView sessionId="t12" />);
+  await vi.waitFor(() => expect(log).toEqual(['attach', 'detach', 'attach']));
+  // xterm parses t11's queued output (before the reset callback) and answers it.
+  typed('\x1b[1;4R');
+  expect(vi.mocked(ipc.writeSession).mock.lastCall?.[0]).toBe('t11');
+  writeDone[1](); // the reset: input now targets t12
+  expect(resets).toBe(1);
+  typed('x');
+  expect(vi.mocked(ipc.writeSession).mock.lastCall?.[0]).toBe('t12');
+  expect(vi.mocked(ipc.writeSession).mock.calls.map((c) => c[0])).toEqual(['t11', 't12']);
+  unmount();
+});

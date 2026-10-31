@@ -228,6 +228,15 @@ pub fn run() {
             {
                 ns.notifier.set_focused(*f);
             }
+            if let WindowEvent::Focused(true) = event {
+                // Off the UI thread: `is_dir` on a stalled network mount can block.
+                let app = window.app_handle().clone();
+                std::thread::spawn(move || {
+                    if let Some(st) = app.try_state::<AppState>() {
+                        commands::recheck_workspaces(&app, &st);
+                    }
+                });
+            }
             if let WindowEvent::CloseRequested { api, .. } = event {
                 let st = window.state::<AppState>();
                 let live = st.manager.running_process_count();

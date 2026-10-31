@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::model::AppData;
+use crate::model::{AppData, Workspace};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Ship timestamps older than this are dropped on save.
@@ -58,6 +58,19 @@ pub fn mark_missing(data: &mut AppData) {
     for w in &mut data.workspaces {
         w.missing = !w.path.is_dir();
     }
+}
+
+/// Like `mark_missing`, during a run: returns the workspaces whose flag changed (to save and send).
+pub fn refresh_missing(data: &mut AppData) -> Vec<Workspace> {
+    let mut changed = Vec::new();
+    for w in &mut data.workspaces {
+        let missing = !w.path.is_dir();
+        if missing != w.missing {
+            w.missing = missing;
+            changed.push(w.clone());
+        }
+    }
+    changed
 }
 
 #[cfg(test)]
@@ -127,6 +140,22 @@ mod tests {
         data.workspaces[0].path = dir.path().to_path_buf();
         mark_missing(&mut data);
         assert!(!data.workspaces[0].missing);
+    }
+
+    #[test]
+    fn refresh_missing_reports_only_changes_both_ways() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = dir.path().join("ws");
+        let mut data = AppData::default();
+        data.workspaces.push(Workspace { id: "w".into(), name: "w".into(), path: ws.clone(), created_at: 0, missing: false, level: 1, xp: 0, compound: None });
+        let gone = refresh_missing(&mut data);
+        assert_eq!(gone.len(), 1);
+        assert!(gone[0].missing && data.workspaces[0].missing);
+        assert!(refresh_missing(&mut data).is_empty(), "unchanged: nothing to send");
+        std::fs::create_dir(&ws).unwrap();
+        let back = refresh_missing(&mut data);
+        assert_eq!(back.len(), 1);
+        assert!(!back[0].missing && !data.workspaces[0].missing);
     }
 
     #[test]

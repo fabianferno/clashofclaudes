@@ -200,7 +200,28 @@ pub fn remove_workspace(id: String, state: State<'_, AppState>) -> Result<(), St
     }
     let mut d = state.data();
     d.workspaces.retain(|w| w.id != id);
-    state.save(&d)
+    state.save(&d)?;
+    drop(d);
+    // Ended sessions would otherwise linger with no workspace to show them.
+    for s in state.manager.list().into_iter().filter(|s| s.workspace_id == id) {
+        let _ = state.manager.close(&s.id);
+    }
+    Ok(())
+}
+
+/// Re-checks every workspace folder (run when the window gains focus): a folder that came back
+/// clears its `missing` badge, one that vanished gets it. Changes are saved and sent.
+pub fn recheck_workspaces(app: &AppHandle, state: &AppState) {
+    let mut d = state.data();
+    let changed = persist::refresh_missing(&mut d);
+    if changed.is_empty() {
+        return;
+    }
+    let _ = state.save(&d);
+    drop(d);
+    for w in changed {
+        let _ = app.emit("workspace-updated", w);
+    }
 }
 
 #[tauri::command]

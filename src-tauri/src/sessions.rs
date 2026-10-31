@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::collections::VecDeque;
 use std::sync::mpsc::{self, Sender};
-use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering as AtomicOrdering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, Weak};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
@@ -188,6 +188,25 @@ pub struct SessionManager {
     tx: Sender<ManagerEvent>,
     weak: Weak<SessionManager>,
     flusher: Arc<FlushWake>,
+    /// Set by `shutdown`: no new session starts, and a spawn that finishes after its entry was
+    /// closed SIGKILLs its group at once (the app is about to exit, so no grace can run).
+    quitting: AtomicBool,
+    /// Spawns between inserting their entry and recording their PTY; `shutdown` waits for them.
+    spawning: AtomicUsize,
+}
+
+/// Counts a spawn in flight for as long as it lives.
+struct SpawnGuard<'a>(&'a AtomicUsize);
+impl<'a> SpawnGuard<'a> {
+    fn new(n: &'a AtomicUsize) -> Self {
+        n.fetch_add(1, AtomicOrdering::SeqCst);
+        SpawnGuard(n)
+    }
+}
+impl Drop for SpawnGuard<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, AtomicOrdering::SeqCst);
+    }
 }
 
 /// Parks the flush loop while no session can produce output, so a hidden, idle app uses no CPU.
@@ -248,6 +267,8 @@ impl SessionManager {
             tx,
             weak: weak.clone(),
             flusher: Arc::default(),
+            quitting: AtomicBool::new(false),
+            spawning: AtomicUsize::new(0),
         });
         // Output flushes every 16 ms and the 1 s silence tick, parked while no session has a
         // process or unsent output (see `park_if_idle`); ends once the manager is gone.
@@ -364,9 +385,13 @@ impl SessionManager {
             rev: 0,
             spot: None,
         };
+        let _spawning = SpawnGuard::new(&self.spawning);
         {
             // Check and insert atomically so two starts can't share a builder.
             let mut g = self.lock();
+            if self.quitting.load(AtomicOrdering::SeqCst) {
+                bail!("the app is quitting");
+            }
             if let SessionKind::Agent { builder_id } = &info.kind {
                 self.ensure_builder_free(&g, builder_id)?;
             }
@@ -422,7 +447,12 @@ impl SessionManager {
         let mut g = self.lock();
         let Some(e) = g.get_mut(&id) else {
             drop(g);
-            let _ = handle.kill(); // closed while starting
+            // Closed while starting. Quitting leaves no time for kill()'s grace, so SIGKILL now.
+            if self.quitting.load(AtomicOrdering::SeqCst) {
+                handle.kill_now();
+            } else {
+                let _ = handle.kill();
+            }
             bail!("session was closed while starting");
         };
         // If it already exited, `handle` just drops below, releasing its fds.
@@ -791,14 +821,19 @@ impl SessionManager {
     /// whether or not its leader was reaped (a child that ignores SIGHUP must not outlive the
     /// app). Only groups recorded while their leader still ran are signalled, seconds later at
     /// most, so a recycled group id is never hit. Blocks for about `grace` at most (less when
-    /// everything exits on SIGHUP); keep it off the UI thread.
+    /// everything exits on SIGHUP); keep it off the UI thread. No session starts afterwards, and
+    /// one still starting is SIGKILLed as soon as its spawn returns (waited for, within `grace`).
     pub fn shutdown(&self, grace: Duration) {
-        let ptys: Vec<Arc<PtyHandle>> = self.lock().values().filter_map(|e| e.pty.clone()).collect();
+        let ptys: Vec<Arc<PtyHandle>> = {
+            let g = self.lock();
+            self.quitting.store(true, AtomicOrdering::SeqCst); // under the lock: no insert slips past
+            g.values().filter_map(|e| e.pty.clone()).collect()
+        };
         for s in self.list() {
             let _ = self.close(&s.id);
         }
         let end = Instant::now() + grace;
-        while Instant::now() < end && ptys.iter().any(|p| p.group_alive()) {
+        while Instant::now() < end && (self.spawning.load(AtomicOrdering::SeqCst) > 0 || ptys.iter().any(|p| p.group_alive())) {
             std::thread::sleep(REAP_POLL);
         }
         for p in &ptys {
@@ -1522,6 +1557,15 @@ mod tests {
         assert!(!survived, "a SIGHUP-ignoring process survived shutdown");
         assert!(took >= Duration::from_millis(450), "waited the grace for the survivor: {took:?}");
         assert!(took < Duration::from_millis(1500), "then killed it promptly: {took:?}");
+        assert!(fx.mgr.list().is_empty());
+    }
+
+    #[test]
+    fn no_session_starts_after_shutdown() {
+        let fx = fixture();
+        fx.mgr.shutdown(Duration::from_millis(50));
+        let err = fx.mgr.start_terminal(&fx.ws).unwrap_err();
+        assert!(err.to_string().contains("quitting"), "{err}");
         assert!(fx.mgr.list().is_empty());
     }
 

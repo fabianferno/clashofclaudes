@@ -33,6 +33,26 @@ fi
 
 UPDATER=0; have TAURI_SIGNING_PRIVATE_KEY && UPDATER=1
 
+# An updater-signed build must point at a real update source: with the shipped placeholders the
+# app's update gate refuses to check, so every release built this way would be stranded.
+if [[ $UPDATER == 1 ]]; then
+  CONF_PUBKEY="$(node -p "String((require('./src-tauri/tauri.conf.json').plugins.updater || {}).pubkey || '')")"
+  CONF_ENDPOINTS="$(node -p "((require('./src-tauri/tauri.conf.json').plugins.updater || {}).endpoints || []).join(' ')")"
+  problems=()
+  if [[ -z "${CONF_PUBKEY//[[:space:]]/}" || "$CONF_PUBKEY" == "REPLACE_WITH_UPDATER_PUBLIC_KEY" ]]; then
+    problems+=("plugins.updater.pubkey is still the placeholder (REPLACE_WITH_UPDATER_PUBLIC_KEY)")
+  fi
+  if [[ -z "${CONF_ENDPOINTS//[[:space:]]/}" || "$CONF_ENDPOINTS" == *OWNER/REPO* ]]; then
+    problems+=("plugins.updater.endpoints still names OWNER/REPO")
+  fi
+  if ((${#problems[@]})); then
+    echo "ERROR: TAURI_SIGNING_PRIVATE_KEY is set, but src-tauri/tauri.conf.json is not configured for updates:" >&2
+    for p in "${problems[@]}"; do echo "  - $p" >&2; done
+    echo "Set the real updater public key and GitHub repo (see docs/release.md), or unset TAURI_SIGNING_PRIVATE_KEY." >&2
+    exit 1
+  fi
+fi
+
 echo "== Clash of Claudes release =="
 echo "rustup targets missing: ${missing[*]:-none}"
 echo "signing identity set: $(have APPLE_SIGNING_IDENTITY && echo yes || echo no)"
@@ -42,6 +62,9 @@ if [[ $SIGN == 1 ]]; then
   echo "MODE: signed + notarized (Developer ID)"
 else
   echo "UNSIGNED BUILD — not for distribution"
+fi
+if [[ $SIGN == 1 && $UPDATER == 0 ]]; then
+  echo "WARNING: signing without TAURI_SIGNING_PRIVATE_KEY — this build will never auto-update (no updater artifacts, no latest.json)." >&2
 fi
 
 ARGS=(tauri build --target universal-apple-darwin)

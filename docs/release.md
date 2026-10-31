@@ -16,7 +16,7 @@ Universal (arm64 + x86_64) macOS 13+ DMG. Signed and notarized when credentials 
    Then edit `src-tauri/tauri.conf.json` under `plugins.updater`:
    - `pubkey`: replace `REPLACE_WITH_UPDATER_PUBLIC_KEY` with the **public key contents** (not a path).
    - `endpoints[0]`: replace `OWNER` and `REPO` in `https://github.com/OWNER/REPO/releases/latest/download/latest.json`.
-   Export `TAURI_SIGNING_PRIVATE_KEY` (path or content) and, if set, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. `.env` files are not read. Without the key the release script skips updater artifacts: the `.app.tar.gz` and `.sig` files exist **only** when the key is set, and the build still succeeds.
+   Export `TAURI_SIGNING_PRIVATE_KEY` (path or content) and, if set, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. `.env` files are not read. Without the key the release script skips updater artifacts: the `.app.tar.gz` and `.sig` files exist **only** when the key is set, and the build still succeeds (a signed build without the key prints "this build will never auto-update"). With the key set, the script refuses to build (even `--dry-run`) while `pubkey` is the placeholder or the endpoint still names `OWNER/REPO`.
 4. **GitHub repo for releases**: create it, push, and use GitHub Releases to host the DMG, `.app.tar.gz`, `.sig` and `latest.json`.
 
 ## Per-release procedure
@@ -35,7 +35,7 @@ The app sandbox stays OFF (it spawns CLIs in PTYs). Hardened runtime is ON (`bun
 
 The app otherwise makes no network calls (agent data never leaves your machine). The updater is the single exception: it fetches `latest.json` and, only when you click "Restart to update", the signed `.app.tar.gz` from the configured GitHub host. Signatures are verified against `pubkey`.
 
-It never runs when any of these hold (decided in Rust before any request): a debug build; `pubkey` is still `REPLACE_WITH_UPDATER_PUBLIC_KEY`; the user turned off "Check for updates automatically" (Town Hall panel, persisted as `settings.updatesEnabled`). Otherwise it checks 10 s after start and every 6 h. Failures are logged and invisible in the UI. After installing, the app restarts through the quit guard: with running sessions it asks first, and cancelling leaves the update installed for the next launch.
+It never runs when any of these hold (decided in Rust before any request): a debug build; `pubkey` is still `REPLACE_WITH_UPDATER_PUBLIC_KEY` (or empty); an endpoint still names `OWNER/REPO` (or there is none); the user turned off "Check for updates automatically" (Town Hall panel, persisted as `settings.updatesEnabled`). Otherwise it checks 10 s after start and every 6 h. Failures are logged and invisible in the UI. After installing, the app restarts through the quit guard: with running sessions it asks first, and cancelling leaves the update installed for the next launch.
 
 Until you replace the placeholders the shipped app is fully functional and updates itself never.
 

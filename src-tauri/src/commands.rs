@@ -522,21 +522,19 @@ pub fn set_settings(settings: Settings, state: State<'_, AppState>) -> Result<Se
 }
 
 /// Checks for an update. Refuses with "disabled" BEFORE any network call in debug builds, with
-/// the placeholder pubkey, or when the user turned updates off. Failures are logged, not shown.
+/// the placeholder pubkey or `OWNER/REPO` endpoint, or when the user turned updates off. Failures are logged, not shown.
 #[tauri::command]
 pub async fn check_for_update(app: AppHandle, state: State<'_, AppState>) -> Result<UpdateStatus, String> {
     use tauri_plugin_updater::UpdaterExt;
     let enabled = state.data().settings.updates_enabled;
-    let pubkey = app
-        .config()
-        .plugins
-        .0
-        .get("updater")
-        .and_then(|u| u.get("pubkey"))
-        .and_then(|k| k.as_str())
-        .unwrap_or("")
-        .to_string();
-    updater::gate(cfg!(debug_assertions), &pubkey, enabled).map_err(String::from)?;
+    let conf = app.config().plugins.0.get("updater").cloned().unwrap_or_default();
+    let pubkey = conf.get("pubkey").and_then(|k| k.as_str()).unwrap_or("");
+    let endpoints: Vec<&str> = conf
+        .get("endpoints")
+        .and_then(|e| e.as_array())
+        .map(|a| a.iter().map(|v| v.as_str().unwrap_or("")).collect())
+        .unwrap_or_default();
+    updater::gate(cfg!(debug_assertions), pubkey, &endpoints, enabled).map_err(String::from)?;
     let found = match app.updater() {
         Ok(u) => u.check().await.map_err(|e| e.to_string()),
         Err(e) => Err(e.to_string()),

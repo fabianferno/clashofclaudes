@@ -20,11 +20,17 @@ impl UpdateStatus {
     }
 }
 
+/// The repository part of the shipped placeholder endpoint
+/// (`https://github.com/OWNER/REPO/releases/latest/download/latest.json`).
+pub const PLACEHOLDER_REPO: &str = "OWNER/REPO";
+
 /// `Ok(())` when a check may touch the network; otherwise `Err("disabled")`.
-/// Disabled when: debug build, empty/placeholder pubkey, or the user turned updates off.
-pub fn gate(debug_build: bool, pubkey: &str, updates_enabled: bool) -> Result<(), &'static str> {
+/// Disabled when: debug build, empty/placeholder pubkey, no endpoint or any endpoint still
+/// naming the placeholder repository, or the user turned updates off.
+pub fn gate(debug_build: bool, pubkey: &str, endpoints: &[&str], updates_enabled: bool) -> Result<(), &'static str> {
     let key = pubkey.trim();
-    if debug_build || key.is_empty() || key == PLACEHOLDER_PUBKEY || !updates_enabled {
+    let unconfigured = endpoints.is_empty() || endpoints.iter().any(|e| e.trim().is_empty() || e.contains(PLACEHOLDER_REPO));
+    if debug_build || key.is_empty() || key == PLACEHOLDER_PUBKEY || unconfigured || !updates_enabled {
         return Err("disabled");
     }
     Ok(())
@@ -59,17 +65,34 @@ pub fn restart_plan(live: usize) -> RestartPlan {
 mod tests {
     use super::*;
 
+    const REAL: &[&str] = &["https://github.com/someone/clashofclaudes/releases/latest/download/latest.json"];
+
     #[test]
     fn placeholder_pubkey_disables_checks() {
-        assert_eq!(gate(false, PLACEHOLDER_PUBKEY, true), Err("disabled"));
-        assert_eq!(gate(false, "  ", true), Err("disabled"));
-        assert_eq!(gate(true, "RWQrealkey", true), Err("disabled"), "debug build");
-        assert_eq!(gate(false, "RWQrealkey", true), Ok(()));
+        assert_eq!(gate(false, PLACEHOLDER_PUBKEY, REAL, true), Err("disabled"));
+        assert_eq!(gate(false, "  ", REAL, true), Err("disabled"));
+        assert_eq!(gate(true, "RWQrealkey", REAL, true), Err("disabled"), "debug build");
+        assert_eq!(gate(false, "RWQrealkey", REAL, true), Ok(()));
+    }
+
+    #[test]
+    fn placeholder_endpoint_disables_checks() {
+        let shipped = "https://github.com/OWNER/REPO/releases/latest/download/latest.json";
+        assert_eq!(gate(false, "RWQrealkey", &[shipped], true), Err("disabled"), "a real key alone is not enough");
+        assert_eq!(gate(false, "RWQrealkey", &[REAL[0], shipped], true), Err("disabled"));
+        assert_eq!(gate(false, "RWQrealkey", &[], true), Err("disabled"), "no endpoint");
+        assert_eq!(gate(false, "RWQrealkey", &[" "], true), Err("disabled"));
+        // The shipped config really is the placeholder pair.
+        let conf: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let eps: Vec<&str> = conf["plugins"]["updater"]["endpoints"].as_array().unwrap().iter().map(|v| v.as_str().unwrap()).collect();
+        let key = conf["plugins"]["updater"]["pubkey"].as_str().unwrap();
+        assert_eq!(gate(false, key, &eps, true), Err("disabled"));
+        assert_eq!(gate(false, "RWQrealkey", &eps, true), Err("disabled"));
     }
 
     #[test]
     fn settings_toggle_disables_updates() {
-        assert_eq!(gate(false, "RWQrealkey", false), Err("disabled"));
+        assert_eq!(gate(false, "RWQrealkey", REAL, false), Err("disabled"));
         let mut d = crate::model::AppData::default();
         assert!(d.settings.updates_enabled);
         d.settings.updates_enabled = false;

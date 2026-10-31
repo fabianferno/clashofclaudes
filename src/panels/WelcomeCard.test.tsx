@@ -41,3 +41,24 @@ test('welcome_waits_for_hydrate', () => {
   act(() => useApp.getState().hydrate({ workspaces: [ws], builders: [], sessions: [], stats: { shippedTotal: 0, recentShips: [] } }));
   expect(container.textContent).toBe('');
 });
+
+test('a failed first load still shows the welcome card', () => {
+  act(() => useApp.setState({ loaded: false, workspaces: [] }));
+  render(<WelcomeCard />);
+  act(() => useApp.getState().markLoaded());
+  expect(screen.getByText('Open a folder to start')).toBeTruthy();
+});
+
+test('the typed folder name survives a cancelled picker and clears once created', async () => {
+  const created = vi.mocked(wsActions.createFolder);
+  created.mockResolvedValueOnce(false);
+  render(<WelcomeCard />);
+  fireEvent.click(screen.getByRole('button', { name: 'New folder' }));
+  fireEvent.change(screen.getByLabelText('Folder name'), { target: { value: 'app' } });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Pick parent' })); });
+  expect((screen.getByLabelText('Folder name') as HTMLInputElement).value).toBe('app');
+  created.mockResolvedValueOnce(true);
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Pick parent' })); });
+  expect(screen.queryByLabelText('Folder name')).toBeNull();
+  expect(created).toHaveBeenCalledWith('app');
+});

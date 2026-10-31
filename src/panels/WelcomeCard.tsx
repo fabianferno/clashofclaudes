@@ -13,7 +13,7 @@ export default function WelcomeCard() {
   const [naming, setNaming] = useState<string | null>(null);
   if (!show) return null;
 
-  const create = () => { const n = naming; if (n?.trim()) { setNaming(null); void wsActions.createFolder(n); } };
+  const create = async () => { if (naming && await wsActions.createFolder(naming)) setNaming(null); };
 
   return (
     <div className="welcome-layer" style={{ right: panelInset(panelOpen), pointerEvents: 'none' }}>
@@ -27,8 +27,8 @@ export default function WelcomeCard() {
             : (
               <span className="sp-inline">
                 <input autoFocus aria-label="Folder name" placeholder="Folder name" value={naming} onChange={(e) => setNaming(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') create(); if (e.key === 'Escape') setNaming(null); }} />
-                <button className="hud-btn sm" disabled={!naming.trim()} onClick={create}>Pick parent</button>
+                  onKeyDown={(e) => { if (e.key === 'Enter') void create(); if (e.key === 'Escape') setNaming(null); }} />
+                <button className="hud-btn sm" disabled={!naming.trim()} onClick={() => void create()}>Pick parent</button>
               </span>
             )}
         </div>

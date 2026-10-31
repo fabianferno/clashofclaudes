@@ -65,6 +65,8 @@ export interface AppState {
   panelOpen: boolean;
   village: VillageActions;
   hydrate: (s: ListState) => void;
+  /** The first `listState` failed: count as loaded (empty), so first-run UI still shows. */
+  markLoaded: () => void;
   upsertSession: (s: SessionInfo) => void;
   removeSession: (id: string) => void;
   select: (id: string | null) => void;
@@ -129,6 +131,7 @@ export const useApp = create<AppState>((set, get) => ({
       sessions: Object.fromEntries(s.sessions.map((x) => [x.id, x])),
       ...(s.stats ? { stats: s.stats } : {}),
     }),
+  markLoaded: () => set({ loaded: true }),
   upsertSession: (s) =>
     set((st) => {
       const cur = st.sessions[s.id];
@@ -149,16 +152,21 @@ export const useApp = create<AppState>((set, get) => ({
   setSelection: (sel) =>
     set({ selection: sel, panelOpen: sel !== null, selectedSessionId: sel?.kind === 'session' ? sel.id : null }),
   setAgents: (agents) => set({ agents }),
-  addWorkspace: (w) => set((st) => ({ workspaces: [...st.workspaces, w] })),
+  // Upserts: a workspace (or builder) already present by id is replaced, never listed twice.
+  addWorkspace: (w) => set((st) => ({ workspaces: upsertById(st.workspaces, w) })),
   updateWorkspace: (w) => set((st) => ({ workspaces: st.workspaces.map((x) => (x.id === w.id ? w : x)) })),
   removeWorkspace: (id) => set((st) => ({ workspaces: st.workspaces.filter((x) => x.id !== id) })),
   setStats: (stats) => set({ stats }),
-  addBuilder: (b) => set((st) => ({ builders: [...st.builders, b] })),
+  addBuilder: (b) => set((st) => ({ builders: upsertById(st.builders, b) })),
   updateBuilder: (b) => set((st) => ({ builders: st.builders.map((x) => (x.id === b.id ? b : x)) })),
   removeBuilder: (id) => set((st) => ({ builders: st.builders.filter((x) => x.id !== id) })),
   zoomRequest: null,
   requestZoom: (id) => set((st) => ({ zoomRequest: { id, n: (st.zoomRequest?.n ?? 0) + 1 } })),
 }));
+
+function upsertById<T extends { id: string }>(list: T[], item: T): T[] {
+  return list.some((x) => x.id === item.id) ? list.map((x) => (x.id === item.id ? item : x)) : [...list, item];
+}
 
 /** Whether the selection's target still exists (the hall always does). */
 function selectionAlive(st: Pick<AppState, 'selection' | 'workspaces' | 'builders' | 'sessions'>): boolean {

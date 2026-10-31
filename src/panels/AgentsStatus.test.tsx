@@ -5,7 +5,7 @@ import type { AgentInfo } from '../api/types';
 vi.mock('../api/ipc', () => ({ ipc: { detectAgents: vi.fn() } }));
 import { ipc } from '../api/ipc';
 import { useApp } from '../state/store';
-import AgentsStatus from './AgentsStatus';
+import AgentsStatus, { COPIED_MS } from './AgentsStatus';
 
 const base: AgentInfo = { kind: 'claude', label: 'Claude Code', installed: true, version: '2.1.0', models: [], efforts: [], canApprove: true };
 const agents: AgentInfo[] = [
@@ -52,4 +52,16 @@ test('recheck_bypasses_cache', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Re-check' }));
   expect(ipc.detectAgents).toHaveBeenCalledWith(true);
   await waitFor(() => expect(useApp.getState().agents.find((a) => a.kind === 'codex')?.installed).toBe(true));
+});
+
+test('Copied reads back to Copy after a moment', async () => {
+  vi.useFakeTimers();
+  try {
+    act(() => useApp.setState({ agents: [{ ...base, installed: false, version: null }] }));
+    render(<AgentsStatus />);
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Copy' })); });
+    expect(screen.getByRole('button', { name: 'Copied' })).toBeTruthy();
+    act(() => { vi.advanceTimersByTime(COPIED_MS); });
+    expect(screen.getByRole('button', { name: 'Copy' })).toBeTruthy();
+  } finally { vi.useRealTimers(); }
 });

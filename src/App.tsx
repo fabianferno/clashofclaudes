@@ -38,7 +38,11 @@ function App() {
         // Compounds for workspaces without one, spots for agent sessions without one (never terminals).
         stopLayout = autoLayout((e) => useApp.getState().setError(String(e)));
       })
-      .catch((e) => useApp.getState().setError(String(e)));
+      .catch((e) => {
+        if (cancelled) return;
+        useApp.getState().markLoaded(); // the welcome card must not stay hidden forever
+        useApp.getState().setError(String(e));
+      });
     ipc.detectAgents().then((a) => !cancelled && useApp.getState().setAgents(a)).catch((e) => useApp.getState().setError(String(e)));
     return () => { cancelled = true; stopLayout?.(); unlisten.forEach((u) => u()); };
   }, []);

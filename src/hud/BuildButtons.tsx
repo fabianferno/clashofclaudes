@@ -10,10 +10,7 @@ export default function BuildButtons() {
   const [naming, setNaming] = useState<string | null>(null);
 
   const pick = async () => {
-    const n = naming;
-    if (!n?.trim()) return;
-    setNaming(null);
-    await createFolder(n);
+    if (naming && await createFolder(naming)) setNaming(null);
   };
 
   return (

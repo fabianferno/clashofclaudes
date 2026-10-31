@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ipc } from '../api/ipc';
 import { useApp } from '../state/store';
 import type { AgentKind } from '../api/types';
@@ -10,6 +10,9 @@ export const INSTALL_COMMANDS: Partial<Record<AgentKind, string>> = {
   opencode: 'npm i -g opencode-ai',
   gemini: 'npm i -g @google/gemini-cli',
 };
+
+/** How long a Copy button reads "Copied". */
+export const COPIED_MS = 2000;
 
 export const GEMINI_NOTE = 'Google moved Gemini consumer plans to Antigravity CLI — you can run it as a Custom command.';
 
@@ -24,8 +27,15 @@ export default function AgentsStatus() {
     setBusy(true);
     try { setAgents(await ipc.detectAgents(true)); } catch (e) { useApp.getState().setError(String(e)); } finally { setBusy(false); }
   };
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(copiedTimer.current), []);
   const copy = async (kind: AgentKind, text: string) => {
-    try { await navigator.clipboard.writeText(text); setCopied(kind); } catch (e) { useApp.getState().setError(String(e)); }
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(kind);
+      clearTimeout(copiedTimer.current);
+      copiedTimer.current = setTimeout(() => setCopied(null), COPIED_MS);
+    } catch (e) { useApp.getState().setError(String(e)); }
   };
 
   return (

@@ -51,6 +51,8 @@ export default function SessionPanel({ sessionId, onClosed }: { sessionId: strin
     try { await p; } catch (e) { if (stillShown(sid)) setError(String(e)); }
   };
   const st = session.state.kind;
+  // A review describes one Finished moment; once the agent works again it is stale.
+  if (review && st !== 'finished') setReview(null);
   const answer = async (p: () => Promise<unknown>) => {
     if (answering) return;
     const sid = sessionId;

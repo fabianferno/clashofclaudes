@@ -299,3 +299,14 @@ test('selection is cleared when its builder disappears; hall and other targets s
   useApp.getState().removeBuilder('zzz');
   expect(useApp.getState().panelOpen).toBe(true);
 });
+
+test('adding a workspace or builder already present by id replaces it, never duplicates', () => {
+  const w: Workspace = { id: 'w', name: 'a', path: '/a', createdAt: 0, missing: false, level: 1, xp: 0, compound: null };
+  useApp.getState().addWorkspace(w);
+  useApp.getState().addWorkspace({ ...w, name: 'b' });
+  expect(useApp.getState().workspaces.map((x) => x.name)).toEqual(['b']);
+  useApp.getState().addBuilder(bld('b1'));
+  useApp.getState().addBuilder({ ...bld('b1'), name: 'Ada' });
+  useApp.getState().addBuilder(bld('b2'));
+  expect(useApp.getState().builders.map((x) => x.name)).toEqual(['Ada', 'b2']);
+});

@@ -11,6 +11,8 @@ export default function TownHallPanel() {
   const builders = useApp((s) => s.builders);
   const setSelection = useApp((s) => s.setSelection);
   const [newName, setNewName] = useState<string | null>(null);
+  // The name stays until the folder exists: a cancelled picker keeps it for another try.
+  const create = async () => { if (newName && await wsActions.createFolder(newName)) setNewName(null); };
   const [updatesEnabled, setUpdatesEnabled] = useState(true);
   useEffect(() => {
     let live = true;
@@ -45,8 +47,8 @@ export default function TownHallPanel() {
           : (
             <span className="sp-inline">
               <input autoFocus aria-label="Folder name" placeholder="Folder name" value={newName} onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') void wsActions.createFolder(newName).then(() => setNewName(null)); }} />
-              <button className="hud-btn sm" disabled={!newName.trim()} onClick={() => void wsActions.createFolder(newName).then(() => setNewName(null))}>Pick parent</button>
+                onKeyDown={(e) => { if (e.key === 'Enter') void create(); if (e.key === 'Escape') setNewName(null); }} />
+              <button className="hud-btn sm" disabled={!newName.trim()} onClick={() => void create()}>Pick parent</button>
             </span>
           )}
       </div>

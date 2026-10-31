@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { Compound } from '../api/types';
+import type { Compound, SessionInfo, SessionState } from '../api/types';
 import { iso } from './iso';
-import { compoundAt, dragTarget, hitTest } from './input';
+import { compoundAt, dragTarget, hitTest, selectionOf } from './input';
 import { canPlace } from './layout';
 import type { Entity } from './scene';
 
@@ -68,5 +68,27 @@ describe('house placement', () => {
     expect(canPlace(away, structs, { x: 11, y: 11 }, 3)).toBe(false);
     expect(canPlace(away, structs, { x: 6, y: 6 }, 3)).toBe(true);
     expect(canPlace(away, structs, { x: 12, y: 6 }, 3)).toBe(false); // sticks out of the interior
+  });
+});
+
+describe('selectionOf', () => {
+  const agent = (id: string, builderId: string, state: SessionState, startedAt = 0) =>
+    ({ id, workspaceId: 'w', kind: { kind: 'agent', builderId }, state, startedAt }) as SessionInfo;
+  const builder = e('builder:b1', 'builder', 0, 0);
+
+  it('a busy builder on the map opens its live session; an idle one its panel', () => {
+    expect(selectionOf(builder, [])).toEqual({ kind: 'builder', id: 'b1' });
+    expect(selectionOf(builder, [agent('old', 'b1', { kind: 'ended', exitCode: 0 })])).toEqual({ kind: 'builder', id: 'b1' });
+    const live = [agent('old', 'b1', { kind: 'ended', exitCode: 0 }, 5), agent('s1', 'b1', { kind: 'needsYou', reason: 'x' }, 1)];
+    expect(selectionOf(builder, live)).toEqual({ kind: 'session', id: 's1' });
+    expect(selectionOf(builder, [agent('s2', 'other', { kind: 'working' })])).toEqual({ kind: 'builder', id: 'b1' });
+  });
+
+  it('other entities', () => {
+    expect(selectionOf(e('hall', 'hall', 0, 0), [])).toEqual({ kind: 'hall' });
+    expect(selectionOf(e('house:w1', 'house', 0, 0), [])).toEqual({ kind: 'workspace', id: 'w1' });
+    expect(selectionOf(e('struct:s9', 'structure', 0, 0), [])).toEqual({ kind: 'session', id: 's9' });
+    expect(selectionOf(e('status:s9', 'status', 0, 0), [])).toBeNull();
+    expect(selectionOf(null, [])).toBeNull();
   });
 });

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PALETTE } from '../look';
 import { shade } from './draw';
 import {
-  drawBuilder, drawGate, drawGround, drawHall, drawHouse, drawStructure, drawTree, drawWallSeg,
+  GROUND_SCALE, drawBuilder, drawGate, drawGround, groundBakeSize, drawHall, drawHouse, drawStatusBar, drawStructure, drawTree, drawWallSeg,
 } from './entities';
 import { getTexture, clearTextures, textureCacheSize } from '../textures';
 import type { AgentKind, Compound } from '../../api/types';
@@ -32,10 +32,30 @@ describe('art', () => {
     for (const d of ['x', 'y'] as const) ok(drawWallSeg(d));
     for (const s of ['n', 's', 'e', 'w'] as const) ok(drawGate(s));
     for (const v of [0, 1, 2, 3] as const) ok(drawTree(v));
+    ok(drawStatusBar('working', '12m · 34 steps'));
+    ok(drawStatusBar('needs', 'Waiting for you'));
+    ok(drawStatusBar('stuck', 'Stuck'));
+    expect(drawStatusBar('working', '2h 15m · 1234 steps').canvas.width).toBeGreaterThan(drawStatusBar('stuck', 'Stuck').canvas.width);
     const comp: Compound = { x0: 6, y0: 6, w: 7, h: 7, house: { x: 6, y: 6 } };
     const g = drawGround({ x0: -20, y0: -20, w: 50, h: 50 }, [comp], 5);
     expect(g.width).toBeGreaterThan(0);
     expect(g.height).toBeGreaterThan(0);
+  });
+
+  it('ground_bakes_at_half_density', () => {
+    const comp: Compound = { x0: 6, y0: 6, w: 7, h: 7, house: { x: 6, y: 6 } };
+    const b = { x0: -20, y0: -20, w: 50, h: 50 };
+    const full = groundBakeSize(b, 1), half = groundBakeSize(b);
+    expect(GROUND_SCALE).toBe(0.5);
+    // world size: 50 tiles wide and deep -> 50 * 64 px across (+2 * 40 pad), 50 * 32 px down (+40 pad + 90 top pad)
+    expect(full.w).toBe(50 * 64 + 80);
+    expect(full.h).toBe(50 * 32 + 40 + 90);
+    expect(half).toMatchObject({ w: full.w, h: full.h, cw: Math.ceil(full.w / 2), ch: Math.ceil(full.h / 2) });
+    expect(half.bytes).toBe(half.cw * half.ch * 4);
+    expect(half.bytes).toBeLessThanOrEqual(full.bytes / 4 + 2 * (full.w + full.h) + 4);
+    const g = drawGround(b, [comp], 5);
+    expect(g.width).toBe(half.cw);
+    expect(g.height).toBe(half.ch);
   });
 
   it('ground_is_deterministic', () => {

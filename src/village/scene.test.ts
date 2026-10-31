@@ -24,6 +24,31 @@ const perimeter = (c: Compound) => {
 };
 
 describe('buildEntities', () => {
+  it('status_bars_over_working_needs_and_stuck_structures_only', () => {
+    const c1 = placeCompound([]);
+    const spots: Tile[] = [];
+    for (let i = 0; i < 4; i++) spots.push(findSpot(c1, spots)!);
+    const input: VillageInput = {
+      workspaces: [ws('w1', c1)],
+      builders: [bld('b1'), bld('b2'), bld('b3'), bld('b4')],
+      sessions: [
+        { ...sess('a1', 'w1', 'b1', spots[0], { kind: 'working' }, 34), startedAt: 1000 },
+        sess('a2', 'w1', 'b2', spots[1], { kind: 'needsYou', reason: null } as unknown as SessionState),
+        sess('a3', 'w1', 'b3', spots[2], { kind: 'stuck', reason: 'quiet' }),
+        sess('a4', 'w1', 'b4', spots[3], { kind: 'finished' }),
+      ],
+    };
+    expect(buildEntities(input).some((e) => e.kind === 'status')).toBe(false); // no clock, no bars
+    const bars = buildEntities({ ...input, now: 1000 + 12 * 60_000 }).filter((e) => e.kind === 'status');
+    expect(Object.fromEntries(bars.map((e) => [e.id, e.texKey]))).toEqual({
+      'status:a1': 'status:working:12m · 34 steps',
+      'status:a2': 'status:needs:Waiting for you',
+      'status:a3': 'status:stuck:Stuck',
+    });
+    const bar = bars.find((e) => e.id === 'status:a1')!;
+    expect([bar.x, bar.y]).toEqual([spots[0].x + 1, spots[0].y + 1]); // over the structure's centre
+  });
+
   it('entities_for_two_workspaces_and_three_sessions', () => {
     const c1 = placeCompound([]);
     const c2 = placeCompound([c1]);

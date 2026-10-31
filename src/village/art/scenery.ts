@@ -105,3 +105,24 @@ export function drawPuff(): Art {
     dot(-3, -3, 5, 'rgba(190,190,190,.6)');
   });
 }
+
+const STATUS_FILL = { working: '#f5a623', needs: '#ff4b3e', stuck: '#8e8e8e' } as const;
+
+/**
+ * The small bar over a structure at work (spec 5.3.2): elapsed time and steps, "Waiting for you" or
+ * "Stuck". Static (no moving stripes: no per-frame drawing). Anchor: the bar's bottom centre.
+ */
+export function drawStatusBar(tone: 'working' | 'needs' | 'stuck', label: string): Art {
+  const bw = Math.max(92, Math.ceil(label.length * 6.4) + 18);
+  return bake(bw + 8, 24, bw / 2 + 4, 21, () => {
+    const g = ctx();
+    roundRect(-bw / 2, -18, bw, 16, 8);
+    g.fillStyle = '#2b2018'; g.fill(); g.strokeStyle = OUT; g.lineWidth = 2.5; g.stroke();
+    g.save();
+    roundRect(-bw / 2 + 2, -16, bw - 4, 12, 6);
+    g.clip();
+    g.fillStyle = STATUS_FILL[tone]; g.fillRect(-bw / 2, -18, bw, 16);
+    g.restore();
+    outlinedText(label, 0, -5.5, 11, '#fff', 3);
+  });
+}

@@ -7,9 +7,24 @@ import { paintTree } from './scenery';
 const PAD_TOP = 90;
 const PAD = 40;
 
-/** World px (iso space) of the ground canvas' top-left corner: place the bare canvas sprite there at scale 1 (ground is 1x, not 2x). */
+/**
+ * Canvas px per world px of the ground bake. Half density: grass may be soft, and a full-density
+ * bake of a large village is tens of MB (it is uploaded once and displayed at 1 / GROUND_SCALE).
+ */
+export const GROUND_SCALE = 0.5;
+
+/** World px (iso space) of the ground canvas' top-left corner: place the bare canvas sprite there at scale 1 / GROUND_SCALE. */
 export function groundOrigin(b: Rect): Pt {
   return { x: iso(b.x0, b.y0 + b.h).x - PAD, y: iso(b.x0, b.y0).y - PAD_TOP };
+}
+
+/** Size of the ground bake: `w`/`h` in world px, `cw`/`ch` the canvas in px (at GROUND_SCALE), `bytes` its RGBA size. */
+export function groundBakeSize(b: Rect, scale = GROUND_SCALE): { w: number; h: number; cw: number; ch: number; bytes: number } {
+  const o = groundOrigin(b);
+  const w = iso(b.x0 + b.w, b.y0).x + PAD - o.x;
+  const h = iso(b.x0 + b.w, b.y0 + b.h).y + PAD - o.y;
+  const cw = Math.ceil(w * scale), ch = Math.ceil(h * scale);
+  return { w, h, cw, ch, bytes: cw * ch * 4 };
 }
 
 const inRect = (x: number, y: number, r: Rect, pad = 0) =>
@@ -17,15 +32,14 @@ const inRect = (x: number, y: number, r: Rect, pad = 0) =>
 
 /**
  * Grass, dirt paths hall -> each gate, and forest cleared from every wall rect (+GAP) and the hall.
- * Deterministic for a given seed. Returns a bare 1x-density canvas (no anchor, unlike Art): place it at
- * `groundOrigin(bounds)` in world px with scale 1.
+ * Deterministic for a given seed. Returns a bare canvas at GROUND_SCALE density (no anchor, unlike Art),
+ * sized by `groundBakeSize(bounds)`: place it at `groundOrigin(bounds)` in world px with scale 1 / GROUND_SCALE.
  */
 export function drawGround(b: Rect, compounds: Compound[], seed: number): HTMLCanvasElement {
   let s = (Math.abs(Math.floor(seed)) % 233280) || 5;
   const rnd = () => (s = (s * 9301 + 49297) % 233280) / 233280;
   const o = groundOrigin(b);
-  const w = iso(b.x0 + b.w, b.y0).x + PAD - o.x;
-  const h = iso(b.x0 + b.w, b.y0 + b.h).y + PAD - o.y;
+  const { w, h } = groundBakeSize(b);
   const area = b.w * b.h;
   const cx = HALL.x0 + HALL.w / 2, cy = HALL.y0 + HALL.h / 2;
   const walls = compounds.map(wallRect);
@@ -102,5 +116,5 @@ export function drawGround(b: Rect, compounds: Compound[], seed: number): HTMLCa
         paintTree(t.pine, t.s);
         g.restore();
       });
-  }, o, 1).canvas;
+  }, o, GROUND_SCALE).canvas;
 }

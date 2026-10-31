@@ -1,4 +1,6 @@
-import type { Compound, Tile } from '../api/types';
+import type { Compound, SessionInfo, Tile } from '../api/types';
+import { builderTarget } from '../hud/hudState';
+import type { Selection } from '../state/store';
 import { iso } from './iso';
 import { wallRect } from './layout';
 import type { Entity } from './scene';
@@ -64,4 +66,14 @@ export function clickPoint(e: Entity): { x: number; y: number } {
 export function dragTarget(start: Tile, grabOffset: { x: number; y: number }, pointerGrid: { x: number; y: number }): Tile {
   void start; // the grab offset is relative to start already; kept for a self-describing signature
   return { x: Math.round(pointerGrid.x - grabOffset.x), y: Math.round(pointerGrid.y - grabOffset.y) };
+}
+
+/** What clicking an entity selects: a busy builder opens its session, an idle one the builder panel. */
+export function selectionOf(e: Entity | null, sessions: readonly SessionInfo[]): Selection | null {
+  if (!e) return null;
+  if (e.kind === 'hall') return { kind: 'hall' };
+  if (e.kind === 'house') return { kind: 'workspace', id: e.id.slice('house:'.length) };
+  if (e.kind === 'structure') return { kind: 'session', id: e.id.slice('struct:'.length) };
+  if (e.kind === 'builder') return builderTarget(e.id.slice('builder:'.length), [...sessions]);
+  return null;
 }

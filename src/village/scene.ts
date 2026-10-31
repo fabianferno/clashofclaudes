@@ -5,15 +5,18 @@ import { HALL, HOUSE, STRUCT, gateSide, gateTile, wallRect, type Rect } from './
 import { classOf, gearOf, houseColors, houseStage, scaffoldHeight, type ClassTier, type Gear } from './look';
 import { retarget, routeHome, routeToSite, standTile, step, type Walker } from './walkers';
 import {
-  drawBadge, drawBubble, drawBuilder, drawGate, drawGround, drawHall, drawHouse, drawPuff, drawRing, drawStructure, drawWallSeg, groundOrigin, type Art, type Pose,
+  GROUND_SCALE, drawBadge, drawBubble, drawBuilder, drawGate, drawGround, drawHall, drawHouse, drawPuff, drawRing, drawStatusBar, drawStructure,
+  drawWallSeg, groundOrigin,
+  type Art, type Pose,
 } from './art/entities';
-import { getTexture, prepareArt } from './textures';
+import { getTexture, holdTextures, prepareArt, releaseRetired, spriteTextures } from './textures';
+import { STATUS_LIFT, statusKey, statusSignature, statusesDue, type StatusTone } from './status';
 import type { MoveTarget, Selection } from '../state/store';
 import {
   PANEL_W, ZMAX, ease, fitRect, keepVisible, pxRectOfCompound, pxRectOfTiles, screenToWorld, worldToScreen, zoomAt, type Cam,
 } from './camera';
 import { DRAG_PX, createDragController } from './drag';
-import { clickPoint, compoundAt, dragTarget, hitTest } from './input';
+import { clickPoint, compoundAt, dragTarget, hitTest, selectionOf } from './input';
 import { FxRenderer, POP_SECONDS, ORB_SECONDS, Particles, RELOCATE_SECONDS, lifecycleEvents, type Snap } from './effects';
 
 // ---------------------------------------------------------------- pure part
@@ -24,15 +27,18 @@ export interface VillageInput {
   builders: Builder[];
   /** XP-earning close outcomes by session id; the scene plays orbs for a structure it sees vanish. */
   closed?: Record<string, CloseOutcome>;
+  /** Wall-clock ms for the status bars over working structures; without it no bars are emitted. */
+  now?: number;
 }
 
-export type EntityKind = 'hall' | 'house' | 'structure' | 'builder' | 'wall' | 'gate' | 'tree' | 'badge';
+export type EntityKind = 'hall' | 'house' | 'structure' | 'builder' | 'wall' | 'gate' | 'tree' | 'badge' | 'status';
 
 /**
  * One drawable. `x`/`y` is the grid point of the sprite's anchor (for footprints, the front
  * corner; see each draw function), so the sprite sits at `iso(x, y)`. `depth` is `x + y` of that
  * front corner with a small per-kind tie-break; larger depth draws later (in front).
  * Forest trees are baked into the ground texture, so no `tree` entities are emitted.
+ * A `status` bar shares its structure's centre grid point; the scene lifts it STATUS_LIFT px.
  */
 export interface Entity {
   id: string;
@@ -44,7 +50,7 @@ export interface Entity {
 }
 
 const KIND_RANK: Record<EntityKind, number> = {
-  tree: 0, wall: 1, gate: 2, hall: 3, house: 4, structure: 5, builder: 6, badge: 7,
+  tree: 0, wall: 1, gate: 2, hall: 3, house: 4, structure: 5, builder: 6, badge: 7, status: 8,
 };
 
 const ent = (id: string, kind: EntityKind, x: number, y: number, texKey: string): Entity =>
@@ -108,6 +114,8 @@ export function buildEntities(input: VillageInput): Entity[] {
     // Quantized so a long-running session reuses a bounded set of textures.
     const h = stage === 'scaffold' ? Math.round(height * 50) / 50 : stage === 'complete' ? 1 : 0;
     out.push(ent(`struct:${s.id}`, 'structure', s.spot.x + STRUCT, s.spot.y + STRUCT, `struct:${agent}:${stage}:${h}`));
+    const sk = input.now === undefined ? null : statusKey(s, input.now);
+    if (sk) out.push(ent(`status:${s.id}`, 'status', s.spot.x + STRUCT / 2, s.spot.y + STRUCT / 2, sk));
   }
   return out.sort((a, b) => a.depth - b.depth);
 }
@@ -150,6 +158,7 @@ export function artFor(key: string): Art {
     case 'bubble': return drawBubble(a as 'needs' | 'stuck');
     case 'ring': return drawRing();
     case 'puff': return drawPuff();
+    case 'status': return drawStatusBar(a as StatusTone, b);
     default: throw new Error(`no art for ${key}`);
   }
 }
@@ -331,6 +340,23 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
   let lastState: VillageInput = { workspaces: [], sessions: [], builders: [] };
   let destroyed = false;
   const views = new Map<string, BuilderView>();
+  // Every sprite under `view` (visible or not, ghosts included) holds its texture: the cache never destroys those.
+  const unholdTextures = holdTextures(() => spriteTextures(view));
+  // Status bars: labels are minute-quantized, so checking once a second re-syncs at most once a minute
+  // per structure (or sooner when steps/state change, which syncs anyway).
+  let statusSig = '';
+  let statusClock = 0;
+  app.ticker.add((t) => {
+    statusClock += t.deltaMS;
+    if (statusClock < 1000) return;
+    statusClock = 0;
+    if (statusesDue(entities, lastState.sessions, Date.now()) !== statusSig) sync(lastState);
+  });
+  let releaseClock = 0;
+  app.ticker.add((t) => { // between syncs, evictions by builder poses are released every few seconds
+    releaseClock += t.deltaMS;
+    if (releaseClock > 5000) { releaseClock = 0; releaseRetired(); }
+  });
   let time = 0;
 
   // ---- lifecycle effects (see effects.ts): pooled particles plus a few sprite tweens
@@ -368,7 +394,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     const to = { x: h.x, y: h.y - 40 };
     particles.orbs(from, to, 8);
     particles.later(ORB_SECONDS + 0.2, () => {
-      particles.floatText({ x: to.x, y: to.y - 30 }, `+${o.xpGained || 100} XP`, '#ffffff');
+      particles.floatText({ x: to.x, y: to.y - 30 }, `+${o.xpGained} XP`, '#ffffff');
       particles.dust(h, 5, false);
       if (o.levelAfter > o.levelBefore) particles.floatText({ x: to.x, y: to.y - 64 }, 'LEVEL UP!', '#ffe066');
     });
@@ -466,16 +492,35 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     applyCam();
   });
 
+  /**
+   * Upload the ground now and drop the canvas' pixels: the GPU copy is all it needs (the source is
+   * not garbage-collected, and a lost WebGL context re-bakes below). If the upload cannot be forced,
+   * the canvas is kept and Pixi uploads it lazily as usual.
+   */
+  const uploadAndRelease = (tex: Texture, canvas: HTMLCanvasElement) => {
+    try { app.renderer.texture.initSource(tex.source); } catch { return; }
+    canvas.width = 1;
+    canvas.height = 1;
+  };
+  const onContextRestored = () => {
+    groundKey = ''; // the released canvas cannot be re-uploaded: bake again
+    syncGround(lastState.workspaces.flatMap((w) => (w.compound ? [w.compound] : [])));
+  };
+  app.canvas.addEventListener('webglcontextrestored', onContextRestored);
   const syncGround = (compounds: Compound[]) => {
     const b = groundBounds(compounds);
     const key = JSON.stringify([b, compounds.map((c) => [c.x0, c.y0, c.w, c.h, c.house.x, c.house.y])]);
     if (key === groundKey) return;
     groundKey = key;
     const old = ground.texture;
-    ground.texture = Texture.from(drawGround(b, compounds, GROUND_SEED));
+    const canvas = drawGround(b, compounds, GROUND_SEED); // half density (see GROUND_SCALE), shown at 2x
+    const tex = Texture.from(canvas);
+    ground.texture = tex;
     if (old !== Texture.EMPTY) old.destroy(true);
+    uploadAndRelease(tex, canvas);
     const o = groundOrigin(b);
     ground.position.set(o.x, o.y);
+    ground.scale.set(1 / GROUND_SCALE);
     groundBakes++;
     const first = villageTiles === null;
     const next = villageRect(compounds);
@@ -596,6 +641,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       if (v.ring) {
         v.ring.visible = needs;
         if (needs && v.site) {
+          setTex(v.ring, 'ring'); // re-fetched when shown: the cached texture may have been evicted and replaced
           const c = iso(v.site.spot.x + 1, v.site.spot.y + 1);
           const k = 0.5 * (0.92 + 0.12 * Math.sin(time * 4));
           v.ring.position.set(c.x, c.y);
@@ -607,6 +653,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       v.puffs.forEach((pf, i) => {
         pf.visible = stuck;
         if (!stuck || !v.site) return;
+        setTex(pf, 'puff');
         const f = (time * 0.35 + i / 3) % 1;
         const c = iso(v.site.spot.x + 1, v.site.spot.y + 1);
         pf.position.set(c.x + Math.sin(f * 6 + i) * 6, c.y - 40 - f * 46);
@@ -635,7 +682,8 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     }
     if (!relocs.size) syncGround(compounds); // while a compound travels the old ground stays; it is re-baked once at the end
     syncBuilders(state);
-    entities = buildEntities(state);
+    entities = buildEntities({ ...state, now: Date.now() });
+    statusSig = statusSignature(entities);
     // Fetch every live texture first: this refreshes their LRU slots before anything new can evict them.
     const tex = entities.map((e) => getTexture(e.texKey, () => artFor(e.texKey)));
     const seen = new Set<string>();
@@ -646,12 +694,13 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       if (!rec) {
         const sprite = new Sprite();
         sprite.scale.set(0.5); // art is baked at 2x density
-        (e.kind === 'badge' ? overlay : world).addChild(sprite);
+        (e.kind === 'badge' || e.kind === 'status' ? overlay : world).addChild(sprite);
         rec = { sprite, key: '', entity: e, base: { x: 0, y: 0 } };
         sprites.set(e.id, rec);
       }
       const { sprite } = rec;
       rec.ws = e.id.startsWith('struct:') ? snap.structs.get(e.id)
+        : e.kind === 'status' ? snap.structs.get(`struct:${e.id.slice('status:'.length)}`)
         : e.kind === 'house' || e.kind === 'gate' || e.kind === 'badge' || e.kind === 'wall' ? e.id.split(':')[1] : undefined;
       if (sprite.texture !== t.texture) {
         sprite.texture = t.texture;
@@ -660,6 +709,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       rec.key = e.texKey;
       rec.entity = e;
       const p = iso(e.x, e.y);
+      if (e.kind === 'status') p.y -= STATUS_LIFT;
       rec.base = p;
       sprite.position.set(p.x, p.y);
       sprite.zIndex = e.depth;
@@ -712,6 +762,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     applyRelocs();
     applyDragSprite();
     redrawOverlay();
+    releaseRetired(); // every live sprite has re-fetched its texture by now
   };
 
   const debug = (): SceneDebug => ({
@@ -833,6 +884,11 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     rec.sprite.position.set(p.x, p.y);
     rec.sprite.zIndex = 10000;
     rec.sprite.alpha = 0.85;
+    const bar = sprites.get(g.m.entityId.replace(/^struct:/, 'status:'));
+    if (bar && bar !== rec) {
+      const q = iso(g.t.x + g.m.size / 2, g.t.y + g.m.size / 2);
+      bar.sprite.position.set(q.x, q.y - STATUS_LIFT);
+    }
   };
   const endDragVisual = () => {
     for (const r of sprites.values()) r.sprite.alpha = 1;
@@ -846,14 +902,6 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       id: `builder:${id}`, kind: 'builder', x: v.walker.x, y: v.walker.y, depth: v.walker.x + v.walker.y, texKey: '',
     })),
   ];
-  const selectionOf = (e: Entity | null): Selection | null => {
-    if (!e) return null;
-    if (e.kind === 'hall') return { kind: 'hall' };
-    if (e.kind === 'house') return { kind: 'workspace', id: e.id.slice('house:'.length) };
-    if (e.kind === 'structure') return { kind: 'session', id: e.id.slice('struct:'.length) };
-    if (e.kind === 'builder') return { kind: 'builder', id: e.id.slice('builder:'.length) };
-    return null;
-  };
   const localPoint = (ev: MouseEvent) => {
     const r = app.canvas.getBoundingClientRect();
     return { x: ev.clientX - r.left, y: ev.clientY - r.top };
@@ -937,7 +985,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     try { canvas.releasePointerCapture(ev.pointerId); } catch { /* see onDown */ }
     if (drag.up() !== 'click') return;
     const w = screenToWorld(cam, downAt.x, downAt.y);
-    opts.onSelect?.(selectionOf(hitTest(hitEntities(), w.x, w.y)));
+    opts.onSelect?.(selectionOf(hitTest(hitEntities(), w.x, w.y), lastState.sessions));
   };
   const onCancel = () => { if (od) endObjectDrag(null); drag.cancel(); canvas.style.cursor = ''; };
   const onWheel = (ev: WheelEvent) => {
@@ -997,7 +1045,9 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     window.removeEventListener('blur', applyCap);
     document.removeEventListener('visibilitychange', onVisibility);
     app.renderer.off('resize', onResize);
+    app.canvas.removeEventListener('webglcontextrestored', onContextRestored);
     sprites.clear();
+    unholdTextures();
     fxRender.destroy();
     const gt = ground.texture;
     app.destroy({ removeView: true }, { children: true, texture: false });

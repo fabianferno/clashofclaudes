@@ -3,5 +3,5 @@
 export type { Art } from './draw';
 export { drawHall, drawHouse, drawStructure } from './buildings';
 export { drawBuilder, type Pose } from './builders';
-export { drawWallSeg, drawGate, drawTree, drawBadge, drawBubble, drawRing, drawPuff } from './scenery';
-export { drawGround, groundOrigin } from './ground';
+export { drawWallSeg, drawGate, drawTree, drawBadge, drawBubble, drawRing, drawPuff, drawStatusBar } from './scenery';
+export { GROUND_SCALE, drawGround, groundBakeSize, groundOrigin } from './ground';

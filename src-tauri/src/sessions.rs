@@ -515,6 +515,11 @@ impl SessionManager {
         let job = {
             let mut g = self.lock();
             let Some(e) = g.get_mut(session_id) else { return };
+            // A hook that arrives after the process exited (a slow curl) is stale: the exit
+            // already decided the final state.
+            if e.exited {
+                return;
+            }
             let Some(adapter) = e.adapter.clone() else { return };
             let now = now_ms();
             let mut changed = false;
@@ -1120,6 +1125,28 @@ mod tests {
         fx.mgr.approve(&s.id).unwrap();
         // Hooks for unknown sessions are ignored.
         fx.mgr.on_hook("nope", fixture_json("stop.json"));
+    }
+
+    #[test]
+    fn late_hooks_after_exit_are_ignored() {
+        let fx = fixture();
+        // Exit-stuck: a hook arriving after the crash must not revive the session.
+        let s = fx.mgr.start_with_spec(&fx.ws, &claude("b1"), sh(&fx, "exit 3"), Arc::new(ClaudeAdapter)).unwrap();
+        assert!(wait_until(|| fx.mgr.running_process_count() == 0));
+        let stuck = state(&fx, &s.id);
+        assert_eq!(stuck, SessionState::Stuck { reason: "exited with code 3".into() });
+        let steps = info(&fx, &s.id).steps;
+        for f in ["post_tool_use.json", "stop.json", "notification_permission.json"] {
+            fx.mgr.on_hook(&s.id, fixture_json(f));
+        }
+        assert_eq!((state(&fx, &s.id), info(&fx, &s.id).steps), (stuck, steps));
+        // Ended (clean exit): unchanged too.
+        let e = fx.mgr.start_with_spec(&fx.ws, &claude("b2"), sh(&fx, "exit 0"), Arc::new(ClaudeAdapter)).unwrap();
+        assert!(wait_until(|| fx.mgr.running_process_count() == 0));
+        assert_eq!(state(&fx, &e.id), SessionState::Ended { exit_code: Some(0) });
+        fx.mgr.on_hook(&e.id, fixture_json("post_tool_use.json"));
+        assert_eq!((state(&fx, &e.id), info(&fx, &e.id).steps), (SessionState::Ended { exit_code: Some(0) }, 0));
+        assert!(!info(&fx, &e.id).awaiting_decision);
     }
 
     fn info(fx: &Fx, id: &str) -> SessionInfo {

@@ -1,51 +1,60 @@
 import { iso } from '../iso';
-import { OUT, bake, chip, ctx, dot, flag, isoBox, line, outlinedText, roundRect, shadow, up, type Art } from './draw';
+import { OUT, bake, chip, ctx, dot, flag, line, outlinedText, poly, roundRect, shadow, up, type Art, type Pt } from './draw';
+
+const LOG = '#a0703c';
+const LOG_LIT = '#c8935a';
+
+/** One upright log from ground point `p`, `h` px tall with a sharpened top, `r` px half-width. */
+function log(p: Pt, h: number, r: number): void {
+  const top = up(p, h);
+  line(p, top, OUT, r * 2 + 3);
+  line(p, top, LOG, r * 2);
+  line({ x: p.x - r * 0.45, y: p.y }, { x: top.x - r * 0.45, y: top.y }, LOG_LIT, Math.max(1.2, r * 0.6));
+  poly([{ x: top.x - r - 0.5, y: top.y }, { x: top.x, y: top.y - r * 1.6 - 2 }, { x: top.x + r + 0.5, y: top.y }], LOG, OUT, 1.5);
+}
 
 /**
- * One tile of wall running along x or y, or a square post where the wall turns or ends.
+ * One tile of wooden palisade running along x or y, or a thicker corner post where it turns or ends.
  * Anchor: the tile's front corner, grid point (tx+1, ty+1) for tile (tx, ty).
  */
 export function drawWallSeg(dir: 'x' | 'y' | 'post'): Art {
-  if (dir === 'post') {
-    return bake(110, 90, 55, 72, () => {
-      const hh = 18;
-      const k = isoBox(0.22, 0.22, 0.56, 0.56, hh, '#d9d2c4', '#bbb3a4', '#9b9385', 1.8);
-      const g = ctx();
-      g.strokeStyle = 'rgba(29,19,11,.3)'; g.lineWidth = 1;
-      const m1 = up(k.D, hh / 2), m2 = up(k.C, hh / 2), m3 = up(k.B, hh / 2);
-      g.beginPath(); g.moveTo(m1.x, m1.y); g.lineTo(m2.x, m2.y); g.lineTo(m3.x, m3.y); g.stroke();
-    }, iso(1, 1));
-  }
-  return bake(110, 80, 55, 62, () => {
-    const L = 0.96, T = 0.44, hh = 14;
-    const [x, y, w, d] = dir === 'x' ? [0.5 - L / 2, 0.5 - T / 2, L, T] : [0.5 - T / 2, 0.5 - L / 2, T, L];
-    const k = isoBox(x, y, w, d, hh, '#d9d2c4', '#bbb3a4', '#9b9385', 1.8);
-    const g = ctx();
-    g.strokeStyle = 'rgba(29,19,11,.3)'; g.lineWidth = 1;
-    const m1 = up(k.D, hh / 2), m2 = up(k.C, hh / 2), m3 = up(k.B, hh / 2);
-    g.beginPath(); g.moveTo(m1.x, m1.y); g.lineTo(m2.x, m2.y); g.lineTo(m3.x, m3.y); g.stroke();
+  return bake(110, 90, 55, 72, () => {
+    if (dir === 'post') {
+      log(iso(0.5, 0.5), 27, 4.2);
+      return;
+    }
+    // back to front: along x the nearer logs have larger x, along y larger y
+    const n = 4;
+    const at = (t: number) => (dir === 'x' ? iso(t, 0.5) : iso(0.5, t));
+    const rail = (h: number) => {
+      const a = up(at(0.02), h), b = up(at(0.98), h);
+      line(a, b, OUT, 5); line(a, b, '#8a5e30', 2.6);
+    };
+    rail(7);
+    for (let i = 0; i < n; i++) {
+      const t = (i + 0.5) / n;
+      log(at(t), 21 + ((i * 7) % 3) * 1.5, 3.4);
+    }
+    rail(16);
   }, iso(1, 1));
 }
 
 /**
- * Gate on the wall tile facing the hall: two stone posts joined by a wooden lintel, open between.
+ * Gate on the wall tile facing the hall: two log posts joined by a wooden lintel, open between.
  * n/s gates run along x, e/w along y. Anchor: the tile's front corner, grid point (tx+1, ty+1) for tile (tx, ty).
  */
 export function drawGate(side: 'n' | 's' | 'e' | 'w'): Art {
   return bake(120, 110, 60, 92, () => {
     const alongX = side === 'n' || side === 's';
-    const post = (a: number) => {
-      const [x, y] = alongX ? [a - 0.18, 0.5 - 0.18] : [0.5 - 0.18, a - 0.18];
-      isoBox(x, y, 0.36, 0.36, 26, '#cfc7b8', '#e1dacb', '#9b9385');
-    };
-    const pt = (a: number, h: number) => up(alongX ? iso(a, 0.5) : iso(0.5, a), h);
-    post(0.14);
+    const base = (a: number) => (alongX ? iso(a, 0.5) : iso(0.5, a));
+    const pt = (a: number, h: number) => up(base(a), h);
+    log(base(0.14), 30, 4.5);
     // lintel (drawn between the posts, behind the near post)
-    const l0 = pt(0.14, 22), l1 = pt(0.86, 22);
+    const l0 = pt(0.14, 25), l1 = pt(0.86, 25);
     line(l0, l1, OUT, 8, 'round');
-    line(l0, l1, '#a0703c', 4.5, 'round');
-    post(0.86);
-    flag(pt(0.5, 22), '#ffcf33', 20);
+    line(l0, l1, '#8a5e30', 4.5, 'round');
+    log(base(0.86), 30, 4.5);
+    flag(pt(0.5, 25), '#ffcf33', 20);
   }, iso(1, 1));
 }
 

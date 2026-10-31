@@ -54,9 +54,14 @@ impl Default for Notifier {
 }
 
 impl Notifier {
-    /// Starts focused: the window is up at launch, so nothing is notified until it loses focus.
+    /// Starts focused: nothing is notified until the window loses focus.
     pub fn new() -> Self {
-        Self { focused: AtomicBool::new(true), obscured: AtomicBool::new(false), last: Mutex::new(HashMap::new()) }
+        Self::with_focus(true)
+    }
+
+    /// Starts from the window's real focus, so a launch in the background notifies at once.
+    pub fn with_focus(focused: bool) -> Self {
+        Self { focused: AtomicBool::new(focused), obscured: AtomicBool::new(false), last: Mutex::new(HashMap::new()) }
     }
 
     pub fn set_focused(&self, focused: bool) {
@@ -211,6 +216,12 @@ mod tests {
         n.set_focused(false);
         assert_eq!(n.on_update(None, &info("t", SessionKind::Terminal, SessionState::Finished), "T"), None);
         assert_eq!(n.on_update(None, &info("t", SessionKind::Terminal, needs("x")), "T"), None);
+    }
+
+    #[test]
+    fn a_background_launch_notifies_before_any_focus_event() {
+        let n = Notifier::with_focus(false);
+        assert!(n.on_update(None, &agent("a", SessionState::Finished), "B").is_some());
     }
 
     #[test]

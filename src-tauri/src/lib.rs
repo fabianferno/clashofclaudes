@@ -194,7 +194,10 @@ pub fn run() {
             let _ = cell.set(Arc::downgrade(&manager));
             // Session dirs left by a crash; none is live yet, so this only removes leftovers.
             manager.sweep_stale_session_dirs();
-            app.manage(NotifyState { notifier: notify::Notifier::new(), denied: AtomicBool::new(false), badge: notify::BadgeCache::default() });
+            // A launch in the background (`open -g`, or focus moved away while starting) is
+            // unfocused from the start; a later focus event corrects either way.
+            let focused = app.get_webview_window("main").is_some_and(|w| w.is_focused().unwrap_or(false));
+            app.manage(NotifyState { notifier: notify::Notifier::with_focus(focused), denied: AtomicBool::new(false), badge: notify::BadgeCache::default() });
             let click_handle = app.handle().clone();
             let _ = app.notification().on_action(move |a| {
                 if a.action_id() != "tap" {

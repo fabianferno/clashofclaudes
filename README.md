@@ -51,6 +51,7 @@ When the app is in the background, it shows a macOS notification when a session 
 - The app **never edits your agent configuration**: nothing under `~/.claude`, `~/.codex`, `~/.gemini`, `~/.config/opencode`, or a project's `.claude`, `.codex`, `.gemini` or `.opencode`. To get status events it hands each agent a private per-session settings file stored in the app's own data folder (`~/Library/Application Support/dev.clashofclaudes.app/sessions/`), and deletes it when the session closes.
 - Status events arrive on a localhost-only server protected by a random per-session token.
 - Quitting the app ends your agent sessions. It asks first if any are running.
+- macOS may ask whether Clash of Claudes can read your Downloads, Desktop or Documents folder. That is an agent or terminal running inside the app (macOS asks on behalf of the app that started it), the same prompt iTerm or VS Code shows the first time. Allow it for folders that hold your workspaces; saying no elsewhere is safe. Change it later in **System Settings > Privacy & Security > Files & Folders**.
 
 ## Development
 

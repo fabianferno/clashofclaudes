@@ -135,10 +135,9 @@ impl Osc7501 {
             "blocked" => match r.kind.as_deref() {
                 Some("question") => vec![StatusEvent::AskedInTerminal { message: msg("Has a question for you") }],
                 Some("auth") => vec![],
-                _ => {
-                    self.in_turn = true; // a prompt is answered or cancelled before the prompt returns
-                    vec![StatusEvent::PermissionRequested { message: msg("Wants permission") }]
-                }
+                // Not a turn yet: the trust menu comes before any `working`, and approving it
+                // returns agy to an idle prompt (Esc on it exits agy instead).
+                _ => vec![StatusEvent::PermissionRequested { message: msg("Wants permission") }],
             },
             "done" => {
                 self.in_turn = false;
@@ -220,6 +219,13 @@ mod tests {
         );
         assert_eq!(p.events(&rep("error", None, None)), vec![StatusEvent::Failed { reason: "reported an error".into() }]);
         assert!(p.events(&rep("clear", None, None)).is_empty());
+    }
+
+    #[test]
+    fn approving_the_trust_menu_is_no_interrupt() {
+        let mut p = Osc7501::default();
+        p.events(&rep("blocked", Some("permission"), Some("Trust this folder?")));
+        assert!(p.events(&rep("idle", None, None)).is_empty(), "back at the prompt after the trust menu");
     }
 
     #[test]

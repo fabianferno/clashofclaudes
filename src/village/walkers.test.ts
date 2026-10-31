@@ -3,7 +3,7 @@ import type { Compound } from '../api/types';
 import type { Tile } from '../api/types';
 import { enclosure, seedOf } from './enclosure';
 import { gateInside, gateOutside, placeCompound, spotFor } from './layout';
-import { PLAZA, SPEED, interiorPath, routeHome, retarget, routeToSite, standTile, step, walkable, type Walker } from './walkers';
+import { PLAZA, SPEED, interiorPath, onGround, routeHome, retarget, routeToSite, standTile, step, walkable, type Walker } from './walkers';
 
 const mk = (over: Partial<Walker> = {}): Walker =>
   ({ id: 'b', x: 0, y: 0, path: [], mode: 'idle', face: 1, wait: 0, ...over });
@@ -127,5 +127,32 @@ describe('walkers', () => {
     const walk = new Set(['0,0', '1,0']);
     expect(interiorPath(walk, { x: 5.5, y: 5.5 }, { x: 0.5, y: 0.5 })).toEqual([{ x: 0.5, y: 0.5 }]);
     expect(interiorPath(walk, { x: 0.5, y: 0.5 }, { x: 1.5, y: 0.5 })).toEqual([{ x: 1.5, y: 0.5 }]);
+  });
+
+  it('retarget_over_walkable_ground_keeps_the_gate_and_routes_from_the_builder', () => {
+    let c = placeCompound([]);
+    const spots: Tile[] = [];
+    for (let i = 0; i < 6; i++) {
+      const r = spotFor(c, [c], spots);
+      c = r.compound;
+      spots.push(r.spot);
+    }
+    const walk = walkable(enclosure(c, spots, 3, seedOf('alpha')).inside, c, spots);
+    const gO = centre(gateOutside(c)), gI = centre(gateInside(c));
+    for (const spot of spots) {
+      // A: still outside with [gate outside, gate inside, stand] left -> the new route keeps both gate points
+      const out = retarget(mk({ x: gO.x - 3, y: gO.y, mode: 'toSite', path: [gO, gI, { x: 0, y: 0 }] }), c, spot, walk);
+      expect(out.path[0]).toEqual(gO);
+      expect(out.path[1]).toEqual(gI);
+      // B: inside with only the stand point left -> routed from where it stands, on the ground
+      const at = mk({ x: gI.x, y: gI.y, mode: 'toSite', path: [{ x: 0, y: 0 }] });
+      const inside = retarget(at, c, spot, walk);
+      expect(inside.path[inside.path.length - 1]).toEqual(standTile(c, spot, c.house, walk));
+      for (const p of inside.path) expect(onGround(walk, p)).toBe(true);
+      // C: heading home from inside -> the whole way out, through the gate
+      const home = retarget({ ...at, mode: 'home', path: [gO] }, c, null, walk);
+      expect(home.path).toEqual(routeHome(at, c, walk));
+      expect(home.path).toContainEqual(gO);
+    }
   });
 });

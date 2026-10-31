@@ -4,7 +4,7 @@ import { iso, toGrid } from './iso';
 import { HALL, HOUSE, STRUCT, gateSide, gateTile, wallRect, type Rect } from './layout';
 import { enclosure, seedOf } from './enclosure';
 import { classOf, gearOf, houseColors, houseStage, scaffoldHeight, type ClassTier, type Gear } from './look';
-import { retarget, routeHome, routeToSite, standTile, step, walkable, type Walker } from './walkers';
+import { onGround, retarget, routeHome, routeToSite, standTile, step, walkable, type Walker } from './walkers';
 import {
   GROUND_SCALE, drawBadge, drawBubble, drawBuilder, drawGate, drawGround, drawHall, drawHouse, drawPuff, drawRing, drawStatusBar, drawStructure,
   drawWallSeg, groundOrigin,
@@ -591,9 +591,10 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
         if (!c) v.walker = { ...w, path: [], mode: 'idle', wait: 0.5 };
         else {
           v.leaving = { wsId: was.workspaceId, c };
-          const route = routeHome(w, c, walkOf(was.workspaceId, c));
-          // a builder that has not reached the gate yet turns around on the plaza side
-          v.walker = { ...w, mode: 'home', path: w.mode === 'toSite' && w.path.length >= 3 ? route.slice(2) : route };
+          const walk = walkOf(was.workspaceId, c);
+          const route = routeHome(w, c, walk);
+          // a builder still outside the walls turns around on the plaza side
+          v.walker = { ...w, mode: 'home', path: w.mode === 'toSite' && !onGround(walk, w) ? route.slice(-1) : route };
         }
       }
       if (site) v.leaving = null;

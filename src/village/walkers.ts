@@ -28,6 +28,9 @@ const centre = (t: Tile): Tile => ({ x: t.x + 0.5, y: t.y + 0.5 });
 const key = (x: number, y: number) => `${x},${y}`;
 const tileOf = (p: Tile) => key(Math.floor(p.x), Math.floor(p.y));
 
+/** Whether point `p` is on walkable ground (inside the compound's walls, clear of buildings). */
+export const onGround = (walk: Set<string>, p: Tile): boolean => walk.has(tileOf(p));
+
 /** Ground a builder may cross inside a compound: the walled ground (`enclosure().inside`) minus the house and the structures. */
 export function walkable(inside: Set<string>, c: Compound, spots: Tile[]): Set<string> {
   const walk = new Set(inside);
@@ -139,9 +142,15 @@ export function retarget(w: Walker, c: Compound, spot: Tile | null, walk?: Set<s
     const st = standTile(c, spot, c.house, walk);
     return { ...w, x: st.x, y: st.y, path: [] };
   }
+  // Inside the walls, route afresh from where the builder stands. Outside, keep the remaining
+  // part of the new route (its outside legs have a fixed length: gate outside, gate inside / plaza).
+  const inside = !!walk && onGround(walk, w);
   const keep = (route: Tile[]) => route.slice(Math.max(0, route.length - w.path.length));
-  if (w.mode === 'toSite' && spot && w.path.length) return { ...w, path: keep(routeToSite(w, c, spot, walk)) };
-  if (w.mode === 'home' && w.path.length) return { ...w, path: keep(routeHome(w, c, walk)) };
+  if (w.mode === 'toSite' && spot && w.path.length) {
+    if (inside) return { ...w, path: interiorPath(walk!, w, standTile(c, spot, c.house, walk)) };
+    return { ...w, path: walk ? routeToSite(w, c, spot, walk) : keep(routeToSite(w, c, spot)) };
+  }
+  if (w.mode === 'home' && w.path.length) return { ...w, path: inside ? routeHome(w, c, walk) : keep(routeHome(w, c, walk)) };
   return w;
 }
 

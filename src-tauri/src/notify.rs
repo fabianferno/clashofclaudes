@@ -72,6 +72,21 @@ impl Notifier {
         self.focused.load(Ordering::SeqCst) && !self.obscured.load(Ordering::SeqCst)
     }
 
+    /// True when this update would move an agent session into NeedsYou or Finished (a new
+    /// entry, compared with the last state seen). Records nothing. Lets the caller skip window
+    /// queries and lookups for the many updates that cannot notify.
+    pub fn enters_notifiable(&self, info: &SessionInfo) -> bool {
+        let now = StateKind::from(&info.state);
+        matches!(info.kind, SessionKind::Agent { .. })
+            && matches!(now, StateKind::NeedsYou | StateKind::Finished)
+            && self.last.lock().unwrap_or_else(|e| e.into_inner()).get(&info.id) != Some(&now)
+    }
+
+    /// Records the session's state without notifying (for updates that cannot notify).
+    pub fn record(&self, info: &SessionInfo) {
+        self.last.lock().unwrap_or_else(|e| e.into_inner()).insert(info.id.clone(), StateKind::from(&info.state));
+    }
+
     /// Forget a removed session.
     pub fn forget(&self, id: &str) {
         self.last.lock().unwrap_or_else(|e| e.into_inner()).remove(id);
@@ -110,6 +125,22 @@ pub fn badge_count(sessions: &[SessionInfo]) -> i64 {
                 && matches!(s.state, SessionState::NeedsYou { .. } | SessionState::Finished)
         })
         .count() as i64
+}
+
+/// The last badge value set, so the dock is only touched when the count changes.
+#[derive(Default)]
+pub struct BadgeCache(Mutex<Option<i64>>);
+
+impl BadgeCache {
+    /// True (and remembers `n`) when `n` differs from the last value; the first call is true.
+    pub fn changed(&self, n: i64) -> bool {
+        let mut last = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        if *last == Some(n) {
+            return false;
+        }
+        *last = Some(n);
+        true
+    }
 }
 
 /// The argument for `set_badge_count`: `None` clears.
@@ -213,6 +244,39 @@ mod tests {
             info("5", SessionKind::Terminal, SessionState::Finished),
         ];
         assert_eq!(badge_count(&s), 2);
+    }
+
+    #[test]
+    fn enters_notifiable_only_on_a_new_needs_or_finished_entry() {
+        let n = Notifier::new();
+        let fin = agent("a", SessionState::Finished);
+        assert!(!n.enters_notifiable(&agent("a", SessionState::Working)));
+        assert!(n.enters_notifiable(&fin), "first sight of Finished");
+        assert!(n.enters_notifiable(&fin), "nothing recorded by asking");
+        n.record(&fin);
+        assert!(!n.enters_notifiable(&fin), "already Finished");
+        assert!(n.enters_notifiable(&agent("a", needs("x"))));
+        n.record(&agent("a", needs("x")));
+        assert!(!n.enters_notifiable(&agent("a", needs("other reason"))), "same entry");
+        assert!(!n.enters_notifiable(&info("t", SessionKind::Terminal, SessionState::Finished)));
+        // It agrees with on_update: whenever on_update notifies, enters_notifiable said so first.
+        n.set_focused(false);
+        let w = agent("a", SessionState::Working);
+        assert!(!n.enters_notifiable(&w));
+        assert_eq!(n.on_update(None, &w, "B"), None);
+        assert!(n.enters_notifiable(&fin));
+        assert!(n.on_update(None, &fin, "B").is_some());
+        assert!(!n.enters_notifiable(&fin));
+    }
+
+    #[test]
+    fn badge_cache_reports_only_changes() {
+        let c = BadgeCache::default();
+        assert!(c.changed(0), "first value is always applied");
+        assert!(!c.changed(0));
+        assert!(c.changed(2));
+        assert!(!c.changed(2));
+        assert!(c.changed(0));
     }
 
     #[test]

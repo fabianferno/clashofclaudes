@@ -28,6 +28,7 @@ use tauri_plugin_notification::{NotificationExt, PermissionState};
 struct NotifyState {
     notifier: notify::Notifier,
     denied: AtomicBool,
+    badge: notify::BadgeCache,
 }
 
 /// Shows `note` (lazily asking permission the first time); silent when refused or on error.
@@ -48,10 +49,13 @@ fn show_note<R: Runtime>(app: &AppHandle<R>, st: &NotifyState, note: notify::Not
     let _ = n.builder().title(note.title).body(note.body).extra("sessionId", session_id).show();
 }
 
-/// Recomputes the dock badge from the live sessions.
+/// Recomputes the dock badge from the live sessions; the dock is only touched on a change.
 fn refresh_badge<R: Runtime>(app: &AppHandle<R>) {
     let Some(state) = app.try_state::<AppState>() else { return };
     let n = notify::badge_count(&state.manager.list());
+    if app.try_state::<NotifyState>().is_some_and(|ns| !ns.badge.changed(n)) {
+        return;
+    }
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.set_badge_count(notify::badge_value(n));
     }
@@ -140,22 +144,27 @@ pub fn run() {
                         && let Some(st) = handle.try_state::<AppState>()
                         && let model::SessionKind::Agent { builder_id: bid } = &info.kind
                     {
-                        // Minimized or hidden counts as unfocused; errors too.
-                        let obscured = handle
-                            .get_webview_window("main")
-                            .is_none_or(|w| w.is_minimized().unwrap_or(true) || !w.is_visible().unwrap_or(false));
-                        ns.notifier.set_obscured(obscured);
-                        let name = st
-                            .data
-                            .lock()
-                            .unwrap_or_else(|e| e.into_inner())
-                            .builders
-                            .iter()
-                            .find(|b| &b.id == bid)
-                            .map(|b| b.name.clone())
-                            .unwrap_or_else(|| "Builder".to_string());
-                        if let Some(note) = ns.notifier.on_update(None, &info, &name) {
-                            show_note(&handle, &ns, note, &info.id);
+                        if !ns.notifier.enters_notifiable(&info) {
+                            // Most updates (output, steps): no window queries, no lookups.
+                            ns.notifier.record(&info);
+                        } else {
+                            // Minimized or hidden counts as unfocused; errors too.
+                            let obscured = handle
+                                .get_webview_window("main")
+                                .is_none_or(|w| w.is_minimized().unwrap_or(true) || !w.is_visible().unwrap_or(false));
+                            ns.notifier.set_obscured(obscured);
+                            let name = st
+                                .data
+                                .lock()
+                                .unwrap_or_else(|e| e.into_inner())
+                                .builders
+                                .iter()
+                                .find(|b| &b.id == bid)
+                                .map(|b| b.name.clone())
+                                .unwrap_or_else(|| "Builder".to_string());
+                            if let Some(note) = ns.notifier.on_update(None, &info, &name) {
+                                show_note(&handle, &ns, note, &info.id);
+                            }
                         }
                     }
                     let _ = handle.emit("session-updated", info);
@@ -185,7 +194,7 @@ pub fn run() {
             let _ = cell.set(Arc::downgrade(&manager));
             // Session dirs left by a crash; none is live yet, so this only removes leftovers.
             manager.sweep_stale_session_dirs();
-            app.manage(NotifyState { notifier: notify::Notifier::new(), denied: AtomicBool::new(false) });
+            app.manage(NotifyState { notifier: notify::Notifier::new(), denied: AtomicBool::new(false), badge: notify::BadgeCache::default() });
             let click_handle = app.handle().clone();
             let _ = app.notification().on_action(move |a| {
                 if a.action_id() != "tap" {

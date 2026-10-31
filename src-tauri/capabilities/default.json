@@ -10,7 +10,6 @@
     "core:window:allow-set-always-on-top",
     "core:window:allow-set-focus",
     "opener:default",
-    "dialog:default",
-    "notification:default"
+    "dialog:default"
   ]
 }

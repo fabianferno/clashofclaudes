@@ -101,6 +101,15 @@ fn private_dir(path: &Path) -> std::io::Result<()> {
 
 impl GeminiAdapter {
     /// `launch` with the system-settings source path injectable.
+    /// `launch` with the environment lookup injectable: an inherited
+    /// `GEMINI_CLI_SYSTEM_SETTINGS_PATH` (an enterprise's custom location) is the merge source
+    /// instead of the default path. It is only read, never modified.
+    fn launch_env(&self, req: &LaunchRequest, get_env: impl Fn(&str) -> Option<String>) -> anyhow::Result<LaunchSpec> {
+        let source = get_env("GEMINI_CLI_SYSTEM_SETTINGS_PATH").filter(|v| !v.is_empty());
+        self.launch_with(req, Path::new(source.as_deref().unwrap_or(SYSTEM_SETTINGS_PATH)))
+    }
+
+    /// `launch` with the system-settings source path injectable.
     fn launch_with(&self, req: &LaunchRequest, system_path: &Path) -> anyhow::Result<LaunchSpec> {
         let dir = req.data_dir.join("sessions").join(req.session_id);
         private_dir(&dir)?;
@@ -137,7 +146,7 @@ impl AgentAdapter for GeminiAdapter {
         vec![]
     }
     fn launch(&self, req: &LaunchRequest) -> anyhow::Result<LaunchSpec> {
-        self.launch_with(req, Path::new(SYSTEM_SETTINGS_PATH))
+        self.launch_env(req, |k| std::env::var(k).ok())
     }
     fn policy(&self) -> StatusPolicy {
         // Before the first hook event (settings not honoured?) silence finishes; afterwards the
@@ -266,6 +275,25 @@ mod tests {
             assert_eq!(v["hooks"][ev].as_array().unwrap().len(), 1, "{ev}");
         }
         assert_eq!(std::fs::read_to_string(&sys).unwrap(), text, "the original is never modified");
+    }
+
+    #[test]
+    fn gemini_merges_inherited_settings_path() {
+        let d = tempfile::tempdir().unwrap();
+        let custom = d.path().join("corp.json");
+        let text = r#"{"corp":true,"hooks":{"AfterTool":[{"matcher":"*","hooks":[{"type":"command","command":"x"}]}]}}"#;
+        std::fs::write(&custom, text).unwrap();
+        let inherited = custom.to_str().unwrap().to_string();
+        GeminiAdapter
+            .launch_env(&req(d.path(), None, None, None), |k| (k == "GEMINI_CLI_SYSTEM_SETTINGS_PATH").then(|| inherited.clone()))
+            .unwrap();
+        let v = settings_of(d.path());
+        assert_eq!(v["corp"], true);
+        assert_eq!(v["hooks"]["AfterTool"].as_array().unwrap().len(), 2);
+        assert_eq!(std::fs::read_to_string(&custom).unwrap(), text, "never modified");
+        // Unset or empty falls back to the default path (absent here: only our hooks).
+        let spec = GeminiAdapter.launch_env(&req(d.path(), None, None, None), |_| Some(String::new())).unwrap();
+        assert!(env_of(&spec, "GEMINI_CLI_SYSTEM_SETTINGS_PATH").unwrap().ends_with("sessions/sid/gemini-settings.json"));
     }
 
     #[test]

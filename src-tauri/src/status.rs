@@ -45,7 +45,9 @@ const SILENCE_STUCK_PREFIX: &str = "no output for ";
 const EXIT_STUCK_PREFIX: &str = "exited with code ";
 const EXIT_STUCK_NONE: &str = "process ended";
 
-/// Stuck from a stall or an agent-reported failure recovers on activity; exit-stuck does not.
+/// Stuck that user input or the next agent event clears: a stall or an agent-reported failure.
+/// Exit-stuck does not recover. Only a silence stall also recovers on plain output: a failure
+/// must stay visible while a TUI keeps redrawing (spinner, the error itself).
 fn stuck_recovers(reason: &str) -> bool {
     !(reason.starts_with(EXIT_STUCK_PREFIX) || reason == EXIT_STUCK_NONE)
 }
@@ -67,6 +69,7 @@ pub fn next_state(state: &SessionState, ev: &StatusEvent, policy: &StatusPolicy)
         (_, E::Failed { reason }) => S::Stuck { reason: reason.clone() },
         (_, E::PromptSubmitted) => S::Working,
         (S::Starting | S::NeedsYou { .. } | S::Finished, E::ToolUsed) => S::Working,
+        (S::Stuck { reason }, E::ToolUsed) if stuck_recovers(reason) => S::Working,
         (_, E::TurnFinished) => S::Finished,
         (_, E::PermissionRequested { message }) => S::NeedsYou { reason: message.clone() },
 
@@ -85,8 +88,10 @@ pub fn next_state(state: &SessionState, ev: &StatusEvent, policy: &StatusPolicy)
         {
             S::Stuck { reason: format!("{SILENCE_STUCK_PREFIX}{} min", secs / 60) }
         }
-        // A stall or a reported failure recovers on new output or typing; exit-stuck stays put.
-        (S::Stuck { reason }, E::Output | E::UserInput) if stuck_recovers(reason) => S::Working,
+        // A stall recovers on new output; exit-stuck stays put. (A failure ignores output.)
+        (S::Stuck { reason }, E::Output) if reason.starts_with(SILENCE_STUCK_PREFIX) => S::Working,
+        // Typing clears a stall or a failure.
+        (S::Stuck { reason }, E::UserInput) if stuck_recovers(reason) => S::Working,
 
         // Unlisted pairs, including later-added events, are unchanged.
         _ => state.clone(),
@@ -204,17 +209,25 @@ mod tests {
         }
         assert_eq!(next_state(&Ended{exit_code:None}, &Failed{reason:"boom".into()}, &hooks()), Ended{exit_code:None});
     }
-    #[test] fn stuck_from_failure_recovers_on_output() {
+    #[test] fn failure_stuck_ignores_output() {
         let s = Stuck{reason:"boom".into()};
-        for p in [hooks(), plain()] {
-            assert_eq!(next_state(&s, &Output, &p), Working);
-            assert_eq!(next_state(&s, &UserInput, &p), Working);
-        }
-        // Exit-stuck still stays put.
+        for p in [hooks(), plain()] { assert_eq!(next_state(&s, &Output, &p), s); }
+    }
+    #[test] fn failure_stuck_recovers_on_user_input() {
+        let s = Stuck{reason:"boom".into()};
+        for p in [hooks(), plain()] { assert_eq!(next_state(&s, &UserInput, &p), Working); }
+    }
+    #[test] fn failure_stuck_recovers_on_next_tool_event() {
+        let s = Stuck{reason:"boom".into()};
+        assert_eq!(next_state(&s, &ToolUsed, &hooks()), Working);
+        assert_eq!(next_state(&s, &TurnFinished, &hooks()), Finished);
+        assert_eq!(next_state(&s, &PermissionRequested{message:"m".into()}, &hooks()), NeedsYou{reason:"m".into()});
+    }
+    #[test] fn exit_and_silence_stuck_recovery_unchanged() {
         let e = Stuck{reason:"exited with code 1".into()};
         assert_eq!(next_state(&e, &Output, &hooks()), e);
         assert_eq!(next_state(&e, &UserInput, &plain()), e);
-        // Silence-stuck recovers on output as before.
+        assert_eq!(next_state(&e, &ToolUsed, &hooks()), e);
         let q = Stuck{reason:"no output for 15 min".into()};
         assert_eq!(next_state(&q, &Output, &hooks()), Working);
     }

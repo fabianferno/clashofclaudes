@@ -179,3 +179,24 @@ test('ensureSpot failure is non-fatal: session selected, error reported, started
   expect(useApp.getState().error).toBe('no room');
   expect(ipc.startSession).toHaveBeenCalledTimes(1);
 });
+
+test('recruiting picks the model with buttons and the effort with a slider', async () => {
+  setup();
+  vi.mocked(ipc.createBuilder).mockResolvedValue(bld('b1', 'Kai'));
+  vi.mocked(ipc.startSession).mockResolvedValue(sess('s', 'b1', { kind: 'working' }));
+  render(<NewSessionPicker workspaceId="w" />);
+  expect(screen.getAllByRole('radio').map((r) => r.textContent)).toEqual(['Default', 'haiku', 'sonnet', 'opus']);
+  fireEvent.click(screen.getByRole('radio', { name: 'opus' }));
+  expect(screen.getByRole('radio', { name: 'opus' }).getAttribute('aria-checked')).toBe('true');
+  const slider = screen.getByLabelText('Effort') as HTMLInputElement;
+  fireEvent.change(slider, { target: { value: '2' } }); // Default, Low, Max
+  expect(slider.getAttribute('aria-valuetext')).toBe('Max');
+  fireEvent.click(screen.getByText('Start'));
+  await vi.waitFor(() => expect(ipc.createBuilder).toHaveBeenCalledWith(expect.any(String), 'claude', 'opus', 'max', null));
+});
+
+test('an agent without efforts shows no effort slider', () => {
+  setup({ agents: [{ ...claude, efforts: [] }, custom] });
+  render(<NewSessionPicker workspaceId="w" />);
+  expect(screen.queryByLabelText('Effort')).toBeNull();
+});

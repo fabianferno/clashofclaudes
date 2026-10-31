@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { EffortSlider, ModelButtons } from './Choosers';
 import { ipc } from '../api/ipc';
 import type { AgentKind, Builder } from '../api/types';
 import { liveSessionOf } from '../hud/hudState';
@@ -75,12 +76,8 @@ export default function BuilderPanel({ builderId }: { builderId: string }) {
         </select>
       </label>
       {(info?.models.length ?? 0) > 0 && (
-        <label className="sp-field">Model
-          <select aria-label="Model" value={b.model ?? ''} disabled={busy} onChange={(e) => void save({ ...b, model: e.target.value || null })}>
-            <option value="">Default</option>
-            {opts(info!.models, b.model).map((m) => <option key={m} value={m}>{m}</option>)}
-          </select>
-        </label>
+        <ModelButtons label="Model" options={info!.models} value={b.model ?? ''} disabled={busy}
+          onChange={(m) => { if (m !== (b.model ?? '')) void save({ ...b, model: m || null }); }} />
       )}
       {info && info.models.length === 0 && b.agent !== 'custom' && (
         <label className="sp-field">Model
@@ -90,12 +87,8 @@ export default function BuilderPanel({ builderId }: { builderId: string }) {
         </label>
       )}
       {(info?.efforts.length ?? 0) > 0 && (
-        <label className="sp-field">Effort
-          <select aria-label="Effort" value={b.effort ?? ''} disabled={busy} onChange={(e) => void save({ ...b, effort: e.target.value || null })}>
-            <option value="">Default</option>
-            {opts(info!.efforts, b.effort).map((m) => <option key={m} value={m}>{m}</option>)}
-          </select>
-        </label>
+        <EffortSlider label="Effort" options={info!.efforts} value={b.effort ?? ''} disabled={busy}
+          onChange={(e) => { if (e !== (b.effort ?? '')) void save({ ...b, effort: e || null }); }} />
       )}
       <div className="sp-sec">Danger zone</div>
       {busy && <div className="sp-note">{b.name} is in a session. Close the session first to dismiss this builder.</div>}

@@ -8,10 +8,10 @@ import { panelInset } from '../hud/layout';
  * trap, and the layer around the card ignores pointer events so the village and HUD stay usable.
  */
 export default function WelcomeCard() {
-  const count = useApp((s) => s.workspaces.length);
+  const show = useApp((s) => s.loaded && s.workspaces.length === 0);
   const panelOpen = useApp((s) => s.panelOpen);
   const [naming, setNaming] = useState<string | null>(null);
-  if (count > 0) return null;
+  if (!show) return null;
 
   const create = () => { const n = naming; if (n?.trim()) { setNaming(null); void wsActions.createFolder(n); } };
 

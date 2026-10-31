@@ -184,3 +184,14 @@ test('switching between sessions keeps one session panel mounted', () => {
   act(() => useApp.getState().setSelection({ kind: 'session', id: 's1' }));
   expect(sessionPanel.mounts - before).toBe(1); // its terminal survives the switch
 });
+
+test('town hall: no-builders copy vs all-busy copy', () => {
+  act(() => useApp.setState({ builders: [], sessions: {} }));
+  const { unmount } = render(<TownHallPanel />);
+  expect(screen.getByText('No builders yet — recruit one from + New session.')).toBeTruthy();
+  expect(screen.queryByText('Every builder is in a session.')).toBeNull();
+  unmount();
+  act(() => useApp.setState({ builders: [builder()], sessions: { s1: sess() } }));
+  render(<TownHallPanel />);
+  expect(screen.getByText('Every builder is in a session.')).toBeTruthy();
+});

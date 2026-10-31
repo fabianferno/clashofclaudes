@@ -8,7 +8,7 @@ import WelcomeCard from './WelcomeCard';
 import BuildersBar from '../hud/BuildersBar';
 
 const ws = { id: 'w', name: 'proj', path: '/p', createdAt: 0, missing: false, level: 1, xp: 0, compound: null };
-beforeEach(() => { vi.mocked(wsActions.openFolder).mockReset(); act(() => useApp.setState({ workspaces: [], builders: [], sessions: {} })); });
+beforeEach(() => { vi.mocked(wsActions.openFolder).mockReset(); act(() => useApp.setState({ loaded: true, workspaces: [], builders: [], sessions: {} })); });
 afterEach(cleanup);
 
 test('welcome_shows_only_without_workspaces', () => {
@@ -30,4 +30,14 @@ test('welcome_is_not_modal', () => {
   expect(screen.getByTestId('builders-bar').className).toContain('collapsed');
   // the layer around the card lets pointer events through to the village
   expect((container.querySelector('[data-testid="welcome-card"]')!.parentElement as HTMLElement).style.pointerEvents).toBe('none');
+});
+
+test('welcome_waits_for_hydrate', () => {
+  act(() => useApp.setState({ loaded: false, workspaces: [] }));
+  const { container } = render(<WelcomeCard />);
+  expect(container.textContent).toBe('');
+  act(() => useApp.getState().hydrate({ workspaces: [], builders: [], sessions: [], stats: { shippedTotal: 0, recentShips: [] } }));
+  expect(screen.getByText('Open a folder to start')).toBeTruthy();
+  act(() => useApp.getState().hydrate({ workspaces: [ws], builders: [], sessions: [], stats: { shippedTotal: 0, recentShips: [] } }));
+  expect(container.textContent).toBe('');
 });

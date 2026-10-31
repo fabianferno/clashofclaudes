@@ -40,7 +40,9 @@ export default function TownHallPanel() {
           )}
       </div>
       <div className="sp-sec">Idle builders ({idle.length})</div>
-      {idle.length === 0 && <div className="sp-note">Every builder is in a session.</div>}
+      {idle.length === 0 && (
+        <div className="sp-note">{builders.length === 0 ? 'No builders yet — recruit one from + New session.' : 'Every builder is in a session.'}</div>
+      )}
       {idle.map((b) => (
         <button key={b.id} className="sp-row" data-testid={`idle-builder-${b.id}`} onClick={() => setSelection({ kind: 'builder', id: b.id })}>
           <span className="sp-av" style={{ background: PALETTE[b.agent].body }}><span className="ol">{b.name.charAt(0).toUpperCase()}</span></span>

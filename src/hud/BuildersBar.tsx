@@ -27,7 +27,7 @@ export default function BuildersBar() {
         <button className="hud-btn grey sm hud-tab" onClick={() => setCollapsed((c) => !c)}>
           {collapsed ? '▴' : '▾'} Builders
         </button>
-        <div ref={list} data-testid="builders-list" className="hud-cards" onWheel={onWheel}>
+        {builders.length > 0 && <div ref={list} data-testid="builders-list" className="hud-cards" onWheel={onWheel}>
           {builders.map((b) => {
             const pal = PALETTE[b.agent];
             const tier = classOf(b.agent, b.model);
@@ -58,7 +58,7 @@ export default function BuildersBar() {
               </button>
             );
           })}
-        </div>
+        </div>}
       </div>
     </div>
   );

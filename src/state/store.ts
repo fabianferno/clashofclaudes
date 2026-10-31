@@ -53,6 +53,8 @@ export interface AppState {
   /** A session was closed: pushes its notice(s) and remembers an earning outcome for the scene. Terminals stay silent. */
   onClosed: (o: CloseOutcome, sessionId?: string) => void;
   consumeClosed: (sessionId: string) => void;
+  /** True once the first `hydrate` (listState) has completed. */
+  loaded: boolean;
   workspaces: Workspace[];
   builders: Builder[];
   sessions: Record<string, SessionInfo>;
@@ -82,6 +84,7 @@ export interface AppState {
 }
 
 export const useApp = create<AppState>((set, get) => ({
+  loaded: false,
   workspaces: [],
   builders: [],
   sessions: {},
@@ -120,6 +123,7 @@ export const useApp = create<AppState>((set, get) => ({
     }),
   hydrate: (s) =>
     set({
+      loaded: true,
       workspaces: s.workspaces,
       builders: s.builders,
       sessions: Object.fromEntries(s.sessions.map((x) => [x.id, x])),

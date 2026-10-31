@@ -49,3 +49,10 @@ test('vertical wheel scrolls sideways', () => {
   fireEvent.wheel(list, { deltaY: 40 });
   expect(list.scrollLeft).toBe(40);
 });
+
+test('no empty card container with zero builders', () => {
+  act(() => useApp.setState({ builders: [] }));
+  render(<BuildersBar />);
+  expect(screen.queryByTestId('builders-list')).toBeNull();
+  expect(screen.getByRole('button', { name: /Builders/ })).toBeTruthy();
+});

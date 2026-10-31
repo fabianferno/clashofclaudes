@@ -70,7 +70,7 @@ export default function TownHallPanel() {
         <input type="checkbox" checked={updatesEnabled} onChange={(e) => toggleUpdates(e.target.checked)} />
         Check for updates automatically
       </label>
-      <div className="sp-note">This is the only time the app uses the network: it fetches a signed update manifest from GitHub.</div>
+      <div className="sp-note">This is the only time the app uses the network: it checks GitHub for signed updates (an update is installed only if its signature matches).</div>
     </>
   );
 }

@@ -60,3 +60,35 @@ test('toast is dismissible and install failure is silent', async () => {
   fireEvent.click(screen.getByLabelText('Dismiss update notice'));
   expect(screen.queryByTestId('update-toast')).toBeNull();
 });
+
+test('after the install resolves (restart cancelled), the toast says installed with no dead button', async () => {
+  ipc.checkForUpdate.mockResolvedValue({ available: true, version: '1.2.0' });
+  let done: () => void = () => {};
+  ipc.installUpdate.mockReturnValue(new Promise<void>((r) => { done = r; }));
+  render(<UpdateToast />);
+  await act(async () => { vi.advanceTimersByTime(FIRST_CHECK_MS); });
+  await flush();
+  fireEvent.click(screen.getByTestId('update-restart'));
+  expect((screen.getByTestId('update-restart') as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByTestId('update-restart'));
+  expect(ipc.installUpdate).toHaveBeenCalledTimes(1);
+  await act(async () => { done(); });
+  await flush();
+  expect(screen.getByTestId('update-toast').textContent).toContain('Update installed — restart to apply');
+  expect(screen.queryByTestId('update-restart')).toBeNull();
+  // A later check that still sees the update does not bring the button back.
+  await act(async () => { vi.advanceTimersByTime(CHECK_EVERY_MS); });
+  await flush();
+  expect(screen.queryByTestId('update-restart')).toBeNull();
+});
+
+test('a failed install re-enables the button', async () => {
+  ipc.checkForUpdate.mockResolvedValue({ available: true, version: '1.2.0' });
+  ipc.installUpdate.mockRejectedValue('update failed');
+  render(<UpdateToast />);
+  await act(async () => { vi.advanceTimersByTime(FIRST_CHECK_MS); });
+  await flush();
+  fireEvent.click(screen.getByTestId('update-restart'));
+  await flush();
+  expect((screen.getByTestId('update-restart') as HTMLButtonElement).disabled).toBe(false);
+});

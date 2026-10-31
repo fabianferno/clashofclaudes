@@ -12,6 +12,14 @@ export const CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
 export default function UpdateToast() {
   const [available, setAvailable] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+  // 'installing' while the download runs; 'installed' once it is in place but the app was not
+  // restarted (the user cancelled the restart because sessions run): there is nothing left to
+  // click, the next launch runs the new version.
+  const [phase, setPhase] = useState<'idle' | 'installing' | 'installed'>('idle');
+  const install = () => {
+    setPhase('installing');
+    ipc.installUpdate().then(() => setPhase('installed'), () => setPhase('idle'));
+  };
 
   useEffect(() => {
     const check = () => {
@@ -25,8 +33,14 @@ export default function UpdateToast() {
   if (!available || dismissed) return null;
   return (
     <div className="update-toast" data-testid="update-toast" role="status">
-      <span className="ol">Update available — </span>
-      <button className="hud-btn sm blue" data-testid="update-restart" onClick={() => { ipc.installUpdate().catch(() => {}); }}>Restart to update</button>
+      {phase === 'installed'
+        ? <span className="ol">Update installed — restart to apply</span>
+        : (
+          <>
+            <span className="ol">Update available — </span>
+            <button className="hud-btn sm blue" data-testid="update-restart" disabled={phase === 'installing'} onClick={install}>Restart to update</button>
+          </>
+        )}
       <button className="update-x" aria-label="Dismiss update notice" onClick={() => setDismissed(true)}>×</button>
     </div>
   );

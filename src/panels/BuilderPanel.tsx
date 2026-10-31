@@ -5,13 +5,20 @@ import { liveSessionOf } from '../hud/hudState';
 import { useApp } from '../state/store';
 import { CLASS_NAMES, GEAR_NAMES, PALETTE, classOf, gearOf, stars } from '../village/look';
 
+/** Placeholder for the free-text model field of an agent without a model list. */
+export function modelPlaceholder(kind: AgentKind): string {
+  return kind === 'opencode' ? 'provider/model' : 'model id';
+}
+
 export default function BuilderPanel({ builderId }: { builderId: string }) {
   const b = useApp((s) => s.builders.find((x) => x.id === builderId));
   const sessions = useApp((s) => s.sessions);
   const agents = useApp((s) => s.agents);
   const [name, setName] = useState(b?.name ?? '');
+  const [modelText, setModelText] = useState(b?.model ?? '');
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => { if (b) setName(b.name); }, [b?.name]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setModelText(b?.model ?? ''); }, [b?.model]);
   if (!b) return null;
 
   const live = liveSessionOf(b.id, Object.values(sessions));
@@ -22,7 +29,7 @@ export default function BuilderPanel({ builderId }: { builderId: string }) {
     try {
       await ipc.updateBuilder(next);
       useApp.getState().updateBuilder(next);
-    } catch (e) { setErr(String(e)); setName(b.name); }
+    } catch (e) { setErr(String(e)); setName(b.name); setModelText(b.model ?? ''); }
   };
   const rename = () => {
     const n = name.trim();
@@ -32,6 +39,12 @@ export default function BuilderPanel({ builderId }: { builderId: string }) {
   const changeAgent = (kind: AgentKind) => {
     const a = agents.find((x) => x.kind === kind);
     void save({ ...b, agent: kind, model: a?.models[0] ?? null, effort: a?.efforts[0] ?? null });
+  };
+  // Free-text model (an agent without a model list, e.g. Codex or OpenCode): empty means default.
+  const saveModelText = () => {
+    const m = modelText.trim() || null;
+    if (m !== b.model) void save({ ...b, model: m });
+    else setModelText(b.model ?? '');
   };
   const opts = (list: string[], cur: string | null) => (cur && !list.includes(cur) ? [cur, ...list] : list);
   const tier = classOf(b.agent, b.model);
@@ -67,6 +80,13 @@ export default function BuilderPanel({ builderId }: { builderId: string }) {
             <option value="">Default</option>
             {opts(info!.models, b.model).map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
+        </label>
+      )}
+      {info && info.models.length === 0 && b.agent !== 'custom' && (
+        <label className="sp-field">Model
+          <input aria-label="Model" value={modelText} placeholder={modelPlaceholder(b.agent)} disabled={busy}
+            onChange={(e) => setModelText(e.target.value)} onBlur={saveModelText}
+            onKeyDown={(e) => { if (e.key === 'Enter') saveModelText(); }} />
         </label>
       )}
       {(info?.efforts.length ?? 0) > 0 && (

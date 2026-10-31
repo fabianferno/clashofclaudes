@@ -5,24 +5,37 @@ import type { AgentInfo, AgentKind, Builder } from '../api/types';
 import { CLASS_NAMES, classOf } from '../village/look';
 import BuilderPreview from './BuilderPreview';
 import AgentsStatus from './AgentsStatus';
+import { modelPlaceholder } from './BuilderPanel';
 
 export const RECRUIT_NAMES = ['Ivy', 'Jax', 'Kai', 'Lu', 'Mo', 'Nia', 'Oz', 'Pip', 'Quin', 'Rex'];
 
 const q = (s: string) => `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 
-/** Display-only preview of the command that will be run. */
+/**
+ * Display-only preview of the command that will be run, mirroring each adapter's arguments
+ * (src-tauri/src/adapters). `…` stands for app-supplied arguments (hook settings, the shared-folder
+ * note, the project path). Effort is shown only where the agent takes it.
+ */
 export function commandPreview(
   agent: AgentInfo, model?: string, effort?: string, task?: string, customCommand?: string,
 ): string {
-  if (agent.kind === 'custom') {
-    return [customCommand?.trim() ?? '', task ? q(task) : ''].filter(Boolean).join(' ');
+  const t = task ? q(task) : '';
+  const join = (parts: Array<string | false | undefined>) => parts.filter(Boolean).join(' ');
+  switch (agent.kind) {
+    case 'custom':
+      return join([customCommand?.trim(), t]);
+    case 'claude':
+      return join(['claude …', model && `--model ${model}`, effort && `--effort ${effort}`, t && `-- ${t}`]);
+    case 'codex':
+      return join(['codex', model && `-m ${model}`, effort && `-c model_reasoning_effort=${q(effort)}`, '…', t && `-- ${t}`]);
+    case 'opencode': {
+      // Effort goes through OPENCODE_CONFIG_CONTENT, and only for a `provider/model`.
+      const providerModel = !!model && /^[^/]+\/.+$/.test(model);
+      return join([effort && providerModel && 'OPENCODE_CONFIG_CONTENT=…', 'opencode …', model && `--model=${model}`, t && `--prompt=${t}`]);
+    }
+    case 'gemini':
+      return join(['gemini', model && `--model=${model}`, t && `--prompt-interactive=${t}`]);
   }
-  const parts: string[] = [agent.kind];
-  if (agent.kind === 'claude') parts.push('…');
-  if (model) parts.push('--model', model);
-  if (effort) parts.push('--effort', effort);
-  if (task) parts.push(q(task));
-  return parts.join(' ');
 }
 
 const RECRUIT = '__recruit__';
@@ -62,7 +75,7 @@ export default function NewSessionPicker({ workspaceId }: { workspaceId: string 
   const existing = idle.find((b) => b.id === choice);
   const agent = agents.find((a) => a.kind === (recruiting ? kind : existing?.agent));
   const isCustom = agent?.kind === 'custom';
-  const pModel = (recruiting ? model : existing?.model) || null;
+  const pModel = (recruiting ? model.trim() : existing?.model) || null;
   const pEffort = (recruiting ? effort : existing?.effort) || null;
   const pCmd = recruiting ? command : existing?.customCommand ?? '';
   const preview = agent ? commandPreview(agent, pModel ?? undefined, pEffort ?? undefined, task.trim() || undefined, pCmd) : '';
@@ -155,7 +168,13 @@ export default function NewSessionPicker({ workspaceId }: { workspaceId: string 
             </>
           ) : (
             <>
-              {select(agent?.models ?? [], model, setModel, 'Model')}
+              {(agent?.models.length ?? 0) > 0
+                ? select(agent!.models, model, setModel, 'Model')
+                : (
+                  <label className="sp-field">Model (optional)
+                    <input value={model} placeholder={modelPlaceholder(kind)} onChange={(e) => setModel(e.target.value)} />
+                  </label>
+                )}
               {select(agent?.efforts ?? [], effort, setEffort, 'Effort')}
             </>
           )}

@@ -119,6 +119,34 @@ test('builder_model_and_effort_reset_to_default', async () => {
   expect(ipc.updateBuilder).toHaveBeenCalledWith({ ...builder({ model: null, effort: 'high' }), effort: null });
 });
 
+test('builder_free_text_model_for_agents_without_a_list', async () => {
+  act(() => useApp.setState({ builders: [builder({ agent: 'codex', model: null, effort: null })] }));
+  render(<BuilderPanel builderId="b1" />);
+  const input = screen.getByLabelText('Model') as HTMLInputElement;
+  expect(input.tagName).toBe('INPUT');
+  expect(input.placeholder).toBe('model id');
+  fireEvent.change(input, { target: { value: ' gpt-6 ' } });
+  await act(async () => { fireEvent.keyDown(input, { key: 'Enter' }); });
+  expect(ipc.updateBuilder).toHaveBeenLastCalledWith(builder({ agent: 'codex', model: 'gpt-6', effort: null }));
+  // Clearing it goes back to the default model (null).
+  fireEvent.change(screen.getByLabelText('Model'), { target: { value: '' } });
+  await act(async () => { fireEvent.blur(screen.getByLabelText('Model')); });
+  expect(ipc.updateBuilder).toHaveBeenLastCalledWith(builder({ agent: 'codex', model: null, effort: null }));
+});
+
+test('builder_free_text_model_placeholder_for_opencode; none for custom', () => {
+  act(() => useApp.setState({
+    agents: [...agents, { kind: 'opencode', label: 'OpenCode', installed: true, version: null, models: [], efforts: [], canApprove: false },
+      { kind: 'custom', label: 'Custom command', installed: true, version: null, models: [], efforts: [], canApprove: false }],
+    builders: [builder({ agent: 'opencode', model: null, effort: null }), builder({ id: 'b2', agent: 'custom', model: null, effort: null, customCommand: 'x' })],
+  }));
+  const { unmount } = render(<BuilderPanel builderId="b1" />);
+  expect((screen.getByLabelText('Model') as HTMLInputElement).placeholder).toBe('provider/model');
+  unmount();
+  render(<BuilderPanel builderId="b2" />);
+  expect(screen.queryByLabelText('Model')).toBeNull();
+});
+
 test('agent_model_effort_locked_while_busy', () => {
   act(() => useApp.setState({ sessions: { s1: sess() } }));
   render(<BuilderPanel builderId="b1" />);

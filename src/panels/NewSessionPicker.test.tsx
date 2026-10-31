@@ -31,7 +31,47 @@ beforeEach(() => { vi.mocked(ipc.createBuilder).mockReset(); vi.mocked(ipc.start
 afterEach(cleanup);
 
 test('commandPreview for claude', () => {
-  expect(commandPreview(claude, 'opus', 'max', 'fix "bug"')).toBe('claude … --model opus --effort max "fix \\"bug\\""');
+  expect(commandPreview(claude, 'opus', 'max', 'fix "bug"')).toBe('claude … --model opus --effort max -- "fix \\"bug\\""');
+});
+const opencode: AgentInfo = { ...claude, kind: 'opencode', label: 'OpenCode', models: [], canApprove: false };
+const gemini: AgentInfo = { ...claude, kind: 'gemini', label: 'Gemini CLI (API key)', models: ['flash', 'pro'], efforts: [], canApprove: false };
+test('commandPreview mirrors the Codex adapter', () => {
+  expect(commandPreview(codex, 'gpt-6', 'high', 'fix it')).toBe('codex -m gpt-6 -c model_reasoning_effort="high" … -- "fix it"');
+  expect(commandPreview(codex)).toBe('codex …');
+});
+test('commandPreview mirrors the OpenCode adapter (effort only via config, for provider/model)', () => {
+  expect(commandPreview(opencode, 'anthropic/claude-x', 'high', 'fix it'))
+    .toBe('OPENCODE_CONFIG_CONTENT=… opencode … --model=anthropic/claude-x --prompt="fix it"');
+  expect(commandPreview(opencode, 'gpt-5', 'high')).toBe('opencode … --model=gpt-5');
+  expect(commandPreview(opencode, undefined, 'high')).toBe('opencode …');
+});
+test('commandPreview mirrors the Gemini adapter (effort is display-only)', () => {
+  expect(commandPreview(gemini, 'flash', 'high', 'fix it')).toBe('gemini --model=flash --prompt-interactive="fix it"');
+  expect(commandPreview(gemini)).toBe('gemini');
+});
+test('agents without a model list get a free-text model; empty means default', async () => {
+  const codexOn = { ...codex, installed: true, models: [] };
+  const opencodeOn = { ...opencode, installed: true };
+  setup({ agents: [codexOn, opencodeOn, custom] });
+  vi.mocked(ipc.createBuilder).mockResolvedValue({ ...bld('b9', 'Ivy'), agent: 'codex' });
+  vi.mocked(ipc.startSession).mockResolvedValue(sess('s9', 'b9', { kind: 'working' }));
+  render(<NewSessionPicker workspaceId="w" />);
+  const model = () => screen.getByPlaceholderText(/model id|provider\/model/) as HTMLInputElement;
+  expect(model().placeholder).toBe('model id');
+  fireEvent.change(screen.getByLabelText('Agent'), { target: { value: 'opencode' } });
+  expect(model().placeholder).toBe('provider/model');
+  fireEvent.change(model(), { target: { value: ' openai/gpt-5 ' } });
+  expect(screen.getByText(/^opencode … --model=openai\/gpt-5$/)).toBeTruthy();
+  fireEvent.click(screen.getByText('Start'));
+  await vi.waitFor(() => expect(ipc.createBuilder).toHaveBeenCalledWith('Ivy', 'opencode', 'openai/gpt-5', null, null));
+  // Back to Codex: the field resets, and an empty model is sent as null.
+  cleanup();
+  vi.mocked(ipc.createBuilder).mockClear();
+  setup({ agents: [codexOn, custom] });
+  render(<NewSessionPicker workspaceId="w" />);
+  fireEvent.change(model(), { target: { value: '   ' } });
+  fireEvent.click(screen.getByText('Start'));
+  await vi.waitFor(() => expect(ipc.createBuilder).toHaveBeenCalledWith('Ivy', 'codex', null, null, null));
 });
 test('commandPreview omits unset model/effort', () => {
   expect(commandPreview(claude, undefined, undefined, undefined)).toBe('claude …');

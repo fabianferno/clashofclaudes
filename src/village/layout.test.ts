@@ -123,8 +123,8 @@ describe('expand', () => {
   it('grows toward negative side when west of hall', () => {
     const c: Compound = { x0: -15, y0: -3, w: 7, h: 7, house: { x: -9, y: -3 } };
     const e = expand(c, [c]);
-    expect(e.compound.x0).toBe(-18);
-    expect(e.compound.w).toBe(10);
+    expect(e.compound.x0).toBe(-15 - GROW);
+    expect(e.compound.w).toBe(7 + GROW);
     expect(e.compound.house).toEqual(c.house);
     expect(e.shift).toEqual({ x: 0, y: 0 });
   });
@@ -134,7 +134,7 @@ describe('expand', () => {
     assertNoCollisions([c, blocker]);
     const r = expand(c, [c, blocker]);
     expect(r.shift.x !== 0 || r.shift.y !== 0).toBe(true);
-    expect(r.compound.w).toBe(10);
+    expect(r.compound.w).toBe(c.w + GROW);
     expect(r.compound.house).toEqual({ x: c.house.x + r.shift.x, y: c.house.y + r.shift.y });
     assertNoCollisions([r.compound, blocker]);
   });

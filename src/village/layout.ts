@@ -11,8 +11,8 @@ export interface Rect {
 export const HALL: Rect = { x0: -2, y0: -2, w: 5, h: 5 };
 /** Min empty tiles between compound walls and anything else (roads). */
 export const GAP = 4;
-export const START = 7;
-export const GROW = 3;
+export const START = 10;
+export const GROW = 4;
 export const HOUSE = 3;
 export const STRUCT = 2;
 
@@ -88,8 +88,9 @@ export function gateSide(c: Compound): 'n' | 's' | 'e' | 'w' {
 
 /**
  * The wall tile replaced by the gate: on the hall-facing side, at the position along that wall
- * farthest from the house's 3-tile span (at least 1 tile from the wall corners), so the house
- * never covers or touches it. Ties go to the lower coordinate.
+ * nearest the house's 3-tile span while keeping one clear tile between them (and at least 1 tile
+ * from the wall corners), so the entry lane to the house is short and the house never covers or
+ * touches the gate. Ties go to the lower coordinate.
  */
 export function gateTile(c: Compound): Tile {
   const r = wallRect(c);
@@ -99,11 +100,13 @@ export function gateTile(c: Compound): Tile {
   const hi = (alongX ? r.x0 + r.w : r.y0 + r.h) - 2;
   const s0 = alongX ? c.house.x : c.house.y;
   const s1 = s0 + HOUSE - 1;
-  let best = lo, bestD = -1;
+  let best = lo, bestD = Infinity, far = lo, farD = -1;
   for (let t = lo; t <= hi; t++) {
     const d = Math.max(s0 - t, t - s1, 0);
-    if (d > bestD) { bestD = d; best = t; }
+    if (d >= 2 && d < bestD) { bestD = d; best = t; }
+    if (d > farD) { farD = d; far = t; }
   }
+  if (bestD === Infinity) best = far; // no position clears the house by a tile: the farthest one
   switch (side) {
     case 'n': return { x: best, y: r.y0 };
     case 's': return { x: best, y: r.y0 + r.h - 1 };

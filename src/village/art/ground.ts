@@ -1,7 +1,7 @@
 import type { Compound } from '../../api/types';
 import { iso, TW, TH } from '../iso';
 import { GAP, HALL, wallRect, gateTile, type Rect } from '../layout';
-import { bake, ctx, poly, type Pt } from './draw';
+import { bake, ctx, type Pt } from './draw';
 import { paintTree } from './scenery';
 
 const PAD_TOP = 90;
@@ -56,8 +56,6 @@ export function drawGround(b: Rect, compounds: Compound[], seed: number): HTMLCa
 
   return bake(w, h, 0, 0, () => {
     const g = ctx();
-    const rect = (x0: number, y0: number, x1: number, y1: number): Pt[] =>
-      [iso(x0, y0), iso(x1, y0), iso(x1, y1), iso(x0, y1)];
     g.fillStyle = '#5aa832';
     g.fillRect(o.x, o.y, w, h);
     for (const t of blobs) {
@@ -67,7 +65,6 @@ export function drawGround(b: Rect, compounds: Compound[], seed: number): HTMLCa
       gr.addColorStop(0, `rgba(${rgb},.5)`); gr.addColorStop(1, `rgba(${rgb},0)`);
       g.fillStyle = gr; g.beginPath(); g.ellipse(p.x, p.y, t.rx, t.ry, 0, 0, Math.PI * 2); g.fill();
     }
-    for (const r of walls) poly(rect(r.x0, r.y0, r.x0 + r.w, r.y0 + r.h), 'rgba(170,235,100,.3)');
 
     // hall plaza, dirt roads hall -> each gate, house pads: drawn in tile space so the iso
     // foreshortening is exact, with rounded ends, layered soft rims and scattered pebbles (no

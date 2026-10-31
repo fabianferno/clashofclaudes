@@ -2,6 +2,7 @@ import { Application, Container, Graphics, Sprite, Text, Texture } from 'pixi.js
 import type { AgentKind, Builder, CloseOutcome, Compound, SessionInfo, SessionState, Tile, Workspace } from '../api/types';
 import { iso, toGrid } from './iso';
 import { HALL, HOUSE, STRUCT, gateSide, gateTile, wallRect, type Rect } from './layout';
+import { enclosure, seedOf } from './enclosure';
 import { classOf, gearOf, houseColors, houseStage, scaffoldHeight, type ClassTier, type Gear } from './look';
 import { retarget, routeHome, routeToSite, standTile, step, type Walker } from './walkers';
 import {
@@ -69,21 +70,13 @@ export function structureLook(s: SessionInfo): { stage: StructStage; height: num
   }
 }
 
-function wallEntities(wsId: string, c: Compound): Entity[] {
-  const r = wallRect(c);
+/** The compound's organic wall (see `enclosure`) with the gate in its hall-facing tile. */
+function wallEntities(wsId: string, c: Compound, spots: Tile[], level: number): Entity[] {
   const gate = gateTile(c);
   const out: Entity[] = [];
-  const seg = (tx: number, ty: number, dir: 'x' | 'y') => {
-    if (tx === gate.x && ty === gate.y) return;
-    out.push(ent(`wall:${wsId}:${tx}:${ty}`, 'wall', tx + 1, ty + 1, `wall:${dir}`));
-  };
-  for (let tx = r.x0; tx < r.x0 + r.w; tx++) {
-    seg(tx, r.y0, 'x');
-    seg(tx, r.y0 + r.h - 1, 'x');
-  }
-  for (let ty = r.y0 + 1; ty < r.y0 + r.h - 1; ty++) {
-    seg(r.x0, ty, 'y');
-    seg(r.x0 + r.w - 1, ty, 'y');
+  for (const t of enclosure(c, spots, level, seedOf(wsId)).walls) {
+    if (t.x === gate.x && t.y === gate.y) continue;
+    out.push(ent(`wall:${wsId}:${t.x}:${t.y}`, 'wall', t.x + 1, t.y + 1, `wall:${t.dir}`));
   }
   out.push(ent(`gate:${wsId}`, 'gate', gate.x + 1, gate.y + 1, `gate:${gateSide(c)}`));
   return out;
@@ -100,7 +93,8 @@ export function buildEntities(input: VillageInput): Entity[] {
     compounds.set(w.id, c);
     const { roof, wall } = houseColors(w.id);
     out.push(ent(`house:${w.id}`, 'house', c.house.x + HOUSE, c.house.y + HOUSE, `house:${houseStage(w.level)}:${roof}:${wall}`));
-    out.push(...wallEntities(w.id, c));
+    const spots = input.sessions.flatMap((s) => (s.workspaceId === w.id && s.kind.kind === 'agent' && s.spot ? [s.spot] : []));
+    out.push(...wallEntities(w.id, c, spots, w.level));
     const terminals = input.sessions.filter(
       (s) => s.workspaceId === w.id && s.kind.kind === 'terminal' && s.state.kind !== 'ended',
     ).length;
@@ -151,7 +145,7 @@ export function artFor(key: string): Art {
     case 'hall': return drawHall();
     case 'house': return drawHouse(Number(a) as 0 | 1 | 2 | 3 | 4, b, c);
     case 'struct': return drawStructure(a as AgentKind, b as StructStage, Number(c));
-    case 'wall': return drawWallSeg(a as 'x' | 'y');
+    case 'wall': return drawWallSeg(a as 'x' | 'y' | 'post');
     case 'gate': return drawGate(a as 'n' | 's' | 'e' | 'w');
     case 'badge': return drawBadge(Number(a));
     case 'builder': return drawBuilder(a as AgentKind, Number(b) as ClassTier, Number(c) as Gear, d as Pose, Number(e) as 1 | -1);

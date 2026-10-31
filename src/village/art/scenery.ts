@@ -1,8 +1,21 @@
 import { iso } from '../iso';
 import { OUT, bake, chip, ctx, dot, flag, isoBox, line, outlinedText, roundRect, shadow, up, type Art } from './draw';
 
-/** One tile of wall running along x or y. Anchor: the tile's front corner, grid point (tx+1, ty+1) for tile (tx, ty). */
-export function drawWallSeg(dir: 'x' | 'y'): Art {
+/**
+ * One tile of wall running along x or y, or a square post where the wall turns or ends.
+ * Anchor: the tile's front corner, grid point (tx+1, ty+1) for tile (tx, ty).
+ */
+export function drawWallSeg(dir: 'x' | 'y' | 'post'): Art {
+  if (dir === 'post') {
+    return bake(110, 90, 55, 72, () => {
+      const hh = 18;
+      const k = isoBox(0.22, 0.22, 0.56, 0.56, hh, '#d9d2c4', '#bbb3a4', '#9b9385', 1.8);
+      const g = ctx();
+      g.strokeStyle = 'rgba(29,19,11,.3)'; g.lineWidth = 1;
+      const m1 = up(k.D, hh / 2), m2 = up(k.C, hh / 2), m3 = up(k.B, hh / 2);
+      g.beginPath(); g.moveTo(m1.x, m1.y); g.lineTo(m2.x, m2.y); g.lineTo(m3.x, m3.y); g.stroke();
+    }, iso(1, 1));
+  }
   return bake(110, 80, 55, 62, () => {
     const L = 0.96, T = 0.44, hh = 14;
     const [x, y, w, d] = dir === 'x' ? [0.5 - L / 2, 0.5 - T / 2, L, T] : [0.5 - T / 2, 0.5 - L / 2, T, L];

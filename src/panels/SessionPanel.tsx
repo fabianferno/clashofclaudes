@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ipc } from '../api/ipc';
 import { stateLabel, useApp } from '../state/store';
 import type { CloseOutcome, Review } from '../api/types';
-import TerminalView from '../components/TerminalView';
+import TerminalView from '../components/LazyTerminalView';
 import { CLASS_NAMES, GEAR_NAMES, classOf, gearOf } from '../village/look';
 import PopOutTerminal from './PopOutTerminal';
 

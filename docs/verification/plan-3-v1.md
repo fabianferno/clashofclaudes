@@ -10,6 +10,7 @@ Run on 2026-10-31 on branch `plan-3-release` (HEAD `b0ffe64` plus the docs commi
 | `pnpm vitest run` | 26 files, 193 tests passed |
 | `pnpm exec tsc --noEmit` | clean |
 | `node --test scripts/*.test.mjs` | 2 passed (`make-latest-json`) |
+| Final-review fix wave (2026-10-31, after `d2c1bfb`) | `cargo test`: lib 203 passed, 3 ignored (the fake-HOME child tests, run by their `*_writes_only_inside_session_dir` parents); e2e_claude 2 passed, 1 ignored. `pnpm vitest run`: 26 files, 204 tests. `tsc` clean. `node --test scripts/*.test.mjs`: 7 passed (adds `release.test.mjs`). Real Claude e2e re-run once: passed, "trust menu seen: true". PATH import checked by launching a debug `.app` via `open --env PATH=/usr/bin:/bin:/usr/sbin:/sbin` (temp `COC_DATA_DIR`): stderr "PATH imported from login shell /bin/zsh (31 entries)" |
 | Real Claude e2e (`real_claude_full_lifecycle`, `--ignored`) | last run in Plan 3 Task 2 fix round (after the `--` change): passed, "trust menu seen: true". Not re-run for this task (it costs a small haiku call). |
 
 ## 2. Agent x capability matrix

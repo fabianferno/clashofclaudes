@@ -1,6 +1,6 @@
 //! Tauri commands, app events and shared state. JS names are the camelCase of these fns.
 //! Events: `session-updated` (SessionInfo), `session-removed` {id}, `workspace-updated`
-//! (Workspace), `stats-updated` (Stats), `confirm-quit` {live, restart}.
+//! (Workspace), `stats-updated` (Stats), `confirm-quit` {live, restart}, `update-progress` {pct}.
 use crate::adapters::{AdapterRegistry, AgentAdapter};
 use crate::git::{self, Review};
 use crate::model::{AgentKind, AppData, Builder, Compound, SessionInfo, SessionKind, Settings, Stats, Tile, Workspace};
@@ -566,20 +566,49 @@ pub async fn check_for_update(app: AppHandle, state: State<'_, AppState>) -> Res
 }
 
 /// Downloads and installs the pending update, then restarts through the quit guard: with running
-/// sessions it asks first (`confirm-quit` with `restart`), otherwise it restarts at once.
+/// sessions it asks first (`confirm-quit` with `restart`), otherwise it restarts at once. Sends
+/// `update-progress` {pct} (whole percent, null while the size is unknown) as it downloads. A
+/// failed install keeps the update pending, so the user can try again.
 #[tauri::command]
 pub async fn install_update(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     let update = state.pending_update.lock().unwrap_or_else(|e| e.into_inner()).take();
     let Some(update) = update else { return Err("no update pending".into()) };
-    if let Err(e) = update.download_and_install(|_, _| {}, || {}).await {
+    let (progress_app, mut got, mut last) = (app.clone(), 0u64, None::<Option<u8>>);
+    let on_chunk = move |n: usize, total: Option<u64>| {
+        got += n as u64;
+        let pct = updater::progress_pct(got, total);
+        if last != Some(pct) {
+            last = Some(pct);
+            let _ = progress_app.emit("update-progress", UpdateProgress { pct });
+        }
+    };
+    if let Err(e) = update.download_and_install(on_chunk, || {}).await {
         eprintln!("update install failed: {e}");
+        *state.pending_update.lock().unwrap_or_else(|e| e.into_inner()) = Some(update);
         return Err("update failed".into());
     }
-    match updater::restart_plan(state.manager.running_process_count()) {
-        updater::RestartPlan::Now => shutdown_and_exit(&app, &state, true).await,
-        updater::RestartPlan::AskUser { live } => emit_confirm_quit(&app, live, true),
-    }
+    restart_into_update(&app, &state).await;
     Ok(())
+}
+
+/// Restarts into an installed update through the quit guard (the toast's button after the user
+/// cancelled the first restart).
+#[tauri::command]
+pub async fn restart_for_update(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    restart_into_update(&app, &state).await;
+    Ok(())
+}
+
+async fn restart_into_update(app: &AppHandle, state: &AppState) {
+    match updater::restart_plan(state.manager.running_process_count()) {
+        updater::RestartPlan::Now => shutdown_and_exit(app, state, true).await,
+        updater::RestartPlan::AskUser { live } => emit_confirm_quit(app, live, true),
+    }
+}
+
+#[derive(Serialize, Clone)]
+struct UpdateProgress {
+    pct: Option<u8>,
 }
 
 /// Whether a close/exit request must be held back for the user to confirm.

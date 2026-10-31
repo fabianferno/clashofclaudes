@@ -278,6 +278,7 @@ pub fn run() {
             commands::set_settings,
             commands::check_for_update,
             commands::install_update,
+            commands::restart_for_update,
             commands::driver_result,
         ])
         .build(tauri::generate_context!())

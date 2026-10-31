@@ -61,6 +61,11 @@ export const ipc = {
   checkForUpdate: () => invoke<UpdateStatus>('check_for_update'),
   /** Downloads and installs the pending update; the backend then asks (if sessions run) before restarting. */
   installUpdate: () => invoke<void>('install_update'),
+  /** Restarts into an already installed update, through the quit guard. */
+  restartForUpdate: () => invoke<void>('restart_for_update'),
+  /** Download progress of `installUpdate`: whole percent, null while the size is unknown. */
+  onUpdateProgress: (cb: (pct: number | null) => void): Promise<UnlistenFn> =>
+    listen<{ pct: number | null }>('update-progress', (e) => cb(e.payload.pct)),
   /** Registers a channel for live frames and returns the decoded snapshot frame. */
   attachSession: async (id: string, onFrame: (f: Frame) => void): Promise<Frame> => {
     const ch = new Channel<ArrayBuffer>();

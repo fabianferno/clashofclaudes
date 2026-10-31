@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ipc } from '../api/ipc';
 
 export const FIRST_CHECK_MS = 10_000;
@@ -12,13 +12,24 @@ export const CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
 export default function UpdateToast() {
   const [available, setAvailable] = useState(false);
   const [dismissed, setDismissed] = useState(false);
-  // 'installing' while the download runs; 'installed' once it is in place but the app was not
-  // restarted (the user cancelled the restart because sessions run): there is nothing left to
-  // click, the next launch runs the new version.
+  // 'installing' while the download runs (with its percent once the size is known); 'installed'
+  // once it is in place but the app was not restarted (the user cancelled the restart because
+  // sessions run): the button then only restarts, through the same quit guard.
   const [phase, setPhase] = useState<'idle' | 'installing' | 'installed'>('idle');
+  const [pct, setPct] = useState<number | null>(null);
+  // Guards a second click landing before the disabled button re-renders.
+  const busy = useRef(false);
   const install = () => {
+    if (busy.current) return;
+    busy.current = true;
+    setPct(null);
     setPhase('installing');
-    ipc.installUpdate().then(() => setPhase('installed'), () => setPhase('idle'));
+    ipc.installUpdate().then(() => setPhase('installed'), () => setPhase('idle')).finally(() => { busy.current = false; });
+  };
+  const restart = () => {
+    if (busy.current) return;
+    busy.current = true;
+    ipc.restartForUpdate().catch(() => {}).finally(() => { busy.current = false; });
   };
 
   useEffect(() => {
@@ -27,20 +38,32 @@ export default function UpdateToast() {
     };
     let every: ReturnType<typeof setInterval> | undefined;
     const first = setTimeout(() => { check(); every = setInterval(check, CHECK_EVERY_MS); }, FIRST_CHECK_MS);
-    return () => { clearTimeout(first); if (every) clearInterval(every); };
+    const progress = ipc.onUpdateProgress(setPct);
+    return () => {
+      clearTimeout(first);
+      if (every) clearInterval(every);
+      void progress.then((un) => un()).catch(() => {});
+    };
   }, []);
 
   if (!available || dismissed) return null;
   return (
     <div className="update-toast" data-testid="update-toast" role="status">
       {phase === 'installed'
-        ? <span className="ol">Update installed — restart to apply</span>
-        : (
+        ? (
           <>
-            <span className="ol">Update available — </span>
-            <button className="hud-btn sm blue" data-testid="update-restart" disabled={phase === 'installing'} onClick={install}>Restart to update</button>
+            <span className="ol">Update installed — </span>
+            <button className="hud-btn sm blue" data-testid="update-restart" onClick={restart}>Restart now</button>
           </>
-        )}
+        )
+        : phase === 'installing'
+          ? <span className="ol" data-testid="update-progress">{pct === null ? 'Downloading update…' : `Downloading update… ${pct}%`}</span>
+          : (
+            <>
+              <span className="ol">Update available — </span>
+              <button className="hud-btn sm blue" data-testid="update-restart" onClick={install}>Restart to update</button>
+            </>
+          )}
       <button className="update-x" aria-label="Dismiss update notice" onClick={() => setDismissed(true)}>×</button>
     </div>
   );

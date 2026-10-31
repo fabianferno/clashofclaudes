@@ -4,7 +4,10 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 const ipc = vi.hoisted(() => ({
   checkForUpdate: vi.fn(),
   installUpdate: vi.fn(),
+  restartForUpdate: vi.fn(),
+  onUpdateProgress: vi.fn(),
 }));
+let progress: (pct: number | null) => void = () => {};
 vi.mock('../api/ipc', () => ({ ipc }));
 import UpdateToast, { FIRST_CHECK_MS, CHECK_EVERY_MS } from './UpdateToast';
 import { useApp } from '../state/store';
@@ -13,6 +16,8 @@ beforeEach(() => {
   vi.useFakeTimers();
   ipc.checkForUpdate.mockReset().mockResolvedValue({ available: false });
   ipc.installUpdate.mockReset().mockResolvedValue(undefined);
+  ipc.restartForUpdate.mockReset().mockResolvedValue(undefined);
+  ipc.onUpdateProgress.mockReset().mockImplementation((cb: (pct: number | null) => void) => { progress = cb; return Promise.resolve(() => {}); });
   act(() => useApp.getState().setError(null));
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
@@ -61,25 +66,30 @@ test('toast is dismissible and install failure is silent', async () => {
   expect(screen.queryByTestId('update-toast')).toBeNull();
 });
 
-test('after the install resolves (restart cancelled), the toast says installed with no dead button', async () => {
+test('installing shows progress, guards double clicks, then offers a restart (restart cancelled)', async () => {
   ipc.checkForUpdate.mockResolvedValue({ available: true, version: '1.2.0' });
   let done: () => void = () => {};
   ipc.installUpdate.mockReturnValue(new Promise<void>((r) => { done = r; }));
   render(<UpdateToast />);
   await act(async () => { vi.advanceTimersByTime(FIRST_CHECK_MS); });
   await flush();
-  fireEvent.click(screen.getByTestId('update-restart'));
-  expect((screen.getByTestId('update-restart') as HTMLButtonElement).disabled).toBe(true);
-  fireEvent.click(screen.getByTestId('update-restart'));
+  const btn = screen.getByTestId('update-restart');
+  fireEvent.click(btn);
+  fireEvent.click(btn);
   expect(ipc.installUpdate).toHaveBeenCalledTimes(1);
+  expect(screen.getByTestId('update-progress').textContent).toBe('Downloading update…');
+  act(() => progress(42));
+  expect(screen.getByTestId('update-progress').textContent).toBe('Downloading update… 42%');
   await act(async () => { done(); });
   await flush();
-  expect(screen.getByTestId('update-toast').textContent).toContain('Update installed — restart to apply');
-  expect(screen.queryByTestId('update-restart')).toBeNull();
-  // A later check that still sees the update does not bring the button back.
+  expect(screen.getByTestId('update-toast').textContent).toContain('Update installed — Restart now');
+  fireEvent.click(screen.getByTestId('update-restart'));
+  expect(ipc.restartForUpdate).toHaveBeenCalledTimes(1);
+  expect(ipc.installUpdate).toHaveBeenCalledTimes(1);
+  // A later check that still sees the update keeps the restart button (no second download).
   await act(async () => { vi.advanceTimersByTime(CHECK_EVERY_MS); });
   await flush();
-  expect(screen.queryByTestId('update-restart')).toBeNull();
+  expect(screen.getByTestId('update-toast').textContent).toContain('Restart now');
 });
 
 test('a failed install re-enables the button', async () => {
@@ -90,5 +100,7 @@ test('a failed install re-enables the button', async () => {
   await flush();
   fireEvent.click(screen.getByTestId('update-restart'));
   await flush();
-  expect((screen.getByTestId('update-restart') as HTMLButtonElement).disabled).toBe(false);
+  expect(screen.getByTestId('update-toast').textContent).toContain('Restart to update');
+  fireEvent.click(screen.getByTestId('update-restart'));
+  expect(ipc.installUpdate).toHaveBeenCalledTimes(2);
 });

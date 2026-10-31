@@ -10,7 +10,7 @@ Working name. v1 is Mac only (macOS 13 or later, Apple Silicon and Intel).
 2. Open the DMG and drag **Clash of Claudes** onto **Applications**.
 3. Launch it from Applications.
 
-An unsigned build (one made from source without Apple credentials) is not notarized. macOS will refuse to open it on a double click. Right-click the app, choose **Open**, and confirm.
+Signed and notarized releases open normally and need none of this. An unsigned build (made from source without Apple credentials) is not notarized, so macOS blocks it. Try to open it once, then go to **System Settings > Privacy & Security**, scroll to the blocked-app message and click **Open Anyway**. (Right-click > Open no longer reliably works on recent macOS.) For technical users, the fallback is `xattr -dr com.apple.quarantine "/Applications/Clash of Claudes.app"`.
 
 To build it yourself, see [docs/release.md](docs/release.md).
 

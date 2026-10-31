@@ -22,7 +22,7 @@ Run on 2026-10-31 on branch `plan-3-release` (HEAD `b0ffe64` plus the docs commi
 | Codex | Unit-tested against docs, owner check (`-c notify=[...]`, `-c developer_instructions=...`, `--` before the task) | Unit-tested against docs, owner check. `notify` reports turn-complete only; before the first notify, 30 s of silence counts as Finished | Unit-tested against docs, owner check. Screen needles for the trust and approval screens; wording is a guess from docs | Disabled (`canApprove = false`): panel says "Answer in the terminal" |
 | OpenCode | Unit-tested against docs, owner check (`OPENCODE_CONFIG_DIR` plugin, `--model=`, `--prompt=`). The plugin JS passes a node syntax check and a node-driven call test | Unit-tested against docs, owner check (event and property shapes, `tool.execute.after`, plugin loading are unconfirmed) | Unit-tested against docs, owner check (`permission.asked` event) | Disabled |
 | Gemini CLI | Unit-tested against docs, owner check (`GEMINI_CLI_SYSTEM_SETTINGS_PATH`, `--model=`, `--prompt-interactive=`) | Unit-tested against docs, owner check (hook field names; whether system-level hooks need an enable flag) | Unit-tested against docs, owner check (`Notification` with `ToolPermission`) | Disabled |
-| Custom command | **Verified (real run)** via non-ignored e2e (`custom_builder_exit_3_goes_stuck_with_output_retained`) and owner GUI run | Verified by tests: output gives Working, 20 s of silence gives Finished, non-zero exit gives Stuck | n/a | n/a |
+| Custom command | **Verified by automated e2e test** (sh-based custom command, `custom_builder_exit_3_goes_stuck_with_output_retained`); no GUI run recorded | Verified by tests: output gives Working, 20 s of silence gives Finished, non-zero exit gives Stuck | n/a | n/a |
 | Antigravity (`agy`) | No adapter in v1 (ruling P3-R2). Run it as a Custom command | | | |
 
 Not covered by any real run, for any agent: effort and model flag acceptance beyond Claude's, and the shared-folder note delivery for Codex, Gemini and OpenCode.
@@ -36,7 +36,7 @@ Measured with `scripts/budget.sh` on a **single-architecture (arm64) release bui
 | Idle memory, no sessions (physical footprint: app + WebKit helpers) | n/a (reference) | **161 MB** (WebContent 106, app 30, GPU 20, Networking 5). Plan 2 measured 178 MB before Plan 3 | release arm64 | Reference. Village hidden, so no textures uploaded: lower bound |
 | Hidden CPU, idle | ~0% | **0.00%** of one core over 20 s (`budget.sh cpu`) | release arm64 | Pass (village hidden, ticker stopped) |
 | Launch to process ready | <= 2 s to interactive village | **0.67 s** from exec to the WebKit WebContent process being up (process-level only: it does not prove the village is drawn) | release arm64 | Provisional. Not measurable as "village visible": screen locked |
-| Memory, 10 sessions + 2 terminals | <= 250 MB | 219 / 226 MB dev (Plan 2), about 192 / 199 MB estimated release; not re-run here | dev | Provisional (village hidden). Owner check 5 |
+| Memory, 10 sessions + 2 terminals | <= 250 MB | 219 / 226 MB dev (Plan 2), about 192 / 199 MB estimated release (assumes Plan 2's 27 MB idle dev-minus-release delta also holds under load; not measured); not re-run here | dev | Provisional (village hidden). Owner check 5 |
 | Memory after flood, and after 40 terminal switches | <= 250 MB | 234-236 MB after flood; **228 MB** after 40 switches (Plan 3 Task 1, dev, village hidden) | dev | Provisional. Owner check 5 |
 | Focused CPU, village animating | <= 5% of one core, 30 fps cap | not measured | n/a | **Not measurable** (screen locked). Owner check 1 |
 | Unfocused frame rate | <= 15 fps | not measured | n/a | **Not measurable**. Owner check 2 |
@@ -80,7 +80,7 @@ For each, add a folder, install the agent (the Town Hall shows the command), pre
 
 ### D. Notifications and dock badge (use the bundled app, not dev)
 
-19. **Notification.** Create a custom builder with command `printf done; sleep 30`. Start it, then switch to another app so Clash of Claudes is unfocused. Within about 20 s a macOS notification titled with the builder's name and body "finished" should appear. Allow notifications in System Settings if macOS asks. The notification must not contain your task text or terminal output. Pass/fail and macOS version: ____
+19. **Notification.** Create a custom builder with command `printf done; sleep 30`. Start it, then switch to another app so Clash of Claudes is unfocused. Within about 20 s (relies on a custom builder going Finished after 20 s of silence) a macOS notification titled with the builder's name and body "finished" should appear. Allow notifications in System Settings if macOS asks. The notification must not contain your task text or terminal output. Pass/fail and macOS version: ____
 20. **Tap to select.** Click the notification: the window comes forward, and that session is selected with its panel open. (The tap callback is unverified on macOS.)
 21. **Needs-you notification.** Run a Claude session with a Bash permission prompt (see Plan 1 step 3) while unfocused. Body reads "needs you: <reason>".
 22. **Dock badge.** With 2 sessions Finished or Needs you the Dock icon shows 2; it clears when they are closed or return to Working. Minimized and hidden windows should also notify.

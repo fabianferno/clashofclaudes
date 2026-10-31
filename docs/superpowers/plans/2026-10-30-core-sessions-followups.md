@@ -40,7 +40,7 @@ Collected from the Plan 1 execution ledger at merge time. All were triaged CAN-W
 - Fixed: Cmd+Q / menu Quit skipped the quit dialog. The predefined Quit item calls `terminate:`, which never raises ExitRequested; replaced with a custom Quit item that calls `app.exit(0)` (`lib.rs::app_menu`).
 - Fixed: the quit dialog's buttons were unclickable over a terminal (xterm's z-indexed layers sat above the unindexed fixed overlay). `.modal-bg` gets `z-index`, `.terminal-wrap` gets `isolation: isolate`.
 - FIXED (Plan 2, `816a0a2`): + Session / + Terminal on a missing workspace now carry a "Folder not found: <path>" tooltip and a panel warning.
-- Open: the doc's `pgrep -f "claude --session-id"` check also matches any shell whose command line contains that text; check children of the app pid instead.
+- Partly addressed (Plan 3): `docs/verification/plan-3-v1.md` check 7 now warns about the false match and suggests `pgrep -f "sleep 600"` or checking the app's children; `plan-1-e2e.md` still uses the broad pattern. The doc's `pgrep -f "claude --session-id"` check also matches any shell whose command line contains that text; check children of the app pid instead.
 
 ## Final-review minors not yet fixed
 - FIXED (Plan 3 Task 1): `start_agent` ran `claude --version` on every start. Detection is now cached for 60 s per app run (`adapters::DetectionCache`).
@@ -58,7 +58,7 @@ Collected from the Plan 1 execution ledger at merge time. All were triaged CAN-W
 - Task 4: minor (deferred): untested table rows (ToolUsed from Starting, WaitingForInput no-op, UserInput ignored with hooks, exit-stuck no recovery, silence-stuck recovery, Exited{None}, unknown-event no-op); Stuck recovery keyed on reason-string prefix; secs/60 truncation for sub-minute thresholds
 - Task 5: minor (deferred): no captured RED run; detect/policy/models/efforts/terminal_policy untested; terminal_launch test doesn't assert program
 - Task 5: minor (deferred): "$1" substring check also matches "$10"; a command ending in a shell comment swallows the appended "$@"
-- Task 6: minor (deferred): settings write errors lack path context; session_id joined into path unvalidated; settings file (contains hook token) written 0644 — should be 0600; claimed CwdChanged-unchanged test missing in status.rs; unknown events carrying cwd yield [] (undocumented)
+- Task 6: minor (deferred): settings write errors lack path context; session_id joined into path unvalidated; FIXED: settings file (contains hook token) now written 0600 (`claude.rs`, with a test); claimed CwdChanged-unchanged test missing in status.rs; unknown events carrying cwd yield [] (undocumented)
 - Task 7: minor (carry to T8/T9): HookSink runs inline on a tokio worker — sink must be quick and non-blocking (no git subprocess inside on_hook; offload)
 - Task 7: minor (deferred): Drop aborts only accept loop (keep-alive conns linger); session_id not percent-encoded in URL (UUIDs safe); no test for 1 MiB limit/413 or token rotation; duplicate reqwest 0.12 dev-dep vs tauri's 0.13; blanket allow(dead_code) to remove in T8
 - Task 8: minor (carry to T9): attach() snapshot vs queued Output events can duplicate bytes and arrive on different transports — T9 should tag Output events with a byte offset (or sequence) so the frontend drops data at or before the snapshot end

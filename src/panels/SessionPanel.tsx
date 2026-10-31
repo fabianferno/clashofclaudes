@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ipc } from '../api/ipc';
 import { stateLabel, useApp } from '../state/store';
 import type { CloseOutcome, Review } from '../api/types';
@@ -12,7 +12,7 @@ function elapsed(from: number, now: number): string {
   return h ? `${h}h ${m}m` : m ? `${m}m ${s % 60}s` : `${s}s`;
 }
 
-export default function SessionPanel({ sessionId, onClosed }: { sessionId: string; onClosed?: (o: CloseOutcome) => void }) {
+export default function SessionPanel({ sessionId, onClosed }: { sessionId: string; onClosed?: (o: CloseOutcome, sessionId: string) => void }) {
   const session = useApp((s) => s.sessions[sessionId]);
   const builders = useApp((s) => s.builders);
   const agents = useApp((s) => s.agents);
@@ -29,6 +29,10 @@ export default function SessionPanel({ sessionId, onClosed }: { sessionId: strin
   // The panel stays mounted across session switches (so its terminal does): per-session state is
   // reset during render, before anything of the previous session can show.
   const [shownFor, setShownFor] = useState(sessionId);
+  // The session on screen, read after every await: a result for a session the user has switched
+  // away from must not land on the one now shown.
+  const current = useRef(sessionId);
+  current.current = sessionId;
   if (shownFor !== sessionId) {
     setShownFor(sessionId);
     setReview(null);
@@ -40,26 +44,38 @@ export default function SessionPanel({ sessionId, onClosed }: { sessionId: strin
   if (!session) return null;
   const builder = session.kind.kind === 'agent' ? builders.find((b) => b.id === (session.kind as { builderId: string }).builderId) : undefined;
   const agent = builder ? agents.find((a) => a.kind === builder.agent) : undefined;
+  const stillShown = (sid: string) => current.current === sid;
   const run = async (p: Promise<unknown>) => {
+    const sid = sessionId;
     setError(null);
-    try { await p; } catch (e) { setError(String(e)); }
+    try { await p; } catch (e) { if (stillShown(sid)) setError(String(e)); }
   };
   const st = session.state.kind;
   const answer = async (p: () => Promise<unknown>) => {
     if (answering) return;
+    const sid = sessionId;
     setAnswering(true);
-    try { await run(p()); } finally { setAnswering(false); }
+    try { await run(p()); } finally { if (stillShown(sid)) setAnswering(false); }
+  };
+  const showReview = async () => {
+    const sid = sessionId;
+    setError(null);
+    try {
+      const r = await ipc.reviewSession(sid);
+      if (stillShown(sid)) setReview(r);
+    } catch (e) { if (stillShown(sid)) setError(String(e)); }
   };
 
   async function close() {
+    const sid = sessionId;
     setError(null);
     try {
-      const o = await ipc.closeSession(sessionId);
-      onClosed?.(o);
+      const o = await ipc.closeSession(sid);
+      onClosed?.(o, sid);
     } catch (e) {
       // the session may be gone already (the panel unmounts with it): report where it survives
       useApp.getState().setError(`Close failed: ${String(e)}`);
-      setError(String(e));
+      if (stillShown(sid)) setError(String(e));
     }
   }
 
@@ -93,7 +109,7 @@ export default function SessionPanel({ sessionId, onClosed }: { sessionId: strin
             </>
           : <><em>Answer in the terminal</em>{agent?.canApprove && session.state.reason && <span className="sp-d">{session.state.reason}</span>}</>)}
         {st === 'finished' && (
-          <button className="hud-btn sm" onClick={async () => { setError(null); try { setReview(await ipc.reviewSession(sessionId)); } catch (e) { setError(String(e)); } }}>Review</button>
+          <button className="hud-btn sm" onClick={() => void showReview()}>Review</button>
         )}
         <button className="hud-btn grey sm" onClick={() => run(ipc.stopSession(sessionId))}>Stop</button>
         <button className="hud-btn grey sm" onClick={close}>Close</button>

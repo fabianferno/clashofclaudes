@@ -51,7 +51,12 @@ export default function SidePanel() {
         {selection.kind === 'builder' && <BuilderPanel key={selection.id} builderId={selection.id} />}
         {selection.kind === 'session' && sessions[selection.id] && (
           // Unkeyed: the panel and its terminal stay mounted across session switches.
-          <SessionPanel sessionId={selection.id} onClosed={(o) => { onClosed(o, selection.id); setSelection(null); }} />
+          <SessionPanel sessionId={selection.id} onClosed={(o, id) => {
+            onClosed(o, id);
+            // Only deselect the closed session: the user may have switched to another meanwhile.
+            const sel = useApp.getState().selection;
+            if (sel?.kind === 'session' && sel.id === id) setSelection(null);
+          }} />
         )}
       </div>
     </aside>

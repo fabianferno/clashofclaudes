@@ -5,8 +5,12 @@ import type { SessionInfo, SessionState } from '../api/types';
 const approve = vi.fn();
 const reviewSession = vi.fn();
 const closeSession = vi.fn();
+const stopSession = vi.fn();
 vi.mock('../api/ipc', () => ({
-  ipc: { approve: (id: string) => approve(id), deny: vi.fn(), reviewSession: (id: string) => reviewSession(id), closeSession: (id: string) => closeSession(id) },
+  ipc: {
+    approve: (id: string) => approve(id), deny: vi.fn(), reviewSession: (id: string) => reviewSession(id),
+    closeSession: (id: string) => closeSession(id), stopSession: (id: string) => stopSession(id),
+  },
 }));
 vi.mock('../components/TerminalView', () => ({ default: ({ sessionId }: { sessionId: string }) => <div className="terminal" tabIndex={0} data-sid={sessionId} /> }));
 import SessionPanel from './SessionPanel';
@@ -21,6 +25,7 @@ beforeEach(() => {
   approve.mockReset();
   reviewSession.mockReset();
   closeSession.mockReset();
+  stopSession.mockReset();
   useApp.setState({
     error: null, selection: null, panelOpen: false,
     workspaces: [], sessions: {}, selectedSessionId: null,
@@ -162,5 +167,46 @@ test('switching sessions keeps the terminal host and resets per-session state', 
   rerender(<SessionPanel sessionId="s2" />);
   expect(container.querySelector('.terminal')).toBe(host); // the same xterm host, now showing s2
   expect(host?.getAttribute('data-sid')).toBe('s2');
+  expect(screen.queryByText('No changes since this session started')).toBeNull();
+});
+
+test('late results for a session switched away from never land on the one shown', async () => {
+  useApp.getState().upsertSession({ ...sess({ kind: 'needsYou', reason: 'r' }, true), id: 's1' });
+  useApp.getState().upsertSession({ ...sess({ kind: 'needsYou', reason: 'r' }, true), id: 's2' });
+  const pending = <T,>() => { let res!: (v: T) => void; let rej!: (e: unknown) => void; const p = new Promise<T>((a, b) => { res = a; rej = b; }); return { p, res, rej }; };
+  const stop = pending<void>();
+  const allow = pending<void>();
+  stopSession.mockReturnValue(stop.p);
+  approve.mockReturnValue(allow.p);
+  const onClosed = vi.fn();
+  const close = pending<unknown>();
+  closeSession.mockReturnValue(close.p);
+  const { rerender } = render(<SessionPanel sessionId="s1" onClosed={onClosed} />);
+  fireEvent.click(screen.getByText('Stop'));
+  fireEvent.click(screen.getByText('Allow'));
+  fireEvent.click(screen.getByText('Close'));
+  rerender(<SessionPanel sessionId="s2" onClosed={onClosed} />);
+  // s2 starts clean, and starts answering its own prompt.
+  const s2allow = pending<void>();
+  approve.mockReturnValue(s2allow.p);
+  fireEvent.click(screen.getByText('Allow'));
+  expect((screen.getByText('Allow') as HTMLButtonElement).disabled).toBe(true);
+  await act(async () => { stop.rej('s1 stop failed'); allow.res(); close.res({ stuck: false }); });
+  expect(screen.queryByText('s1 stop failed')).toBeNull();
+  expect((screen.getByText('Allow') as HTMLButtonElement).disabled).toBe(true); // s1's finish did not re-enable s2
+  expect(onClosed).toHaveBeenCalledWith({ stuck: false }, 's1'); // the closed session is named
+  await act(async () => { s2allow.res(); });
+  expect((screen.getByText('Allow') as HTMLButtonElement).disabled).toBe(false);
+});
+
+test('a review requested for one session does not show on the next', async () => {
+  useApp.getState().upsertSession(sess({ kind: 'finished' }, false));
+  useApp.getState().upsertSession({ ...sess({ kind: 'finished' }, false), id: 's2' });
+  let resolve: (r: unknown) => void = () => {};
+  reviewSession.mockReturnValue(new Promise((r) => { resolve = r; }));
+  const { rerender } = render(<SessionPanel sessionId="s1" />);
+  fireEvent.click(screen.getByText('Review'));
+  rerender(<SessionPanel sessionId="s2" />);
+  await act(async () => resolve({ isGit: true, branch: 'main', files: [], untracked: [], otherSessionsActive: false }));
   expect(screen.queryByText('No changes since this session started')).toBeNull();
 });

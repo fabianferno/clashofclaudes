@@ -47,7 +47,7 @@ fn settings_json(hook_url: &str) -> serde_json::Value {
 }
 
 /// Writes `bytes` readable by the owner only (the settings carry the hook token).
-fn write_private(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+pub(super) fn write_private(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
     let mut opts = std::fs::OpenOptions::new();
     opts.write(true).create(true).truncate(true);

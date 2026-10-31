@@ -13,6 +13,7 @@ describe('look', () => {
     expect(classOf('claude', 'opus')).toBe(2);
     expect(classOf('claude', 'fable')).toBe(2);
     expect(classOf('claude', null)).toBe(1);
+    expect(classOf('opencode', 'anthropic/claude-opus-4')).toBe(1);
     expect(classOf('codex', 'anything')).toBe(1);
     expect(classOf('custom', null)).toBe(1);
   });

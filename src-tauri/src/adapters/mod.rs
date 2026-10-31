@@ -2,6 +2,7 @@
 pub mod claude;
 pub mod codex;
 pub mod generic;
+pub mod opencode;
 
 use crate::model::AgentKind;
 use crate::platform::default_shell;
@@ -15,6 +16,7 @@ use std::time::{Duration, Instant};
 pub use claude::ClaudeAdapter;
 pub use codex::CodexAdapter;
 pub use generic::CustomAdapter;
+pub use opencode::OpenCodeAdapter;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Detection {
@@ -109,6 +111,7 @@ impl AdapterRegistry {
         let adapters: Vec<Arc<dyn AgentAdapter>> = vec![
             Arc::new(ClaudeAdapter),
             Arc::new(CodexAdapter),
+            Arc::new(OpenCodeAdapter),
             Arc::new(CustomAdapter),
         ];
         Self { adapters }
@@ -181,6 +184,7 @@ mod tests {
     fn registry_has_claude_and_custom() {
         let r = AdapterRegistry::new();
         assert!(r.get(AgentKind::Codex).is_some());
+        assert!(r.get(AgentKind::OpenCode).is_some());
         assert!(r.get(AgentKind::Claude).is_some());
         assert!(r.get(AgentKind::Custom).is_some());
     }

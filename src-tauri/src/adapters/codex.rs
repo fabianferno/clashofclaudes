@@ -45,7 +45,7 @@ fn notify_array(hook_url: &str) -> String {
 }
 
 /// First `\d+\.\d+\.\d+` in `s` (`codex-cli 0.137.0`).
-fn parse_version(s: &str) -> Option<String> {
+pub(super) fn parse_version(s: &str) -> Option<String> {
     let b = s.as_bytes();
     (0..b.len()).filter(|&i| b[i].is_ascii_digit() && (i == 0 || !b[i - 1].is_ascii_digit() && b[i - 1] != b'.')).find_map(|i| {
         let mut j = i;

@@ -16,7 +16,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::ipc::{Channel, InvokeResponseBody, Response};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_opener::OpenerExt;
 use uuid::Uuid;
 
@@ -169,22 +169,51 @@ pub fn add_workspace(path: String, state: State<'_, AppState>) -> Result<Workspa
     Ok(ws)
 }
 
-#[tauri::command]
-pub async fn create_workspace(parent: String, name: String, state: State<'_, AppState>) -> Result<Workspace, String> {
+/// Where new folders go unless the user picks a parent: `~/Documents/.clashofclaudes`.
+pub const DEFAULT_PROJECTS_DIR: &str = ".clashofclaudes";
+
+/// Creates folder `name` inside `parent` and makes it a git repo; returns its canonical path.
+/// `create_parent` creates a missing parent (the default projects folder); a picked parent
+/// must already exist.
+pub fn make_project_dir(parent: &Path, name: &str, create_parent: bool) -> Result<PathBuf, String> {
     let name = name.trim();
     if name.is_empty() || name == "." || name == ".." || name.contains(['/', '\\']) {
         return Err("invalid folder name".into());
     }
-    let dir = Path::new(&parent).join(name);
+    if create_parent {
+        std::fs::create_dir_all(parent).map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
+    }
+    let dir = parent.join(name);
     if dir.exists() {
         return Err(format!("{} already exists", dir.display()));
     }
     std::fs::create_dir(&dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
     if let Err(e) = git::init_repo(&dir) {
-        let _ = std::fs::remove_dir(&dir);
+        let _ = std::fs::remove_dir_all(&dir);
         return Err(fmt_err(e));
     }
-    let p = std::fs::canonicalize(&dir).unwrap_or(dir);
+    Ok(std::fs::canonicalize(&dir).unwrap_or(dir))
+}
+
+/// The default parent for new folders (`~/Documents/.clashofclaudes`), shown in the UI.
+#[tauri::command]
+pub fn default_projects_dir(app: AppHandle) -> Result<String, String> {
+    Ok(projects_dir(&app)?.display().to_string())
+}
+
+fn projects_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let docs = app.path().document_dir().map_err(|e| format!("cannot find Documents: {e}"))?;
+    Ok(docs.join(DEFAULT_PROJECTS_DIR))
+}
+
+/// Creates folder `name` as a new workspace: inside `parent` when given (picked by the user),
+/// otherwise inside the default projects folder, created on first use.
+#[tauri::command]
+pub async fn create_workspace(parent: Option<String>, name: String, app: AppHandle, state: State<'_, AppState>) -> Result<Workspace, String> {
+    let p = match parent {
+        Some(p) => make_project_dir(Path::new(&p), &name, false)?,
+        None => make_project_dir(&projects_dir(&app)?, &name, true)?,
+    };
     let ws = workspace_from_path(&p, now_ms()).map_err(fmt_err)?;
     let mut d = state.data();
     d.workspaces.push(ws.clone());
@@ -665,6 +694,21 @@ mod tests {
         assert!(!should_block_exit(0, false));
         assert!(should_block_exit(2, false));
         assert!(!should_block_exit(2, true));
+    }
+
+    #[test]
+    fn project_dir_goes_in_a_created_default_parent_and_refuses_bad_names() {
+        let tmp = tempfile::tempdir().unwrap();
+        let parent = tmp.path().join("Documents").join(DEFAULT_PROJECTS_DIR);
+        let made = make_project_dir(&parent, " app ", true).unwrap();
+        assert!(made.ends_with(format!("{DEFAULT_PROJECTS_DIR}/app")) && made.join(".git").is_dir());
+        assert!(make_project_dir(&parent, "app", true).unwrap_err().contains("already exists"));
+        for bad in ["", " ", ".", "..", "a/b"] {
+            assert_eq!(make_project_dir(&parent, bad, true).unwrap_err(), "invalid folder name");
+        }
+        // A picked parent must exist: it is never created.
+        assert!(make_project_dir(&tmp.path().join("nope"), "x", false).is_err());
+        assert!(!tmp.path().join("nope").exists());
     }
 
     #[test]

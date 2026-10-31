@@ -30,7 +30,8 @@ export const ipc = {
   /** `force` bypasses the 60 s detection cache (Re-check). */
   detectAgents: (force = false) => invoke<AgentInfo[]>('detect_agents', { force }),
   addWorkspace: (path: string) => invoke<Workspace>('add_workspace', { path }),
-  createWorkspace: (parent: string, name: string) => invoke<Workspace>('create_workspace', { parent, name }),
+  /** `parent` null: inside the default projects folder (~/Documents/.clashofclaudes). */
+  createWorkspace: (parent: string | null, name: string) => invoke<Workspace>('create_workspace', { parent, name }),
   removeWorkspace: (id: string) => invoke<void>('remove_workspace', { id }),
   createBuilder: (name: string, agent: AgentKind, model: string | null, effort: string | null, customCommand: string | null) =>
     invoke<Builder>('create_builder', { name, agent, model, effort, customCommand }),

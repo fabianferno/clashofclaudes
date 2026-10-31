@@ -12,16 +12,24 @@ export async function openFolder(): Promise<void> {
   } catch (e) { fail(e); }
 }
 
+/** Where new folders go unless the user picks a parent (shown in the UI). */
+export const DEFAULT_PARENT_LABEL = 'Documents/.clashofclaudes';
+
 /**
- * Pick a parent folder and create `name` inside it as a new workspace. Resolves true once it
- * exists; false when cancelled or failed, so callers keep the typed name for another try.
+ * Create folder `name` as a new workspace: in the default projects folder, or (`pick`) inside a
+ * parent the user picks. Resolves true once it exists; false when cancelled or failed, so callers
+ * keep the typed name for another try.
  */
-export async function createFolder(name: string): Promise<boolean> {
+export async function createFolder(name: string, pick = false): Promise<boolean> {
   const n = name.trim();
   if (!n) return false;
   try {
-    const parent = await open({ directory: true });
-    if (typeof parent !== 'string') return false;
+    let parent: string | null = null;
+    if (pick) {
+      const p = await open({ directory: true });
+      if (typeof p !== 'string') return false;
+      parent = p;
+    }
     useApp.getState().addWorkspace(await ipc.createWorkspace(parent, n));
     return true;
   } catch (e) { fail(e); return false; }

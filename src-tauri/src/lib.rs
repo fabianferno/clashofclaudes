@@ -254,6 +254,7 @@ pub fn run() {
             commands::detect_agents,
             commands::add_workspace,
             commands::create_workspace,
+            commands::default_projects_dir,
             commands::remove_workspace,
             commands::create_builder,
             commands::update_builder,

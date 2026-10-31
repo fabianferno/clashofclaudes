@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
-vi.mock('../state/workspaceActions', () => ({ openFolder: vi.fn(), createFolder: vi.fn() }));
+vi.mock('../state/workspaceActions', () => ({ openFolder: vi.fn(), createFolder: vi.fn(), DEFAULT_PARENT_LABEL: 'Documents/.clashofclaudes' }));
 import * as wsActions from '../state/workspaceActions';
 import { useApp } from '../state/store';
 import WelcomeCard from './WelcomeCard';
@@ -55,10 +55,11 @@ test('the typed folder name survives a cancelled picker and clears once created'
   render(<WelcomeCard />);
   fireEvent.click(screen.getByRole('button', { name: 'New folder' }));
   fireEvent.change(screen.getByLabelText('Folder name'), { target: { value: 'app' } });
-  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Pick parent' })); });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Choose location…' })); });
+  expect(created).toHaveBeenLastCalledWith('app', true);
   expect((screen.getByLabelText('Folder name') as HTMLInputElement).value).toBe('app');
   created.mockResolvedValueOnce(true);
-  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Pick parent' })); });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Create' })); });
   expect(screen.queryByLabelText('Folder name')).toBeNull();
-  expect(created).toHaveBeenCalledWith('app');
+  expect(created).toHaveBeenLastCalledWith('app', false);
 });

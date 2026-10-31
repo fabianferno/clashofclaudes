@@ -3,6 +3,7 @@ import { ipc } from '../api/ipc';
 import { useApp } from '../state/store';
 import type { AgentInfo, AgentKind } from '../api/types';
 import AgentLogo from './AgentLogo';
+import { shortAgentLabel } from './AgentPicker';
 
 /** How to set each agent up: install, then sign in. Display only: the app never runs these. */
 export const SETUP: Partial<Record<AgentKind, { install?: string; installNote?: string; signIn?: string; signInNote?: string; note?: string }>> = {
@@ -19,8 +20,7 @@ export const SETUP: Partial<Record<AgentKind, { install?: string; installNote?: 
 /** How long a Copy button reads "Copied". */
 export const COPIED_MS = 2000;
 
-/** A tile-sized name: no parenthetical and no trailing "CLI" ("Antigravity CLI" → "Antigravity"). */
-const shortLabel = (a: AgentInfo) => (a.kind === 'custom' ? 'Custom' : a.label.replace(/\s*\(.*\)$/, '').replace(/ CLI$/, ''));
+const shortLabel = shortAgentLabel;
 /** The version without a repeat of the agent name ("2.1.0 (Claude Code)" → "2.1.0"). */
 const version = (a: AgentInfo) => a.version?.replace(` (${a.label})`, '') ?? null;
 const ready = (a: AgentInfo) => a.kind === 'custom' || a.installed;

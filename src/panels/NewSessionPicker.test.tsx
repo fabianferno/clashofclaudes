@@ -58,7 +58,7 @@ test('agents without a model list get a free-text model; empty means default', a
   render(<NewSessionPicker workspaceId="w" />);
   const model = () => screen.getByPlaceholderText(/model id|provider\/model/) as HTMLInputElement;
   expect(model().placeholder).toBe('model id');
-  fireEvent.change(screen.getByLabelText('Agent'), { target: { value: 'opencode' } });
+  fireEvent.click(screen.getByRole('radio', { name: 'OpenCode' }));
   expect(model().placeholder).toBe('provider/model');
   fireEvent.change(model(), { target: { value: ' openai/gpt-5 ' } });
   expect(screen.getByText(/^opencode … --model=openai\/gpt-5$/)).toBeTruthy();
@@ -79,27 +79,28 @@ test('commandPreview omits unset model/effort', () => {
 test('picker_disables_uninstalled', () => {
   setup({ agents: [claude, codex, custom] });
   render(<NewSessionPicker workspaceId="w" />);
-  const opt = (name: string) => screen.getAllByRole('option').find((o) => o.textContent?.startsWith(name)) as HTMLOptionElement;
-  expect(opt('Claude Code').disabled).toBe(false);
-  expect(opt('Custom command').disabled).toBe(false);
-  expect(opt('Codex').disabled).toBe(true);
-  expect(opt('Codex').textContent).toBe('Codex — Not installed — see Town Hall');
+  const opt = (name: RegExp) => screen.getByRole('radio', { name }) as HTMLButtonElement;
+  expect(opt(/^Claude Code$/).disabled).toBe(false);
+  expect(opt(/^Custom command$/).disabled).toBe(false);
+  expect(opt(/^Codex/).disabled).toBe(true);
+  expect(opt(/^Codex/).getAttribute('aria-label')).toBe('Codex — Not installed — see Town Hall');
+  expect(screen.getByTestId('agent-logo-codex')).toBeTruthy(); // app-icon buttons, as in the Town Hall
   // The agents list (install commands, Re-check) lives in the Town Hall only.
   expect(screen.queryByTestId('agents-status')).toBeNull();
   // the default never lands on an uninstalled agent
-  expect((screen.getByLabelText('Agent') as HTMLSelectElement).value).toBe('claude');
+  expect(screen.getByRole('radio', { checked: true }).getAttribute('aria-label')).toBe('Claude Code');
 });
 
 test('agent default follows agents detected after mount until the user picks', () => {
   setup({ agents: [] });
   render(<NewSessionPicker workspaceId="w" />);
   act(() => useApp.setState({ agents: [claude, custom] }));
-  const agentSelect = screen.getByText('Agent').querySelector('select') as HTMLSelectElement;
-  expect(agentSelect.value).toBe('claude');
+  const checked = () => screen.getByRole('radio', { checked: true }).getAttribute('aria-label');
+  expect(checked()).toBe('Claude Code');
   expect(screen.getByText(/^claude …/)).toBeTruthy();
-  fireEvent.change(agentSelect, { target: { value: 'custom' } });
+  fireEvent.click(screen.getByRole('radio', { name: 'Custom command' }));
   act(() => useApp.setState({ agents: [claude, custom, { ...codex, installed: true }] }));
-  expect((screen.getByText('Agent').querySelector('select') as HTMLSelectElement).value).toBe('custom');
+  expect(checked()).toBe('Custom command');
 });
 
 test('recruit_default_when_all_busy', () => {
@@ -127,7 +128,7 @@ test('recruit_name_defaults_to_unused', () => {
 test('recruit requires a command for custom', async () => {
   setup();
   render(<NewSessionPicker workspaceId="w" />);
-  fireEvent.change(screen.getByLabelText('Agent'), { target: { value: 'custom' } });
+  fireEvent.click(screen.getByRole('radio', { name: 'Custom command' }));
   fireEvent.click(screen.getByText('Start'));
   expect(await screen.findByText('Enter the custom command')).toBeTruthy();
   expect(ipc.createBuilder).not.toHaveBeenCalled();

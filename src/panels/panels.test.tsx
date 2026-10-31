@@ -162,6 +162,7 @@ test('agent_model_effort_locked_while_busy', () => {
   act(() => useApp.setState({ sessions: { s1: sess() } }));
   render(<BuilderPanel builderId="b1" />);
   for (const l of ['Agent', 'Model', 'Effort']) expect((screen.getByLabelText(l) as HTMLSelectElement).disabled).toBe(true);
+  expect((screen.getByRole('radio', { name: 'Codex' }) as HTMLButtonElement).matches(':disabled')).toBe(true);
   expect((screen.getByLabelText('Name') as HTMLInputElement).disabled).toBe(false);
   expect(screen.getByTestId('builder-busy-note').textContent).toMatch(/locked until it ends/);
   fireEvent.click(screen.getByText('Open session'));
@@ -245,4 +246,12 @@ test('settings_toggle_disables_updates: Town Hall checkbox persists via set_sett
   await act(async () => { fireEvent.click(box); });
   expect(ipc.setSettings).toHaveBeenCalledWith({ updatesEnabled: false });
   expect((screen.getByLabelText('Check for updates automatically') as HTMLInputElement).checked).toBe(false);
+});
+
+test('builder_agent_is_icon_buttons; switching resets model and effort to the new agent', async () => {
+  render(<BuilderPanel builderId="b1" />);
+  expect(screen.getByRole('radio', { checked: true }).getAttribute('aria-label')).toBe('Claude Code');
+  expect(screen.getByTestId('agent-logo-codex')).toBeTruthy();
+  await act(async () => { fireEvent.click(screen.getByRole('radio', { name: 'Codex' })); });
+  expect(ipc.updateBuilder).toHaveBeenCalledWith({ ...builder(), agent: 'codex', model: null, effort: null });
 });

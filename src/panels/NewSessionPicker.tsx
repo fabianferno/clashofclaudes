@@ -6,6 +6,7 @@ import { CLASS_NAMES, classOf } from '../village/look';
 import BuilderPreview from './BuilderPreview';
 import { modelPlaceholder } from './BuilderPanel';
 import { EffortSlider, ModelSlider } from './Choosers';
+import AgentPicker from './AgentPicker';
 
 export const RECRUIT_NAMES = ['Ivy', 'Jax', 'Kai', 'Lu', 'Mo', 'Nia', 'Oz', 'Pip', 'Quin', 'Rex'];
 
@@ -143,14 +144,8 @@ export default function NewSessionPicker({ workspaceId }: { workspaceId: string 
       {recruiting && (
         <>
           <label className="sp-field">Name <input value={name} onChange={(e) => setNameEdit(e.target.value)} /></label>
-          <label className="sp-field">Agent
-            <select value={kind} onChange={(e) => { setKind(e.target.value as AgentKind); setModel(DEFAULT); setEffort(DEFAULT); }}>
-              {agents.map((a) => {
-                const ok = a.installed || a.kind === 'custom';
-                return <option key={a.kind} value={a.kind} disabled={!ok}>{ok ? a.label : `${a.label} — Not installed — see Town Hall`}</option>;
-              })}
-            </select>
-          </label>
+          <AgentPicker agents={agents} value={kind} installedOnly
+            onChange={(k) => { setKind(k); setModel(DEFAULT); setEffort(DEFAULT); }} />
           {isCustom ? (
             <>
               <label className="sp-field">Model (optional) <input value={model} onChange={(e) => setModel(e.target.value)} /></label>

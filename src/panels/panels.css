@@ -82,6 +82,15 @@
 .agent-badge { position: absolute; right: -5px; bottom: -5px; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font: 900 13px/1 system-ui; color: #fff; border: 2px solid #f3e7cc; }
 .agent-badge.ok { background: #3a9b1f; }
 .agent-badge.todo { background: #e08a12; font-size: 16px; }
+.agent-pick { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 0; padding: 0; border: 0; min-width: 0; }
+.agent-pick-btn { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 70px; padding: 6px 2px 5px; background: none; border: 2px solid transparent; border-radius: 12px; cursor: pointer; font: inherit; }
+.agent-pick-btn:hover:not(:disabled) { background: rgba(80, 55, 25, 0.08); }
+.agent-pick-btn.on { background: #fff8e8; border-color: #1d130b; box-shadow: 0 2px 0 #1d130b; }
+.agent-pick-btn:disabled .agent-logo { filter: grayscale(1); opacity: 0.45; }
+.agent-pick-btn:disabled { cursor: not-allowed; }
+.agent-pick:disabled .agent-pick-btn { cursor: default; opacity: 0.6; }
+.agent-pick-icon { line-height: 0; filter: drop-shadow(0 2px 2px rgba(43, 32, 24, 0.3)); }
+.agent-pick-name { font: 800 11px system-ui; color: #3d2f22; text-align: center; line-height: 1.15; }
 .agent-tile-label { font-weight: 800; font-size: 12px; color: #3d2f22; text-align: center; line-height: 1.15; }
 .agent-dialog { width: min(440px, calc(100vw - 32px)); max-height: calc(100vh - 64px); overflow: auto; background: #f3e7cc; color: #3d2f22; border: 3px solid var(--hud-out, #2b2018); border-radius: 16px; box-shadow: 0 6px 0 var(--hud-out, #2b2018); padding: 16px 18px; }
 .agent-dialog-head { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }

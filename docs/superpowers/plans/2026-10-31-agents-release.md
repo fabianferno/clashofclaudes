@@ -26,7 +26,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-30-clashofclaudes-design.md`
 - Sections implemented: §2.1, 2.3, 2.8, 2.10; §6.3 (other adapters); §8 (release track, first run).
-- Research notes, with a source and date for every fact: `docs/superpowers/research/2026-10-31-agents-and-release.md`. Task 1 copies them from the scratchpad.
+- Research notes, with a source and date for every fact: `docs/superpowers/research/2026-10-31-agents-and-release.md`.
 
 **Carried in:**
 - The remount-memory follow-up parked by Plan 2 Task 14.

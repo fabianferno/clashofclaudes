@@ -6,7 +6,7 @@ pub mod generic;
 pub mod opencode;
 
 use crate::model::AgentKind;
-use crate::platform::default_shell;
+use crate::platform::{default_shell, output_within, which, RunOutcome};
 use crate::pty::LaunchSpec;
 use crate::status::{StatusEvent, StatusPolicy};
 use std::path::{Path, PathBuf};
@@ -63,6 +63,36 @@ impl DetectionCache {
     /// How many times `get` ran its probe.
     pub fn probes(&self) -> usize {
         self.probes.load(Ordering::SeqCst)
+    }
+}
+
+/// Longest a `--version` probe may run; a hung one reports the agent as not installed.
+pub const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Looks `program` up on PATH and probes it (see `probe_path`).
+pub(crate) fn probe_program(program: &str, parse: impl Fn(&str) -> Option<String>) -> Detection {
+    match which(program) {
+        Some(path) => probe_path(path, PROBE_TIMEOUT, parse),
+        None => Detection { installed: false, path: None, version: None },
+    }
+}
+
+/// Runs `<path> --version` for at most `timeout`; `parse` reads the version from stdout. A
+/// failing `--version` still counts as installed (version unknown); one that hangs past the
+/// timeout is killed, logged and reported as not installed.
+pub(crate) fn probe_path(path: PathBuf, timeout: Duration, parse: impl Fn(&str) -> Option<String>) -> Detection {
+    let mut cmd = std::process::Command::new(&path);
+    cmd.arg("--version");
+    match output_within(cmd, timeout) {
+        RunOutcome::Exited { success: true, stdout } => {
+            let version = parse(&String::from_utf8_lossy(&stdout));
+            Detection { installed: true, path: Some(path), version }
+        }
+        RunOutcome::Exited { .. } | RunOutcome::SpawnFailed => Detection { installed: true, path: Some(path), version: None },
+        RunOutcome::TimedOut => {
+            eprintln!("{} --version did not finish within {timeout:?}; reporting it as not installed", path.display());
+            Detection { installed: false, path: None, version: None }
+        }
     }
 }
 
@@ -198,6 +228,28 @@ mod tests {
         c.invalidate();
         assert_eq!(c.get(t0 + Duration::from_secs(1), || det("2")).version.as_deref(), Some("2"), "force skipped the cache");
         assert_eq!(c.probes(), 2);
+    }
+
+    fn script(dir: &Path, body: &str) -> PathBuf {
+        let p = dir.join("fake-agent");
+        std::fs::write(&p, format!("#!/bin/sh\n{body}\n")).unwrap();
+        std::fs::set_permissions(&p, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        p
+    }
+
+    #[test]
+    fn probe_reads_version_and_survives_a_hung_cli() {
+        let d = tempfile::tempdir().unwrap();
+        let first = |s: &str| s.lines().next().map(|l| l.trim().to_string());
+        let ok = probe_path(script(d.path(), "echo '9.8.7 (x)'"), PROBE_TIMEOUT, first);
+        assert_eq!((ok.installed, ok.version.as_deref()), (true, Some("9.8.7 (x)")));
+        let failing = probe_path(script(d.path(), "exit 3"), PROBE_TIMEOUT, first);
+        assert_eq!((failing.installed, failing.version), (true, None), "installed, version unknown");
+        let t = Instant::now();
+        let hung = probe_path(script(d.path(), "sleep 30"), Duration::from_millis(200), first);
+        assert!(!hung.installed && hung.path.is_none());
+        assert!(t.elapsed() < Duration::from_secs(2), "{:?}", t.elapsed());
+        assert!(!probe_program("definitely-not-a-real-agent-xyz", first).installed);
     }
 
     #[test]

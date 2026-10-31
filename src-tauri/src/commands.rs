@@ -1,7 +1,7 @@
 //! Tauri commands, app events and shared state. JS names are the camelCase of these fns.
 //! Events: `session-updated` (SessionInfo), `session-removed` {id}, `workspace-updated`
 //! (Workspace), `stats-updated` (Stats), `confirm-quit` {live, restart}.
-use crate::adapters::AdapterRegistry;
+use crate::adapters::{AdapterRegistry, AgentAdapter};
 use crate::git::{self, Review};
 use crate::model::{AgentKind, AppData, Builder, Compound, SessionInfo, SessionKind, Settings, Stats, Tile, Workspace};
 use crate::persist;
@@ -127,12 +127,19 @@ pub fn list_state(state: State<'_, AppState>) -> StateSnapshot {
 
 #[tauri::command]
 pub async fn detect_agents(force: Option<bool>, state: State<'_, AppState>) -> Result<Vec<AgentInfo>, String> {
-    Ok(state
-        .registry
-        .all()
+    // Probes run `--version` (each time-limited by `adapters::PROBE_TIMEOUT`): keep them off the
+    // async workers.
+    let adapters = state.registry.all();
+    tauri::async_runtime::spawn_blocking(move || detect_all(&adapters, force.unwrap_or(false)))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+fn detect_all(adapters: &[Arc<dyn AgentAdapter>], force: bool) -> Vec<AgentInfo> {
+    adapters
         .iter()
         .map(|a| {
-            if force.unwrap_or(false) {
+            if force {
                 a.invalidate_detection();
             }
             let d = a.detect();
@@ -146,7 +153,7 @@ pub async fn detect_agents(force: Option<bool>, state: State<'_, AppState>) -> R
                 can_approve: a.approve_keys().is_some() && a.deny_keys().is_some(),
             }
         })
-        .collect())
+        .collect()
 }
 
 #[tauri::command]

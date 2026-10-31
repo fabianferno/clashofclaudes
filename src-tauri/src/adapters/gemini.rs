@@ -14,7 +14,6 @@ use super::claude::{hook_command, write_private, SHARED_FOLDER_NOTE};
 use super::codex::parse_version;
 use super::{AgentAdapter, Detection, DetectionCache, LaunchRequest, DETECTION_TTL};
 use crate::model::AgentKind;
-use crate::platform::which;
 use crate::pty::LaunchSpec;
 use crate::status::{StatusEvent, StatusPolicy};
 use std::path::Path;
@@ -28,16 +27,7 @@ const SYSTEM_SETTINGS_PATH: &str = "/Library/Application Support/GeminiCli/setti
 const HOOK_EVENTS: [&str; 4] = ["AfterAgent", "Notification", "AfterTool", "SessionEnd"];
 
 fn probe() -> Detection {
-    let Some(path) = which("gemini") else {
-        return Detection { installed: false, path: None, version: None };
-    };
-    let version = std::process::Command::new(&path)
-        .arg("--version")
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .and_then(|o| parse_version(&String::from_utf8_lossy(&o.stdout)));
-    Detection { installed: true, path: Some(path), version }
+    super::probe_program("gemini", parse_version)
 }
 
 /// One `gemini --version` per minute at most.

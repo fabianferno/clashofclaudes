@@ -13,6 +13,7 @@ use super::claude::{write_private, SHARED_FOLDER_NOTE};
 use super::codex::parse_version;
 use super::{AgentAdapter, Detection, DetectionCache, LaunchRequest, DETECTION_TTL};
 use crate::model::AgentKind;
+#[cfg(test)]
 use crate::platform::which;
 use crate::pty::LaunchSpec;
 use crate::status::{StatusEvent, StatusPolicy};
@@ -47,16 +48,7 @@ fn private_dir(path: &std::path::Path) -> std::io::Result<()> {
 }
 
 fn probe() -> Detection {
-    let Some(path) = which("opencode") else {
-        return Detection { installed: false, path: None, version: None };
-    };
-    let version = std::process::Command::new(&path)
-        .arg("--version")
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .and_then(|o| parse_version(&String::from_utf8_lossy(&o.stdout)));
-    Detection { installed: true, path: Some(path), version }
+    super::probe_program("opencode", parse_version)
 }
 
 /// One `opencode --version` per minute at most.

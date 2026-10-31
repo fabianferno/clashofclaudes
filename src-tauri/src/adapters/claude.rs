@@ -13,7 +13,6 @@
 //! Fixture paths: `/Users/<name>/` was rewritten to `/home/user/` to avoid leaking a username.
 use super::{AgentAdapter, Detection, DetectionCache, LaunchRequest, ScreenPrompt, DETECTION_TTL};
 use crate::model::AgentKind;
-use crate::platform::which;
 use crate::pty::LaunchSpec;
 use crate::status::{StatusEvent, StatusPolicy};
 use std::path::PathBuf;
@@ -60,19 +59,9 @@ pub(super) fn write_private(path: &std::path::Path, bytes: &[u8]) -> std::io::Re
     f.write_all(bytes)
 }
 
-/// Runs `claude --version`; `detect` caches the result.
+/// Runs `claude --version` (time-limited); `detect` caches the result.
 fn probe() -> Detection {
-    let Some(path) = which("claude") else {
-        return Detection { installed: false, path: None, version: None };
-    };
-    let version = std::process::Command::new(&path)
-        .arg("--version")
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .and_then(|o| String::from_utf8_lossy(&o.stdout).lines().next().map(|l| l.trim().to_string()))
-        .filter(|l| !l.is_empty());
-    Detection { installed: true, path: Some(path), version }
+    super::probe_program("claude", |out| out.lines().next().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()))
 }
 
 /// One `claude --version` per minute at most, shared by every `ClaudeAdapter` in the app.

@@ -10,7 +10,6 @@
 use super::claude::SHARED_FOLDER_NOTE;
 use super::{AgentAdapter, Detection, DetectionCache, LaunchRequest, ScreenPrompt, DETECTION_TTL};
 use crate::model::AgentKind;
-use crate::platform::which;
 use crate::pty::LaunchSpec;
 use crate::status::{StatusEvent, StatusPolicy};
 use std::time::Instant;
@@ -71,16 +70,7 @@ pub(super) fn parse_version(s: &str) -> Option<String> {
 }
 
 fn probe() -> Detection {
-    let Some(path) = which("codex") else {
-        return Detection { installed: false, path: None, version: None };
-    };
-    let version = std::process::Command::new(&path)
-        .arg("--version")
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .and_then(|o| parse_version(&String::from_utf8_lossy(&o.stdout)));
-    Detection { installed: true, path: Some(path), version }
+    super::probe_program("codex", parse_version)
 }
 
 /// One `codex --version` per minute at most.

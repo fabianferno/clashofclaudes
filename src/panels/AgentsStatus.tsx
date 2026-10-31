@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ipc } from '../api/ipc';
 import { useApp } from '../state/store';
 import type { AgentKind } from '../api/types';
+import AgentLogo from './AgentLogo';
 
 /** Copyable install commands. Display only: the app never runs them or touches the network. */
 export const INSTALL_COMMANDS: Partial<Record<AgentKind, string>> = {
@@ -45,11 +46,11 @@ export default function AgentsStatus() {
         return (
           <div key={a.kind} className="sp-box agent-row">
             <div className="agent-head">
-              <span className="sp-t">{a.label}</span>
+              <span className="agent-name"><AgentLogo kind={a.kind} /><span className="sp-t">{a.label}</span></span>
               {a.kind === 'custom'
                 ? <span className="sp-d">Custom: always available</span>
                 : a.installed
-                  ? <span className="sp-d agent-ok">Installed{a.version ? ` · ${a.version}` : ''}</span>
+                  ? <span className="sp-d agent-ok">Installed{a.version ? ` · ${a.version.replace(` (${a.label})`, '')}` : ''}</span>
                   : <span className="sp-d agent-missing">Not installed</span>}
             </div>
             {!a.installed && cmd && (

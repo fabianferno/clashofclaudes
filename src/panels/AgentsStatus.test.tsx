@@ -65,3 +65,14 @@ test('Copied reads back to Copy after a moment', async () => {
     expect(screen.getByRole('button', { name: 'Copy' })).toBeTruthy();
   } finally { vi.useRealTimers(); }
 });
+
+test('each agent shows its logo', () => {
+  render(<AgentsStatus />);
+  for (const k of ['claude', 'codex', 'opencode', 'gemini', 'custom']) expect(screen.getByTestId(`agent-logo-${k}`)).toBeTruthy();
+});
+
+test('a version that repeats the agent name shows without it', () => {
+  act(() => useApp.setState({ agents: [{ ...base, version: '2.1.314 (Claude Code)' }] }));
+  render(<AgentsStatus />);
+  expect(screen.getByText('Installed · 2.1.314')).toBeTruthy();
+});

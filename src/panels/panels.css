@@ -62,7 +62,9 @@
 .new-session textarea { border: 2px solid #c8b083; border-radius: 8px; padding: 5px 8px; background: #fff8e8; font: 600 13px system-ui; color: #2b2018; resize: vertical; }
 .popout-hint { font: 700 12px system-ui; color: #e7d5ad; }
 .agent-row { padding: 8px 10px; margin-bottom: 8px; }
-.agent-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.agent-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.agent-name { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.agent-logo { flex: none; }
 .agent-ok { color: #2f7d17; }
 .agent-missing { color: #a3382c; }
 .agent-cmd { display: flex; gap: 8px; align-items: center; margin-top: 6px; }

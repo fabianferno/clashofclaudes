@@ -4,7 +4,7 @@ import { iso, toGrid } from './iso';
 import { HALL, HOUSE, STRUCT, gateSide, gateTile, wallRect, type Rect } from './layout';
 import { enclosure, seedOf } from './enclosure';
 import { classOf, gearOf, houseColors, houseStage, scaffoldHeight, type ClassTier, type Gear } from './look';
-import { retarget, routeHome, routeToSite, standTile, step, type Walker } from './walkers';
+import { retarget, routeHome, routeToSite, standTile, step, walkable, type Walker } from './walkers';
 import {
   GROUND_SCALE, drawBadge, drawBubble, drawBuilder, drawGate, drawGround, drawHall, drawHouse, drawPuff, drawRing, drawStatusBar, drawStructure,
   drawWallSeg, groundOrigin,
@@ -546,6 +546,18 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
   const syncBuilders = (state: VillageInput) => {
     const compounds = new Map<string, Compound>();
     for (const w of state.workspaces) if (w.compound) compounds.set(w.id, w.compound);
+    // Walkable ground per compound, built only for the compounds a walker is routed through.
+    const walks = new Map<string, Set<string>>();
+    const walkOf = (wsId: string, c: Compound) => {
+      let walk = walks.get(wsId);
+      if (!walk) {
+        const spots = state.sessions.flatMap((s) => (s.workspaceId === wsId && s.kind.kind === 'agent' && s.spot ? [s.spot] : []));
+        const level = state.workspaces.find((w) => w.id === wsId)?.level ?? 1;
+        walk = walkable(enclosure(c, spots, level, seedOf(wsId)).inside, c, spots);
+        walks.set(wsId, walk);
+      }
+      return walk;
+    };
     const live = new Set<string>();
     for (const b of state.builders) {
       live.add(b.id);
@@ -567,19 +579,19 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       const w = v.walker, was = v.site;
       if (site) {
         if (!was || was.sessionId !== site.sessionId) {
-          v.walker = { ...w, mode: 'toSite', path: routeToSite(w, site.compound, site.spot) };
+          v.walker = { ...w, mode: 'toSite', path: routeToSite(w, site.compound, site.spot, walkOf(site.workspaceId, site.compound)) };
         } else if (was.spot.x !== site.spot.x || was.spot.y !== site.spot.y) {
-          const st = standTile(site.compound, site.spot, site.compound.house); // moved structure: the builder is simply there
+          const st = standTile(site.compound, site.spot, site.compound.house, walkOf(site.workspaceId, site.compound)); // moved structure: the builder is simply there
           v.walker = { ...w, x: st.x, y: st.y, path: [], mode: 'atSite', face: -1 };
         } else if (JSON.stringify(was.compound) !== JSON.stringify(site.compound)) {
-          v.walker = retarget(w, site.compound, site.spot); // the house moved: stand tile and gate may have changed
+          v.walker = retarget(w, site.compound, site.spot, walkOf(site.workspaceId, site.compound)); // the house moved: stand tile and gate may have changed
         }
       } else if (was) {
         const c = compounds.get(was.workspaceId);
         if (!c) v.walker = { ...w, path: [], mode: 'idle', wait: 0.5 };
         else {
           v.leaving = { wsId: was.workspaceId, c };
-          const route = routeHome(w, c);
+          const route = routeHome(w, c, walkOf(was.workspaceId, c));
           // a builder that has not reached the gate yet turns around on the plaza side
           v.walker = { ...w, mode: 'home', path: w.mode === 'toSite' && w.path.length >= 3 ? route.slice(2) : route };
         }
@@ -588,7 +600,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       else if (v.leaving) {
         const c = compounds.get(v.leaving.wsId);
         if (c && JSON.stringify(c) !== JSON.stringify(v.leaving.c)) {
-          if (v.walker.mode === 'home') v.walker = retarget(v.walker, c, null);
+          if (v.walker.mode === 'home') v.walker = retarget(v.walker, c, null, walkOf(v.leaving.wsId, c));
           v.leaving = { wsId: v.leaving.wsId, c };
         }
         if (v.walker.mode !== 'home') v.leaving = null;

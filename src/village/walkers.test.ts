@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { Compound } from '../api/types';
-import { gateInside, gateOutside } from './layout';
-import { PLAZA, SPEED, routeHome, retarget, routeToSite, standTile, step, type Walker } from './walkers';
+import type { Tile } from '../api/types';
+import { enclosure, seedOf } from './enclosure';
+import { gateInside, gateOutside, placeCompound, spotFor } from './layout';
+import { PLAZA, SPEED, interiorPath, routeHome, retarget, routeToSite, standTile, step, walkable, type Walker } from './walkers';
 
 const mk = (over: Partial<Walker> = {}): Walker =>
   ({ id: 'b', x: 0, y: 0, path: [], mode: 'idle', face: 1, wait: 0, ...over });
@@ -86,5 +88,44 @@ describe('walkers', () => {
     const home = retarget(mk({ mode: 'home', path: routeHome({ x: 0, y: 0 }, before).slice(2) }), after, null);
     expect(home.path).toEqual(routeHome({ x: 0, y: 0 }, after).slice(2));
     expect(retarget(mk({ mode: 'idle' }), after, null).mode).toBe('idle');
+  });
+
+  it('routes_inside_organic_compounds_stay_on_walkable_ground', () => {
+    const onGround = (walk: Set<string>, pts: Tile[]) => {
+      for (let i = 1; i < pts.length; i++) {
+        const a = pts[i - 1], b = pts[i];
+        for (let k = 0; k <= 20; k++) {
+          const x = a.x + ((b.x - a.x) * k) / 20, y = a.y + ((b.y - a.y) * k) / 20;
+          expect(walk.has(`${Math.floor(x)},${Math.floor(y)}`)).toBe(true);
+        }
+      }
+    };
+    let turns = 0;
+    for (const seed of ['alpha', 'beta', 'gamma']) {
+      let c = placeCompound([]);
+      const spots: Tile[] = [];
+      for (let i = 0; i < 6; i++) {
+        const r = spotFor(c, [c], spots);
+        c = r.compound;
+        spots.push(r.spot);
+      }
+      const walk = walkable(enclosure(c, spots, 3, seedOf(seed)).inside, c, spots);
+      for (const spot of spots) {
+        const to = routeToSite({ x: 0, y: 5 }, c, spot, walk);
+        expect(to[1]).toEqual(centre(gateInside(c)));
+        if (to.length > 3) turns++;
+        onGround(walk, to.slice(1)); // gate inside -> stand, never through a wall, the house or a tent
+        const stand = to[to.length - 1];
+        const home = routeHome(stand, c, walk);
+        onGround(walk, [stand, ...home.slice(0, home.indexOf(home.find((p) => p.x === centre(gateInside(c)).x && p.y === centre(gateInside(c)).y)!) + 1)]);
+      }
+    }
+    expect(turns).toBeGreaterThan(0); // some sites are not in a straight line from the gate
+  });
+
+  it('interior_path_falls_back_off_the_ground', () => {
+    const walk = new Set(['0,0', '1,0']);
+    expect(interiorPath(walk, { x: 5.5, y: 5.5 }, { x: 0.5, y: 0.5 })).toEqual([{ x: 0.5, y: 0.5 }]);
+    expect(interiorPath(walk, { x: 0.5, y: 0.5 }, { x: 1.5, y: 0.5 })).toEqual([{ x: 1.5, y: 0.5 }]);
   });
 });

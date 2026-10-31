@@ -787,15 +787,18 @@ impl SessionManager {
     }
 
     /// Quitting: closes every session (SIGHUP to each process group), waits up to `grace` for
-    /// the processes to exit, then SIGKILLs the groups whose leader is still alive. Blocks for
-    /// about `grace` at most (less when everything exits on SIGHUP); keep it off the UI thread.
+    /// the groups to empty, then SIGKILLs every recorded process group that still has a member,
+    /// whether or not its leader was reaped (a child that ignores SIGHUP must not outlive the
+    /// app). Only groups recorded while their leader still ran are signalled, seconds later at
+    /// most, so a recycled group id is never hit. Blocks for about `grace` at most (less when
+    /// everything exits on SIGHUP); keep it off the UI thread.
     pub fn shutdown(&self, grace: Duration) {
         let ptys: Vec<Arc<PtyHandle>> = self.lock().values().filter_map(|e| e.pty.clone()).collect();
         for s in self.list() {
             let _ = self.close(&s.id);
         }
         let end = Instant::now() + grace;
-        while Instant::now() < end && ptys.iter().any(|p| !p.has_exited()) {
+        while Instant::now() < end && ptys.iter().any(|p| p.group_alive()) {
             std::thread::sleep(REAP_POLL);
         }
         for p in &ptys {
@@ -1520,6 +1523,28 @@ mod tests {
         assert!(took >= Duration::from_millis(450), "waited the grace for the survivor: {took:?}");
         assert!(took < Duration::from_millis(1500), "then killed it promptly: {took:?}");
         assert!(fx.mgr.list().is_empty());
+    }
+
+    #[test]
+    fn quit_kills_a_trapping_child_whose_leader_died_on_sighup() {
+        let fx = fixture();
+        // The leader dies on SIGHUP at once (and is reaped); its child ignores SIGHUP.
+        let script = r#"sh -c 'trap "" HUP; echo pid:$$; exec sleep 30' & wait"#;
+        let s = fx.mgr.start_with_spec(&fx.ws, &custom("b1", ""), sh(&fx, script), Arc::new(crate::adapters::CustomAdapter)).unwrap();
+        let child = printed_pid(&fx, &s.id);
+        let started = Instant::now();
+        fx.mgr.shutdown(Duration::from_millis(500));
+        let took = started.elapsed();
+        let end = Instant::now() + Duration::from_millis(500);
+        while alive(child) && Instant::now() < end {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let survived = alive(child);
+        if survived {
+            unsafe { libc::kill(child, libc::SIGKILL); }
+        }
+        assert!(!survived, "the child outlived shutdown because its leader had been reaped");
+        assert!(took >= Duration::from_millis(450), "waited the grace for the group, not just the leader: {took:?}");
     }
 
     #[test]

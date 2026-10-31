@@ -168,43 +168,59 @@ impl PtyHandle {
         self.shared.exited.load(Ordering::SeqCst)
     }
 
-    /// SIGKILL to the child's process group now, unless the child has already been reaped
-    /// (checked under the reaping lock, so the signal can't hit a recycled pid).
+    /// The child's process group id (its pid: a PTY child is a session leader).
+    pub fn pgid(&self) -> Option<u32> {
+        self.pid
+    }
+
+    /// The leader is unreaped, or some process it left behind is still in its group.
+    pub fn group_alive(&self) -> bool {
+        self.pid.is_some_and(|pid| !self.has_exited() || platform::group_exists(pid))
+    }
+
+    /// SIGKILL to the child's whole process group now, whether or not the leader was reaped:
+    /// commands it forked may outlive it. The group id cannot be recycled while any member
+    /// lives, and an empty group is skipped (checked just before), so this never hits a
+    /// recycled group in practice.
     pub fn kill_now(&self) {
-        let Some(pid) = self.pid else { return };
-        let _g = self.shared.child.lock().unwrap_or_else(|e| e.into_inner());
-        if !self.shared.exited.load(Ordering::SeqCst) {
-            let _ = platform::signal_group_kill(pid);
+        if let Some(pid) = self.pid {
+            kill_group_if_alive(pid);
         }
     }
 
-    /// SIGHUP now; SIGKILL after `KILL_GRACE` if still alive (on a background thread).
-    /// Both go to the child's whole process group, so commands it forked die too.
-    /// Returns Ok if the child has already exited.
+    /// SIGHUP to the process group now; SIGKILL after `KILL_GRACE` (on a background thread) if
+    /// anything in the group is still alive, even when the leader itself already exited (a
+    /// child that ignores SIGHUP must not survive it). Returns Ok when nothing is left to stop.
     pub fn kill(&self) -> Result<()> {
         let Some(pid) = self.pid else { return Ok(()) };
         {
             let _g = self.shared.child.lock().unwrap_or_else(|e| e.into_inner());
-            if self.shared.exited.load(Ordering::SeqCst) {
+            if !self.shared.exited.load(Ordering::SeqCst) {
+                platform::signal_group_hup(pid)?;
+            } else if platform::group_exists(pid) {
+                let _ = platform::signal_group_hup(pid); // orphans of an exited leader
+            } else {
                 return Ok(());
             }
-            platform::signal_group_hup(pid)?;
         }
-        let sh = self.shared.clone();
         std::thread::spawn(move || {
             let end = Instant::now() + KILL_GRACE;
             while Instant::now() < end {
-                if sh.exited.load(Ordering::SeqCst) {
+                if !platform::group_exists(pid) {
                     return;
                 }
                 std::thread::sleep(REAP_POLL);
             }
-            let _g = sh.child.lock().unwrap_or_else(|e| e.into_inner());
-            if !sh.exited.load(Ordering::SeqCst) {
-                let _ = platform::signal_group_kill(pid);
-            }
+            kill_group_if_alive(pid);
         });
         Ok(())
+    }
+}
+
+/// SIGKILL to group `pgid` if any process is still in it.
+pub fn kill_group_if_alive(pgid: u32) {
+    if platform::group_exists(pgid) {
+        let _ = platform::signal_group_kill(pgid);
     }
 }
 
@@ -347,6 +363,64 @@ mod tests {
         let alive = unsafe { libc::kill(pid, 0) } == 0;
         if alive { unsafe { libc::kill(pid, libc::SIGKILL); } } // don't leak it from a failing run
         assert!(!alive, "grandchild survived kill()");
+    }
+
+    fn pid_after(buf: &Arc<Mutex<Vec<u8>>>) -> i32 {
+        assert!(wait_for(buf, "pid:"));
+        let end = Instant::now() + Duration::from_secs(5);
+        loop {
+            let text = String::from_utf8_lossy(&buf.lock().unwrap()).into_owned();
+            let tail = text.split("pid:").nth(1).unwrap();
+            if tail.contains('\n') || Instant::now() > end {
+                return tail.split_whitespace().next().unwrap().parse().unwrap();
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+
+    /// Waits up to `within` for `pid` to disappear; kills it if it did not (no leaks).
+    fn gone_within(pid: i32, within: Duration) -> bool {
+        let end = Instant::now() + within;
+        // SAFETY: signal 0 only probes for existence.
+        while unsafe { libc::kill(pid, 0) } == 0 && Instant::now() < end { std::thread::sleep(Duration::from_millis(20)); }
+        let alive = unsafe { libc::kill(pid, 0) } == 0;
+        if alive { unsafe { libc::kill(pid, libc::SIGKILL); } }
+        !alive
+    }
+
+    /// The leader dies on SIGHUP at once; its child ignores SIGHUP (and stays in the group).
+    const HUP_LEADER_TRAPPING_CHILD: &str = r#"sh -c 'trap "" HUP; echo pid:$$; exec sleep 30' & wait"#;
+
+    #[test]
+    fn kill_reaches_a_child_that_outlives_its_sighup_dead_leader() {
+        let dir = tempfile::tempdir().unwrap();
+        let (buf, on_out) = collect();
+        let (tx, rx) = mpsc::channel();
+        let h = PtyHandle::spawn(&spec("/bin/sh", &["-c", HUP_LEADER_TRAPPING_CHILD], dir.path().to_path_buf()), 80, 24, on_out,
+            Box::new(move |c| { let _ = tx.send(c); })).unwrap();
+        let child = pid_after(&buf);
+        h.kill().unwrap();
+        rx.recv_timeout(Duration::from_secs(3)).expect("leader exits on SIGHUP");
+        assert!(h.has_exited());
+        assert!(gone_within(child, KILL_GRACE + Duration::from_secs(3)), "child survived kill() after its leader was reaped");
+        assert!(!h.group_alive());
+    }
+
+    #[test]
+    fn kill_now_reaches_the_group_after_the_leader_was_reaped() {
+        let dir = tempfile::tempdir().unwrap();
+        let (buf, on_out) = collect();
+        let (tx, rx) = mpsc::channel();
+        // The leader exits on its own, leaving a SIGHUP-proof child behind in its group.
+        let h = PtyHandle::spawn(&spec("/bin/sh", &["-c", r#"sh -c 'trap "" HUP; echo pid:$$; exec sleep 30' & sleep 0.3"#], dir.path().to_path_buf()), 80, 24, on_out,
+            Box::new(move |c| { let _ = tx.send(c); })).unwrap();
+        let child = pid_after(&buf);
+        rx.recv_timeout(Duration::from_secs(5)).expect("leader exits");
+        assert!(h.has_exited());
+        assert!(h.group_alive(), "the child is still in the group");
+        h.kill_now();
+        assert!(gone_within(child, Duration::from_secs(2)), "child survived kill_now()");
+        assert!(!h.group_alive());
     }
 
     #[test]

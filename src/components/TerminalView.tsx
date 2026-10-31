@@ -21,7 +21,9 @@ export default function TerminalView({ sessionId, readOnly = false }: { sessionI
     const el = host.current;
     if (!el) return;
     let disposed = false;
-    const term = new Terminal({ fontFamily: 'Menlo, monospace', fontSize: 13, scrollback: 5000, cursorBlink: true });
+    // 2000 lines: every mount builds a fresh buffer, which JSC frees only at a full GC. The full raw
+    // history stays in the backend's 2 MiB scrollback and is replayed on attach.
+    const term = new Terminal({ fontFamily: 'Menlo, monospace', fontSize: 13, scrollback: 2000, cursorBlink: true });
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(el);

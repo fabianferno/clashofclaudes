@@ -3,21 +3,28 @@
 Collected from the Plan 1 execution ledger at merge time. All were triaged CAN-WAIT by the final review except where noted.
 
 ## Must land before or with Plan 2
-- Memory after a flood: RESOLVED, re-measured in Plan 2 Task 14 (docs/verification/plan-2-village.md).
-  - Measured with `footprint` (physical footprint), the flood is within budget: dev 247 MB after
-    a 30 s settle, release estimated at about 220 MB. Plan 1's 395 MB was an RSS figure.
+- Memory after a flood: PROVISIONAL. Re-measured in Plan 2 Task 14 (docs/verification/plan-2-village.md).
+  These are lower bounds, measured with the village hidden (screen locked, no textures uploaded).
+  The verdict waits on owner check 5.
+  - `footprint` (physical footprint), flood + 30 s on dev: 247 MB with scrollback 5000, and
+    239 MB (one flooded terminal) / 246 MB (two) with scrollback 2000.
+  - Release estimate: about 27 MB lower. That idle delta is assumed to hold under load; it was not
+    measured.
+  - Plan 1's 395 MB was an RSS figure.
   - The real over-budget cost was the village canvas' 4x MSAA, about 120 MB of graphics memory.
     Release idle went from 299 to 178 MB with `antialias: false`.
-  - Checked and cleared: the WebglAddon is disposed with the terminal, the glyph atlas is not
-    growing, frames are not retained, and disposed terminals are collected.
-  - Scrollback stays at 5000.
+  - Checked and cleared: the WebglAddon is disposed with the terminal, `clearTextureAtlas()`
+    changes nothing, frames are not retained, and disposed terminals are collected.
+  - xterm scrollback is now 2000, per a controller ruling.
 - Terminal remount churn (from Task 14): each remount of a terminal whose 2 MiB scrollback is full
-  allocates a new xterm buffer of about 4.7 MB (5000 lines). JSC frees the old one only at a full
-  GC, so 40 remounts of a flooded terminal reached 340 MB (dev).
-  - It is garbage, not a leak.
-  - Options: scrollback 2000 (measured at about 1.9 MB per remount), or reuse one `Terminal` per
-    session across mounts.
-  - Not done, per the ruling "scrollback >= 1000, prefer leak fixes".
+  allocates a new xterm buffer. JSC frees the old one only at a full GC. 40 switches between two
+  flooded terminals, panel closed, then 30 s (dev):
+  - 404 MB with scrollback 5000.
+  - 318 MB with scrollback 2000.
+  - The first run read 419 MB with the panel open and 340 MB closed.
+  - It is garbage, not a leak, and it is still over 250 MB.
+  - Options: reuse one `Terminal` per session across mounts, or a single shared `Terminal` that
+    is reset and refilled.
 - Closing a session that never reached Finished gives no feedback (no XP, no message). Show "closed: unfinished, no XP".
 - Builders are only visible in the New session builder picker; after Close the builder seems to vanish. The Plan 2 builders bar covers this.
 - Claude's first-run "Do you trust this folder?" menu (default "No, exit") appears before any hook fires: the session shows Working, never NeedsYou. Add screen-pattern detection → NeedsYou with its own keys.

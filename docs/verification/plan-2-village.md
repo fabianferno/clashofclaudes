@@ -24,12 +24,12 @@ What this means for the numbers:
 |---|---|---|---|---|
 | Hidden (screen locked), idle | ~0% CPU, rendering stopped | **0.05%** of one core (20 s), `running:false` | release | PASS |
 | Hidden, 10 sessions + 2 terminals | ~0% CPU | **0.19%** of one core (20 s) | dev | PASS |
-| Minimized | ~0% CPU and `running:false` | **0.29%** of one core, `running:false`, `fps:0` (10 + 2 load, window minimized through the driver) | dev | PASS (see note 1) |
+| Minimized | ~0% CPU and `running:false` | **0.29%** of one core, `running:false`, `fps:0` (10 + 2 load, window minimized through the driver) | dev | PARTIAL: proves that hidden stops the ticker; gated on owner check 3 (see note 1) |
 | Idle village, focused | ≤ 5% of one core, 30 fps cap | not measurable: screen locked | n/a | NOT MEASURABLE (owner check 1) |
 | Unfocused | ≤ 15 fps (`scene().fps`) | not measurable: screen locked | n/a | NOT MEASURABLE (owner check 2) |
 | Idle, no sessions (for reference) | n/a | **178 MB** (before the fix: 299 MB) | release | n/a |
-| 10 sessions (`sleep 600`) + 2 terminals | ≤ 250 MB | **219 MB** with the panel closed, **226 MB** with a terminal on screen. Release estimate: about 192 / 199 MB | dev | PASS (village hidden, see note 2) |
-| `yes \| head -c 50000000` in a terminal, then 30 s settle | ≤ 250 MB | **247 MB** after settling (peak 442 MB during the flood). Release estimate: about 220 MB | dev | PASS (little margin on dev, see note 2) |
+| 10 sessions (`sleep 600`) + 2 terminals | ≤ 250 MB | **219 MB** with the panel closed, **226 MB** with a terminal on screen. Release estimate: about 192 / 199 MB | dev | PROVISIONAL: lower bound, village hidden (screen locked); gated on owner check 5 (see note 2) |
+| `yes \| head -c 50000000` in a terminal, then 30 s settle | ≤ 250 MB | **247 MB** after settling with scrollback 5000 (peak 442 MB during the flood). After fix round 1 (scrollback 2000): **239 MB**, or 246 MB with a second terminal flooded too. Release estimate: about 27 MB lower | dev | PROVISIONAL: lower bound, village hidden (screen locked); gated on owner check 5. Only 4–11 MB of margin on dev (see note 2 and fix round 1) |
 | Cold start to village visible | ≤ 2 s | Village visible: not measurable (screen locked). From launch to the scene being built (`scene().entities.length > 0`, hidden): **0.69 / 0.70 / 0.70 s** | dev | NOT MEASURABLE (owner check 4). The scene-built part is within budget. |
 
 **Note 1.** The window really was minimized (`is_minimized` returned true), but the locked screen
@@ -45,8 +45,10 @@ and flood scenarios were scripted on the dev build. To calibrate, idle was measu
 | Dev, idle | 334 MB | 205 MB (a second run: 202 MB) |
 | Dev minus release | +35 MB | **+27 MB** |
 
-The release estimates above are the dev number minus 27 MB. All memory figures are with the
-village not drawing (see the top of this file).
+The release estimates above are the dev number minus 27 MB. That assumes the idle delta also holds
+under load, which was not measured. Every memory figure is with the village not drawing, so no
+textures are uploaded (see the top of this file). Treat each one as a lower bound until owner
+check 5.
 
 ### Before the fix (dev, same scenario)
 
@@ -106,25 +108,67 @@ Each suspect, checked before any fix:
   kept.
 - **Disposed `Terminal` objects kept alive.** No. A temporary `FinalizationRegistry` probe showed
   59 of 60 disposed terminals collected.
-- **xterm `scrollback: 5000`.** This sets how much each mount allocates. It is not a leak, and it
-  is unchanged (see below).
+- **xterm `scrollback: 5000`.** This sets how much each mount allocates. It is not a leak. It was
+  lowered to 2000 in fix round 1 (see below).
 
 **Finding: remount churn (not a budget item, but it can break the budget).** Each time the panel
 mounts a terminal whose 2 MiB scrollback is full, xterm builds a new 5000-line buffer of about
 4.7 MB. JavaScriptCore frees the previous one only at its next full GC. Measured on dev:
 
-- Remounting a flooded terminal: about **+47 MB per 10 remounts**. 40 remounts reached 340 MB with
-  the panel closed.
+- Remounting a flooded terminal: about **+47 MB per 10 remounts**. After 40 remounts the total
+  was 419 MB with the panel open (the GPU process read 105 MB of that) and 340 MB with the panel
+  closed.
 - With scrollback 2000 (temporary change): about **+19 MB per 10 remounts**.
 - A terminal with little output: about +0.5 MB per remount.
 
 It is garbage, not a leak: a GC dropped one run from 427 to 405 MB. But a user who flips between
-flooded terminals can go past 250 MB. It is listed as a follow-up. The controller ruling keeps
-scrollback at 5000 and prefers fixing leaks over shortening history, and there is no leak to fix.
+flooded terminals can go past 250 MB.
+
+An earlier draft of this file said the controller's ruling kept scrollback at 5000. That was wrong:
+the ruling only said "not below 1000". The controller then ruled for 2000; see fix round 1.
 
 **GPU process transient.** For some seconds after a flood or a burst of remounts, the WebKit GPU
 process holds 140–165 MB. It is back to about 25 MB within 30 s. This happened with and without
 `loseContext`. It is why every memory budget is read after a settle.
+
+## Fix round 1: scrollback 2000, and `clearTextureAtlas`
+
+Controller ruling: xterm `scrollback` goes from 5000 to 2000 (`src/components/TerminalView.tsx`).
+The raw history is not lost: the backend still keeps the last 2 MiB per session and replays it.
+The test `keeps 2000 lines of scrollback` in `src/components/TerminalView.test.tsx` pins the value.
+
+**Protocol (dev build, driver, fresh app each run, village hidden):**
+
+1. Start 10 `sleep 600` sessions and 2 terminals.
+2. Put terminal 1 on screen, run `yes | head -c 50000000` in it, and wait 30 s after it ends.
+3. Do the same with terminal 2.
+4. Switch the panel between the two flooded terminals 40 times, 700 ms each.
+5. Close the panel and wait 30 s.
+
+| Step (total footprint) | scrollback 5000 (before) | scrollback 2000 (after) | 2000 + `clearTextureAtlas()` (tried, not kept) |
+|---|---|---|---|
+| Idle | 202 MB | 203 MB | 204 MB |
+| 10 sleep + 2 terminals | 236 MB | 217 MB | 218 MB |
+| Flood terminal 1 + 30 s | **245 MB** | **239 MB** | 240 MB |
+| Flood terminal 2 + 30 s | 254 MB | 246 MB | 245 MB |
+| 20 switches | 382 MB | 331 MB | 438 MB |
+| 40 switches, panel open | 490 MB | 379 MB | 405 MB |
+| 40 switches, panel closed + 30 s | **404 MB** | **318 MB** | 316 MB |
+
+The panel-open readings include GPU-process transients of 70–107 MB, which were gone after the
+settle.
+
+What this shows:
+
+- With 2000 lines, the flood + 30 s figure is 239 MB for one flooded terminal and 246 MB for two.
+  Both are still PROVISIONAL lower bounds, because the village was hidden.
+- Remount churn falls by about 86 MB after 40 switches (404 → 318 MB). It still ends **above
+  250 MB**. JSC releases the old buffers only at a full GC, and lowering scrollback reduces how
+  much is waiting, but not the mechanism. The follow-up stays open.
+- **`term.clearTextureAtlas()` before `term.dispose()` changed nothing** (318 vs 316 MB after the
+  settle, within noise), so it was not kept.
+- The WebGL addon was already disposed on unmount, because `term.dispose()` disposes every loaded
+  addon. Nothing else to add there.
 
 ## Method
 

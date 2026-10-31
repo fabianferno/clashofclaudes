@@ -6,8 +6,10 @@ const writes: Uint8Array[] = [];
 const writeDone: Array<() => void> = [];
 let disposeCount = 0;
 let typed: (d: string) => void = () => {};
+let termOptions: Record<string, unknown> = {};
 vi.mock('@xterm/xterm', () => ({
   Terminal: class {
+    constructor(o: Record<string, unknown>) { termOptions = o; }
     cols = 80; rows = 24;
     options: Record<string, unknown> = {};
     loadAddon() {} open() {}
@@ -116,5 +118,14 @@ test('read-only view of an ended session never resizes or writes', async () => {
   expect(container.querySelector('.error')).toBeNull();
   expect(screen.queryByText(/not running/)).toBeNull();
   vi.mocked(ipc.resizeSession).mockResolvedValue(undefined);
+  unmount();
+});
+
+test('keeps 2000 lines of scrollback', () => {
+  // Each mount of a full terminal builds a fresh buffer that JSC frees only at a full GC:
+  // ~4.7 MB per remount at 5000 lines, ~1.9 MB at 2000 (docs/verification/plan-2-village.md).
+  // The full raw history stays in the backend's 2 MiB scrollback for replay.
+  const { unmount } = render(<TerminalView sessionId="t6" />);
+  expect(termOptions.scrollback).toBe(2000);
   unmount();
 });

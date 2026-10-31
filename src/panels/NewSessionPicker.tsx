@@ -4,7 +4,6 @@ import { idleBuilders, useApp } from '../state/store';
 import type { AgentInfo, AgentKind, Builder } from '../api/types';
 import { CLASS_NAMES, classOf } from '../village/look';
 import BuilderPreview from './BuilderPreview';
-import AgentsStatus from './AgentsStatus';
 import { modelPlaceholder } from './BuilderPanel';
 
 export const RECRUIT_NAMES = ['Ivy', 'Jax', 'Kai', 'Lu', 'Mo', 'Nia', 'Oz', 'Pip', 'Quin', 'Rex'];
@@ -187,8 +186,6 @@ export default function NewSessionPicker({ workspaceId }: { workspaceId: string 
         </div>
       )}
       <code className="preview">{preview}</code>
-      <div className="sp-sec">Agents</div>
-      <AgentsStatus />
       {error && <div className="panel-warn">{error}</div>}
       <button type="submit" className="hud-btn sm" disabled={busy}>Start</button>
     </form>

@@ -84,6 +84,8 @@ test('picker_disables_uninstalled', () => {
   expect(opt('Custom command').disabled).toBe(false);
   expect(opt('Codex').disabled).toBe(true);
   expect(opt('Codex').textContent).toBe('Codex — Not installed — see Town Hall');
+  // The agents list (install commands, Re-check) lives in the Town Hall only.
+  expect(screen.queryByTestId('agents-status')).toBeNull();
   // the default never lands on an uninstalled agent
   expect((screen.getByLabelText('Agent') as HTMLSelectElement).value).toBe('claude');
 });

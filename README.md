@@ -29,10 +29,12 @@ The app does not install agents, log in for you, or manage API keys. Each agent 
 | Agent | What the app can report | Approve / deny from the app |
 |---|---|---|
 | Claude Code | Working, needs you (permission request), finished, tool-step count. Also detects the first-run "trust this folder" menu. | Yes |
-| Codex | Working, finished (turn complete). Needs you is detected from the on-screen approval and trust prompts. | No: answer in the terminal |
-| OpenCode | Working, needs you (permission request), finished, stuck on error. | No: answer in the terminal |
-| Gemini CLI (API key) | Working, needs you (permission request), finished. | No: answer in the terminal |
+| Codex | Working, finished (turn complete). Needs you is detected from the on-screen approval and trust prompts. **For app sessions, Codex's `notify` and `developer_instructions` settings are overridden** (`-c notify=…`, `-c developer_instructions=…`): a `notify` program or developer instructions you set in `~/.codex/config.toml` do not apply in sessions started from the app (your file is never edited). | No: answer in the terminal |
+| OpenCode | Working, needs you (permission request), finished, stuck on error. The shared-folder note is only delivered when you give a task (it is prefixed to the first prompt). | No: answer in the terminal |
+| Gemini CLI (API key) | Working, needs you (permission request), finished. The shared-folder note is only delivered when you give a task (it is prefixed to the first prompt). | No: answer in the terminal |
 | Custom command | Working while it prints, finished after quiet time, stuck if it exits non-zero or is silent for long. | n/a |
+
+For Codex, OpenCode and Gemini, a session that goes quiet before the agent has reported anything (typically a login, auth or first-run screen) shows **Needs you: "Waiting in the terminal"**, never Finished. Codex and OpenCode have no model list: type a model id in the picker (OpenCode takes `provider/model`), or leave it empty for the agent's default.
 
 Only Claude Code has been verified against a real run. Codex, OpenCode and Gemini support was written from their documentation and is waiting for real-world confirmation; if one misbehaves the terminal always works. Model and effort are passed only where the agent documents a way to do it. Elsewhere they are recorded on the builder for display.
 

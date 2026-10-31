@@ -2,6 +2,7 @@
 use crate::adapters::{terminal_launch, terminal_policy, AdapterRegistry, AgentAdapter, LaunchRequest, ScreenPrompt};
 use crate::git::{self, GitBaseline, Review};
 use crate::hooks::HookServer;
+use crate::osc::Osc7501;
 use crate::model::{Builder, SessionInfo, SessionKind, SessionState, Tile, Workspace, WorktreeInfo};
 use crate::pty::{LaunchSpec, PtyHandle, REAP_POLL};
 use crate::scrollback::{Scrollback, SCROLLBACK_CAP};
@@ -11,7 +12,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::collections::VecDeque;
 use std::sync::mpsc::{self, Sender};
-use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering as AtomicOrdering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, Weak};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
@@ -45,8 +46,7 @@ const FLUSH_EVERY: Duration = Duration::from_millis(16);
 const TICK_EVERY: Duration = Duration::from_secs(1);
 /// Screen prompts are looked for in this much of the newest output.
 const PROMPT_WINDOW: usize = 8 * 1024;
-/// Shown after Deny: the agent now waits for typed instructions.
-pub const DENIED_REASON: &str = "Denied — tell Claude what to do in the terminal";
+pub use crate::status::DENIED_REASON;
 
 struct SessionEntry {
     info: SessionInfo,
@@ -81,6 +81,8 @@ struct SessionEntry {
     /// Needle of the prompt seen in the window last time, so one that stays visible after an
     /// answer (old bytes linger in the window) is not armed again.
     prompt_seen: Option<&'static str>,
+    /// OSC 7501 status-report scanner, for adapters whose agent writes them (`reads_osc_status`).
+    osc: Option<Osc7501>,
 }
 
 impl SessionEntry {
@@ -102,6 +104,8 @@ impl SessionEntry {
         let needs_you = matches!(self.info.state, SessionState::NeedsYou { .. });
         let awaiting = match ev {
             StatusEvent::PermissionRequested { .. } => needs_you,
+            // Nothing left to answer from the app: the agent waits for typing.
+            StatusEvent::AskedInTerminal { .. } | StatusEvent::Idle => false,
             _ => self.info.awaiting_decision && needs_you,
         };
         if matches!(ev, StatusEvent::PermissionRequested { .. }) || !awaiting {
@@ -188,6 +192,25 @@ pub struct SessionManager {
     tx: Sender<ManagerEvent>,
     weak: Weak<SessionManager>,
     flusher: Arc<FlushWake>,
+    /// Set by `shutdown`: no new session starts, and a spawn that finishes after its entry was
+    /// closed SIGKILLs its group at once (the app is about to exit, so no grace can run).
+    quitting: AtomicBool,
+    /// Spawns between inserting their entry and recording their PTY; `shutdown` waits for them.
+    spawning: AtomicUsize,
+}
+
+/// Counts a spawn in flight for as long as it lives.
+struct SpawnGuard<'a>(&'a AtomicUsize);
+impl<'a> SpawnGuard<'a> {
+    fn new(n: &'a AtomicUsize) -> Self {
+        n.fetch_add(1, AtomicOrdering::SeqCst);
+        SpawnGuard(n)
+    }
+}
+impl Drop for SpawnGuard<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, AtomicOrdering::SeqCst);
+    }
 }
 
 /// Parks the flush loop while no session can produce output, so a hidden, idle app uses no CPU.
@@ -248,6 +271,8 @@ impl SessionManager {
             tx,
             weak: weak.clone(),
             flusher: Arc::default(),
+            quitting: AtomicBool::new(false),
+            spawning: AtomicUsize::new(0),
         });
         // Output flushes every 16 ms and the 1 s silence tick, parked while no session has a
         // process or unsent output (see `park_if_idle`); ends once the manager is gone.
@@ -364,9 +389,13 @@ impl SessionManager {
             rev: 0,
             spot: None,
         };
+        let _spawning = SpawnGuard::new(&self.spawning);
         {
             // Check and insert atomically so two starts can't share a builder.
             let mut g = self.lock();
+            if self.quitting.load(AtomicOrdering::SeqCst) {
+                bail!("the app is quitting");
+            }
             if let SessionKind::Agent { builder_id } = &info.kind {
                 self.ensure_builder_free(&g, builder_id)?;
             }
@@ -390,6 +419,7 @@ impl SessionManager {
                 prompts: adapter.as_ref().map(|a| a.screen_prompts()).unwrap_or_default(),
                 active_prompt: None,
                 prompt_seen: None,
+                osc: adapter.as_ref().filter(|a| a.reads_osc_status()).map(|_| Osc7501::default()),
                 adapter,
             });
             self.flusher.wake(); // under the sessions lock, so `park_if_idle` can't miss it
@@ -422,7 +452,12 @@ impl SessionManager {
         let mut g = self.lock();
         let Some(e) = g.get_mut(&id) else {
             drop(g);
-            let _ = handle.kill(); // closed while starting
+            // Closed while starting. Quitting leaves no time for kill()'s grace, so SIGKILL now.
+            if self.quitting.load(AtomicOrdering::SeqCst) {
+                handle.kill_now();
+            } else {
+                let _ = handle.kill();
+            }
             bail!("session was closed while starting");
         };
         // If it already exited, `handle` just drops below, releasing its fds.
@@ -433,7 +468,10 @@ impl SessionManager {
         self.send_updated(e);
         let info = e.info.clone();
         drop(g);
-        if stop_now {
+        if self.quitting.load(AtomicOrdering::SeqCst) {
+            // Recorded after `shutdown` collected its PTYs: its final SIGKILL can't reach this one.
+            handle.kill_now();
+        } else if stop_now {
             let _ = handle.kill();
         }
         Ok(info)
@@ -446,7 +484,18 @@ impl SessionManager {
         e.scrollback.push(data);
         e.info.last_output_at = now;
         e.quiet_since_ms = now;
-        let changed = e.apply(&StatusEvent::Output, now);
+        let mut changed = e.apply(&StatusEvent::Output, now);
+        // In-band status reports: the agent's own word, like a hook event.
+        let events: Vec<StatusEvent> = match e.osc.as_mut() {
+            Some(p) => p.feed(data).iter().flat_map(|r| p.events(r)).collect(),
+            None => vec![],
+        };
+        if !events.is_empty() {
+            e.policy = e.policy.after_first_event();
+        }
+        for ev in &events {
+            changed |= e.apply(ev, now);
+        }
         if e.scan_prompts(now) || changed {
             self.send_updated(e);
         }
@@ -791,14 +840,19 @@ impl SessionManager {
     /// whether or not its leader was reaped (a child that ignores SIGHUP must not outlive the
     /// app). Only groups recorded while their leader still ran are signalled, seconds later at
     /// most, so a recycled group id is never hit. Blocks for about `grace` at most (less when
-    /// everything exits on SIGHUP); keep it off the UI thread.
+    /// everything exits on SIGHUP); keep it off the UI thread. No session starts afterwards, and
+    /// one still starting is SIGKILLed as soon as its spawn returns (waited for, within `grace`).
     pub fn shutdown(&self, grace: Duration) {
-        let ptys: Vec<Arc<PtyHandle>> = self.lock().values().filter_map(|e| e.pty.clone()).collect();
+        let ptys: Vec<Arc<PtyHandle>> = {
+            let g = self.lock();
+            self.quitting.store(true, AtomicOrdering::SeqCst); // under the lock: no insert slips past
+            g.values().filter_map(|e| e.pty.clone()).collect()
+        };
         for s in self.list() {
             let _ = self.close(&s.id);
         }
         let end = Instant::now() + grace;
-        while Instant::now() < end && ptys.iter().any(|p| p.group_alive()) {
+        while Instant::now() < end && (self.spawning.load(AtomicOrdering::SeqCst) > 0 || ptys.iter().any(|p| p.group_alive())) {
             std::thread::sleep(REAP_POLL);
         }
         for p in &ptys {
@@ -1526,6 +1580,15 @@ mod tests {
     }
 
     #[test]
+    fn no_session_starts_after_shutdown() {
+        let fx = fixture();
+        fx.mgr.shutdown(Duration::from_millis(50));
+        let err = fx.mgr.start_terminal(&fx.ws).unwrap_err();
+        assert!(err.to_string().contains("quitting"), "{err}");
+        assert!(fx.mgr.list().is_empty());
+    }
+
+    #[test]
     fn quit_kills_a_trapping_child_whose_leader_died_on_sighup() {
         let fx = fixture();
         // The leader dies on SIGHUP at once (and is reaped); its child ignores SIGHUP.
@@ -1602,6 +1665,52 @@ mod tests {
         assert_eq!(state(&fx, &s.id), SessionState::Finished);
         assert!(info(&fx, &s.id).reached_finished);
         assert!(wait_until(|| last_update(&fx, &s.id).is_some_and(|i| i.state == SessionState::Finished)), "Updated emitted");
+    }
+
+    #[test]
+    fn osc_status_reports_drive_an_antigravity_session() {
+        let fx = fixture();
+        let b = Builder { id: "b1".into(), name: "b1".into(), agent: AgentKind::Antigravity, model: None, effort: None, custom_command: None };
+        // Reports split mid-sequence across writes, as a TUI may flush them.
+        let script = r#"printf '\033]7501;state=work'; sleep 0.2; printf 'ing:app=agy\033\\'; read a; printf '\033]7501;state=blocked:app=agy:kind=permission\007'; read b; printf '\033]7501;state=done:app=agy\033\\'; sleep 5"#;
+        let spec = LaunchSpec { program: "/bin/sh".into(), args: vec!["-c".into(), script.into()], env: vec![], cwd: fx.ws.path.clone() };
+        let s = fx.mgr.start_with_spec(&fx.ws, &b, spec, Arc::new(crate::adapters::AntigravityAdapter)).unwrap();
+        assert!(wait_until(|| state(&fx, &s.id) == SessionState::Working));
+        fx.mgr.write(&s.id, b"\n").unwrap();
+        assert!(wait_until(|| state(&fx, &s.id) == SessionState::NeedsYou { reason: "Wants permission".into() }));
+        fx.mgr.write(&s.id, b"\n").unwrap();
+        assert!(wait_until(|| state(&fx, &s.id) == SessionState::Finished));
+        // After a report, silence no longer reads as "Waiting in the terminal".
+        fx.mgr.tick(info(&fx, &s.id).started_at + 120_000);
+        assert_eq!(state(&fx, &s.id), SessionState::Finished);
+    }
+
+    #[test]
+    fn antigravity_answers_from_the_app_with_enter_and_esc() {
+        let fx = fixture();
+        let b = Builder { id: "b1".into(), name: "b1".into(), agent: AgentKind::Antigravity, model: None, effort: None, custom_command: None };
+        // agy 1.4.12's sequence: a tool prompt (Enter approves), work, another prompt (Esc
+        // denies), then `idle`. Single raw bytes are read so the Esc arrives on its own.
+        let script = r#"stty -icanon -icrnl -echo min 1; key() { dd bs=1 count=1 2>/dev/null | od -An -tx1 | tr -d ' \n'; }
+printf '\033]7501;state=blocked:kind=permission:app=antigravity:msg=QXBwcm92ZSBSdW5Db21tYW5kOiBwd2Q=\033\\'
+[ "$(key)" = 0d ] || exit 3
+printf '\033]7501;state=working:app=antigravity\033\\'
+printf '\033]7501;state=blocked:kind=permission:app=antigravity:msg=V3JpdGUgaGVsbG8udHh0\033\\'
+[ "$(key)" = 1b ] || exit 4
+printf '\033]7501;state=idle:app=antigravity\033\\'; sleep 5"#;
+        let spec = LaunchSpec { program: "/bin/sh".into(), args: vec!["-c".into(), script.into()], env: vec![], cwd: fx.ws.path.clone() };
+        let s = fx.mgr.start_with_spec(&fx.ws, &b, spec, Arc::new(crate::adapters::AntigravityAdapter)).unwrap();
+        assert!(wait_until(|| state(&fx, &s.id) == SessionState::NeedsYou { reason: "Approve RunCommand: pwd".into() }));
+        assert!(info(&fx, &s.id).awaiting_decision);
+        fx.mgr.approve(&s.id).unwrap();
+        assert!(wait_until(|| state(&fx, &s.id) == SessionState::NeedsYou { reason: "Write hello.txt".into() }));
+        assert_eq!(info(&fx, &s.id).steps, 1, "each working report is a step");
+        fx.mgr.deny(&s.id).unwrap();
+        // The `idle` after the Esc keeps the denial's reason and arms no buttons.
+        std::thread::sleep(Duration::from_millis(600));
+        let i = info(&fx, &s.id);
+        assert_eq!(i.state, SessionState::NeedsYou { reason: DENIED_REASON.into() }, "script exits non-zero on a wrong key");
+        assert!(!i.awaiting_decision);
     }
 
     #[test]

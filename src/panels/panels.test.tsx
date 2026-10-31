@@ -105,17 +105,28 @@ test('builder_shows_class_and_gear_in_words', () => {
 
 test('builder_effort_change_updates', async () => {
   render(<BuilderPanel builderId="b1" />);
-  await act(async () => { fireEvent.change(screen.getByLabelText('Effort'), { target: { value: 'low' } }); });
+  const slider = screen.getByLabelText('Effort') as HTMLInputElement;
+  expect(slider.type).toBe('range');
+  expect(slider.getAttribute('aria-valuetext')).toBe('Max'); // steps: Default, Low, Medium, High, X-High, Max
+  await act(async () => { fireEvent.change(slider, { target: { value: '1' } }); });
   expect(ipc.updateBuilder).toHaveBeenCalledWith({ ...builder(), effort: 'low' });
+});
+
+test('builder_model_is_a_slider', async () => {
+  render(<BuilderPanel builderId="b1" />);
+  const slider = screen.getByLabelText('Model') as HTMLInputElement;
+  expect(slider.type).toBe('range');
+  expect([slider.max, slider.value, slider.getAttribute('aria-valuetext')]).toEqual(['3', '3', 'opus']); // Default, haiku, sonnet, opus
+  await act(async () => { fireEvent.change(slider, { target: { value: '2' } }); });
+  expect(ipc.updateBuilder).toHaveBeenCalledWith({ ...builder(), model: 'sonnet' });
 });
 
 test('builder_model_and_effort_reset_to_default', async () => {
   act(() => useApp.setState({ builders: [builder({ model: null, effort: 'high' })] }));
   render(<BuilderPanel builderId="b1" />);
-  const model = screen.getByLabelText('Model') as HTMLSelectElement;
-  expect(model.value).toBe(''); // null shows as Default, not as the first model
-  expect(model.selectedOptions[0].textContent).toBe('Default');
-  await act(async () => { fireEvent.change(screen.getByLabelText('Effort'), { target: { value: '' } }); });
+  // null shows as Default, not as the first model
+  expect(screen.getByLabelText('Model').getAttribute('aria-valuetext')).toBe('Default');
+  await act(async () => { fireEvent.change(screen.getByLabelText('Effort'), { target: { value: '0' } }); });
   expect(ipc.updateBuilder).toHaveBeenCalledWith({ ...builder({ model: null, effort: 'high' }), effort: null });
 });
 
@@ -151,6 +162,7 @@ test('agent_model_effort_locked_while_busy', () => {
   act(() => useApp.setState({ sessions: { s1: sess() } }));
   render(<BuilderPanel builderId="b1" />);
   for (const l of ['Agent', 'Model', 'Effort']) expect((screen.getByLabelText(l) as HTMLSelectElement).disabled).toBe(true);
+  expect((screen.getByRole('radio', { name: 'Codex' }) as HTMLButtonElement).matches(':disabled')).toBe(true);
   expect((screen.getByLabelText('Name') as HTMLInputElement).disabled).toBe(false);
   expect(screen.getByTestId('builder-busy-note').textContent).toMatch(/locked until it ends/);
   fireEvent.click(screen.getByText('Open session'));
@@ -234,4 +246,12 @@ test('settings_toggle_disables_updates: Town Hall checkbox persists via set_sett
   await act(async () => { fireEvent.click(box); });
   expect(ipc.setSettings).toHaveBeenCalledWith({ updatesEnabled: false });
   expect((screen.getByLabelText('Check for updates automatically') as HTMLInputElement).checked).toBe(false);
+});
+
+test('builder_agent_is_icon_buttons; switching resets model and effort to the new agent', async () => {
+  render(<BuilderPanel builderId="b1" />);
+  expect(screen.getByRole('radio', { checked: true }).getAttribute('aria-label')).toBe('Claude Code');
+  expect(screen.getByTestId('agent-logo-codex')).toBeTruthy();
+  await act(async () => { fireEvent.click(screen.getByRole('radio', { name: 'Codex' })); });
+  expect(ipc.updateBuilder).toHaveBeenCalledWith({ ...builder(), agent: 'codex', model: null, effort: null });
 });

@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::model::AppData;
+use crate::model::{AppData, Workspace};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Ship timestamps older than this are dropped on save.
@@ -58,6 +58,20 @@ pub fn mark_missing(data: &mut AppData) {
     for w in &mut data.workspaces {
         w.missing = !w.path.is_dir();
     }
+}
+
+/// Applies freshly checked `missing` flags (workspace id, missing) during a run; returns the
+/// workspaces whose flag changed (to save and send). Ids no longer present are ignored.
+pub fn apply_missing(data: &mut AppData, checked: &[(String, bool)]) -> Vec<Workspace> {
+    let mut changed = Vec::new();
+    for w in &mut data.workspaces {
+        let Some(&(_, missing)) = checked.iter().find(|(id, _)| *id == w.id) else { continue };
+        if missing != w.missing {
+            w.missing = missing;
+            changed.push(w.clone());
+        }
+    }
+    changed
 }
 
 #[cfg(test)]
@@ -127,6 +141,20 @@ mod tests {
         data.workspaces[0].path = dir.path().to_path_buf();
         mark_missing(&mut data);
         assert!(!data.workspaces[0].missing);
+    }
+
+    #[test]
+    fn apply_missing_reports_only_changes_both_ways() {
+        let mut data = AppData::default();
+        data.workspaces.push(Workspace { id: "w".into(), name: "w".into(), path: "/nope".into(), created_at: 0, missing: false, level: 1, xp: 0, compound: None });
+        let gone = apply_missing(&mut data, &[("w".into(), true), ("removed".into(), true)]);
+        assert_eq!(gone.len(), 1);
+        assert!(gone[0].missing && data.workspaces[0].missing);
+        assert!(apply_missing(&mut data, &[("w".into(), true)]).is_empty(), "unchanged: nothing to send");
+        assert!(apply_missing(&mut data, &[]).is_empty(), "unchecked: left alone");
+        let back = apply_missing(&mut data, &[("w".into(), false)]);
+        assert_eq!(back.len(), 1);
+        assert!(!back[0].missing && !data.workspaces[0].missing);
     }
 
     #[test]

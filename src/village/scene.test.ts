@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Builder, Compound, SessionInfo, SessionState, Tile, Workspace } from '../api/types';
 import { findSpot, placeCompound, wallRect } from './layout';
+import { enclosure, seedOf } from './enclosure';
 import { scaffoldHeight } from './look';
 import { buildEntities, needsRefit, rendererOptions, structureLook, type VillageInput } from './scene';
 
@@ -17,11 +18,6 @@ const sess = (
 });
 const bld = (id: string, agent: Builder['agent'] = 'claude'): Builder =>
   ({ id, name: id, agent, model: null, effort: null, customCommand: null });
-
-const perimeter = (c: Compound) => {
-  const r = wallRect(c);
-  return 2 * (r.w + r.h) - 4;
-};
 
 describe('buildEntities', () => {
   it('status_bars_over_working_needs_and_stuck_structures_only', () => {
@@ -57,7 +53,7 @@ describe('buildEntities', () => {
     const s3 = findSpot(c2, [])!;
     const input: VillageInput = {
       workspaces: [ws('w1', c1), ws('w2', c2)],
-      builders: [bld('b1'), bld('b2', 'codex'), bld('b3', 'gemini')],
+      builders: [bld('b1'), bld('b2', 'codex'), bld('b3', 'antigravity')],
       sessions: [
         sess('a1', 'w1', 'b1', s1),
         sess('a2', 'w1', 'b2', s2),
@@ -70,8 +66,14 @@ describe('buildEntities', () => {
     expect(count('hall')).toBe(1);
     expect(count('house')).toBe(2);
     expect(count('structure')).toBe(3);
-    // every perimeter tile is a wall segment except the one gate tile per compound
-    expect(count('wall')).toBe(perimeter(c1) - 1 + perimeter(c2) - 1);
+    // the organic wall around each compound's ground, minus the one gate tile per compound
+    const walls = (id: string, c: Compound, spots: Tile[]) => enclosure(c, spots, 1, seedOf(id)).walls.length - 1;
+    expect(count('wall')).toBe(walls('w1', c1, [s1, s2]) + walls('w2', c2, [s3]));
+    for (const e of es.filter((x) => x.kind === 'wall')) {
+      const [, wsId, tx, ty] = e.id.split(':');
+      const r = wallRect(wsId === 'w1' ? c1 : c2);
+      expect(+tx >= r.x0 && +tx < r.x0 + r.w && +ty >= r.y0 && +ty < r.y0 + r.h).toBe(true);
+    }
     expect(count('gate')).toBe(2);
     const badges = es.filter((e) => e.kind === 'badge');
     expect(badges).toHaveLength(1);

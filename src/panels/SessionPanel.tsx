@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ipc } from '../api/ipc';
 import { stateLabel, useApp } from '../state/store';
 import type { CloseOutcome, Review } from '../api/types';
-import TerminalView from '../components/TerminalView';
+import TerminalView from '../components/LazyTerminalView';
 import { CLASS_NAMES, GEAR_NAMES, classOf, gearOf } from '../village/look';
 import PopOutTerminal from './PopOutTerminal';
 
@@ -51,6 +51,8 @@ export default function SessionPanel({ sessionId, onClosed }: { sessionId: strin
     try { await p; } catch (e) { if (stillShown(sid)) setError(String(e)); }
   };
   const st = session.state.kind;
+  // A review describes one Finished moment; once the agent works again it is stale.
+  if (review && st !== 'finished') setReview(null);
   const answer = async (p: () => Promise<unknown>) => {
     if (answering) return;
     const sid = sessionId;

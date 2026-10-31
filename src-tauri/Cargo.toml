@@ -1,8 +1,9 @@
 [package]
+license = "MIT"
 name = "clash-of-claudes"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "Run all your coding agents from one village"
+authors = ["Clash of Claudes contributors"]
 edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -50,4 +51,13 @@ strip = true
 # Proc-macro dylibs stripped by the macOS toolchain fail to load ("mis-aligned LINKEDIT string
 # pool"); strip only the final binary.
 [profile.release.build-override]
+strip = false
+
+# Fast local installs (scripts/install-local.sh): release speed without LTO's long link, and
+# incremental rebuilds. Never used for distributed builds.
+[profile.local]
+inherits = "release"
+codegen-units = 16
+lto = false
+incremental = true
 strip = false

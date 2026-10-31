@@ -3,6 +3,7 @@ import { ipc } from '../api/ipc';
 import { idleBuilders, useApp } from '../state/store';
 import * as wsActions from '../state/workspaceActions';
 import AgentsStatus from './AgentsStatus';
+import FolderHint from './FolderHint';
 import { CLASS_NAMES, PALETTE, classOf, houseColors } from '../village/look';
 
 export default function TownHallPanel() {
@@ -11,6 +12,8 @@ export default function TownHallPanel() {
   const builders = useApp((s) => s.builders);
   const setSelection = useApp((s) => s.setSelection);
   const [newName, setNewName] = useState<string | null>(null);
+  // The name stays until the folder exists: a cancelled picker keeps it for another try.
+  const create = async (pick = false) => { if (newName && await wsActions.createFolder(newName, pick)) setNewName(null); };
   const [updatesEnabled, setUpdatesEnabled] = useState(true);
   useEffect(() => {
     let live = true;
@@ -45,11 +48,12 @@ export default function TownHallPanel() {
           : (
             <span className="sp-inline">
               <input autoFocus aria-label="Folder name" placeholder="Folder name" value={newName} onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') void wsActions.createFolder(newName).then(() => setNewName(null)); }} />
-              <button className="hud-btn sm" disabled={!newName.trim()} onClick={() => void wsActions.createFolder(newName).then(() => setNewName(null))}>Pick parent</button>
+                onKeyDown={(e) => { if (e.key === 'Enter') void create(); if (e.key === 'Escape') setNewName(null); }} />
+              <button className="hud-btn sm" disabled={!newName.trim()} onClick={() => void create()}>Create</button>
             </span>
           )}
       </div>
+      {newName !== null && <FolderHint disabled={!newName.trim()} onChoose={() => void create(true)} />}
       <div className="sp-sec">Idle builders ({idle.length})</div>
       {idle.length === 0 && (
         <div className="sp-note">{builders.length === 0 ? 'No builders yet — recruit one from + New session.' : 'Every builder is in a session.'}</div>

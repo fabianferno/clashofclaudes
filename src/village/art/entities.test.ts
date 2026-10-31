@@ -7,7 +7,7 @@ import {
 import { getTexture, clearTextures, textureCacheSize } from '../textures';
 import type { AgentKind, Compound } from '../../api/types';
 
-const AGENTS: AgentKind[] = ['claude', 'codex', 'gemini', 'opencode', 'custom'];
+const AGENTS: AgentKind[] = ['claude', 'codex', 'antigravity', 'opencode', 'custom'];
 const ok = (a: { canvas: HTMLCanvasElement; ax: number; ay: number }) => {
   expect(a.canvas.width).toBeGreaterThan(0);
   expect(a.canvas.height).toBeGreaterThan(0);
@@ -29,7 +29,7 @@ describe('art', () => {
           for (const pose of ['idle', 'walk0', 'walk1', 'hammer0', 'hammer1', 'cheer', 'sad'] as const)
             for (const face of [1, -1] as const) ok(drawBuilder(a, cls, gear, pose, face));
     }
-    for (const d of ['x', 'y'] as const) ok(drawWallSeg(d));
+    for (const l of ['ew', 'ns', 'es', 'nw', 'nesw', '']) ok(drawWallSeg(l));
     for (const s of ['n', 's', 'e', 'w'] as const) ok(drawGate(s));
     for (const v of [0, 1, 2, 3] as const) ok(drawTree(v));
     ok(drawStatusBar('working', '12m · 34 steps'));
@@ -81,7 +81,7 @@ describe('palette', () => {
     });
     expect(PALETTE.claude).toMatchObject({ body: '#d97757', roof: '#d4683f', wall: '#f3e2c4' });
     expect(PALETTE.codex).toMatchObject({ body: '#3a3a40', roof: '#4a4d57', wall: '#cfccc5' });
-    expect(PALETTE.gemini).toMatchObject({ body: '#4f7cf0', roof: '#4f7cf0', wall: '#eef1f8' });
+    expect(PALETTE.antigravity).toMatchObject({ body: '#4f7cf0', roof: '#4f7cf0', wall: '#eef1f8' });
     expect(PALETTE.opencode).toMatchObject({ body: '#33a889', roof: '#2f9a7e', wall: '#dcbf92' });
   });
 });

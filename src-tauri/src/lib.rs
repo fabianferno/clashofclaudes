@@ -6,6 +6,7 @@ pub mod git;
 pub mod hooks;
 pub mod model;
 pub mod notify;
+pub mod osc;
 pub mod persist;
 pub mod platform;
 pub mod pty;
@@ -194,7 +195,10 @@ pub fn run() {
             let _ = cell.set(Arc::downgrade(&manager));
             // Session dirs left by a crash; none is live yet, so this only removes leftovers.
             manager.sweep_stale_session_dirs();
-            app.manage(NotifyState { notifier: notify::Notifier::new(), denied: AtomicBool::new(false), badge: notify::BadgeCache::default() });
+            // A launch in the background (`open -g`, or focus moved away while starting) is
+            // unfocused from the start; a later focus event corrects either way.
+            let focused = app.get_webview_window("main").is_some_and(|w| w.is_focused().unwrap_or(false));
+            app.manage(NotifyState { notifier: notify::Notifier::with_focus(focused), denied: AtomicBool::new(false), badge: notify::BadgeCache::default() });
             let click_handle = app.handle().clone();
             let _ = app.notification().on_action(move |a| {
                 if a.action_id() != "tap" {
@@ -228,6 +232,15 @@ pub fn run() {
             {
                 ns.notifier.set_focused(*f);
             }
+            if let WindowEvent::Focused(true) = event {
+                // Off the UI thread: `is_dir` on a stalled network mount can block.
+                let app = window.app_handle().clone();
+                std::thread::spawn(move || {
+                    if let Some(st) = app.try_state::<AppState>() {
+                        commands::recheck_workspaces(&app, &st);
+                    }
+                });
+            }
             if let WindowEvent::CloseRequested { api, .. } = event {
                 let st = window.state::<AppState>();
                 let live = st.manager.running_process_count();
@@ -242,6 +255,7 @@ pub fn run() {
             commands::detect_agents,
             commands::add_workspace,
             commands::create_workspace,
+            commands::default_projects_dir,
             commands::remove_workspace,
             commands::create_builder,
             commands::update_builder,
@@ -266,6 +280,7 @@ pub fn run() {
             commands::set_settings,
             commands::check_for_update,
             commands::install_update,
+            commands::restart_for_update,
             commands::driver_result,
         ])
         .build(tauri::generate_context!())

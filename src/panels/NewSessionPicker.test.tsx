@@ -34,7 +34,7 @@ test('commandPreview for claude', () => {
   expect(commandPreview(claude, 'opus', 'max', 'fix "bug"')).toBe('claude … --model opus --effort max -- "fix \\"bug\\""');
 });
 const opencode: AgentInfo = { ...claude, kind: 'opencode', label: 'OpenCode', models: [], canApprove: false };
-const gemini: AgentInfo = { ...claude, kind: 'gemini', label: 'Gemini CLI (API key)', models: ['flash', 'pro'], efforts: [], canApprove: false };
+const antigravity: AgentInfo = { ...claude, kind: 'antigravity', label: 'Antigravity CLI', models: ['gemini-3.8-flash-medium'], efforts: [], canApprove: false };
 test('commandPreview mirrors the Codex adapter', () => {
   expect(commandPreview(codex, 'gpt-6', 'high', 'fix it')).toBe('codex -m gpt-6 -c model_reasoning_effort="high" … -- "fix it"');
   expect(commandPreview(codex)).toBe('codex …');
@@ -45,9 +45,9 @@ test('commandPreview mirrors the OpenCode adapter (effort only via config, for p
   expect(commandPreview(opencode, 'gpt-5', 'high')).toBe('opencode … --model=gpt-5');
   expect(commandPreview(opencode, undefined, 'high')).toBe('opencode …');
 });
-test('commandPreview mirrors the Gemini adapter (effort is display-only)', () => {
-  expect(commandPreview(gemini, 'flash', 'high', 'fix it')).toBe('gemini --model=flash --prompt-interactive="fix it"');
-  expect(commandPreview(gemini)).toBe('gemini');
+test('commandPreview mirrors the Antigravity adapter (effort is part of the model id)', () => {
+  expect(commandPreview(antigravity, 'gemini-3.8-flash-medium', 'high', 'fix it')).toBe('agy --model=gemini-3.8-flash-medium --prompt-interactive="fix it"');
+  expect(commandPreview(antigravity)).toBe('agy');
 });
 test('agents without a model list get a free-text model; empty means default', async () => {
   const codexOn = { ...codex, installed: true, models: [] };
@@ -58,7 +58,7 @@ test('agents without a model list get a free-text model; empty means default', a
   render(<NewSessionPicker workspaceId="w" />);
   const model = () => screen.getByPlaceholderText(/model id|provider\/model/) as HTMLInputElement;
   expect(model().placeholder).toBe('model id');
-  fireEvent.change(screen.getByLabelText('Agent'), { target: { value: 'opencode' } });
+  fireEvent.click(screen.getByRole('radio', { name: 'OpenCode' }));
   expect(model().placeholder).toBe('provider/model');
   fireEvent.change(model(), { target: { value: ' openai/gpt-5 ' } });
   expect(screen.getByText(/^opencode … --model=openai\/gpt-5$/)).toBeTruthy();
@@ -79,25 +79,28 @@ test('commandPreview omits unset model/effort', () => {
 test('picker_disables_uninstalled', () => {
   setup({ agents: [claude, codex, custom] });
   render(<NewSessionPicker workspaceId="w" />);
-  const opt = (name: string) => screen.getAllByRole('option').find((o) => o.textContent?.startsWith(name)) as HTMLOptionElement;
-  expect(opt('Claude Code').disabled).toBe(false);
-  expect(opt('Custom command').disabled).toBe(false);
-  expect(opt('Codex').disabled).toBe(true);
-  expect(opt('Codex').textContent).toBe('Codex — Not installed — see Town Hall');
+  const opt = (name: RegExp) => screen.getByRole('radio', { name }) as HTMLButtonElement;
+  expect(opt(/^Claude Code$/).disabled).toBe(false);
+  expect(opt(/^Custom command$/).disabled).toBe(false);
+  expect(opt(/^Codex/).disabled).toBe(true);
+  expect(opt(/^Codex/).getAttribute('aria-label')).toBe('Codex — Not installed — see Town Hall');
+  expect(screen.getByTestId('agent-logo-codex')).toBeTruthy(); // app-icon buttons, as in the Town Hall
+  // The agents list (install commands, Re-check) lives in the Town Hall only.
+  expect(screen.queryByTestId('agents-status')).toBeNull();
   // the default never lands on an uninstalled agent
-  expect((screen.getByLabelText('Agent') as HTMLSelectElement).value).toBe('claude');
+  expect(screen.getByRole('radio', { checked: true }).getAttribute('aria-label')).toBe('Claude Code');
 });
 
 test('agent default follows agents detected after mount until the user picks', () => {
   setup({ agents: [] });
   render(<NewSessionPicker workspaceId="w" />);
   act(() => useApp.setState({ agents: [claude, custom] }));
-  const agentSelect = screen.getByText('Agent').querySelector('select') as HTMLSelectElement;
-  expect(agentSelect.value).toBe('claude');
+  const checked = () => screen.getByRole('radio', { checked: true }).getAttribute('aria-label');
+  expect(checked()).toBe('Claude Code');
   expect(screen.getByText(/^claude …/)).toBeTruthy();
-  fireEvent.change(agentSelect, { target: { value: 'custom' } });
+  fireEvent.click(screen.getByRole('radio', { name: 'Custom command' }));
   act(() => useApp.setState({ agents: [claude, custom, { ...codex, installed: true }] }));
-  expect((screen.getByText('Agent').querySelector('select') as HTMLSelectElement).value).toBe('custom');
+  expect(checked()).toBe('Custom command');
 });
 
 test('recruit_default_when_all_busy', () => {
@@ -125,7 +128,7 @@ test('recruit_name_defaults_to_unused', () => {
 test('recruit requires a command for custom', async () => {
   setup();
   render(<NewSessionPicker workspaceId="w" />);
-  fireEvent.change(screen.getByLabelText('Agent'), { target: { value: 'custom' } });
+  fireEvent.click(screen.getByRole('radio', { name: 'Custom command' }));
   fireEvent.click(screen.getByText('Start'));
   expect(await screen.findByText('Enter the custom command')).toBeTruthy();
   expect(ipc.createBuilder).not.toHaveBeenCalled();
@@ -176,4 +179,35 @@ test('ensureSpot failure is non-fatal: session selected, error reported, started
   await vi.waitFor(() => expect(useApp.getState().selection).toEqual({ kind: 'session', id: 's7' }));
   expect(useApp.getState().error).toBe('no room');
   expect(ipc.startSession).toHaveBeenCalledTimes(1);
+});
+
+test('recruiting picks the model and the effort with sliders', async () => {
+  setup();
+  vi.mocked(ipc.createBuilder).mockResolvedValue(bld('b1', 'Kai'));
+  vi.mocked(ipc.startSession).mockResolvedValue(sess('s', 'b1', { kind: 'working' }));
+  render(<NewSessionPicker workspaceId="w" />);
+  const model = screen.getByLabelText('Model') as HTMLInputElement;
+  expect(model.max).toBe('3'); // Default, haiku, sonnet, opus
+  fireEvent.change(model, { target: { value: '3' } });
+  expect(model.getAttribute('aria-valuetext')).toBe('opus');
+  const slider = screen.getByLabelText('Effort') as HTMLInputElement;
+  fireEvent.change(slider, { target: { value: '2' } }); // Default, Low, Max
+  expect(slider.getAttribute('aria-valuetext')).toBe('Max');
+  fireEvent.click(screen.getByText('Start'));
+  await vi.waitFor(() => expect(ipc.createBuilder).toHaveBeenCalledWith(expect.any(String), 'claude', 'opus', 'max', null));
+});
+
+test('an agent without efforts shows no effort slider', () => {
+  setup({ agents: [{ ...claude, efforts: [] }, custom] });
+  render(<NewSessionPicker workspaceId="w" />);
+  expect(screen.queryByLabelText('Effort')).toBeNull();
+});
+
+test('a long model list hides the tick labels and names only the chosen model', () => {
+  const many = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'];
+  setup({ agents: [{ ...claude, models: many }, custom] });
+  const { container } = render(<NewSessionPicker workspaceId="w" />);
+  fireEvent.change(screen.getByLabelText('Model'), { target: { value: '4' } });
+  expect(screen.getByLabelText('Model').getAttribute('aria-valuetext')).toBe('m4');
+  expect(container.querySelectorAll('.slider-ticks')).toHaveLength(1); // the effort slider's only
 });

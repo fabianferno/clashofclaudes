@@ -8,15 +8,6 @@ import {
 
 const GOLD = '#ffcf33';
 
-function stoneCourses(k: Box, from: number, to: number, step: number, col: string, lw: number): void {
-  const g = ctx();
-  g.strokeStyle = col; g.lineWidth = lw;
-  for (let v = from; v < to; v += step) {
-    const a = up(k.D, v), c = up(k.C, v), b = up(k.B, v);
-    g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(c.x, c.y); g.lineTo(b.x, b.y); g.stroke();
-  }
-}
-
 /** Walled stone foundation plus plastered body, door, windows and roof (mockup `houseBody`). */
 function houseBody(
   gx: number, gy: number, w: number, d: number, h: number, wall: string, roofColor: string, rh: number,
@@ -85,56 +76,109 @@ export function drawHouse(stage: 0 | 1 | 2 | 3 | 4, roofColor: string, wall: str
 type StructStage = 'foundation' | 'scaffold' | 'complete';
 
 /** Agent structure. Anchor: the footprint's front corner, grid point (gx+2, gy+2). 2x2 footprint, body 1.6 tiles, h=28, roof 22. `height01` is built fraction. */
+/**
+ * A session's structure as a camp tent in the agent's colours: a ground cloth and pegs while it
+ * starts, the tent being pitched (poles, canvas rising with the session's progress, a dashed ghost
+ * of the full tent) while it works, and the pitched tent with its door, guy ropes, pennant and the
+ * review ribbon once finished.
+ */
 export function drawStructure(agent: AgentKind, stage: StructStage, height01: number): Art {
   const P = PALETTE[agent];
-  const w = 1.6, h = 28, rh = 22, base = 8, gx = 0.2, gy = 0.2;
+  const gx = 0.2, gy = 0.2, w = 1.6, RH = 46; // footprint and ridge height (px)
+  const canvasLit = shade(P.body, 0.18), canvasDark = shade(P.body, -0.12);
   return bake(220, 250, 110, 200, () => {
     const g = ctx();
-    shadow(iso(1, 1), 52, 28, 0.2, 6, 4);
-    isoBox(gx - 0.1, gy - 0.1, w + 0.2, w + 0.2, base, '#a9a196', '#bdb5a8', '#958d80');
-    if (stage === 'complete') {
-      const { r } = houseBody(gx, gy, w, w, h, P.wall, P.roof, rh);
-      const cp = up(iso(gx + w * 0.75, gy + w * 0.25), h + base + rh * 0.4);
-      poly([cp, { x: cp.x + 6, y: cp.y + 3 }, { x: cp.x + 6, y: cp.y - 9 }, { x: cp.x, y: cp.y - 12 }], '#8c857a', OUT, 1.5);
-      // review ribbon
-      const p = up(r.apex, 24);
-      const gr = g.createRadialGradient(p.x, p.y, 2, p.x, p.y, 34);
-      gr.addColorStop(0, 'rgba(255,230,120,.7)'); gr.addColorStop(1, 'rgba(255,230,120,0)');
-      g.fillStyle = gr; g.beginPath(); g.arc(p.x, p.y, 34, 0, Math.PI * 2); g.fill();
-      poly([{ x: p.x - 9, y: p.y + 6 }, { x: p.x - 14, y: p.y + 22 }, { x: p.x - 7, y: p.y + 18 }, { x: p.x - 3, y: p.y + 24 }, { x: p.x - 1, y: p.y + 8 }], '#c2372b', OUT, 1.8);
-      poly([{ x: p.x + 9, y: p.y + 6 }, { x: p.x + 14, y: p.y + 22 }, { x: p.x + 7, y: p.y + 18 }, { x: p.x + 3, y: p.y + 24 }, { x: p.x + 1, y: p.y + 8 }], '#c2372b', OUT, 1.8);
-      dot(p.x, p.y, 13, GOLD, OUT, 2.5);
-      dot(p.x, p.y, 9, 'rgba(0,0,0,0)', '#fff3b0', 1.5);
-      // check mark drawn as a path (no font dependency)
-      g.lineCap = 'round'; g.lineJoin = 'round';
-      for (const [col, lw] of [[OUT, 6], ['#fff', 3]] as [string, number][]) {
-        g.strokeStyle = col; g.lineWidth = lw;
-        g.beginPath(); g.moveTo(p.x - 5, p.y + 0.5); g.lineTo(p.x - 1.5, p.y + 4); g.lineTo(p.x + 5.5, p.y - 4); g.stroke();
-      }
-      g.lineCap = 'butt';
+    const at = (x: number, y: number, h = 0) => up(iso(x, y), h);
+    // ridge along x, over the footprint's middle
+    const ym = gy + w / 2;
+    const R1 = at(gx, ym, RH), R2 = at(gx + w, ym, RH);
+    const eS1 = at(gx, gy + w), eS2 = at(gx + w, gy + w); // south eave (front-left face)
+    const eN1 = at(gx, gy), eN2 = at(gx + w, gy);
+    const gE1 = eN2, gE2 = eS2; // east gable base (front-right face)
+    shadow(iso(1, 1), 50, 26, 0.2, 6, 4);
+    // ground cloth
+    poly([at(gx - 0.08, gy - 0.08), at(gx + w + 0.08, gy - 0.08), at(gx + w + 0.08, gy + w + 0.08), at(gx - 0.08, gy + w + 0.08)],
+      'rgba(120, 96, 60, 0.55)', 'rgba(29,19,11,.45)', 1.5);
+    const peg = (x: number, y: number) => {
+      const p = at(x, y);
+      line(p, up(p, 6), OUT, 3.2, 'round');
+      line(p, up(p, 6), '#d8b679', 1.6, 'round');
+    };
+    const pegs: [number, number][] = [[gx - 0.25, ym], [gx + w + 0.25, ym], [gx, gy - 0.12], [gx + w, gy + w + 0.12]];
+    if (stage === 'foundation') {
+      pegs.forEach(([x, y]) => peg(x, y));
+      ghost();
       return;
     }
-    const prog = stage === 'foundation' ? 0 : Math.max(0, Math.min(1, height01));
-    const H = h * prog;
-    if (H > 0.5) {
-      const k = isoBox(gx, gy, w, w, H + base, shade(P.wall, -0.06), P.wall, shade(P.wall, -0.22));
-      stoneCourses(k, base + 8, H + base, 8, 'rgba(120,90,60,.35)', 1.1);
-    }
-    // blueprint ghost of the full size
-    const HH = h + base, A = iso(gx, gy), B = iso(gx + w, gy), C = iso(gx + w, gy + w), D = iso(gx, gy + w);
-    g.setLineDash([5, 5]); g.strokeStyle = 'rgba(255,255,255,.85)'; g.lineWidth = 2;
-    for (const p of [D, C, B]) { g.beginPath(); g.moveTo(p.x, p.y - H - base); g.lineTo(p.x, p.y - HH); g.stroke(); }
-    poly([up(A, HH), up(B, HH), up(C, HH), up(D, HH)], null, 'rgba(255,255,255,.85)');
-    g.setLineDash([]);
-    if (stage === 'scaffold' && H > 0.5) {
-      const o = 0.26;
-      const S = [iso(gx - o, gy + w + o), iso(gx + w + o, gy + w + o), iso(gx + w + o, gy - o)];
-      const beamAt = (p1: Pt, p2: Pt, bw: number, col: string) => { line(p1, p2, OUT, bw + 3, 'round'); line(p1, p2, col, bw, 'round'); };
-      S.forEach((p) => beamAt(p, up(p, H + base + 14), 3, '#a0703c'));
-      for (let v = 16; v < H + base + 8; v += 18) {
-        beamAt(up(S[0], v), up(S[1], v), 3.5, '#d29a55');
-        beamAt(up(S[1], v), up(S[2], v), 3.5, '#c48a48');
+    const prog = stage === 'complete' ? 1 : Math.max(0, Math.min(1, height01));
+    // back slope (north) shows only above the ridge line: draw it first
+    poly([eN1, eN2, R2, R1], canvasDark, OUT, 2);
+    if (stage === 'complete') {
+      poly([eS1, eS2, R2, R1], canvasLit, OUT, 2.2);
+      // seams down the front slope
+      g.strokeStyle = 'rgba(29,19,11,.22)'; g.lineWidth = 1.2;
+      for (const t of [0.33, 0.66]) {
+        const a = lerp(R1, R2, t), b = lerp(eS1, eS2, t);
+        g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
       }
+      poly([gE1, gE2, R2], canvasDark, OUT, 2.2);
+      // open door on the east gable: a dark opening with the flap folded back
+      const mid = lerp(gE1, gE2, 0.5), top = lerp(mid, R2, 0.62);
+      const dl = lerp(gE1, gE2, 0.28), dr = lerp(gE1, gE2, 0.72);
+      poly([dl, top, dr], '#2b2018', OUT, 1.5);
+      poly([dr, top, lerp(dr, gE2, 0.7)], shade(P.body, 0.32), OUT, 1.5);
+      // poles poking out of the ridge, guy ropes and the pennant
+      line(R1, up(R1, 7), OUT, 3.5, 'round'); line(R2, up(R2, 9), OUT, 3.5, 'round');
+      g.strokeStyle = 'rgba(29,19,11,.55)'; g.lineWidth = 1.2;
+      for (const [r, x] of [[R1, gx - 0.25], [R2, gx + w + 0.25]] as [Pt, number][]) {
+        const p = at(x, ym);
+        g.beginPath(); g.moveTo(r.x, r.y); g.lineTo(p.x, p.y); g.stroke();
+      }
+      pegs.forEach(([x, y]) => peg(x, y));
+      const fp = up(R2, 9);
+      poly([fp, { x: fp.x + 13, y: fp.y + 4 }, { x: fp.x, y: fp.y + 8 }], P.hat, OUT, 1.5);
+      ribbon(up(lerp(R1, R2, 0.5), 30));
+      return;
+    }
+    // pitching: A-frame poles and the ridge pole, canvas rising from the eaves with progress
+    const pole = (a: Pt, b: Pt) => { line(a, b, OUT, 5, 'round'); line(a, b, '#a0703c', 2.6, 'round'); };
+    pole(eN1, R1); pole(eN2, R2);
+    if (prog > 0.02) {
+      poly([eS1, eS2, lerp(eS2, R2, prog), lerp(eS1, R1, prog)], canvasLit, OUT, 2);
+      poly([gE1, gE2, lerp(gE2, R2, prog), lerp(gE1, R2, prog)], canvasDark, OUT, 2);
+    }
+    pole(eS1, R1); pole(eS2, R2); pole(R1, R2);
+    pegs.forEach(([x, y]) => peg(x, y));
+    ghost();
+
+    /** Dashed outline of the pitched tent. */
+    function ghost() {
+      g.setLineDash([5, 5]); g.strokeStyle = 'rgba(255,255,255,.85)'; g.lineWidth = 2;
+      for (const path of [[eS1, R1, R2, eS2], [eN2, R2]] as Pt[][]) {
+        g.beginPath(); g.moveTo(path[0].x, path[0].y);
+        for (const p of path.slice(1)) g.lineTo(p.x, p.y);
+        g.stroke();
+      }
+      g.setLineDash([]);
     }
   }, iso(2, 2));
+}
+
+/** The finished-structure review ribbon (gold medal with a check) centred at `p`. */
+function ribbon(p: Pt): void {
+  const g = ctx();
+  const gr = g.createRadialGradient(p.x, p.y, 2, p.x, p.y, 34);
+  gr.addColorStop(0, 'rgba(255,230,120,.7)'); gr.addColorStop(1, 'rgba(255,230,120,0)');
+  g.fillStyle = gr; g.beginPath(); g.arc(p.x, p.y, 34, 0, Math.PI * 2); g.fill();
+  poly([{ x: p.x - 9, y: p.y + 6 }, { x: p.x - 14, y: p.y + 22 }, { x: p.x - 7, y: p.y + 18 }, { x: p.x - 3, y: p.y + 24 }, { x: p.x - 1, y: p.y + 8 }], '#c2372b', OUT, 1.8);
+  poly([{ x: p.x + 9, y: p.y + 6 }, { x: p.x + 14, y: p.y + 22 }, { x: p.x + 7, y: p.y + 18 }, { x: p.x + 3, y: p.y + 24 }, { x: p.x + 1, y: p.y + 8 }], '#c2372b', OUT, 1.8);
+  dot(p.x, p.y, 13, GOLD, OUT, 2.5);
+  dot(p.x, p.y, 9, 'rgba(0,0,0,0)', '#fff3b0', 1.5);
+  // check mark drawn as a path (no font dependency)
+  g.lineCap = 'round'; g.lineJoin = 'round';
+  for (const [col, lw] of [[OUT, 6], ['#fff', 3]] as [string, number][]) {
+    g.strokeStyle = col; g.lineWidth = lw;
+    g.beginPath(); g.moveTo(p.x - 5, p.y + 0.5); g.lineTo(p.x - 1.5, p.y + 4); g.lineTo(p.x + 5.5, p.y - 4); g.stroke();
+  }
+  g.lineCap = 'butt';
 }

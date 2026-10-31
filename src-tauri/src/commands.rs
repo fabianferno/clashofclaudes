@@ -1,6 +1,6 @@
 //! Tauri commands, app events and shared state. JS names are the camelCase of these fns.
 //! Events: `session-updated` (SessionInfo), `session-removed` {id}, `workspace-updated`
-//! (Workspace), `stats-updated` (Stats), `confirm-quit` {live, restart}.
+//! (Workspace), `stats-updated` (Stats), `confirm-quit` {live, restart}, `update-progress` {pct}.
 use crate::adapters::{AdapterRegistry, AgentAdapter};
 use crate::git::{self, Review};
 use crate::model::{AgentKind, AppData, Builder, Compound, SessionInfo, SessionKind, Settings, Stats, Tile, Workspace};
@@ -16,7 +16,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::ipc::{Channel, InvokeResponseBody, Response};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_opener::OpenerExt;
 use uuid::Uuid;
 
@@ -169,22 +169,51 @@ pub fn add_workspace(path: String, state: State<'_, AppState>) -> Result<Workspa
     Ok(ws)
 }
 
-#[tauri::command]
-pub async fn create_workspace(parent: String, name: String, state: State<'_, AppState>) -> Result<Workspace, String> {
+/// Where new folders go unless the user picks a parent: `~/Documents/.clashofclaudes`.
+pub const DEFAULT_PROJECTS_DIR: &str = ".clashofclaudes";
+
+/// Creates folder `name` inside `parent` and makes it a git repo; returns its canonical path.
+/// `create_parent` creates a missing parent (the default projects folder); a picked parent
+/// must already exist.
+pub fn make_project_dir(parent: &Path, name: &str, create_parent: bool) -> Result<PathBuf, String> {
     let name = name.trim();
     if name.is_empty() || name == "." || name == ".." || name.contains(['/', '\\']) {
         return Err("invalid folder name".into());
     }
-    let dir = Path::new(&parent).join(name);
+    if create_parent {
+        std::fs::create_dir_all(parent).map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
+    }
+    let dir = parent.join(name);
     if dir.exists() {
         return Err(format!("{} already exists", dir.display()));
     }
     std::fs::create_dir(&dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
     if let Err(e) = git::init_repo(&dir) {
-        let _ = std::fs::remove_dir(&dir);
+        let _ = std::fs::remove_dir_all(&dir);
         return Err(fmt_err(e));
     }
-    let p = std::fs::canonicalize(&dir).unwrap_or(dir);
+    Ok(std::fs::canonicalize(&dir).unwrap_or(dir))
+}
+
+/// The default parent for new folders (`~/Documents/.clashofclaudes`), shown in the UI.
+#[tauri::command]
+pub fn default_projects_dir(app: AppHandle) -> Result<String, String> {
+    Ok(projects_dir(&app)?.display().to_string())
+}
+
+fn projects_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let docs = app.path().document_dir().map_err(|e| format!("cannot find Documents: {e}"))?;
+    Ok(docs.join(DEFAULT_PROJECTS_DIR))
+}
+
+/// Creates folder `name` as a new workspace: inside `parent` when given (picked by the user),
+/// otherwise inside the default projects folder, created on first use.
+#[tauri::command]
+pub async fn create_workspace(parent: Option<String>, name: String, app: AppHandle, state: State<'_, AppState>) -> Result<Workspace, String> {
+    let p = match parent {
+        Some(p) => make_project_dir(Path::new(&p), &name, false)?,
+        None => make_project_dir(&projects_dir(&app)?, &name, true)?,
+    };
     let ws = workspace_from_path(&p, now_ms()).map_err(fmt_err)?;
     let mut d = state.data();
     d.workspaces.push(ws.clone());
@@ -200,7 +229,37 @@ pub fn remove_workspace(id: String, state: State<'_, AppState>) -> Result<(), St
     }
     let mut d = state.data();
     d.workspaces.retain(|w| w.id != id);
-    state.save(&d)
+    state.save(&d)?;
+    drop(d);
+    // Ended sessions would otherwise linger with no workspace to show them.
+    for s in state.manager.list().into_iter().filter(|s| s.workspace_id == id) {
+        let _ = state.manager.close(&s.id);
+    }
+    Ok(())
+}
+
+/// Re-checks every workspace folder (run when the window gains focus): a folder that came back
+/// clears its `missing` badge, one that vanished gets it. Changes are saved and sent. The
+/// folders are checked without the data lock (`is_dir` can stall on a network mount), and only
+/// one recheck runs at a time.
+pub fn recheck_workspaces(app: &AppHandle, state: &AppState) {
+    static RUNNING: AtomicBool = AtomicBool::new(false);
+    if RUNNING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let paths: Vec<(String, PathBuf)> = state.data().workspaces.iter().map(|w| (w.id.clone(), w.path.clone())).collect();
+    let checked: Vec<(String, bool)> = paths.into_iter().map(|(id, p)| (id, !p.is_dir())).collect();
+    let mut d = state.data();
+    let changed = persist::apply_missing(&mut d, &checked);
+    if !changed.is_empty() {
+        let _ = state.save(&d);
+        // Sent under the lock, so a newer update to the same workspace can't be overtaken.
+        for w in changed {
+            let _ = app.emit("workspace-updated", w);
+        }
+    }
+    drop(d);
+    RUNNING.store(false, Ordering::SeqCst);
 }
 
 #[tauri::command]
@@ -545,20 +604,49 @@ pub async fn check_for_update(app: AppHandle, state: State<'_, AppState>) -> Res
 }
 
 /// Downloads and installs the pending update, then restarts through the quit guard: with running
-/// sessions it asks first (`confirm-quit` with `restart`), otherwise it restarts at once.
+/// sessions it asks first (`confirm-quit` with `restart`), otherwise it restarts at once. Sends
+/// `update-progress` {pct} (whole percent, null while the size is unknown) as it downloads. A
+/// failed install keeps the update pending, so the user can try again.
 #[tauri::command]
 pub async fn install_update(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     let update = state.pending_update.lock().unwrap_or_else(|e| e.into_inner()).take();
     let Some(update) = update else { return Err("no update pending".into()) };
-    if let Err(e) = update.download_and_install(|_, _| {}, || {}).await {
+    let (progress_app, mut got, mut last) = (app.clone(), 0u64, None::<Option<u8>>);
+    let on_chunk = move |n: usize, total: Option<u64>| {
+        got += n as u64;
+        let pct = updater::progress_pct(got, total);
+        if last != Some(pct) {
+            last = Some(pct);
+            let _ = progress_app.emit("update-progress", UpdateProgress { pct });
+        }
+    };
+    if let Err(e) = update.download_and_install(on_chunk, || {}).await {
         eprintln!("update install failed: {e}");
+        *state.pending_update.lock().unwrap_or_else(|e| e.into_inner()) = Some(update);
         return Err("update failed".into());
     }
-    match updater::restart_plan(state.manager.running_process_count()) {
-        updater::RestartPlan::Now => shutdown_and_exit(&app, &state, true).await,
-        updater::RestartPlan::AskUser { live } => emit_confirm_quit(&app, live, true),
-    }
+    restart_into_update(&app, &state).await;
     Ok(())
+}
+
+/// Restarts into an installed update through the quit guard (the toast's button after the user
+/// cancelled the first restart).
+#[tauri::command]
+pub async fn restart_for_update(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    restart_into_update(&app, &state).await;
+    Ok(())
+}
+
+async fn restart_into_update(app: &AppHandle, state: &AppState) {
+    match updater::restart_plan(state.manager.running_process_count()) {
+        updater::RestartPlan::Now => shutdown_and_exit(app, state, true).await,
+        updater::RestartPlan::AskUser { live } => emit_confirm_quit(app, live, true),
+    }
+}
+
+#[derive(Serialize, Clone)]
+struct UpdateProgress {
+    pct: Option<u8>,
 }
 
 /// Whether a close/exit request must be held back for the user to confirm.
@@ -606,6 +694,21 @@ mod tests {
         assert!(!should_block_exit(0, false));
         assert!(should_block_exit(2, false));
         assert!(!should_block_exit(2, true));
+    }
+
+    #[test]
+    fn project_dir_goes_in_a_created_default_parent_and_refuses_bad_names() {
+        let tmp = tempfile::tempdir().unwrap();
+        let parent = tmp.path().join("Documents").join(DEFAULT_PROJECTS_DIR);
+        let made = make_project_dir(&parent, " app ", true).unwrap();
+        assert!(made.ends_with(format!("{DEFAULT_PROJECTS_DIR}/app")) && made.join(".git").is_dir());
+        assert!(make_project_dir(&parent, "app", true).unwrap_err().contains("already exists"));
+        for bad in ["", " ", ".", "..", "a/b"] {
+            assert_eq!(make_project_dir(&parent, bad, true).unwrap_err(), "invalid folder name");
+        }
+        // A picked parent must exist: it is never created.
+        assert!(make_project_dir(&tmp.path().join("nope"), "x", false).is_err());
+        assert!(!tmp.path().join("nope").exists());
     }
 
     #[test]

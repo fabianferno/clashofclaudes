@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
+import { EffortSlider, ModelSlider } from './Choosers';
+import AgentPicker from './AgentPicker';
 import { ipc } from '../api/ipc';
-import type { AgentKind, Builder } from '../api/types';
+import type { AgentInfo, AgentKind, Builder } from '../api/types';
 import { liveSessionOf } from '../hud/hudState';
 import { useApp } from '../state/store';
 import { CLASS_NAMES, GEAR_NAMES, PALETTE, classOf, gearOf, stars } from '../village/look';
@@ -46,7 +48,10 @@ export default function BuilderPanel({ builderId }: { builderId: string }) {
     if (m !== b.model) void save({ ...b, model: m });
     else setModelText(b.model ?? '');
   };
-  const opts = (list: string[], cur: string | null) => (cur && !list.includes(cur) ? [cur, ...list] : list);
+  // Every detected agent, plus the builder's own when detection does not list it (still selectable).
+  const agentChoices: AgentInfo[] = agents.some((a) => a.kind === b.agent)
+    ? agents
+    : [...agents, { kind: b.agent, label: PALETTE[b.agent].label, installed: false, version: null, models: [], efforts: [], canApprove: false }];
   const tier = classOf(b.agent, b.model);
   const gear = gearOf(b.effort);
 
@@ -67,20 +72,11 @@ export default function BuilderPanel({ builderId }: { builderId: string }) {
         <input aria-label="Name" value={name} onChange={(e) => setName(e.target.value)} onBlur={rename}
           onKeyDown={(e) => { if (e.key === 'Enter') rename(); }} />
       </label>
-      <label className="sp-field">Agent
-        <select aria-label="Agent" value={b.agent} disabled={busy} onChange={(e) => changeAgent(e.target.value as AgentKind)}>
-          {opts(agents.map((a) => a.kind), b.agent).map((k) => (
-            <option key={k} value={k}>{agents.find((a) => a.kind === k)?.label ?? PALETTE[k as AgentKind].label}</option>
-          ))}
-        </select>
-      </label>
+      <AgentPicker agents={agentChoices} value={b.agent} disabled={busy}
+        onChange={(k) => { if (k !== b.agent) changeAgent(k); }} />
       {(info?.models.length ?? 0) > 0 && (
-        <label className="sp-field">Model
-          <select aria-label="Model" value={b.model ?? ''} disabled={busy} onChange={(e) => void save({ ...b, model: e.target.value || null })}>
-            <option value="">Default</option>
-            {opts(info!.models, b.model).map((m) => <option key={m} value={m}>{m}</option>)}
-          </select>
-        </label>
+        <ModelSlider label="Model" options={info!.models} value={b.model ?? ''} disabled={busy}
+          onChange={(m) => { if (m !== (b.model ?? '')) void save({ ...b, model: m || null }); }} />
       )}
       {info && info.models.length === 0 && b.agent !== 'custom' && (
         <label className="sp-field">Model
@@ -90,12 +86,8 @@ export default function BuilderPanel({ builderId }: { builderId: string }) {
         </label>
       )}
       {(info?.efforts.length ?? 0) > 0 && (
-        <label className="sp-field">Effort
-          <select aria-label="Effort" value={b.effort ?? ''} disabled={busy} onChange={(e) => void save({ ...b, effort: e.target.value || null })}>
-            <option value="">Default</option>
-            {opts(info!.efforts, b.effort).map((m) => <option key={m} value={m}>{m}</option>)}
-          </select>
-        </label>
+        <EffortSlider label="Effort" options={info!.efforts} value={b.effort ?? ''} disabled={busy}
+          onChange={(e) => { if (e !== (b.effort ?? '')) void save({ ...b, effort: e || null }); }} />
       )}
       <div className="sp-sec">Danger zone</div>
       {busy && <div className="sp-note">{b.name} is in a session. Close the session first to dismiss this builder.</div>}

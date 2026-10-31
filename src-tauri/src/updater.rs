@@ -61,9 +61,24 @@ pub fn restart_plan(live: usize) -> RestartPlan {
     if crate::commands::should_block_exit(live, false) { RestartPlan::AskUser { live } } else { RestartPlan::Now }
 }
 
+/// Whole-percent download progress, `None` while the size is unknown.
+pub fn progress_pct(downloaded: u64, total: Option<u64>) -> Option<u8> {
+    let total = total.filter(|t| *t > 0)?;
+    Some((downloaded.min(total) * 100 / total) as u8)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn progress_is_whole_percent_and_clamped() {
+        assert_eq!(progress_pct(0, Some(200)), Some(0));
+        assert_eq!(progress_pct(99, Some(200)), Some(49));
+        assert_eq!(progress_pct(250, Some(200)), Some(100));
+        assert_eq!(progress_pct(10, None), None);
+        assert_eq!(progress_pct(10, Some(0)), None);
+    }
 
     const REAL: &[&str] = &["https://github.com/someone/clashofclaudes/releases/latest/download/latest.json"];
 

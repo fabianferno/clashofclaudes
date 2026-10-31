@@ -4,8 +4,9 @@ import { idleBuilders, useApp } from '../state/store';
 import type { AgentInfo, AgentKind, Builder } from '../api/types';
 import { CLASS_NAMES, classOf } from '../village/look';
 import BuilderPreview from './BuilderPreview';
-import AgentsStatus from './AgentsStatus';
 import { modelPlaceholder } from './BuilderPanel';
+import { EffortSlider, ModelSlider } from './Choosers';
+import AgentPicker from './AgentPicker';
 
 export const RECRUIT_NAMES = ['Ivy', 'Jax', 'Kai', 'Lu', 'Mo', 'Nia', 'Oz', 'Pip', 'Quin', 'Rex'];
 
@@ -33,8 +34,8 @@ export function commandPreview(
       const providerModel = !!model && /^[^/]+\/.+$/.test(model);
       return join([effort && providerModel && 'OPENCODE_CONFIG_CONTENT=…', 'opencode …', model && `--model=${model}`, t && `--prompt=${t}`]);
     }
-    case 'gemini':
-      return join(['gemini', model && `--model=${model}`, t && `--prompt-interactive=${t}`]);
+    case 'antigravity':
+      return join(['agy', model && `--model=${model}`, t && `--prompt-interactive=${t}`]);
   }
 }
 
@@ -111,15 +112,6 @@ export default function NewSessionPicker({ workspaceId }: { workspaceId: string 
     }
   }
 
-  const select = (list: string[], value: string, set: (v: string) => void, label: string) => (
-    <label className="sp-field">{label}
-      <select value={value} onChange={(e) => set(e.target.value)}>
-        <option value={DEFAULT}>default</option>
-        {list.map((m) => <option key={m} value={m}>{m}</option>)}
-      </select>
-    </label>
-  );
-
   const tier = agent ? `${CLASS_NAMES[classOf(agent.kind, pModel)]}` : '';
 
   return (
@@ -152,14 +144,8 @@ export default function NewSessionPicker({ workspaceId }: { workspaceId: string 
       {recruiting && (
         <>
           <label className="sp-field">Name <input value={name} onChange={(e) => setNameEdit(e.target.value)} /></label>
-          <label className="sp-field">Agent
-            <select value={kind} onChange={(e) => { setKind(e.target.value as AgentKind); setModel(DEFAULT); setEffort(DEFAULT); }}>
-              {agents.map((a) => {
-                const ok = a.installed || a.kind === 'custom';
-                return <option key={a.kind} value={a.kind} disabled={!ok}>{ok ? a.label : `${a.label} — Not installed — see Town Hall`}</option>;
-              })}
-            </select>
-          </label>
+          <AgentPicker agents={agents} value={kind} installedOnly
+            onChange={(k) => { setKind(k); setModel(DEFAULT); setEffort(DEFAULT); }} />
           {isCustom ? (
             <>
               <label className="sp-field">Model (optional) <input value={model} onChange={(e) => setModel(e.target.value)} /></label>
@@ -169,13 +155,13 @@ export default function NewSessionPicker({ workspaceId }: { workspaceId: string 
           ) : (
             <>
               {(agent?.models.length ?? 0) > 0
-                ? select(agent!.models, model, setModel, 'Model')
+                ? <ModelSlider label="Model" options={agent!.models} value={model} onChange={setModel} />
                 : (
                   <label className="sp-field">Model (optional)
                     <input value={model} placeholder={modelPlaceholder(kind)} onChange={(e) => setModel(e.target.value)} />
                   </label>
                 )}
-              {select(agent?.efforts ?? [], effort, setEffort, 'Effort')}
+              {(agent?.efforts.length ?? 0) > 0 && <EffortSlider label="Effort" options={agent!.efforts} value={effort} onChange={setEffort} />}
             </>
           )}
         </>
@@ -187,8 +173,6 @@ export default function NewSessionPicker({ workspaceId }: { workspaceId: string 
         </div>
       )}
       <code className="preview">{preview}</code>
-      <div className="sp-sec">Agents</div>
-      <AgentsStatus />
       {error && <div className="panel-warn">{error}</div>}
       <button type="submit" className="hud-btn sm" disabled={busy}>Start</button>
     </form>

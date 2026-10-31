@@ -47,11 +47,11 @@ test('Allow/Deny only while a decision is awaited; disabled while answering', as
 });
 
 test('after a deny the reason shows instead of live buttons', () => {
-  useApp.getState().upsertSession(sess({ kind: 'needsYou', reason: 'Denied — tell Claude what to do in the terminal' }, false));
+  useApp.getState().upsertSession(sess({ kind: 'needsYou', reason: 'Denied — say what to do instead in the terminal' }, false));
   render(<SessionPanel sessionId="s1" />);
   expect(screen.queryByText('Allow')).toBeNull();
   expect(screen.queryByText('Deny')).toBeNull();
-  expect(screen.getByText('Denied — tell Claude what to do in the terminal')).toBeTruthy();
+  expect(screen.getByText('Denied — say what to do instead in the terminal')).toBeTruthy();
 });
 
 test('class_and_gear_text', () => {
@@ -208,5 +208,17 @@ test('a review requested for one session does not show on the next', async () =>
   fireEvent.click(screen.getByText('Review'));
   rerender(<SessionPanel sessionId="s2" />);
   await act(async () => resolve({ isGit: true, branch: 'main', files: [], untracked: [], otherSessionsActive: false }));
+  expect(screen.queryByText('No changes since this session started')).toBeNull();
+});
+
+test('a review clears once the session leaves Finished', async () => {
+  useApp.getState().upsertSession(sess({ kind: 'finished' }, false));
+  reviewSession.mockResolvedValue({ isGit: true, branch: 'main', files: [], untracked: [], otherSessionsActive: false });
+  render(<SessionPanel sessionId="s1" />);
+  fireEvent.click(screen.getByText('Review'));
+  expect(await screen.findByText('No changes since this session started')).toBeTruthy();
+  act(() => useApp.getState().upsertSession({ ...sess({ kind: 'working' }, false), rev: 2 }));
+  expect(screen.queryByText('No changes since this session started')).toBeNull();
+  act(() => useApp.getState().upsertSession({ ...sess({ kind: 'finished' }, false), rev: 3 }));
   expect(screen.queryByText('No changes since this session started')).toBeNull();
 });

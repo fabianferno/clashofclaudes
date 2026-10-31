@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Merged into the bundle's Info.plist by Tauri. macOS shows these strings when an agent or
+     terminal running inside the app (which macOS attributes to the app) reads a protected place. -->
+<plist version="1.0">
+<dict>
+  <key>NSDownloadsFolderUsageDescription</key>
+  <string>A coding agent or terminal running in Clash of Claudes wants to read files in your Downloads folder. Clash of Claudes itself never reads it; you can safely say no.</string>
+  <key>NSDesktopFolderUsageDescription</key>
+  <string>A coding agent or terminal running in Clash of Claudes wants to read files on your Desktop. Allow it if a workspace lives there; otherwise you can safely say no.</string>
+  <key>NSDocumentsFolderUsageDescription</key>
+  <string>Clash of Claudes creates new project folders in Documents/.clashofclaudes, and coding agents running in it work in your workspaces there. Allow it, or new folders and agents in Documents won't work.</string>
+  <key>NSRemovableVolumesUsageDescription</key>
+  <string>A coding agent or terminal running in Clash of Claudes wants to read files on a removable drive. Allow it if a workspace lives there.</string>
+  <key>NSNetworkVolumesUsageDescription</key>
+  <string>A coding agent or terminal running in Clash of Claudes wants to read files on a network drive. Allow it if a workspace lives there.</string>
+</dict>
+</plist>

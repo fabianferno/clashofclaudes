@@ -9,7 +9,9 @@ use std::path::PathBuf;
 pub enum AgentKind {
     Claude,
     Codex,
-    Gemini,
+    /// Antigravity CLI. Builders saved while this was Gemini CLI load as Antigravity.
+    #[serde(alias = "gemini")]
+    Antigravity,
     OpenCode,
     Custom,
 }

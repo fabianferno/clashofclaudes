@@ -84,12 +84,12 @@ Still open: the owner checklist in `docs/verification/plan-3-v1.md` (rendering b
 ### What remains after v1, grouped (from the Plan 3 ledger and the older lists above)
 
 User-visible:
-- Open: the quit-time kill misses a SIGHUP-ignoring child when its group leader has already exited, and a session still starting at quit gets only SIGHUP (`kill_now` skips reaped leaders; `killpg` would be safe).
+- FIXED (final fix wave + polish-v1 `3cb97f0`): quit SIGKILLs every recorded group even after its leader was reaped; a session still starting at quit is SIGKILLed as soon as its spawn returns, and no session starts after quit begins.
 - Open: after Codex's first notify, an interrupted turn stays Working until the 900 s Stuck rule. Failure-stuck (OpenCode `session.error`) clears only on typing or the next agent event.
-- Open: update toast: the button does nothing after a cancelled restart (the pending update was taken), no download feedback, double-click not guarded.
-- Open: the welcome card never shows if `listState` errors on first run (it fails closed); "Copied" on the install-command button never resets; the New-folder name is cleared before creation succeeds (lost on cancel).
-- Open: the notification permission-denied path is dormant (the desktop plugin always reports Granted) and the notifier starts as focused, so a launch in the background is silent until the first focus event. Badge counts are computed at emit time and can lag one event.
-- Open (from Plan 1): `remove_workspace` leaves Ended sessions orphaned; no UI to remove a missing workspace; the missing flag never clears during a run; builders/workspaces are not de-duplicated; dropped output is not signalled to the frontend; a "1 sessions" plural; review is not cleared after leaving Finished.
+- FIXED (polish-v1 `e900c73`): the update toast shows download progress, guards double clicks, keeps the update pending after a failed install (retry works), and offers Restart now after a cancelled restart.
+- FIXED (polish-v1 `430faff`): the welcome card shows after a failed first load; Copied resets after 2 s; the New-folder name stays until the folder exists.
+- FIXED (polish-v1 `1fea4a1`): the notifier starts from the window's real focus. Not a bug: the badge is recomputed from the live session list on every event, so it converges on the last one. Still dormant: the permission-denied path (the desktop plugin always reports Granted).
+- FIXED (polish-v1 `3cb97f0`, `430faff`): removing a workspace closes its ended sessions; window focus re-checks folders and clears or sets missing; the store upserts workspaces/builders by id; a review clears once the session leaves Finished. Already fixed earlier: Remove workspace works on a missing workspace; the "1 session" plural. Still open: dropped output is not signalled to the frontend.
 
 Agent adapters (need real CLIs):
 - Open: verify event shapes, flag forms (`--model=`, `--prompt=`, `--prompt-interactive=`, `--` before the task) and prompt wording for Codex, OpenCode and Gemini, then flip `canApprove` per agent. Antigravity (`agy`) has no adapter; users run it as a Custom command.

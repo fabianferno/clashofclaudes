@@ -8,6 +8,11 @@ pub enum StatusEvent {
     Silence { secs: u64 },
     TurnFinished,
     PermissionRequested { message: String },
+    /// The agent waits in the terminal for something the app can't answer (a sign-in, a free-form
+    /// question, new instructions after an interrupt): NeedsYou without Allow/Deny.
+    AskedInTerminal { message: String },
+    /// The agent is back at its input prompt with nothing running (OSC `idle`).
+    Idle,
     WaitingForInput,
     ToolUsed,
     /// The agent reported an error. Stuck (not NeedsYou): there is no prompt to answer.
@@ -43,6 +48,13 @@ impl StatusPolicy {
     }
 }
 
+/// NeedsYou reason after a permission prompt was denied from the app: the agent then waits for
+/// typed instructions.
+pub const DENIED_REASON: &str = "Denied — say what to do instead in the terminal";
+
+/// NeedsYou reason once the agent was interrupted mid-turn and waits for typed instructions.
+pub const INTERRUPTED_REASON: &str = "Stopped — say what to do next in the terminal";
+
 /// NeedsYou reason for a hook agent that went quiet before reporting any event.
 pub const WAITING_IN_TERMINAL: &str = "Waiting in the terminal";
 
@@ -77,6 +89,12 @@ pub fn next_state(state: &SessionState, ev: &StatusEvent, policy: &StatusPolicy)
         (S::Stuck { reason }, E::ToolUsed) if stuck_recovers(reason) => S::Working,
         (_, E::TurnFinished) => S::Finished,
         (_, E::PermissionRequested { message }) => S::NeedsYou { reason: message.clone() },
+        // The interrupt that follows a denial keeps the denial's (more specific) reason.
+        (S::NeedsYou { reason }, E::AskedInTerminal { .. } | E::Idle) if reason == DENIED_REASON => state.clone(),
+        (_, E::AskedInTerminal { message }) => S::NeedsYou { reason: message.clone() },
+        // Idle at launch (before a task's first `working`) or after a finished turn is no news;
+        // mid-turn or at an open prompt it means the turn was interrupted.
+        (S::Working | S::NeedsYou { .. }, E::Idle) => S::NeedsYou { reason: INTERRUPTED_REASON.into() },
 
         (S::Starting, E::Output) => S::Working,
         (S::Working, E::WaitingForInput) => S::Finished,
@@ -201,6 +219,25 @@ mod tests {
     #[test] fn permission_needs_you() { assert_eq!(next_state(&Working, &PermissionRequested{message:"Bash".into()}, &hooks()), NeedsYou{reason:"Bash".into()}); }
     #[test] fn tool_after_permission_resumes() { assert_eq!(next_state(&NeedsYou{reason:"x".into()}, &ToolUsed, &hooks()), Working); }
     #[test] fn turn_finished() { assert_eq!(next_state(&Working, &TurnFinished, &hooks()), Finished); }
+    #[test] fn asked_in_terminal_needs_you_but_keeps_a_denial() {
+        let asked = AskedInTerminal { message: "Sign in".into() };
+        for s in [Starting, Working, Finished, NeedsYou { reason: "Run ls?".into() }] {
+            assert_eq!(next_state(&s, &asked, &hooks()), NeedsYou { reason: "Sign in".into() });
+        }
+        let denied = NeedsYou { reason: DENIED_REASON.into() };
+        assert_eq!(next_state(&denied, &asked, &hooks()), denied);
+    }
+    #[test] fn idle_is_an_interrupt_only_mid_turn() {
+        for s in [Starting, Finished] {
+            assert_eq!(next_state(&s, &Idle, &hooks()), s);
+        }
+        let stopped = NeedsYou { reason: INTERRUPTED_REASON.into() };
+        for s in [Working, NeedsYou { reason: "Run ls?".into() }] {
+            assert_eq!(next_state(&s, &Idle, &hooks()), stopped);
+        }
+        let denied = NeedsYou { reason: DENIED_REASON.into() };
+        assert_eq!(next_state(&denied, &Idle, &hooks()), denied);
+    }
     #[test] fn hook_agents_ignore_short_silence() { assert_eq!(next_state(&Working, &Silence{secs:60}, &hooks()), Working); }
     #[test] fn plain_agents_finish_on_silence() { assert_eq!(next_state(&Working, &Silence{secs:20}, &plain()), Finished); }
     #[test] fn plain_agents_finish_on_silence_without_output() {

@@ -2,8 +2,9 @@ import { Application, Container, Graphics, Sprite, Text, Texture } from 'pixi.js
 import type { AgentKind, Builder, CloseOutcome, Compound, SessionInfo, SessionState, Tile, Workspace } from '../api/types';
 import { iso, toGrid } from './iso';
 import { HALL, HOUSE, STRUCT, gateSide, gateTile, wallRect, type Rect } from './layout';
+import { enclosure, seedOf } from './enclosure';
 import { classOf, gearOf, houseColors, houseStage, scaffoldHeight, type ClassTier, type Gear } from './look';
-import { retarget, routeHome, routeToSite, standTile, step, type Walker } from './walkers';
+import { onGround, retarget, routeHome, routeToSite, standTile, step, walkable, type Walker } from './walkers';
 import {
   GROUND_SCALE, drawBadge, drawBubble, drawBuilder, drawGate, drawGround, drawHall, drawHouse, drawPuff, drawRing, drawStatusBar, drawStructure,
   drawWallSeg, groundOrigin,
@@ -69,21 +70,13 @@ export function structureLook(s: SessionInfo): { stage: StructStage; height: num
   }
 }
 
-function wallEntities(wsId: string, c: Compound): Entity[] {
-  const r = wallRect(c);
+/** The compound's organic wall (see `enclosure`) with the gate in its hall-facing tile. */
+function wallEntities(wsId: string, c: Compound, spots: Tile[], level: number): Entity[] {
   const gate = gateTile(c);
   const out: Entity[] = [];
-  const seg = (tx: number, ty: number, dir: 'x' | 'y') => {
-    if (tx === gate.x && ty === gate.y) return;
-    out.push(ent(`wall:${wsId}:${tx}:${ty}`, 'wall', tx + 1, ty + 1, `wall:${dir}`));
-  };
-  for (let tx = r.x0; tx < r.x0 + r.w; tx++) {
-    seg(tx, r.y0, 'x');
-    seg(tx, r.y0 + r.h - 1, 'x');
-  }
-  for (let ty = r.y0 + 1; ty < r.y0 + r.h - 1; ty++) {
-    seg(r.x0, ty, 'y');
-    seg(r.x0 + r.w - 1, ty, 'y');
+  for (const t of enclosure(c, spots, level, seedOf(wsId)).walls) {
+    if (t.x === gate.x && t.y === gate.y) continue;
+    out.push(ent(`wall:${wsId}:${t.x}:${t.y}`, 'wall', t.x + 1, t.y + 1, `wall:${t.links}`));
   }
   out.push(ent(`gate:${wsId}`, 'gate', gate.x + 1, gate.y + 1, `gate:${gateSide(c)}`));
   return out;
@@ -100,7 +93,8 @@ export function buildEntities(input: VillageInput): Entity[] {
     compounds.set(w.id, c);
     const { roof, wall } = houseColors(w.id);
     out.push(ent(`house:${w.id}`, 'house', c.house.x + HOUSE, c.house.y + HOUSE, `house:${houseStage(w.level)}:${roof}:${wall}`));
-    out.push(...wallEntities(w.id, c));
+    const spots = input.sessions.flatMap((s) => (s.workspaceId === w.id && s.kind.kind === 'agent' && s.spot ? [s.spot] : []));
+    out.push(...wallEntities(w.id, c, spots, w.level));
     const terminals = input.sessions.filter(
       (s) => s.workspaceId === w.id && s.kind.kind === 'terminal' && s.state.kind !== 'ended',
     ).length;
@@ -151,7 +145,7 @@ export function artFor(key: string): Art {
     case 'hall': return drawHall();
     case 'house': return drawHouse(Number(a) as 0 | 1 | 2 | 3 | 4, b, c);
     case 'struct': return drawStructure(a as AgentKind, b as StructStage, Number(c));
-    case 'wall': return drawWallSeg(a as 'x' | 'y');
+    case 'wall': return drawWallSeg(a ?? '');
     case 'gate': return drawGate(a as 'n' | 's' | 'e' | 'w');
     case 'badge': return drawBadge(Number(a));
     case 'builder': return drawBuilder(a as AgentKind, Number(b) as ClassTier, Number(c) as Gear, d as Pose, Number(e) as 1 | -1);
@@ -552,6 +546,18 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
   const syncBuilders = (state: VillageInput) => {
     const compounds = new Map<string, Compound>();
     for (const w of state.workspaces) if (w.compound) compounds.set(w.id, w.compound);
+    // Walkable ground per compound, built only for the compounds a walker is routed through.
+    const walks = new Map<string, Set<string>>();
+    const walkOf = (wsId: string, c: Compound) => {
+      let walk = walks.get(wsId);
+      if (!walk) {
+        const spots = state.sessions.flatMap((s) => (s.workspaceId === wsId && s.kind.kind === 'agent' && s.spot ? [s.spot] : []));
+        const level = state.workspaces.find((w) => w.id === wsId)?.level ?? 1;
+        walk = walkable(enclosure(c, spots, level, seedOf(wsId)).inside, c, spots);
+        walks.set(wsId, walk);
+      }
+      return walk;
+    };
     const live = new Set<string>();
     for (const b of state.builders) {
       live.add(b.id);
@@ -573,28 +579,29 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       const w = v.walker, was = v.site;
       if (site) {
         if (!was || was.sessionId !== site.sessionId) {
-          v.walker = { ...w, mode: 'toSite', path: routeToSite(w, site.compound, site.spot) };
+          v.walker = { ...w, mode: 'toSite', path: routeToSite(w, site.compound, site.spot, walkOf(site.workspaceId, site.compound)) };
         } else if (was.spot.x !== site.spot.x || was.spot.y !== site.spot.y) {
-          const st = standTile(site.compound, site.spot, site.compound.house); // moved structure: the builder is simply there
+          const st = standTile(site.compound, site.spot, site.compound.house, walkOf(site.workspaceId, site.compound)); // moved structure: the builder is simply there
           v.walker = { ...w, x: st.x, y: st.y, path: [], mode: 'atSite', face: -1 };
         } else if (JSON.stringify(was.compound) !== JSON.stringify(site.compound)) {
-          v.walker = retarget(w, site.compound, site.spot); // the house moved: stand tile and gate may have changed
+          v.walker = retarget(w, site.compound, site.spot, walkOf(site.workspaceId, site.compound)); // the house moved: stand tile and gate may have changed
         }
       } else if (was) {
         const c = compounds.get(was.workspaceId);
         if (!c) v.walker = { ...w, path: [], mode: 'idle', wait: 0.5 };
         else {
           v.leaving = { wsId: was.workspaceId, c };
-          const route = routeHome(w, c);
-          // a builder that has not reached the gate yet turns around on the plaza side
-          v.walker = { ...w, mode: 'home', path: w.mode === 'toSite' && w.path.length >= 3 ? route.slice(2) : route };
+          const walk = walkOf(was.workspaceId, c);
+          const route = routeHome(w, c, walk);
+          // a builder still outside the walls turns around on the plaza side
+          v.walker = { ...w, mode: 'home', path: w.mode === 'toSite' && !onGround(walk, w) ? route.slice(-1) : route };
         }
       }
       if (site) v.leaving = null;
       else if (v.leaving) {
         const c = compounds.get(v.leaving.wsId);
         if (c && JSON.stringify(c) !== JSON.stringify(v.leaving.c)) {
-          if (v.walker.mode === 'home') v.walker = retarget(v.walker, c, null);
+          if (v.walker.mode === 'home') v.walker = retarget(v.walker, c, null, walkOf(v.leaving.wsId, c));
           v.leaving = { wsId: v.leaving.wsId, c };
         }
         if (v.walker.mode !== 'home') v.leaving = null;

@@ -8,6 +8,7 @@ import BuildButtons from './hud/BuildButtons';
 import WelcomeCard from './panels/WelcomeCard';
 import UpdateToast from './hud/UpdateToast';
 import SidePanel from './panels/SidePanel';
+import { preloadTerminal } from './components/LazyTerminalView';
 import './App.css';
 
 function App() {
@@ -38,9 +39,16 @@ function App() {
         // Compounds for workspaces without one, spots for agent sessions without one (never terminals).
         stopLayout = autoLayout((e) => useApp.getState().setError(String(e)));
       })
-      .catch((e) => useApp.getState().setError(String(e)));
+      .catch((e) => {
+        if (cancelled) return;
+        useApp.getState().markLoaded(); // the welcome card must not stay hidden forever
+        useApp.getState().setError(String(e));
+        // Workspaces added from here on still need compounds and spots.
+        stopLayout = autoLayout((err) => useApp.getState().setError(String(err)));
+      });
     ipc.detectAgents().then((a) => !cancelled && useApp.getState().setAgents(a)).catch((e) => useApp.getState().setError(String(e)));
-    return () => { cancelled = true; stopLayout?.(); unlisten.forEach((u) => u()); };
+    const preload = window.setTimeout(preloadTerminal, 2000); // after the village's first frames
+    return () => { cancelled = true; window.clearTimeout(preload); stopLayout?.(); unlisten.forEach((u) => u()); };
   }, []);
 
   return (

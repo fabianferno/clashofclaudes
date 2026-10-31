@@ -100,14 +100,17 @@ impl AgentAdapter for OpenCodeAdapter {
         Ok(LaunchSpec { program: "opencode".into(), args, env, cwd: req.cwd.to_path_buf() })
     }
     fn policy(&self) -> StatusPolicy {
-        // Before the first plugin event (plugin not loaded?) silence finishes; afterwards the
-        // plugin's session.idle is authoritative and silence alone never finishes.
+        // Before the first plugin event (a provider-auth screen, or the plugin not loaded)
+        // silence means NeedsYou "Waiting in the terminal", never Finished; afterwards the
+        // plugin's session.idle is authoritative and silence alone never finishes. No turn-start
+        // event is documented with a known payload, so a new turn starts on typing
+        // (`uses_hooks: false`) or the next tool event.
         StatusPolicy {
             uses_hooks: false,
             finished_after_silence_secs: Some(30),
             stuck_after_silence_secs: Some(900),
             any_exit_ends: false,
-            silence_finishes_until_first_event: true,
+            silence_needs_you_until_first_event: true,
         }
     }
     fn parse_hook(&self, body: &serde_json::Value) -> Vec<StatusEvent> {
@@ -242,11 +245,15 @@ mod tests {
     }
 
     #[test]
-    fn opencode_no_events_falls_back_to_silence_policy() {
+    fn opencode_silence_before_first_event_needs_you() {
         use crate::model::SessionState::*;
         let p = OpenCodeAdapter.policy();
         assert_eq!(crate::status::next_state(&Working, &StatusEvent::Silence { secs: 29 }, &p), Working);
-        assert_eq!(crate::status::next_state(&Working, &StatusEvent::Silence { secs: 30 }, &p), Finished);
+        // An auth or first-run screen before any event is never Finished.
+        assert_eq!(
+            crate::status::next_state(&Working, &StatusEvent::Silence { secs: 30 }, &p),
+            NeedsYou { reason: crate::status::WAITING_IN_TERMINAL.into() }
+        );
         let p = p.after_first_event();
         assert_eq!(crate::status::next_state(&Working, &StatusEvent::Silence { secs: 600 }, &p), Working);
         assert_eq!(crate::status::next_state(&Working, &StatusEvent::TurnFinished, &p), Finished);

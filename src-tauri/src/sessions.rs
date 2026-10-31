@@ -1333,7 +1333,7 @@ mod tests {
     }
 
     #[test]
-    fn codex_notify_switches_off_silence_finish() {
+    fn codex_notify_switches_off_silence_needs_you() {
         use crate::adapters::CodexAdapter;
         let fx = fixture();
         let a = fx.mgr.start_with_spec(&fx.ws, &codex_builder("c1"), sh(&fx, "printf hi; sleep 5"), Arc::new(CodexAdapter)).unwrap();
@@ -1346,8 +1346,13 @@ mod tests {
         assert_eq!(state(&fx, &b.id), SessionState::Working);
         let later = now_ms() + 120_000;
         fx.mgr.tick(later);
-        assert_eq!(state(&fx, &a.id), SessionState::Finished, "no notify yet: silence finishes");
-        assert_eq!(state(&fx, &b.id), SessionState::Working, "after a notify, silence never finishes");
+        assert_eq!(
+            state(&fx, &a.id),
+            SessionState::NeedsYou { reason: crate::status::WAITING_IN_TERMINAL.into() },
+            "no notify yet: silence waits for the user (a login screen?), never Finished"
+        );
+        assert!(!info(&fx, &a.id).awaiting_decision, "nothing to approve from the app");
+        assert_eq!(state(&fx, &b.id), SessionState::Working, "after a notify, silence changes nothing");
     }
 
     #[test]

@@ -189,7 +189,7 @@ pub fn terminal_policy() -> StatusPolicy {
         finished_after_silence_secs: None,
         stuck_after_silence_secs: None,
         any_exit_ends: true,
-        silence_finishes_until_first_event: false,
+        silence_needs_you_until_first_event: false,
     }
 }
 

@@ -70,8 +70,8 @@
 ## Review Focus
 
 1. **An agent CLI is installed but not logged in, or shows a first-run screen** (Codex trust or login, OpenCode provider auth, Gemini auth).
-   - Expected: the session shows NeedsYou with a clear reason, or Working with the screen visible in the terminal. Never Finished, and never stuck silently.
-   - *Test: Task 2 `codex_trust_screen_goes_needs_you`; Task 4 `opencode_no_events_falls_back_to_silence_policy`.*
+   - Expected: the session shows NeedsYou with a clear reason, or Working with the screen visible in the terminal. Never Finished, and never stuck silently. For Codex, OpenCode and Gemini (policies with `silence_needs_you_until_first_event`), silence before the first agent event goes to NeedsYou "Waiting in the terminal" (canApprove false, so the panel says "Answer in the terminal"); after the first event the agent's own events decide.
+   - *Test: Task 2 `codex_trust_screen_goes_needs_you`, `codex_silence_before_first_notify_needs_you`; Task 4 `opencode_silence_before_first_event_needs_you`; `gemini_silence_before_first_event_needs_you`; `status::silence_before_first_event_needs_you_never_finished`.*
 2. **A hook or notify payload that is malformed, huge, or from a stale session.**
    - Expected: ignored, with no crash and no state change.
    - *Test: Tasks 2–4 `*_parse_ignores_garbage`.*
@@ -189,7 +189,7 @@
   - `opencode_parse_events`
   - `opencode_parse_ignores_garbage`
   - `opencode_writes_only_inside_session_dir`
-  - `opencode_no_events_falls_back_to_silence_policy`
+  - `opencode_silence_before_first_event_needs_you` (renamed from `opencode_no_events_falls_back_to_silence_policy` in the final review: silence before the first event is NeedsYou, not Finished)
   - `plugin_js_is_syntax_valid`: run `node --check` on the embedded file when node is available, otherwise skip with a message.
 - [ ] **Step 2: Run; expect FAIL.** Step 3: Implement. Step 4: Run; expect PASS.
 - [ ] **Step 5: Commit.** `feat: OpenCode adapter (per-session plugin via OPENCODE_CONFIG_DIR)`

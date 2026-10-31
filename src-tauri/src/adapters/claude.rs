@@ -112,7 +112,7 @@ impl AgentAdapter for ClaudeAdapter {
         Ok(LaunchSpec { program: "claude".into(), args, env: vec![], cwd: req.cwd.to_path_buf() })
     }
     fn policy(&self) -> StatusPolicy {
-        StatusPolicy { uses_hooks: true, finished_after_silence_secs: None, stuck_after_silence_secs: Some(900), any_exit_ends: false, silence_finishes_until_first_event: false }
+        StatusPolicy { uses_hooks: true, finished_after_silence_secs: None, stuck_after_silence_secs: Some(900), any_exit_ends: false, silence_needs_you_until_first_event: false }
     }
     fn parse_hook(&self, body: &serde_json::Value) -> Vec<StatusEvent> {
         let mut out = Vec::new();

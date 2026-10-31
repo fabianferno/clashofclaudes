@@ -25,21 +25,26 @@ pub struct StatusPolicy {
     pub stuck_after_silence_secs: Option<u64>,
     /// Any exit is a normal end (plain terminals: `exit` after a failed command is not a crash).
     pub any_exit_ends: bool,
-    /// `finished_after_silence_secs` applies only until the first hook event arrives
-    /// (an agent whose single hook, e.g. Codex `notify`, may be missing or broken).
-    pub silence_finishes_until_first_event: bool,
+    /// Until the first agent event arrives, `finished_after_silence_secs` of silence means
+    /// NeedsYou (`WAITING_IN_TERMINAL`), not Finished: the quiet screen is far more likely a
+    /// login, auth or first-run screen than a finished turn. The first event drops the rule
+    /// (`after_first_event`); from then on the agent's own events decide.
+    pub silence_needs_you_until_first_event: bool,
 }
 
 impl StatusPolicy {
     /// This policy once a hook event has arrived for the session.
     pub fn after_first_event(&self) -> Self {
         let mut p = self.clone();
-        if p.silence_finishes_until_first_event {
+        if p.silence_needs_you_until_first_event {
             p.finished_after_silence_secs = None;
         }
         p
     }
 }
+
+/// NeedsYou reason for a hook agent that went quiet before reporting any event.
+pub const WAITING_IN_TERMINAL: &str = "Waiting in the terminal";
 
 const SILENCE_STUCK_PREFIX: &str = "no output for ";
 const EXIT_STUCK_PREFIX: &str = "exited with code ";
@@ -81,7 +86,11 @@ pub fn next_state(state: &SessionState, ev: &StatusEvent, policy: &StatusPolicy)
         (S::Starting | S::Working, E::Silence { secs })
             if policy.finished_after_silence_secs.is_some_and(|t| *secs >= t) =>
         {
-            S::Finished
+            if policy.silence_needs_you_until_first_event {
+                S::NeedsYou { reason: WAITING_IN_TERMINAL.into() }
+            } else {
+                S::Finished
+            }
         }
         (S::Working, E::Silence { secs })
             if policy.stuck_after_silence_secs.is_some_and(|t| *secs >= t) =>
@@ -185,8 +194,8 @@ mod tests {
     use crate::model::SessionState::*;
     use StatusEvent::*;
 
-    fn hooks() -> StatusPolicy { StatusPolicy { uses_hooks: true, finished_after_silence_secs: None, stuck_after_silence_secs: Some(900), any_exit_ends: false, silence_finishes_until_first_event: false } }
-    fn plain() -> StatusPolicy { StatusPolicy { uses_hooks: false, finished_after_silence_secs: Some(20), stuck_after_silence_secs: Some(900), any_exit_ends: false, silence_finishes_until_first_event: false } }
+    fn hooks() -> StatusPolicy { StatusPolicy { uses_hooks: true, finished_after_silence_secs: None, stuck_after_silence_secs: Some(900), any_exit_ends: false, silence_needs_you_until_first_event: false } }
+    fn plain() -> StatusPolicy { StatusPolicy { uses_hooks: false, finished_after_silence_secs: Some(20), stuck_after_silence_secs: Some(900), any_exit_ends: false, silence_needs_you_until_first_event: false } }
     fn term() -> StatusPolicy { crate::adapters::terminal_policy() }
     #[test] fn starting_output_is_working() { assert_eq!(next_state(&Starting, &Output, &hooks()), Working); }
     #[test] fn permission_needs_you() { assert_eq!(next_state(&Working, &PermissionRequested{message:"Bash".into()}, &hooks()), NeedsYou{reason:"Bash".into()}); }
@@ -201,6 +210,19 @@ mod tests {
     #[test] fn hook_agents_and_terminals_stay_starting_in_silence() {
         assert_eq!(next_state(&Starting, &Silence{secs:900}, &hooks()), Starting);
         assert_eq!(next_state(&Starting, &Silence{secs:900}, &term()), Starting);
+    }
+    #[test] fn silence_before_first_event_needs_you_never_finished() {
+        let p = StatusPolicy { silence_needs_you_until_first_event: true, ..plain() };
+        let waiting = NeedsYou{reason: WAITING_IN_TERMINAL.into()};
+        assert_eq!(next_state(&Working, &Silence{secs:19}, &p), Working);
+        assert_eq!(next_state(&Working, &Silence{secs:20}, &p), waiting);
+        assert_eq!(next_state(&Starting, &Silence{secs:20}, &p), waiting);
+        assert_eq!(next_state(&waiting, &Silence{secs:900}, &p), waiting, "stays waiting, never stuck");
+        assert_eq!(next_state(&waiting, &UserInput, &p), Working, "typing (no hooks yet) resumes");
+        // After the first event the agent's own events decide; silence alone changes nothing.
+        let after = p.after_first_event();
+        assert_eq!(next_state(&Working, &Silence{secs:600}, &after), Working);
+        assert_eq!(next_state(&Working, &TurnFinished, &after), Finished);
     }
     #[test] fn long_silence_is_stuck() { assert_eq!(next_state(&Working, &Silence{secs:900}, &hooks()), Stuck{reason:"no output for 15 min".into()}); }
     #[test] fn failed_event_goes_stuck() {

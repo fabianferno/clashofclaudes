@@ -118,13 +118,14 @@ impl AgentAdapter for CodexAdapter {
     }
     fn policy(&self) -> StatusPolicy {
         // `notify` only reports turn-complete, so there is no prompt-submitted hook: typing
-        // resumes work (`uses_hooks: false`). Silence finishes it only until the first notify.
+        // resumes work (`uses_hooks: false`). Until the first notify, silence means NeedsYou
+        // ("Waiting in the terminal": a login or trust screen), never Finished.
         StatusPolicy {
             uses_hooks: false,
             finished_after_silence_secs: Some(30),
             stuck_after_silence_secs: Some(900),
             any_exit_ends: false,
-            silence_finishes_until_first_event: true,
+            silence_needs_you_until_first_event: true,
         }
     }
     fn parse_hook(&self, body: &serde_json::Value) -> Vec<StatusEvent> {
@@ -310,11 +311,14 @@ mod tests {
     }
 
     #[test]
-    fn codex_silence_finishes_before_first_notify() {
+    fn codex_silence_before_first_notify_needs_you() {
         use crate::model::SessionState::*;
         let p = CodexAdapter.policy();
+        let waiting = NeedsYou { reason: crate::status::WAITING_IN_TERMINAL.into() };
         assert_eq!(crate::status::next_state(&Working, &StatusEvent::Silence { secs: 29 }, &p), Working);
-        assert_eq!(crate::status::next_state(&Working, &StatusEvent::Silence { secs: 30 }, &p), Finished);
+        // A login or first-run screen before any notify is never Finished.
+        assert_eq!(crate::status::next_state(&Working, &StatusEvent::Silence { secs: 30 }, &p), waiting);
+        assert_eq!(crate::status::next_state(&waiting, &StatusEvent::UserInput, &p), Working);
     }
 
     #[test]

@@ -24,7 +24,7 @@ pub struct GeminiAdapter;
 /// Default macOS system-settings location (where enterprise policy lives).
 const SYSTEM_SETTINGS_PATH: &str = "/Library/Application Support/GeminiCli/settings.json";
 
-const HOOK_EVENTS: [&str; 4] = ["AfterAgent", "Notification", "AfterTool", "SessionEnd"];
+const HOOK_EVENTS: [&str; 5] = ["BeforeAgent", "AfterAgent", "Notification", "AfterTool", "SessionEnd"];
 
 fn probe() -> Detection {
     super::probe_program("gemini", parse_version)
@@ -142,18 +142,21 @@ impl AgentAdapter for GeminiAdapter {
         self.launch_env(req, |k| std::env::var(k).ok())
     }
     fn policy(&self) -> StatusPolicy {
-        // Before the first hook event (settings not honoured?) silence finishes; afterwards the
-        // AfterAgent hook is authoritative and silence alone never finishes.
+        // Before the first hook event (an auth screen, or the settings not honoured) silence
+        // means NeedsYou "Waiting in the terminal", never Finished; afterwards AfterAgent is
+        // authoritative and silence alone never finishes. BeforeAgent marks each turn's start.
         StatusPolicy {
             uses_hooks: false,
             finished_after_silence_secs: Some(30),
             stuck_after_silence_secs: Some(900),
             any_exit_ends: false,
-            silence_finishes_until_first_event: true,
+            silence_needs_you_until_first_event: true,
         }
     }
     fn parse_hook(&self, body: &serde_json::Value) -> Vec<StatusEvent> {
         match body.get("hook_event_name").and_then(|v| v.as_str()) {
+            // A turn starts (the prompt was submitted), however it was typed.
+            Some("BeforeAgent") => vec![StatusEvent::PromptSubmitted],
             Some("AfterAgent") => vec![StatusEvent::TurnFinished],
             Some("Notification") if body.get("notification_type").and_then(|v| v.as_str()) == Some("ToolPermission") => {
                 vec![StatusEvent::PermissionRequested { message: "Gemini wants permission".into() }]
@@ -228,8 +231,8 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         GeminiAdapter.launch_with(&req(d.path(), None, None, None), &none(d.path())).unwrap();
         let v = settings_of(d.path());
-        assert_eq!(v["hooks"].as_object().unwrap().len(), 4);
-        for ev in ["AfterAgent", "Notification", "AfterTool", "SessionEnd"] {
+        assert_eq!(v["hooks"].as_object().unwrap().len(), 5);
+        for ev in ["BeforeAgent", "AfterAgent", "Notification", "AfterTool", "SessionEnd"] {
             let arr = v["hooks"][ev].as_array().unwrap();
             assert_eq!(arr.len(), 1, "{ev}");
             assert_eq!(arr[0]["matcher"], "*", "{ev}");
@@ -264,7 +267,7 @@ mod tests {
         assert_eq!(after.len(), 2);
         assert_eq!(after[0], original["hooks"]["AfterAgent"][0], "existing entry kept first");
         assert_eq!(after[1]["hooks"][0]["name"], "coc");
-        for ev in ["Notification", "AfterTool", "SessionEnd"] {
+        for ev in ["BeforeAgent", "Notification", "AfterTool", "SessionEnd"] {
             assert_eq!(v["hooks"][ev].as_array().unwrap().len(), 1, "{ev}");
         }
         assert_eq!(std::fs::read_to_string(&sys).unwrap(), text, "the original is never modified");
@@ -317,6 +320,7 @@ mod tests {
     #[test]
     fn gemini_parse_events() {
         let p = |b: serde_json::Value| GeminiAdapter.parse_hook(&b);
+        assert_eq!(p(json!({"hook_event_name": "BeforeAgent", "prompt": "x"})), vec![StatusEvent::PromptSubmitted]);
         assert_eq!(p(json!({"hook_event_name": "AfterAgent", "prompt": "x"})), vec![StatusEvent::TurnFinished]);
         assert_eq!(
             p(json!({"hook_event_name": "Notification", "notification_type": "ToolPermission", "message": "x"})),
@@ -355,11 +359,15 @@ mod tests {
     }
 
     #[test]
-    fn gemini_no_events_falls_back_to_silence_policy() {
+    fn gemini_silence_before_first_event_needs_you() {
         use crate::model::SessionState::*;
         let p = GeminiAdapter.policy();
         assert_eq!(crate::status::next_state(&Working, &StatusEvent::Silence { secs: 29 }, &p), Working);
-        assert_eq!(crate::status::next_state(&Working, &StatusEvent::Silence { secs: 30 }, &p), Finished);
+        // An auth or first-run screen before any event is never Finished.
+        assert_eq!(
+            crate::status::next_state(&Working, &StatusEvent::Silence { secs: 30 }, &p),
+            NeedsYou { reason: crate::status::WAITING_IN_TERMINAL.into() }
+        );
         let p = p.after_first_event();
         assert_eq!(crate::status::next_state(&Working, &StatusEvent::Silence { secs: 600 }, &p), Working);
         assert_eq!(crate::status::next_state(&Working, &StatusEvent::TurnFinished, &p), Finished);

@@ -251,19 +251,30 @@ app by eye: from `open` until the village is drawn.
 
 **5. Memory with the village drawing, target ≤ 250 MB.**
 
-1. Open the release app and keep it visible and focused for 30 s.
+The ground is baked at half density and scales with the village, so measure with a village of
+**at least 5 workspaces** (each with its compound on the map). Check the count first:
+`scripts/drive.sh '__cocDriver.state().workspaces.length'`. If it is under 5, add bench workspaces
+(they are new empty folders; remove them in the clean-up step):
+
+```
+scripts/drive.sh "(async()=>{const n=()=>__cocDriver.state().workspaces.length;for(let i=1;n()<5&&i<=5;i++){await __cocDriver.ipc.createWorkspace('$HOME/Documents','coc-bench'+i)}return n()})()"
+```
+
+1. Open the release app (same workspaces) and keep it visible and focused for 30 s.
 2. Run `scripts/budget.sh mem` and record the total.
 3. For the loaded case, use the dev build with the screen unlocked and the window visible:
-   1. Run the load setup from "Method":
+   1. Run the load setup from "Method". It finds the `coc-check` workspace by name (never by a
+      hard-coded id) and fails loudly if it is missing:
       ```
-      scripts/drive.sh '(async()=>{const ws="3a45f1a1-df48-452d-a513-62882f4c17a6";const ipc=__cocDriver.ipc;for(let i=1;i<=10;i++){const b=await ipc.createBuilder("Bench"+i,"custom",null,null,"sleep 600");await ipc.startSession(ws,b.id,"")}const t=await ipc.startTerminal(ws);await ipc.startTerminal(ws);__cocDriver.state().setSelection({kind:"session",id:t.id});return t.id})()'
+      scripts/drive.sh '(async()=>{const w=__cocDriver.state().workspaces.find((x)=>x.name==="coc-check");if(!w)throw new Error("no workspace named coc-check");const ws=w.id;const ipc=__cocDriver.ipc;for(let i=1;i<=10;i++){const b=await ipc.createBuilder("Bench"+i,"custom",null,null,"sleep 600");await ipc.startSession(ws,b.id,"")}const t=await ipc.startTerminal(ws);await ipc.startTerminal(ws);__cocDriver.state().setSelection({kind:"session",id:t.id});return t.id})()'
       ```
    2. Run `scripts/budget.sh mem`.
    3. Type `yes | head -c 50000000` in the terminal on screen. Wait 30 s after it ends and run
       `scripts/budget.sh mem` again.
    4. Subtract about 27 MB for release.
    5. Clean up: Stop, then Close, every Bench session and both terminals, and delete the Bench
-      builders.
+      builders. Remove any `coc-bench*` workspaces you added (Workspace panel → Remove), then
+      delete their folders.
 
 **6. Village edges without MSAA.**
 

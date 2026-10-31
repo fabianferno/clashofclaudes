@@ -1,5 +1,6 @@
 //! Agent adapters: how each agent CLI is detected, launched and observed.
 pub mod claude;
+pub mod codex;
 pub mod generic;
 
 use crate::model::AgentKind;
@@ -12,6 +13,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 pub use claude::ClaudeAdapter;
+pub use codex::CodexAdapter;
 pub use generic::CustomAdapter;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -106,6 +108,7 @@ impl AdapterRegistry {
     pub fn new() -> Self {
         let adapters: Vec<Arc<dyn AgentAdapter>> = vec![
             Arc::new(ClaudeAdapter),
+            Arc::new(CodexAdapter),
             Arc::new(CustomAdapter),
         ];
         Self { adapters }
@@ -143,6 +146,7 @@ pub fn terminal_policy() -> StatusPolicy {
         finished_after_silence_secs: None,
         stuck_after_silence_secs: None,
         any_exit_ends: true,
+        silence_finishes_until_first_event: false,
     }
 }
 
@@ -176,6 +180,7 @@ mod tests {
     #[test]
     fn registry_has_claude_and_custom() {
         let r = AdapterRegistry::new();
+        assert!(r.get(AgentKind::Codex).is_some());
         assert!(r.get(AgentKind::Claude).is_some());
         assert!(r.get(AgentKind::Custom).is_some());
     }

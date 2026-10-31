@@ -519,7 +519,11 @@ impl SessionManager {
             let now = now_ms();
             let mut changed = false;
             let mut job = None;
-            for ev in adapter.parse_hook(&body) {
+            let events = adapter.parse_hook(&body);
+            if !events.is_empty() {
+                e.policy = e.policy.after_first_event();
+            }
+            for ev in events {
                 match ev {
                     StatusEvent::CwdChanged { cwd } => {
                         if e.checked_cwd.as_ref() != Some(&cwd) {
@@ -614,6 +618,7 @@ impl SessionManager {
             (None, Some(a)) => if approve { a.approve_keys() } else { a.deny_keys() },
             (None, None) => None,
         }
+        .filter(|k| !k.is_empty()) // a prompt with no keys is answered in the terminal
         .ok_or_else(|| anyhow!("this agent can't be answered from the app; open the terminal"))?;
         if !e.info.awaiting_decision || !matches!(e.info.state, SessionState::NeedsYou { .. }) {
             bail!("session is not waiting for approval");
@@ -1321,6 +1326,39 @@ mod tests {
         let t = fx.mgr.start_with_spec(&fx.ws, &claude("b2"), sleeper(&fx), Arc::new(ClaudeAdapter)).unwrap();
         assert!(fx.mgr.review(&s.id).unwrap().other_sessions_active);
         fx.mgr.close(&t.id).unwrap();
+    }
+
+    fn codex_builder(id: &str) -> Builder {
+        Builder { id: id.into(), name: id.into(), agent: AgentKind::Codex, model: None, effort: None, custom_command: None }
+    }
+
+    #[test]
+    fn codex_notify_switches_off_silence_finish() {
+        use crate::adapters::CodexAdapter;
+        let fx = fixture();
+        let a = fx.mgr.start_with_spec(&fx.ws, &codex_builder("c1"), sh(&fx, "printf hi; sleep 5"), Arc::new(CodexAdapter)).unwrap();
+        let b = fx.mgr.start_with_spec(&fx.ws, &codex_builder("c2"), sh(&fx, "printf hi; sleep 5"), Arc::new(CodexAdapter)).unwrap();
+        assert!(wait_until(|| state(&fx, &a.id) == SessionState::Working && state(&fx, &b.id) == SessionState::Working));
+        // A notify for b arrives, then the turn is over and the user starts another one.
+        fx.mgr.on_hook(&b.id, serde_json::json!({"type": "agent-turn-complete"}));
+        assert_eq!(state(&fx, &b.id), SessionState::Finished);
+        fx.mgr.write(&b.id, b"go\r").unwrap();
+        assert_eq!(state(&fx, &b.id), SessionState::Working);
+        let later = now_ms() + 120_000;
+        fx.mgr.tick(later);
+        assert_eq!(state(&fx, &a.id), SessionState::Finished, "no notify yet: silence finishes");
+        assert_eq!(state(&fx, &b.id), SessionState::Working, "after a notify, silence never finishes");
+    }
+
+    #[test]
+    fn empty_key_prompt_cannot_be_answered_from_the_app() {
+        use crate::adapters::CodexAdapter;
+        let fx = fixture();
+        let s = fx.mgr.start_with_spec(&fx.ws, &codex_builder("c1"), sh(&fx, "printf 'Yes, allow Codex to work in this folder'; sleep 5"), Arc::new(CodexAdapter)).unwrap();
+        assert!(wait_until(|| state(&fx, &s.id) == SessionState::NeedsYou { reason: "Trust this folder?".into() }));
+        fx.mgr.approve(&s.id).unwrap_err();
+        fx.mgr.deny(&s.id).unwrap_err();
+        assert!(matches!(state(&fx, &s.id), SessionState::NeedsYou { .. }), "still waiting for the terminal");
     }
 
     /// Claude's launch/policy/prompts, but launched through an injected spec.

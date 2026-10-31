@@ -23,6 +23,20 @@ pub struct StatusPolicy {
     pub stuck_after_silence_secs: Option<u64>,
     /// Any exit is a normal end (plain terminals: `exit` after a failed command is not a crash).
     pub any_exit_ends: bool,
+    /// `finished_after_silence_secs` applies only until the first hook event arrives
+    /// (an agent whose single hook, e.g. Codex `notify`, may be missing or broken).
+    pub silence_finishes_until_first_event: bool,
+}
+
+impl StatusPolicy {
+    /// This policy once a hook event has arrived for the session.
+    pub fn after_first_event(&self) -> Self {
+        let mut p = self.clone();
+        if p.silence_finishes_until_first_event {
+            p.finished_after_silence_secs = None;
+        }
+        p
+    }
 }
 
 const SILENCE_STUCK_PREFIX: &str = "no output for ";
@@ -48,7 +62,7 @@ pub fn next_state(state: &SessionState, ev: &StatusEvent, policy: &StatusPolicy)
 
         (S::Starting, E::Output) => S::Working,
         (S::Working, E::WaitingForInput) => S::Finished,
-        (S::Working | S::Finished, E::UserInput) if !policy.uses_hooks => S::Working,
+        (S::Working | S::Finished | S::NeedsYou { .. }, E::UserInput) if !policy.uses_hooks => S::Working,
 
         // Silence counts from the start too: a custom agent may print nothing at all.
         (S::Starting | S::Working, E::Silence { secs })
@@ -156,8 +170,8 @@ mod tests {
     use crate::model::SessionState::*;
     use StatusEvent::*;
 
-    fn hooks() -> StatusPolicy { StatusPolicy { uses_hooks: true, finished_after_silence_secs: None, stuck_after_silence_secs: Some(900), any_exit_ends: false } }
-    fn plain() -> StatusPolicy { StatusPolicy { uses_hooks: false, finished_after_silence_secs: Some(20), stuck_after_silence_secs: Some(900), any_exit_ends: false } }
+    fn hooks() -> StatusPolicy { StatusPolicy { uses_hooks: true, finished_after_silence_secs: None, stuck_after_silence_secs: Some(900), any_exit_ends: false, silence_finishes_until_first_event: false } }
+    fn plain() -> StatusPolicy { StatusPolicy { uses_hooks: false, finished_after_silence_secs: Some(20), stuck_after_silence_secs: Some(900), any_exit_ends: false, silence_finishes_until_first_event: false } }
     fn term() -> StatusPolicy { crate::adapters::terminal_policy() }
     #[test] fn starting_output_is_working() { assert_eq!(next_state(&Starting, &Output, &hooks()), Working); }
     #[test] fn permission_needs_you() { assert_eq!(next_state(&Working, &PermissionRequested{message:"Bash".into()}, &hooks()), NeedsYou{reason:"Bash".into()}); }

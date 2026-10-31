@@ -33,6 +33,7 @@ tauri-plugin-dialog = "2"
 
 [dev-dependencies]
 tempfile = "3"
+toml = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json"] }
 
 

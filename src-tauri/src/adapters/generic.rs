@@ -48,6 +48,7 @@ impl AgentAdapter for CustomAdapter {
             finished_after_silence_secs: Some(20),
             stuck_after_silence_secs: Some(900),
             any_exit_ends: false,
+            silence_finishes_until_first_event: false,
         }
     }
 }

@@ -124,7 +124,8 @@ test('read-only view of an ended session never resizes or writes', async () => {
 test('keeps 2000 lines of scrollback', () => {
   // Each mount of a full terminal builds a fresh buffer that JSC frees only at a full GC:
   // ~4.7 MB per remount at 5000 lines, ~1.9 MB at 2000 (docs/verification/plan-2-village.md).
-  // The full raw history stays in the backend's 2 MiB scrollback for replay.
+  // xterm keeps the last 2000 lines; the backend keeps the last 2 MiB of raw output and replays it
+  // on attach, so older output beyond those limits is not shown.
   const { unmount } = render(<TerminalView sessionId="t6" />);
   expect(termOptions.scrollback).toBe(2000);
   unmount();

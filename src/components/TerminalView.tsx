@@ -21,8 +21,9 @@ export default function TerminalView({ sessionId, readOnly = false }: { sessionI
     const el = host.current;
     if (!el) return;
     let disposed = false;
-    // 2000 lines: every mount builds a fresh buffer, which JSC frees only at a full GC. The full raw
-    // history stays in the backend's 2 MiB scrollback and is replayed on attach.
+    // 2000 lines: every mount builds a fresh buffer, which JSC frees only at a full GC. xterm keeps
+    // the last 2000 lines; the backend keeps the last 2 MiB of raw output and replays it on attach,
+    // so older output beyond those limits is not shown.
     const term = new Terminal({ fontFamily: 'Menlo, monospace', fontSize: 13, scrollback: 2000, cursorBlink: true });
     const fit = new FitAddon();
     term.loadAddon(fit);

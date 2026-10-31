@@ -29,7 +29,7 @@ What this means for the numbers:
 | Unfocused | ≤ 15 fps (`scene().fps`) | not measurable: screen locked | n/a | NOT MEASURABLE (owner check 2) |
 | Idle, no sessions (for reference) | n/a | **178 MB** (before the fix: 299 MB) | release | n/a |
 | 10 sessions (`sleep 600`) + 2 terminals | ≤ 250 MB | **219 MB** with the panel closed, **226 MB** with a terminal on screen. Release estimate: about 192 / 199 MB | dev | PROVISIONAL: lower bound, village hidden (screen locked); gated on owner check 5 (see note 2) |
-| `yes \| head -c 50000000` in a terminal, then 30 s settle | ≤ 250 MB | **247 MB** after settling with scrollback 5000 (peak 442 MB during the flood). After fix round 1 (scrollback 2000): **239 MB**, or 246 MB with a second terminal flooded too. Release estimate: about 27 MB lower | dev | PROVISIONAL: lower bound, village hidden (screen locked); gated on owner check 5. Only 4–11 MB of margin on dev (see note 2 and fix round 1) |
+| `yes \| head -c 50000000` in a terminal, then 30 s settle | ≤ 250 MB | With the fix-round-1 protocol: **245 MB** with scrollback 5000 and **239 MB** with scrollback 2000 (246 MB once a second terminal is flooded too). The first run, at scrollback 5000, read 247 MB, with a 442 MB peak during the flood. Release estimate: about 27 MB lower | dev | PROVISIONAL: lower bound, village hidden (screen locked); gated on owner check 5. Only 4–11 MB of margin on dev (see note 2 and fix round 1) |
 | Cold start to village visible | ≤ 2 s | Village visible: not measurable (screen locked). From launch to the scene being built (`scene().entities.length > 0`, hidden): **0.69 / 0.70 / 0.70 s** | dev | NOT MEASURABLE (owner check 4). The scene-built part is within budget. |
 
 **Note 1.** The window really was minimized (`is_minimized` returned true), but the locked screen
@@ -124,7 +124,7 @@ mounts a terminal whose 2 MiB scrollback is full, xterm builds a new 5000-line b
 It is garbage, not a leak: a GC dropped one run from 427 to 405 MB. But a user who flips between
 flooded terminals can go past 250 MB.
 
-An earlier draft of this file said the controller's ruling kept scrollback at 5000. That was wrong:
+The version of this file committed in `c562199` said the controller's ruling kept scrollback at 5000. That was wrong:
 the ruling only said "not below 1000". The controller then ruled for 2000; see fix round 1.
 
 **GPU process transient.** For some seconds after a flood or a burst of remounts, the WebKit GPU
@@ -134,7 +134,9 @@ process holds 140–165 MB. It is back to about 25 MB within 30 s. This happened
 ## Fix round 1: scrollback 2000, and `clearTextureAtlas`
 
 Controller ruling: xterm `scrollback` goes from 5000 to 2000 (`src/components/TerminalView.tsx`).
-The raw history is not lost: the backend still keeps the last 2 MiB per session and replays it.
+What you see shrinks from 5000 to 2000 lines. xterm keeps the last 2000 lines; the backend keeps
+the last 2 MiB of raw output and replays it on attach, so older output beyond those limits is not
+shown.
 The test `keeps 2000 lines of scrollback` in `src/components/TerminalView.test.tsx` pins the value.
 
 **Protocol (dev build, driver, fresh app each run, village hidden):**

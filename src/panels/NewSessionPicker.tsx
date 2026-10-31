@@ -32,8 +32,8 @@ export function commandPreview(
       const providerModel = !!model && /^[^/]+\/.+$/.test(model);
       return join([effort && providerModel && 'OPENCODE_CONFIG_CONTENT=…', 'opencode …', model && `--model=${model}`, t && `--prompt=${t}`]);
     }
-    case 'gemini':
-      return join(['gemini', model && `--model=${model}`, t && `--prompt-interactive=${t}`]);
+    case 'antigravity':
+      return join(['agy', model && `--model=${model}`, t && `--prompt-interactive=${t}`]);
   }
 }
 

@@ -57,7 +57,7 @@ describe('buildEntities', () => {
     const s3 = findSpot(c2, [])!;
     const input: VillageInput = {
       workspaces: [ws('w1', c1), ws('w2', c2)],
-      builders: [bld('b1'), bld('b2', 'codex'), bld('b3', 'gemini')],
+      builders: [bld('b1'), bld('b2', 'codex'), bld('b3', 'antigravity')],
       sessions: [
         sess('a1', 'w1', 'b1', s1),
         sess('a2', 'w1', 'b2', s2),

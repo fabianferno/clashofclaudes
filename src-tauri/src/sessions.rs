@@ -2,6 +2,7 @@
 use crate::adapters::{terminal_launch, terminal_policy, AdapterRegistry, AgentAdapter, LaunchRequest, ScreenPrompt};
 use crate::git::{self, GitBaseline, Review};
 use crate::hooks::HookServer;
+use crate::osc::{self, Osc7501};
 use crate::model::{Builder, SessionInfo, SessionKind, SessionState, Tile, Workspace, WorktreeInfo};
 use crate::pty::{LaunchSpec, PtyHandle, REAP_POLL};
 use crate::scrollback::{Scrollback, SCROLLBACK_CAP};
@@ -81,6 +82,8 @@ struct SessionEntry {
     /// Needle of the prompt seen in the window last time, so one that stays visible after an
     /// answer (old bytes linger in the window) is not armed again.
     prompt_seen: Option<&'static str>,
+    /// OSC 7501 status-report scanner, for adapters whose agent writes them (`reads_osc_status`).
+    osc: Option<Osc7501>,
 }
 
 impl SessionEntry {
@@ -415,6 +418,7 @@ impl SessionManager {
                 prompts: adapter.as_ref().map(|a| a.screen_prompts()).unwrap_or_default(),
                 active_prompt: None,
                 prompt_seen: None,
+                osc: adapter.as_ref().filter(|a| a.reads_osc_status()).map(|_| Osc7501::default()),
                 adapter,
             });
             self.flusher.wake(); // under the sessions lock, so `park_if_idle` can't miss it
@@ -479,7 +483,16 @@ impl SessionManager {
         e.scrollback.push(data);
         e.info.last_output_at = now;
         e.quiet_since_ms = now;
-        let changed = e.apply(&StatusEvent::Output, now);
+        let mut changed = e.apply(&StatusEvent::Output, now);
+        // In-band status reports: the agent's own word, like a hook event.
+        let reports = e.osc.as_mut().map(|p| p.feed(data)).unwrap_or_default();
+        let events: Vec<StatusEvent> = reports.iter().flat_map(osc::events_for).collect();
+        if !events.is_empty() {
+            e.policy = e.policy.after_first_event();
+        }
+        for ev in &events {
+            changed |= e.apply(ev, now);
+        }
         if e.scan_prompts(now) || changed {
             self.send_updated(e);
         }
@@ -1649,6 +1662,24 @@ mod tests {
         assert_eq!(state(&fx, &s.id), SessionState::Finished);
         assert!(info(&fx, &s.id).reached_finished);
         assert!(wait_until(|| last_update(&fx, &s.id).is_some_and(|i| i.state == SessionState::Finished)), "Updated emitted");
+    }
+
+    #[test]
+    fn osc_status_reports_drive_an_antigravity_session() {
+        let fx = fixture();
+        let b = Builder { id: "b1".into(), name: "b1".into(), agent: AgentKind::Antigravity, model: None, effort: None, custom_command: None };
+        // Reports split mid-sequence across writes, as a TUI may flush them.
+        let script = r#"printf '\033]7501;state=work'; sleep 0.2; printf 'ing:app=agy\033\\'; read a; printf '\033]7501;state=blocked:app=agy:kind=permission\007'; read b; printf '\033]7501;state=done:app=agy\033\\'; sleep 5"#;
+        let spec = LaunchSpec { program: "/bin/sh".into(), args: vec!["-c".into(), script.into()], env: vec![], cwd: fx.ws.path.clone() };
+        let s = fx.mgr.start_with_spec(&fx.ws, &b, spec, Arc::new(crate::adapters::AntigravityAdapter)).unwrap();
+        assert!(wait_until(|| state(&fx, &s.id) == SessionState::Working));
+        fx.mgr.write(&s.id, b"\n").unwrap();
+        assert!(wait_until(|| state(&fx, &s.id) == SessionState::NeedsYou { reason: "Wants permission".into() }));
+        fx.mgr.write(&s.id, b"\n").unwrap();
+        assert!(wait_until(|| state(&fx, &s.id) == SessionState::Finished));
+        // After a report, silence no longer reads as "Waiting in the terminal".
+        fx.mgr.tick(info(&fx, &s.id).started_at + 120_000);
+        assert_eq!(state(&fx, &s.id), SessionState::Finished);
     }
 
     #[test]

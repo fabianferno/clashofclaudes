@@ -12,7 +12,7 @@ const agents: AgentInfo[] = [
   base,
   { ...base, kind: 'codex', label: 'Codex', installed: false, version: null },
   { ...base, kind: 'opencode', label: 'OpenCode', installed: false, version: null },
-  { ...base, kind: 'gemini', label: 'Gemini CLI (API key)', installed: false, version: null },
+  { ...base, kind: 'antigravity', label: 'Antigravity CLI', installed: false, version: null },
   { ...base, kind: 'custom', label: 'Custom command', version: null },
 ];
 const writeText = vi.fn().mockResolvedValue(undefined);
@@ -29,11 +29,11 @@ const tile = (k: string) => screen.getByTestId(`agent-tile-${k}`);
 
 test('agents show as app icons only, marked ready or not set up', () => {
   render(<AgentsStatus />);
-  for (const k of ['claude', 'codex', 'opencode', 'gemini', 'custom']) expect(screen.getByTestId(`agent-logo-${k}`)).toBeTruthy();
+  for (const k of ['claude', 'codex', 'opencode', 'antigravity', 'custom']) expect(screen.getByTestId(`agent-logo-${k}`)).toBeTruthy();
   expect(tile('claude').getAttribute('aria-label')).toBe('Claude Code: ready');
   expect(tile('codex').getAttribute('aria-label')).toBe('Codex: not set up');
   expect(tile('custom').getAttribute('aria-label')).toBe('Custom: ready');
-  expect(tile('gemini').textContent).toBe('+Gemini CLI');
+  expect(tile('antigravity').textContent).toBe('+Antigravity CLI');
   // No commands or versions until a tile is clicked.
   expect(screen.queryByText(/npm i -g/)).toBeNull();
   expect(screen.queryByRole('dialog')).toBeNull();
@@ -100,4 +100,12 @@ test('Copied reads back to Copy after a moment', async () => {
     act(() => { vi.advanceTimersByTime(COPIED_MS); });
     expect(screen.queryByRole('button', { name: 'Copied' })).toBeNull();
   } finally { vi.useRealTimers(); }
+});
+
+test('Antigravity setup points to its docs and the agy sign-in', () => {
+  render(<AgentsStatus />);
+  fireEvent.click(tile('antigravity'));
+  expect(screen.getByRole('dialog', { name: 'Antigravity CLI' }).textContent).toContain('antigravity.google/docs/cli');
+  expect(screen.getByText('agy')).toBeTruthy();
+  expect(screen.queryByText(/npm i -g/)).toBeNull();
 });

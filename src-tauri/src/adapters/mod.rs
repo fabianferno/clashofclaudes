@@ -1,7 +1,7 @@
 //! Agent adapters: how each agent CLI is detected, launched and observed.
+pub mod antigravity;
 pub mod claude;
 pub mod codex;
-pub mod gemini;
 pub mod generic;
 pub mod opencode;
 
@@ -14,9 +14,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+pub use antigravity::AntigravityAdapter;
 pub use claude::ClaudeAdapter;
 pub use codex::CodexAdapter;
-pub use gemini::GeminiAdapter;
 pub use generic::CustomAdapter;
 pub use opencode::OpenCodeAdapter;
 
@@ -139,6 +139,10 @@ pub trait AgentAdapter: Send + Sync {
     fn screen_prompts(&self) -> Vec<ScreenPrompt> {
         vec![]
     }
+    /// The agent writes OSC 7501 status reports into its output (see `osc.rs`).
+    fn reads_osc_status(&self) -> bool {
+        false
+    }
 }
 
 pub struct AdapterRegistry {
@@ -150,7 +154,7 @@ impl AdapterRegistry {
         let adapters: Vec<Arc<dyn AgentAdapter>> = vec![
             Arc::new(ClaudeAdapter),
             Arc::new(CodexAdapter),
-            Arc::new(GeminiAdapter),
+            Arc::new(AntigravityAdapter),
             Arc::new(OpenCodeAdapter),
             Arc::new(CustomAdapter),
         ];
@@ -215,7 +219,6 @@ pub(crate) mod fake_home {
             .env("HOME", home.path())
             .env("XDG_CONFIG_HOME", home.path().join(".config"))
             .env("CODEX_HOME", home.path().join(".codex"))
-            .env_remove("GEMINI_CLI_SYSTEM_SETTINGS_PATH")
             .env_remove("OPENCODE_CONFIG_DIR")
             .env(CHILD_FLAG, "1")
             .output()
@@ -292,7 +295,7 @@ mod tests {
         let r = AdapterRegistry::new();
         assert!(r.get(AgentKind::Codex).is_some());
         assert!(r.get(AgentKind::OpenCode).is_some());
-        assert!(r.get(AgentKind::Gemini).is_some());
+        assert!(r.get(AgentKind::Antigravity).is_some());
         assert!(r.get(AgentKind::Claude).is_some());
         assert!(r.get(AgentKind::Custom).is_some());
     }

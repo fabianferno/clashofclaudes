@@ -1,12 +1,13 @@
 import { useId } from 'react';
 import type { AgentKind } from '../api/types';
 
-// Marks for Claude Code, Google Gemini and OpenCode are from Simple Icons (https://simpleicons.org,
-// CC0-1.0; the trademarks belong to their owners and only identify each agent). Simple Icons has no
-// OpenAI mark, so Codex and Custom use a neutral prompt glyph.
+// Marks for Claude Code and OpenCode are from Simple Icons (https://simpleicons.org, CC0-1.0; the
+// trademarks belong to their owners and only identify each agent). Simple Icons has no OpenAI or
+// Antigravity mark: Codex and Custom use a neutral prompt glyph, Antigravity an original lift mark.
 const PATHS = {
   claude: 'M21 10.5h3v3h-3v3h-1.5v3H18v-3h-1.5v3H15v-3H9v3H7.5v-3H6v3H4.5v-3H3v-3H0v-3h3v-6h18Zm-15 0h1.5v-3H6Zm10.5 0H18v-3h-1.5z',
-  gemini: 'M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58 12.3 12.3 0 0 1-2.58-3.81Q12 2.49 12 0q0 2.49-.96 4.68-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96 2.19.93 3.81 2.55t2.55 3.81',
+  // Original: an upward chevron over a hovering dot ("anti-gravity").
+  antigravity: 'M12 2.5 21 13.5h-5.2L12 8.9l-3.8 4.6H3Zm0 13a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7z',
   opencode: 'M22 24H2V0h20zM17 4.8H7v14.4h10z',
 } as const;
 
@@ -15,7 +16,7 @@ const TILES: Record<AgentKind, { top: string; bottom: string; fg: string }> = {
   claude: { top: '#E58A6B', bottom: '#C9653F', fg: '#FFFFFF' },
   codex: { top: '#3A3A3C', bottom: '#0B0B0C', fg: '#FFFFFF' },
   opencode: { top: '#2C2C2E', bottom: '#000000', fg: '#FFFFFF' },
-  gemini: { top: '#FFFFFF', bottom: '#E9E6F2', fg: 'url(#g)' },
+  antigravity: { top: '#FFFFFF', bottom: '#E9E6F2', fg: 'url(#g)' },
   custom: { top: '#9A8668', bottom: '#6E5D45', fg: '#FFFFFF' },
 };
 

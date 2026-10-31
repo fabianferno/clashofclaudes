@@ -6,6 +6,7 @@ pub mod git;
 pub mod hooks;
 pub mod model;
 pub mod notify;
+pub mod osc;
 pub mod persist;
 pub mod platform;
 pub mod pty;

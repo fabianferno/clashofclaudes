@@ -9,7 +9,7 @@ export const PALETTE: Record<
 > = {
   claude: { body: '#d97757', dark: '#8a3f24', hat: '#f6e7c8', roof: '#d4683f', wall: '#f3e2c4', label: 'Claude Code' },
   codex: { body: '#3a3a40', dark: '#111114', hat: '#f4f4f4', roof: '#4a4d57', wall: '#cfccc5', label: 'Codex' },
-  gemini: { body: '#4f7cf0', dark: '#22409a', hat: '#c9b8ff', roof: '#4f7cf0', wall: '#eef1f8', label: 'Gemini CLI' },
+  antigravity: { body: '#4f7cf0', dark: '#22409a', hat: '#c9b8ff', roof: '#4f7cf0', wall: '#eef1f8', label: 'Antigravity' },
   opencode: { body: '#33a889', dark: '#17594a', hat: '#ffcc1a', roof: '#2f9a7e', wall: '#dcbf92', label: 'OpenCode' },
   custom: { body: '#8d8a83', dark: '#4f4c47', hat: '#efeae0', roof: '#7d7a74', wall: '#e4ded2', label: 'Custom' },
 };
@@ -18,7 +18,8 @@ export const PALETTE: Record<
 export const CLASS_MAP: Record<AgentKind, Record<string, ClassTier>> = {
   claude: { haiku: 0, sonnet: 1, opus: 2, fable: 2 },
   codex: {},
-  gemini: { flash: 0, pro: 2 },
+  // Model ids such as "gemini-3.8-flash-medium" or "claude-opus-5-5-high" (matched by substring).
+  antigravity: { flash: 0, sonnet: 1, argon: 2, opus: 2 },
   opencode: {},
   custom: {},
 };

@@ -7,7 +7,7 @@ import {
 import { getTexture, clearTextures, textureCacheSize } from '../textures';
 import type { AgentKind, Compound } from '../../api/types';
 
-const AGENTS: AgentKind[] = ['claude', 'codex', 'gemini', 'opencode', 'custom'];
+const AGENTS: AgentKind[] = ['claude', 'codex', 'antigravity', 'opencode', 'custom'];
 const ok = (a: { canvas: HTMLCanvasElement; ax: number; ay: number }) => {
   expect(a.canvas.width).toBeGreaterThan(0);
   expect(a.canvas.height).toBeGreaterThan(0);
@@ -81,7 +81,7 @@ describe('palette', () => {
     });
     expect(PALETTE.claude).toMatchObject({ body: '#d97757', roof: '#d4683f', wall: '#f3e2c4' });
     expect(PALETTE.codex).toMatchObject({ body: '#3a3a40', roof: '#4a4d57', wall: '#cfccc5' });
-    expect(PALETTE.gemini).toMatchObject({ body: '#4f7cf0', roof: '#4f7cf0', wall: '#eef1f8' });
+    expect(PALETTE.antigravity).toMatchObject({ body: '#4f7cf0', roof: '#4f7cf0', wall: '#eef1f8' });
     expect(PALETTE.opencode).toMatchObject({ body: '#33a889', roof: '#2f9a7e', wall: '#dcbf92' });
   });
 });

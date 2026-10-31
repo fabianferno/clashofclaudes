@@ -34,7 +34,7 @@ test('commandPreview for claude', () => {
   expect(commandPreview(claude, 'opus', 'max', 'fix "bug"')).toBe('claude … --model opus --effort max -- "fix \\"bug\\""');
 });
 const opencode: AgentInfo = { ...claude, kind: 'opencode', label: 'OpenCode', models: [], canApprove: false };
-const gemini: AgentInfo = { ...claude, kind: 'gemini', label: 'Gemini CLI (API key)', models: ['flash', 'pro'], efforts: [], canApprove: false };
+const antigravity: AgentInfo = { ...claude, kind: 'antigravity', label: 'Antigravity CLI', models: ['gemini-3.8-flash-medium'], efforts: [], canApprove: false };
 test('commandPreview mirrors the Codex adapter', () => {
   expect(commandPreview(codex, 'gpt-6', 'high', 'fix it')).toBe('codex -m gpt-6 -c model_reasoning_effort="high" … -- "fix it"');
   expect(commandPreview(codex)).toBe('codex …');
@@ -45,9 +45,9 @@ test('commandPreview mirrors the OpenCode adapter (effort only via config, for p
   expect(commandPreview(opencode, 'gpt-5', 'high')).toBe('opencode … --model=gpt-5');
   expect(commandPreview(opencode, undefined, 'high')).toBe('opencode …');
 });
-test('commandPreview mirrors the Gemini adapter (effort is display-only)', () => {
-  expect(commandPreview(gemini, 'flash', 'high', 'fix it')).toBe('gemini --model=flash --prompt-interactive="fix it"');
-  expect(commandPreview(gemini)).toBe('gemini');
+test('commandPreview mirrors the Antigravity adapter (effort is part of the model id)', () => {
+  expect(commandPreview(antigravity, 'gemini-3.8-flash-medium', 'high', 'fix it')).toBe('agy --model=gemini-3.8-flash-medium --prompt-interactive="fix it"');
+  expect(commandPreview(antigravity)).toBe('agy');
 });
 test('agents without a model list get a free-text model; empty means default', async () => {
   const codexOn = { ...codex, installed: true, models: [] };

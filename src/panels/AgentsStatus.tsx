@@ -5,17 +5,21 @@ import type { AgentInfo, AgentKind } from '../api/types';
 import AgentLogo from './AgentLogo';
 
 /** How to set each agent up: install, then sign in. Display only: the app never runs these. */
-export const SETUP: Partial<Record<AgentKind, { install: string; signIn?: string; signInNote?: string; note?: string }>> = {
+export const SETUP: Partial<Record<AgentKind, { install?: string; installNote?: string; signIn?: string; signInNote?: string; note?: string }>> = {
   claude: { install: 'npm i -g @anthropic-ai/claude-code', signIn: 'claude', signInNote: 'Run it once in a terminal and follow the login.' },
   codex: { install: 'npm i -g @openai/codex', signIn: 'codex login' },
   opencode: { install: 'npm i -g opencode-ai', signIn: 'opencode auth login' },
-  gemini: { install: 'npm i -g @google/gemini-cli', note: 'Needs a Gemini API key (GEMINI_API_KEY). Google moved Gemini consumer plans to Antigravity CLI — you can run it as a Custom command.' },
+  antigravity: {
+    installNote: 'Install Antigravity CLI from Google: follow the steps at antigravity.google/docs/cli. It replaced Gemini CLI.',
+    signIn: 'agy',
+    signInNote: 'Run it once in a terminal and sign in with Google.',
+  },
 };
 
 /** How long a Copy button reads "Copied". */
 export const COPIED_MS = 2000;
 
-/** The label without a parenthetical ("Gemini CLI (API key)" → "Gemini CLI"), for the tile. */
+/** The label without a parenthetical ("Codex (beta)" → "Codex"), for the tile. */
 const shortLabel = (a: AgentInfo) => (a.kind === 'custom' ? 'Custom' : a.label.replace(/\s*\(.*\)$/, ''));
 /** The version without a repeat of the agent name ("2.1.0 (Claude Code)" → "2.1.0"). */
 const version = (a: AgentInfo) => a.version?.replace(` (${a.label})`, '') ?? null;
@@ -102,8 +106,9 @@ function AgentDialog({ agent, onClose }: { agent: AgentInfo; onClose: () => void
         {agent.kind !== 'custom' && !agent.installed && setup && (
           <>
             <div className="sp-sec">1. Install</div>
-            <p className="sp-d">Copy this into a terminal:</p>
-            {cmd(setup.install)}
+            {setup.install && <p className="sp-d">Copy this into a terminal:</p>}
+            {setup.install && cmd(setup.install)}
+            {setup.installNote && <p className="sp-d">{setup.installNote}</p>}
             {setup.signIn && (
               <>
                 <div className="sp-sec">2. Sign in</div>

@@ -180,8 +180,9 @@ pub unsafe fn import_login_path() {
         let current = std::env::var("PATH").unwrap_or_default();
         let shell = login_shell();
         let login = login_shell_path(&shell, PATH_IMPORT_TIMEOUT);
-        if login.is_none() {
-            eprintln!("could not read PATH from login shell {shell}; adding well-known install dirs");
+        match &login {
+            Some(p) => eprintln!("PATH imported from login shell {shell} ({} entries)", p.split(':').count()),
+            None => eprintln!("could not read PATH from login shell {shell}; adding well-known install dirs"),
         }
         let home = std::env::var_os("HOME").map(PathBuf::from);
         let path = resolve_app_path(&current, login, home.as_deref());

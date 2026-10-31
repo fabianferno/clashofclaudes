@@ -61,3 +61,15 @@
 .new-session .preview { display: block; margin: 6px 0 10px; padding: 6px 8px; background: #2b2018; color: #f3e7cc; border-radius: 8px; font-size: 12px; word-break: break-all; }
 .new-session textarea { border: 2px solid #c8b083; border-radius: 8px; padding: 5px 8px; background: #fff8e8; font: 600 13px system-ui; color: #2b2018; resize: vertical; }
 .popout-hint { font: 700 12px system-ui; color: #e7d5ad; }
+.agent-row { padding: 8px 10px; margin-bottom: 8px; }
+.agent-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.agent-ok { color: #2f7d17; }
+.agent-missing { color: #a3382c; }
+.agent-cmd { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+.agent-cmd code { flex: 1; min-width: 0; padding: 5px 8px; background: #2b2018; color: #f3e7cc; border-radius: 8px; font-size: 12px; word-break: break-all; user-select: all; }
+.agent-note { margin: 6px 0 0; }
+.welcome-layer { position: fixed; left: 0; top: 0; bottom: 0; z-index: 2; display: flex; justify-content: center; align-items: flex-start; padding-top: 110px; }
+.welcome-card { width: 360px; max-width: calc(100vw - 32px); text-align: center; padding: 16px 20px 12px; background: var(--sp-parch); color: #2b2018; border: 4px solid var(--hud-out); border-radius: 16px; box-shadow: 0 6px 0 var(--hud-out), 0 14px 30px rgba(0,0,0,.3); font-family: system-ui, sans-serif; }
+.welcome-card h2 { margin: 0 0 6px; font: 400 26px 'Lilita One', sans-serif; color: #fff; }
+.welcome-card p { margin: 0 0 12px; font-size: 14px; font-weight: 700; color: var(--sp-ink-soft); }
+.welcome-card .sp-btns { justify-content: center; }

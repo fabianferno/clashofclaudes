@@ -88,6 +88,9 @@ impl AgentAdapter for ClaudeAdapter {
     fn detect(&self) -> Detection {
         DETECTION.get(Instant::now(), probe)
     }
+    fn invalidate_detection(&self) {
+        DETECTION.invalidate();
+    }
     fn models(&self) -> Vec<String> {
         ["haiku", "sonnet", "opus", "fable"].map(String::from).to_vec()
     }

@@ -139,6 +139,9 @@ impl AgentAdapter for GeminiAdapter {
     fn detect(&self) -> Detection {
         DETECTION.get(Instant::now(), probe)
     }
+    fn invalidate_detection(&self) {
+        DETECTION.invalidate();
+    }
     fn models(&self) -> Vec<String> {
         ["flash", "pro"].map(String::from).to_vec()
     }

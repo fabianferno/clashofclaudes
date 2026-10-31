@@ -66,6 +66,17 @@ fn focus_and_select<R: Runtime>(app: &AppHandle<R>, session_id: &str) {
     let _ = app.emit("select-session", serde_json::json!({ "id": session_id }));
 }
 
+/// The app data dir: `override_dir` (debug builds only, from `COC_DATA_DIR`; empty is ignored)
+/// wins over `default`. Release builds always use `default`.
+pub fn resolve_data_dir(default: std::path::PathBuf, override_dir: Option<&str>) -> std::path::PathBuf {
+    #[cfg(debug_assertions)]
+    if let Some(o) = override_dir.filter(|o| !o.is_empty()) {
+        return std::path::PathBuf::from(o);
+    }
+    let _ = override_dir;
+    default
+}
+
 const QUIT_MENU_ID: &str = "app-quit";
 
 /// The default menu, except Quit: the predefined item terminates the process directly (macOS
@@ -100,7 +111,7 @@ pub fn run() {
             }
         })
         .setup(|app| {
-            let data_dir = app.path().app_data_dir()?;
+            let data_dir = resolve_data_dir(app.path().app_data_dir()?, std::env::var("COC_DATA_DIR").ok().as_deref());
             std::fs::create_dir_all(&data_dir)?;
             let data_path = data_dir.join("state.json");
             let mut data = persist::load(&data_path);
@@ -251,6 +262,31 @@ pub fn run() {
                 }
             }
         });
+}
+
+#[cfg(test)]
+mod data_dir_tests {
+    use super::resolve_data_dir;
+    use std::path::PathBuf;
+
+    #[test]
+    fn empty_or_missing_override_uses_default() {
+        let d = PathBuf::from("/default");
+        assert_eq!(resolve_data_dir(d.clone(), None), d);
+        assert_eq!(resolve_data_dir(d.clone(), Some("")), d);
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn debug_override_wins() {
+        assert_eq!(resolve_data_dir(PathBuf::from("/default"), Some("/tmp/x")), PathBuf::from("/tmp/x"));
+    }
+
+    #[cfg(not(debug_assertions))]
+    #[test]
+    fn release_ignores_override() {
+        assert_eq!(resolve_data_dir(PathBuf::from("/default"), Some("/tmp/x")), PathBuf::from("/default"));
+    }
 }
 
 #[cfg(test)] mod smoke { #[test] fn it_builds() { assert_eq!(2 + 2, 4); } }

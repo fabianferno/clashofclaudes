@@ -55,6 +55,11 @@ impl DetectionCache {
         d
     }
 
+    /// Drops the cached result so the next `get` probes again ("Re-check").
+    pub fn invalidate(&self) {
+        *self.last.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    }
+
     /// How many times `get` ran its probe.
     pub fn probes(&self) -> usize {
         self.probes.load(Ordering::SeqCst)
@@ -86,6 +91,8 @@ pub trait AgentAdapter: Send + Sync {
     fn kind(&self) -> AgentKind;
     fn label(&self) -> &'static str;
     fn detect(&self) -> Detection;
+    /// Forgets any cached detection so the next `detect` probes again. Adapters without a cache need nothing.
+    fn invalidate_detection(&self) {}
     fn models(&self) -> Vec<String>;
     fn efforts(&self) -> Vec<String>;
     fn launch(&self, req: &LaunchRequest) -> anyhow::Result<LaunchSpec>;
@@ -180,6 +187,16 @@ mod tests {
         assert_eq!(c.probes(), 1);
         assert_eq!(c.get(t0 + Duration::from_secs(60), || det("3")).version.as_deref(), Some("3"), "expired");
         assert_eq!(c.get(t0 + Duration::from_secs(61), || det("4")).version.as_deref(), Some("3"));
+        assert_eq!(c.probes(), 2);
+    }
+
+    #[test]
+    fn invalidate_forces_a_new_probe_within_ttl() {
+        let c = DetectionCache::new(Duration::from_secs(60));
+        let t0 = Instant::now();
+        assert_eq!(c.get(t0, || det("1")).version.as_deref(), Some("1"));
+        c.invalidate();
+        assert_eq!(c.get(t0 + Duration::from_secs(1), || det("2")).version.as_deref(), Some("2"), "force skipped the cache");
         assert_eq!(c.probes(), 2);
     }
 

@@ -27,7 +27,8 @@ export function trimSeen(frame: Frame, writtenUntil: number): { data: Uint8Array
 
 export const ipc = {
   listState: () => invoke<ListState>('list_state'),
-  detectAgents: () => invoke<AgentInfo[]>('detect_agents'),
+  /** `force` bypasses the 60 s detection cache (Re-check). */
+  detectAgents: (force = false) => invoke<AgentInfo[]>('detect_agents', { force }),
   addWorkspace: (path: string) => invoke<Workspace>('add_workspace', { path }),
   createWorkspace: (parent: string, name: string) => invoke<Workspace>('create_workspace', { parent, name }),
   removeWorkspace: (id: string) => invoke<void>('remove_workspace', { id }),

@@ -121,12 +121,15 @@ pub fn list_state(state: State<'_, AppState>) -> StateSnapshot {
 }
 
 #[tauri::command]
-pub async fn detect_agents(state: State<'_, AppState>) -> Result<Vec<AgentInfo>, String> {
+pub async fn detect_agents(force: Option<bool>, state: State<'_, AppState>) -> Result<Vec<AgentInfo>, String> {
     Ok(state
         .registry
         .all()
         .iter()
         .map(|a| {
+            if force.unwrap_or(false) {
+                a.invalidate_detection();
+            }
             let d = a.detect();
             AgentInfo {
                 kind: a.kind(),

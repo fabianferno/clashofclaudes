@@ -36,13 +36,16 @@ test('commandPreview for claude', () => {
 test('commandPreview omits unset model/effort', () => {
   expect(commandPreview(claude, undefined, undefined, undefined)).toBe('claude …');
 });
-test('only installed agents are offered', () => {
+test('picker_disables_uninstalled', () => {
   setup({ agents: [claude, codex, custom] });
   render(<NewSessionPicker workspaceId="w" />);
-  const opts = screen.getAllByRole('option').map((o) => o.textContent);
-  expect(opts).toContain('Claude Code');
-  expect(opts).toContain('Custom command');
-  expect(opts).not.toContain('Codex');
+  const opt = (name: string) => screen.getAllByRole('option').find((o) => o.textContent?.startsWith(name)) as HTMLOptionElement;
+  expect(opt('Claude Code').disabled).toBe(false);
+  expect(opt('Custom command').disabled).toBe(false);
+  expect(opt('Codex').disabled).toBe(true);
+  expect(opt('Codex').textContent).toBe('Codex — Not installed — see Town Hall');
+  // the default never lands on an uninstalled agent
+  expect((screen.getByLabelText('Agent') as HTMLSelectElement).value).toBe('claude');
 });
 
 test('agent default follows agents detected after mount until the user picks', () => {

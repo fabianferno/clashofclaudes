@@ -5,6 +5,7 @@ import VillageCanvas from './village/VillageCanvas';
 import TopBar from './hud/TopBar';
 import BuildersBar from './hud/BuildersBar';
 import BuildButtons from './hud/BuildButtons';
+import WelcomeCard from './panels/WelcomeCard';
 import SidePanel from './panels/SidePanel';
 import './App.css';
 
@@ -47,6 +48,7 @@ function App() {
     <TopBar />
     <BuildersBar />
     <BuildButtons />
+    <WelcomeCard />
     <SidePanel />
     <div className="toasts">
       {error && <div className="error" onClick={() => setError(null)}>{error}</div>}

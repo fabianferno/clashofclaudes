@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { idleBuilders, useApp } from '../state/store';
 import * as wsActions from '../state/workspaceActions';
+import AgentsStatus from './AgentsStatus';
 import { CLASS_NAMES, PALETTE, classOf, houseColors } from '../village/look';
 
 export default function TownHallPanel() {
@@ -49,6 +50,8 @@ export default function TownHallPanel() {
           </span>
         </button>
       ))}
+      <div className="sp-sec">Agents</div>
+      <AgentsStatus />
     </>
   );
 }

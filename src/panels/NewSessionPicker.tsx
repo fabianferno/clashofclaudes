@@ -4,6 +4,7 @@ import { idleBuilders, useApp } from '../state/store';
 import type { AgentInfo, AgentKind, Builder } from '../api/types';
 import { CLASS_NAMES, classOf } from '../village/look';
 import BuilderPreview from './BuilderPreview';
+import AgentsStatus from './AgentsStatus';
 
 export const RECRUIT_NAMES = ['Ivy', 'Jax', 'Kai', 'Lu', 'Mo', 'Nia', 'Oz', 'Pip', 'Quin', 'Rex'];
 
@@ -38,7 +39,7 @@ export default function NewSessionPicker({ workspaceId }: { workspaceId: string 
   const sessions = useApp((s) => s.sessions);
   const agents = useApp((s) => s.agents);
   const idle = idleBuilders({ builders: allBuilders, sessions });
-  const offered = agents.filter((a) => a.installed || a.kind === 'custom');
+  const offered = agents.filter((a) => a.installed || a.kind === 'custom'); // selectable; the rest are shown disabled
 
   const [wsId, setWsId] = useState(workspaceId);
   const [picked, setPicked] = useState<string | null>(null);
@@ -140,7 +141,10 @@ export default function NewSessionPicker({ workspaceId }: { workspaceId: string 
           <label className="sp-field">Name <input value={name} onChange={(e) => setNameEdit(e.target.value)} /></label>
           <label className="sp-field">Agent
             <select value={kind} onChange={(e) => { setKind(e.target.value as AgentKind); setModel(DEFAULT); setEffort(DEFAULT); }}>
-              {offered.map((a) => <option key={a.kind} value={a.kind}>{a.label}</option>)}
+              {agents.map((a) => {
+                const ok = a.installed || a.kind === 'custom';
+                return <option key={a.kind} value={a.kind} disabled={!ok}>{ok ? a.label : `${a.label} — Not installed — see Town Hall`}</option>;
+              })}
             </select>
           </label>
           {isCustom ? (
@@ -164,6 +168,8 @@ export default function NewSessionPicker({ workspaceId }: { workspaceId: string 
         </div>
       )}
       <code className="preview">{preview}</code>
+      <div className="sp-sec">Agents</div>
+      <AgentsStatus />
       {error && <div className="panel-warn">{error}</div>}
       <button type="submit" className="hud-btn sm" disabled={busy}>Start</button>
     </form>

@@ -103,6 +103,28 @@ test('builder_effort_change_updates', async () => {
   expect(ipc.updateBuilder).toHaveBeenCalledWith({ ...builder(), effort: 'low' });
 });
 
+test('builder_model_and_effort_reset_to_default', async () => {
+  act(() => useApp.setState({ builders: [builder({ model: null, effort: 'high' })] }));
+  render(<BuilderPanel builderId="b1" />);
+  const model = screen.getByLabelText('Model') as HTMLSelectElement;
+  expect(model.value).toBe(''); // null shows as Default, not as the first model
+  expect(model.selectedOptions[0].textContent).toBe('Default');
+  await act(async () => { fireEvent.change(screen.getByLabelText('Effort'), { target: { value: '' } }); });
+  expect(ipc.updateBuilder).toHaveBeenCalledWith({ ...builder({ model: null, effort: 'high' }), effort: null });
+});
+
+test('agent_model_effort_locked_while_busy', () => {
+  act(() => useApp.setState({ sessions: { s1: sess() } }));
+  render(<BuilderPanel builderId="b1" />);
+  for (const l of ['Agent', 'Model', 'Effort']) expect((screen.getByLabelText(l) as HTMLSelectElement).disabled).toBe(true);
+  expect((screen.getByLabelText('Name') as HTMLInputElement).disabled).toBe(false);
+  expect(screen.getByTestId('builder-busy-note').textContent).toMatch(/locked until it ends/);
+  fireEvent.click(screen.getByText('Open session'));
+  expect(useApp.getState().selection).toEqual({ kind: 'session', id: 's1' });
+  act(() => useApp.setState({ sessions: { s1: sess({ state: { kind: 'ended', exitCode: 0 } }) } }));
+  for (const l of ['Agent', 'Model', 'Effort']) expect((screen.getByLabelText(l) as HTMLSelectElement).disabled).toBe(false);
+});
+
 test('dismiss_disabled_while_busy', async () => {
   act(() => useApp.setState({ sessions: { s1: sess() } }));
   render(<BuilderPanel builderId="b1" />);

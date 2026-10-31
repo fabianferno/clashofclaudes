@@ -47,7 +47,11 @@ export default function SessionPanel({ sessionId, onClosed }: { sessionId: strin
     try {
       const o = await ipc.closeSession(sessionId);
       onClosed?.(o);
-    } catch (e) { setError(String(e)); }
+    } catch (e) {
+      // the session may be gone already (the panel unmounts with it): report where it survives
+      useApp.getState().setError(`Close failed: ${String(e)}`);
+      setError(String(e));
+    }
   }
 
   const title = builder ? `${builder.name} · ${session.task ?? 'session'}` : 'Terminal';
@@ -65,6 +69,11 @@ export default function SessionPanel({ sessionId, onClosed }: { sessionId: strin
         {session.kind.kind === 'agent' && <span>{session.steps} steps</span>}
         <span>{elapsed(session.startedAt, now)}</span>
         {session.worktree?.branch && <span className="chip">{session.worktree.branch}</span>}
+        {builder && (
+          <button type="button" className="sp-link" onClick={() => useApp.getState().setSelection({ kind: 'builder', id: builder.id })}>
+            Edit builder
+          </button>
+        )}
         {tier && <div className="sp-d session-tier">{tier}</div>}
       </header>
       <div className="session-actions">
@@ -99,7 +108,7 @@ export default function SessionPanel({ sessionId, onClosed }: { sessionId: strin
       )}
       {popped ? (
         <>
-          <div className="terminal-placeholder">Terminal popped out — Esc to return</div>
+          <div className="terminal-placeholder">Terminal popped out — ✕ to return</div>
           <PopOutTerminal sessionId={sessionId} readOnly={readOnly} title={title} onClose={() => setPopped(false)} />
         </>
       ) : (

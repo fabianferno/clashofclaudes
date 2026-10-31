@@ -17,10 +17,18 @@ test('builder_card_shows_class_and_stars', () => {
   expect(screen.getByTestId('badge-b1').getAttribute('data-state')).toBe('idle');
 });
 
-test('badge follows live session state; click selects builder', () => {
+test('badge follows live session state; click on a busy builder opens its session', () => {
   act(() => useApp.setState({ sessions: { s: { id: 's', workspaceId: 'w', kind: { kind: 'agent', builderId: 'b1' }, state: { kind: 'needsYou' }, rev: 1, startedAt: 0 } as unknown as SessionInfo } }));
   render(<BuildersBar />);
   expect(screen.getByTestId('badge-b1').getAttribute('data-state')).toBe('needs');
+  fireEvent.click(screen.getByTestId('builder-card-b1'));
+  expect(useApp.getState().selection).toEqual({ kind: 'session', id: 's' });
+  expect(screen.getByTestId('builder-card-b1').className).toContain('selected');
+});
+
+test('click on an idle builder (only ended sessions) selects the builder', () => {
+  act(() => useApp.setState({ sessions: { s: { id: 's', workspaceId: 'w', kind: { kind: 'agent', builderId: 'b1' }, state: { kind: 'ended', exitCode: 0 }, rev: 1, startedAt: 0 } as unknown as SessionInfo } }));
+  render(<BuildersBar />);
   fireEvent.click(screen.getByTestId('builder-card-b1'));
   expect(useApp.getState().selection).toEqual({ kind: 'builder', id: 'b1' });
 });

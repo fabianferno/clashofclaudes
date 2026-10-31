@@ -45,6 +45,7 @@
 .session-panel { gap: 6px; }
 .session-panel .panel-head { gap: 8px; font-size: 13px; font-weight: 700; color: #2b2018; }
 .session-tier { flex-basis: 100%; }
+.sp-link { background: none; border: 0; padding: 0; font: inherit; color: #2f6fb5; text-decoration: underline; cursor: pointer; }
 .session-panel .chip { font: 700 11px ui-monospace, monospace; background: var(--sp-parch2); border: 2px solid #c8b083; border-radius: 99px; padding: 1px 8px; }
 .session-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; font-size: 13px; font-weight: 700; color: var(--sp-ink-soft); }
 .session-panel .terminal-wrap { flex: 1; min-height: 0; }

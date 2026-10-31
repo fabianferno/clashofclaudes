@@ -14,7 +14,8 @@ export default function BuilderPanel({ builderId }: { builderId: string }) {
   useEffect(() => { if (b) setName(b.name); }, [b?.name]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!b) return null;
 
-  const busy = !!liveSessionOf(b.id, Object.values(sessions));
+  const live = liveSessionOf(b.id, Object.values(sessions));
+  const busy = !!live;
   const info = agents.find((a) => a.kind === b.agent);
   const save = async (next: Builder) => {
     setErr(null);
@@ -43,12 +44,18 @@ export default function BuilderPanel({ builderId }: { builderId: string }) {
         <div className="sp-d">{PALETTE[b.agent].label} · {b.model ?? 'default model'} · effort {b.effort ?? 'n/a'} {'★'.repeat(stars(gear))}</div>
       </div>
       {err && <div className="panel-warn">{err}</div>}
+      {live && (
+        <div className="sp-note" data-testid="builder-busy-note">
+          {b.name} is in a session, so agent, model and effort are locked until it ends (they set up the session that is running).{' '}
+          <button type="button" className="sp-link" onClick={() => useApp.getState().setSelection({ kind: 'session', id: live.id })}>Open session</button>
+        </div>
+      )}
       <label className="sp-field">Name
         <input aria-label="Name" value={name} onChange={(e) => setName(e.target.value)} onBlur={rename}
           onKeyDown={(e) => { if (e.key === 'Enter') rename(); }} />
       </label>
       <label className="sp-field">Agent
-        <select aria-label="Agent" value={b.agent} onChange={(e) => changeAgent(e.target.value as AgentKind)}>
+        <select aria-label="Agent" value={b.agent} disabled={busy} onChange={(e) => changeAgent(e.target.value as AgentKind)}>
           {opts(agents.map((a) => a.kind), b.agent).map((k) => (
             <option key={k} value={k}>{agents.find((a) => a.kind === k)?.label ?? PALETTE[k as AgentKind].label}</option>
           ))}
@@ -56,14 +63,16 @@ export default function BuilderPanel({ builderId }: { builderId: string }) {
       </label>
       {(info?.models.length ?? 0) > 0 && (
         <label className="sp-field">Model
-          <select aria-label="Model" value={b.model ?? ''} onChange={(e) => void save({ ...b, model: e.target.value || null })}>
+          <select aria-label="Model" value={b.model ?? ''} disabled={busy} onChange={(e) => void save({ ...b, model: e.target.value || null })}>
+            <option value="">Default</option>
             {opts(info!.models, b.model).map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
         </label>
       )}
       {(info?.efforts.length ?? 0) > 0 && (
         <label className="sp-field">Effort
-          <select aria-label="Effort" value={b.effort ?? ''} onChange={(e) => void save({ ...b, effort: e.target.value || null })}>
+          <select aria-label="Effort" value={b.effort ?? ''} disabled={busy} onChange={(e) => void save({ ...b, effort: e.target.value || null })}>
+            <option value="">Default</option>
             {opts(info!.efforts, b.effort).map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
         </label>

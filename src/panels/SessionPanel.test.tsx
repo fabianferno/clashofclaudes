@@ -4,7 +4,10 @@ import type { SessionInfo, SessionState } from '../api/types';
 
 const approve = vi.fn();
 const reviewSession = vi.fn();
-vi.mock('../api/ipc', () => ({ ipc: { approve: (id: string) => approve(id), deny: vi.fn(), reviewSession: (id: string) => reviewSession(id) } }));
+const closeSession = vi.fn();
+vi.mock('../api/ipc', () => ({
+  ipc: { approve: (id: string) => approve(id), deny: vi.fn(), reviewSession: (id: string) => reviewSession(id), closeSession: (id: string) => closeSession(id) },
+}));
 vi.mock('../components/TerminalView', () => ({ default: ({ sessionId }: { sessionId: string }) => <div className="terminal" tabIndex={0} data-sid={sessionId} /> }));
 import SessionPanel from './SessionPanel';
 import { useApp } from '../state/store';
@@ -17,7 +20,9 @@ const sess = (state: SessionState, awaitingDecision: boolean): SessionInfo => ({
 beforeEach(() => {
   approve.mockReset();
   reviewSession.mockReset();
+  closeSession.mockReset();
   useApp.setState({
+    error: null, selection: null, panelOpen: false,
     workspaces: [], sessions: {}, selectedSessionId: null,
     builders: [{ id: 'b1', name: 'Ada', agent: 'claude', model: 'haiku', effort: 'low', customCommand: null }],
     agents: [{ kind: 'claude', label: 'Claude Code', installed: true, version: null, models: [], efforts: [], canApprove: true }],
@@ -86,11 +91,11 @@ test('pop_out_mounts_single_terminal', () => {
   fireEvent.click(screen.getByText('Pop out'));
   expect(document.querySelectorAll('.terminal').length).toBe(1);
   expect(document.querySelector('.popout .terminal')).toBeTruthy();
-  expect(screen.getByText('Terminal popped out — Esc to return')).toBeTruthy();
+  expect(screen.getByText('Terminal popped out — ✕ to return')).toBeTruthy();
   fireEvent.keyDown(window, { key: 'Escape' });
   expect(document.querySelector('.popout')).toBeNull();
   expect(document.querySelectorAll('.terminal').length).toBe(1);
-  expect(screen.queryByText('Terminal popped out — Esc to return')).toBeNull();
+  expect(screen.queryByText('Terminal popped out — ✕ to return')).toBeNull();
 });
 
 test('Esc in the pop-out does not close the side panel', () => {
@@ -118,4 +123,30 @@ test('Esc with focus inside the popped-out terminal reaches it; the overlay stay
   expect(document.querySelector('.popout')).toBeTruthy();
   fireEvent.click(screen.getByLabelText('Close terminal'));
   expect(document.querySelector('.popout')).toBeNull();
+});
+
+test('a close failure reaches the app error toast even if the panel goes away', async () => {
+  useApp.getState().upsertSession(sess({ kind: 'finished' }, false));
+  closeSession.mockImplementation(async () => {
+    useApp.getState().removeSession('s1'); // the manager removed it, then saving state failed
+    throw 'save failed';
+  });
+  const { container } = render(<SessionPanel sessionId="s1" />);
+  await act(async () => { fireEvent.click(screen.getByText('Close')); });
+  expect(container.querySelector('.session-panel')).toBeNull();
+  expect(useApp.getState().error).toBe('Close failed: save failed');
+});
+
+test('Edit builder link in the header selects the builder', () => {
+  useApp.getState().upsertSession(sess({ kind: 'working' }, false));
+  useApp.getState().setSelection({ kind: 'session', id: 's1' });
+  render(<SessionPanel sessionId="s1" />);
+  fireEvent.click(screen.getByText('Edit builder'));
+  expect(useApp.getState().selection).toEqual({ kind: 'builder', id: 'b1' });
+});
+
+test('terminal sessions have no Edit builder link', () => {
+  useApp.getState().upsertSession({ ...sess({ kind: 'working' }, false), kind: { kind: 'terminal' } });
+  render(<SessionPanel sessionId="s1" />);
+  expect(screen.queryByText('Edit builder')).toBeNull();
 });

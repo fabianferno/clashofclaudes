@@ -150,3 +150,17 @@ test('terminal sessions have no Edit builder link', () => {
   render(<SessionPanel sessionId="s1" />);
   expect(screen.queryByText('Edit builder')).toBeNull();
 });
+
+test('switching sessions keeps the terminal host and resets per-session state', async () => {
+  useApp.getState().upsertSession(sess({ kind: 'finished' }, false));
+  useApp.getState().upsertSession({ ...sess({ kind: 'working' }, false), id: 's2' });
+  reviewSession.mockResolvedValue({ isGit: true, branch: 'main', files: [], untracked: [], otherSessionsActive: false });
+  const { container, rerender } = render(<SessionPanel sessionId="s1" />);
+  fireEvent.click(screen.getByText('Review'));
+  expect(await screen.findByText('No changes since this session started')).toBeTruthy();
+  const host = container.querySelector('.terminal');
+  rerender(<SessionPanel sessionId="s2" />);
+  expect(container.querySelector('.terminal')).toBe(host); // the same xterm host, now showing s2
+  expect(host?.getAttribute('data-sid')).toBe('s2');
+  expect(screen.queryByText('No changes since this session started')).toBeNull();
+});

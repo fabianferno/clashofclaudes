@@ -26,7 +26,16 @@ export default function SessionPanel({ sessionId, onClosed }: { sessionId: strin
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
-  useEffect(() => { setReview(null); setError(null); setPopped(false); }, [sessionId]);
+  // The panel stays mounted across session switches (so its terminal does): per-session state is
+  // reset during render, before anything of the previous session can show.
+  const [shownFor, setShownFor] = useState(sessionId);
+  if (shownFor !== sessionId) {
+    setShownFor(sessionId);
+    setReview(null);
+    setError(null);
+    setPopped(false);
+    setAnswering(false);
+  }
 
   if (!session) return null;
   const builder = session.kind.kind === 'agent' ? builders.find((b) => b.id === (session.kind as { builderId: string }).builderId) : undefined;
@@ -112,7 +121,7 @@ export default function SessionPanel({ sessionId, onClosed }: { sessionId: strin
           <PopOutTerminal sessionId={sessionId} readOnly={readOnly} title={title} onClose={() => setPopped(false)} />
         </>
       ) : (
-        <TerminalView key={sessionId} sessionId={sessionId} readOnly={readOnly} />
+        <TerminalView sessionId={sessionId} readOnly={readOnly} />
       )}
     </section>
   );

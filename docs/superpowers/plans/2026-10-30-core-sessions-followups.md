@@ -22,9 +22,11 @@ Collected from the Plan 1 execution ledger at merge time. All were triaged CAN-W
   - 404 MB with scrollback 5000.
   - 318 MB with scrollback 2000.
   - The first run read 419 MB with the panel open and 340 MB closed.
-  - It is garbage, not a leak, and it is still over 250 MB.
-  - Options: reuse one `Terminal` per session across mounts, or a single shared `Terminal` that
-    is reset and refilled.
+  - FIXED in Plan 3 Task 1. It was retention, not lazy garbage. In the hidden webview, xterm's
+    frame queue never drains and kept every old `Buffer` alive (0 of 39 finalized). Each
+    TerminalView host now keeps one `Terminal` and swaps sessions with `reset()` plus replay.
+    40 switches, panel closed + 30 s: 297 → **228 MB** (dev, village hidden). See
+    docs/verification/plan-2-village.md, "Remount follow-up".
 - Closing a session that never reached Finished gives no feedback (no XP, no message). Show "closed: unfinished, no XP".
 - Builders are only visible in the New session builder picker; after Close the builder seems to vanish. The Plan 2 builders bar covers this.
 - Claude's first-run "Do you trust this folder?" menu (default "No, exit") appears before any hook fires: the session shows Working, never NeedsYou. Add screen-pattern detection → NeedsYou with its own keys.
@@ -39,10 +41,10 @@ Collected from the Plan 1 execution ledger at merge time. All were triaged CAN-W
 - Open: the doc's `pgrep -f "claude --session-id"` check also matches any shell whose command line contains that text; check children of the app pid instead.
 
 ## Final-review minors not yet fixed
-- `start_agent` runs `claude --version` on every start (cache detection).
-- 16 ms flush loop never parks with zero sessions (spec wants ~0% CPU when hidden).
-- Custom agents that print nothing stay Starting forever.
-- `quit_now` exits before SIGKILL escalation can run.
+- FIXED (Plan 3 Task 1): `start_agent` ran `claude --version` on every start. Detection is now cached for 60 s per app run (`adapters::DetectionCache`).
+- FIXED (Plan 3 Task 1): the 16 ms flush loop never parked. It now parks while no session has a process or unsent output, and wakes on the next start (idle: 0.00% CPU).
+- FIXED (Plan 3 Task 1): custom agents that printed nothing stayed Starting forever. They now go to Finished after 20 s of silence.
+- FIXED (Plan 3 Task 1): `quit_now` exited before the SIGKILL escalation could run. It now waits up to 2 s for the SIGHUP'd groups, SIGKILLs the survivors, then exits (live: 2.29 s, no survivors).
 - `remove_workspace` leaves Ended sessions orphaned; no UI to remove a missing workspace; missing flag never clears during a run.
 
 ## Deferred minors by task
@@ -58,7 +60,7 @@ Collected from the Plan 1 execution ledger at merge time. All were triaged CAN-W
 - Task 7: minor (carry to T8/T9): HookSink runs inline on a tokio worker — sink must be quick and non-blocking (no git subprocess inside on_hook; offload)
 - Task 7: minor (deferred): Drop aborts only accept loop (keep-alive conns linger); session_id not percent-encoded in URL (UUIDs safe); no test for 1 MiB limit/413 or token rotation; duplicate reqwest 0.12 dev-dep vs tauri's 0.13; blanket allow(dead_code) to remove in T8
 - Task 8: minor (carry to T9): attach() snapshot vs queued Output events can duplicate bytes and arrive on different transports — T9 should tag Output events with a byte offset (or sequence) so the frontend drops data at or before the snapshot end
-- Task 8: minor (deferred): stop() within ~20 ms of exit returns EPERM from killpg on a zombie group (treat EPERM/ESRCH as gone); per-session dirs leak on quit (sweep data_dir/sessions at startup); tests don't assert byte totals / stop-while-starting / no events after Removed; out-of-order worktree checks; spawn() 7-arg clippy allow; worktree detection needs git ≥2.31; module-wide allow(dead_code) on git/sessions until T9
+- Task 8: minor (deferred): stop() within ~20 ms of exit returns EPERM from killpg on a zombie group (treat EPERM/ESRCH as gone); per-session dirs leak on quit (FIXED in Plan 3 Task 1: stale `sessions/<uuid>` dirs are swept at startup); tests don't assert byte totals / stop-while-starting / no events after Removed; out-of-order worktree checks; spawn() 7-arg clippy allow; worktree detection needs git ≥2.31; module-wide allow(dead_code) on git/sessions until T9
 - Task 8: minor (deferred): emit panic leaves in_flight stuck (thread dead anyway); dropped output not signalled to frontend; sessions.rs 836 lines; new test ~9 s
 - Task 9: minor (deferred): in-memory AppData mutated before save can diverge on save failure; remove_workspace/delete_builder check-then-act gap and silent success on unknown id; detect()/close() blocking calls inside async commands (use spawn_blocking); create_workspace rollback uses remove_dir not remove_dir_all; stale attach channel after natural session end; no Tauri-command integration tests
 - Task 9: minor (deferred): quit guard wiring untested end-to-end; any future app.exit(n) outside quit_now will prompt

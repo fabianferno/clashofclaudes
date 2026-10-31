@@ -10,7 +10,11 @@ const ipc = vi.hoisted(() => ({
   openInEditor: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock('../api/ipc', () => ({ ipc }));
-vi.mock('./SessionPanel', () => ({ default: () => null }));
+const sessionPanel = vi.hoisted(() => ({ mounts: 0 }));
+vi.mock('./SessionPanel', async () => {
+  const { useEffect } = await import('react');
+  return { default: () => { useEffect(() => { sessionPanel.mounts++; }, []); return null; } };
+});
 vi.mock('./NewSessionPicker', () => ({ default: () => null }));
 import { useApp } from '../state/store';
 import SidePanel from './SidePanel';
@@ -169,4 +173,14 @@ test('side_panel_maps_selection_closes_on_x_and_esc', () => {
   expect(useApp.getState().panelOpen).toBe(false);
   act(() => useApp.getState().setSelection({ kind: 'builder', id: 'b1' }));
   expect(document.querySelector('.side-panel h2')!.textContent).toBe('Ada');
+});
+
+test('switching between sessions keeps one session panel mounted', () => {
+  act(() => useApp.setState({ sessions: { s1: sess(), s2: sess({ id: 's2' }) } }));
+  render(<SidePanel />);
+  const before = sessionPanel.mounts;
+  act(() => useApp.getState().setSelection({ kind: 'session', id: 's1' }));
+  act(() => useApp.getState().setSelection({ kind: 'session', id: 's2' }));
+  act(() => useApp.getState().setSelection({ kind: 'session', id: 's1' }));
+  expect(sessionPanel.mounts - before).toBe(1); // its terminal survives the switch
 });

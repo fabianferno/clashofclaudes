@@ -93,6 +93,8 @@ pub fn run() {
             let data_dir_for_driver = data_dir.clone();
             let manager = SessionManager::new(adapters::AdapterRegistry::new(), Arc::new(hooks), data_dir, emit);
             let _ = cell.set(Arc::downgrade(&manager));
+            // Session dirs left by a crash; none is live yet, so this only removes leftovers.
+            manager.sweep_stale_session_dirs();
             app.manage(AppState {
                 data: Mutex::new(data),
                 data_path,

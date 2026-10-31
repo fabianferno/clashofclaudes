@@ -166,11 +166,92 @@ What this shows:
   Both are still PROVISIONAL lower bounds, because the village was hidden.
 - Remount churn falls by about 86 MB after 40 switches (404 → 318 MB). It still ends **above
   250 MB**. JSC releases the old buffers only at a full GC, and lowering scrollback reduces how
-  much is waiting, but not the mechanism. The follow-up stays open.
+  much is waiting, but not the mechanism. The follow-up stays open. (Plan 3 Task 1 found it was
+  retention, not lazy garbage, and fixed it: 228 MB. See "Remount follow-up" below.)
 - **`term.clearTextureAtlas()` before `term.dispose()` changed nothing** (318 vs 316 MB after the
   settle, within noise), so it was not kept.
 - The WebGL addon was already disposed on unmount, because `term.dispose()` disposes every loaded
   addon. Nothing else to add there.
+
+## Remount follow-up (Plan 3 Task 1): retention, fixed by reusing one terminal per host
+
+Run on 2026-10-31 on branch `plan-3-release`, dev build, screen locked the whole time (webview
+hidden, village not drawing). Same protocol as fix round 1 (fresh app each run, 10 `sleep 600`
+sessions + 2 terminals, flood each terminal with `yes | head -c 50000000` and wait 30 s after it
+ends, 40 switches at 700 ms, close the panel, wait 30 s). The flood command had `; touch <file>`
+appended, so "after it ends" was detected exactly. Script:
+`scripts/budget.sh mem` driven by `scripts/drive.sh`.
+
+**Step 1: garbage or retention?** WebKit has no `window.gc`, so two probes were used after the
+"panel closed + 30 s" reading: (a) 3 more minutes idle, (b) allocating and dropping 40 × 64 MB
+`Uint8Array`s, twice (2.5 GB of churn each, which forces full collections), reading 30 s and 60 s
+later.
+
+| Step (total footprint) | Before (`b393310` code) | After (this task) |
+|---|---|---|
+| Idle | 184 MB | 187 MB |
+| 10 sleep + 2 terminals (+10 s; GPU transient) | 304 MB | 287 MB |
+| Flood terminal 1 + 30 s | 237 MB | 234 MB |
+| Flood terminal 2 + 30 s | 240 MB | 236 MB |
+| 20 switches | 585 MB (WebContent 368, GPU 193) | 240 MB (WebContent 165, GPU 23) |
+| 40 switches, panel open | 529 MB (WebContent 284, GPU 193) | 242 MB (WebContent 167, GPU 23) |
+| **40 switches, panel closed + 30 s** | **297 MB** (WebContent 221) | **228 MB** (WebContent 156) |
+| + 3 min idle (probe a) | 297 MB | 228 MB |
+| + 40 × 64 MB alloc churn + 30 s (probe b) | 296 MB | 228 MB |
+| + second churn + 60 s | 296 MB | 228 MB |
+| A second round of 40 switches, panel closed + 30 s | 368 MB (WebContent 292) | 234 MB (WebContent 161) |
+
+**Verdict: retention, not lazy garbage.** Neither probe released anything (297 → 296 MB), and a
+second round of 40 switches added another 71 MB instead of reusing freed memory. In WebContent's
+`footprint` breakdown the growth sat in "WebAssembly Memory" (JSC's typed-array backing stores,
+which is where xterm's `BufferLine` data lives): 100 MB dirty in 546 regions after one round,
+174 MB after three. A temporary `FinalizationRegistry` probe (not committed) settled it: of 80
+`Terminal`s created over 40 switches (two per mount, because dev runs React StrictMode), 67 were
+finalized, but **0 of the 39 xterm `Buffer`s that had received a snapshot were**, even after the
+allocation churn. Something held the buffers while their terminals were collected.
+
+**The retaining path.** xterm 6 vendors VS Code's `scheduleAtNextAnimationFrame`
+(`vs/base/browser/dom.ts`). Queued runners, cancelled ones included (`dispose()` only sets a flag),
+sit in a module-level `NEXT_QUEUE` until the next `requestAnimationFrame`. That never fires while
+the webview is hidden. The `Viewport` schedules through it, and the `Viewport` holds the
+`BufferService` and so the buffers, but not the `Terminal`. That matches the probe exactly. In a
+visible window the queue drains every frame, so this specific retention is a hidden-webview
+effect. The hidden case is real, though: the screen locked or the window covered while terminals
+are switched, for example from a notification. The per-switch cost of a new renderer, WebGL
+context and buffer exists either way.
+
+**The fix (`perf:` commit): one `Terminal` per TerminalView host, kept across session switches.**
+`src/components/TerminalView.tsx` now has two effects:
+
+- The terminal itself, which lives as long as the host.
+- The session: it detaches the old session (serialized per session as before), queues
+  `term.write('', () => term.reset())` so output still queued for the old session is parsed
+  first, then replays the new session's snapshot with the same byte-offset, `trimSeen` and
+  ack-after-write logic. Late frames, writes and acks of the old session are dropped.
+
+`SidePanel` no longer keys `SessionPanel` by session, and `SessionPanel` no longer keys
+`TerminalView`, so the host survives a switch. `SessionPanel` resets its per-session state during
+render. The pop-out overlay is its own host, and the panel's host is unmounted while it is open,
+as before: there is still exactly one mounted xterm (`document.querySelectorAll('.xterm').length`
+was 1 after the switches). Tests: `reuses_terminal_across_session_switch` and `an error belongs to
+the session it happened in` (`TerminalView.test.tsx`), `switching sessions keeps the terminal host
+and resets per-session state` (`SessionPanel.test.tsx`), `switching between sessions keeps one
+session panel mounted` (`panels.test.tsx`).
+
+**Result: 40 switches end at 228 MB after 30 s (target ≤ 250 MB): PASS** on dev, village hidden,
+so still a lower bound for the village-drawing case (owner check 5). Memory no longer grows while
+switching. The switches really replay: WebContent spent 27.9 s of CPU on 40 switches, about 0.7 s
+each to parse a 2 MiB snapshot. The GPU-process transient after switching is gone too (193 →
+23 MB), since no WebGL context is created per switch.
+
+The other Task 1 items, checked live on the same dev build:
+
+- `quit_now` with a session running `trap "" HUP; sleep 601` plus the 10 `sleep 600` sessions:
+  the app was gone 2.29 s after the call, and no `sleep 60x` survived.
+- Startup sweep: a planted `sessions/<uuid>` dir was removed on launch and logged as
+  `removed stale session dir …`.
+- Idle with no sessions (flush loop parked): the app process's CPU time stayed at 0:00.42 over
+  30 s, and `scripts/budget.sh cpu 20` read 0.00% of one core for all four processes.
 
 ## Method
 

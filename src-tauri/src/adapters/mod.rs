@@ -7,7 +7,9 @@ use crate::platform::default_shell;
 use crate::pty::LaunchSpec;
 use crate::status::{StatusEvent, StatusPolicy};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 pub use claude::ClaudeAdapter;
 pub use generic::CustomAdapter;
@@ -17,6 +19,40 @@ pub struct Detection {
     pub installed: bool,
     pub path: Option<PathBuf>,
     pub version: Option<String>,
+}
+
+/// How long a detection result is reused.
+pub const DETECTION_TTL: Duration = Duration::from_secs(60);
+
+/// Caches an adapter's `detect()` result (it runs the agent's `--version`) for `ttl`.
+pub struct DetectionCache {
+    ttl: Duration,
+    probes: AtomicUsize,
+    last: Mutex<Option<(Instant, Detection)>>,
+}
+
+impl DetectionCache {
+    pub const fn new(ttl: Duration) -> Self {
+        Self { ttl, probes: AtomicUsize::new(0), last: Mutex::new(None) }
+    }
+
+    /// The cached detection while it is younger than `ttl`; otherwise runs `probe` and caches it.
+    /// Concurrent callers wait for one probe instead of each running their own.
+    pub fn get(&self, now: Instant, probe: impl FnOnce() -> Detection) -> Detection {
+        let mut last = self.last.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((_, d)) = last.as_ref().filter(|(at, _)| now.saturating_duration_since(*at) < self.ttl) {
+            return d.clone();
+        }
+        self.probes.fetch_add(1, Ordering::SeqCst);
+        let d = probe();
+        *last = Some((now, d.clone()));
+        d
+    }
+
+    /// How many times `get` ran its probe.
+    pub fn probes(&self) -> usize {
+        self.probes.load(Ordering::SeqCst)
+    }
 }
 
 pub struct LaunchRequest<'a> {
@@ -119,6 +155,22 @@ mod tests {
         let s = terminal_launch(Path::new("/tmp"));
         assert_eq!(s.args, vec!["-l"]);
         assert_eq!(s.cwd, PathBuf::from("/tmp"));
+    }
+
+    fn det(v: &str) -> Detection {
+        Detection { installed: true, path: None, version: Some(v.into()) }
+    }
+
+    #[test]
+    fn detection_cache_expires_after_ttl() {
+        let c = DetectionCache::new(Duration::from_secs(60));
+        let t0 = Instant::now();
+        assert_eq!(c.get(t0, || det("1")).version.as_deref(), Some("1"));
+        assert_eq!(c.get(t0 + Duration::from_secs(59), || det("2")).version.as_deref(), Some("1"), "cached");
+        assert_eq!(c.probes(), 1);
+        assert_eq!(c.get(t0 + Duration::from_secs(60), || det("3")).version.as_deref(), Some("3"), "expired");
+        assert_eq!(c.get(t0 + Duration::from_secs(61), || det("4")).version.as_deref(), Some("3"));
+        assert_eq!(c.probes(), 2);
     }
 
     #[test]

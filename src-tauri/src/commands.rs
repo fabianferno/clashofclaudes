@@ -473,13 +473,14 @@ pub fn detach_session(id: String, state: State<'_, AppState>) {
     let _ = state.manager.detach(&id);
 }
 
-/// Kills every session and exits (the user confirmed quitting).
+/// Kills every session and exits (the user confirmed quitting): SIGHUP, up to `KILL_GRACE` for
+/// the process groups to exit, SIGKILL for the survivors, then exit. The wait runs on a blocking
+/// worker, never on the UI thread, so the window keeps responding until the app exits.
 #[tauri::command]
 pub async fn quit_now(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     state.exit_confirmed.store(true, Ordering::SeqCst);
-    for s in state.manager.list() {
-        let _ = state.manager.close(&s.id);
-    }
+    let manager = state.manager.clone();
+    let _ = tauri::async_runtime::spawn_blocking(move || manager.shutdown(crate::pty::KILL_GRACE)).await;
     app.exit(0);
     Ok(())
 }

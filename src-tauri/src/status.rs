@@ -50,7 +50,8 @@ pub fn next_state(state: &SessionState, ev: &StatusEvent, policy: &StatusPolicy)
         (S::Working, E::WaitingForInput) => S::Finished,
         (S::Working | S::Finished, E::UserInput) if !policy.uses_hooks => S::Working,
 
-        (S::Working, E::Silence { secs })
+        // Silence counts from the start too: a custom agent may print nothing at all.
+        (S::Starting | S::Working, E::Silence { secs })
             if policy.finished_after_silence_secs.is_some_and(|t| *secs >= t) =>
         {
             S::Finished
@@ -164,6 +165,14 @@ mod tests {
     #[test] fn turn_finished() { assert_eq!(next_state(&Working, &TurnFinished, &hooks()), Finished); }
     #[test] fn hook_agents_ignore_short_silence() { assert_eq!(next_state(&Working, &Silence{secs:60}, &hooks()), Working); }
     #[test] fn plain_agents_finish_on_silence() { assert_eq!(next_state(&Working, &Silence{secs:20}, &plain()), Finished); }
+    #[test] fn plain_agents_finish_on_silence_without_output() {
+        assert_eq!(next_state(&Starting, &Silence{secs:19}, &plain()), Starting);
+        assert_eq!(next_state(&Starting, &Silence{secs:20}, &plain()), Finished);
+    }
+    #[test] fn hook_agents_and_terminals_stay_starting_in_silence() {
+        assert_eq!(next_state(&Starting, &Silence{secs:900}, &hooks()), Starting);
+        assert_eq!(next_state(&Starting, &Silence{secs:900}, &term()), Starting);
+    }
     #[test] fn long_silence_is_stuck() { assert_eq!(next_state(&Working, &Silence{secs:900}, &hooks()), Stuck{reason:"no output for 15 min".into()}); }
     #[test] fn nonzero_exit_is_stuck() { assert_eq!(next_state(&Working, &Exited{code:Some(1)}, &hooks()), Stuck{reason:"exited with code 1".into()}); }
     #[test] fn clean_exit_ends() { assert_eq!(next_state(&Finished, &Exited{code:Some(0)}, &hooks()), Ended{exit_code:Some(0)}); }

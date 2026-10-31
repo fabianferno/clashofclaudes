@@ -11,12 +11,13 @@
 //! `cwd` and `hook_event_name`. `Notification` carries `notification_type`
 //! (`permission_prompt` | `idle_prompt` observed) and a `message`.
 //! Fixture paths: `/Users/<name>/` was rewritten to `/home/user/` to avoid leaking a username.
-use super::{AgentAdapter, Detection, LaunchRequest, ScreenPrompt};
+use super::{AgentAdapter, Detection, DetectionCache, LaunchRequest, ScreenPrompt, DETECTION_TTL};
 use crate::model::AgentKind;
 use crate::platform::which;
 use crate::pty::LaunchSpec;
 use crate::status::{StatusEvent, StatusPolicy};
 use std::path::PathBuf;
+use std::time::Instant;
 
 /// Appended to every agent session's system prompt.
 pub const SHARED_FOLDER_NOTE: &str = "Other coding agents may be working in this same folder at the same time. If your task needs isolation from their changes, you may create your own git worktree and work there.";
@@ -59,6 +60,24 @@ fn write_private(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
     f.write_all(bytes)
 }
 
+/// Runs `claude --version`; `detect` caches the result.
+fn probe() -> Detection {
+    let Some(path) = which("claude") else {
+        return Detection { installed: false, path: None, version: None };
+    };
+    let version = std::process::Command::new(&path)
+        .arg("--version")
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| String::from_utf8_lossy(&o.stdout).lines().next().map(|l| l.trim().to_string()))
+        .filter(|l| !l.is_empty());
+    Detection { installed: true, path: Some(path), version }
+}
+
+/// One `claude --version` per minute at most, shared by every `ClaudeAdapter` in the app.
+pub static DETECTION: DetectionCache = DetectionCache::new(DETECTION_TTL);
+
 impl AgentAdapter for ClaudeAdapter {
     fn kind(&self) -> AgentKind {
         AgentKind::Claude
@@ -67,17 +86,7 @@ impl AgentAdapter for ClaudeAdapter {
         "Claude Code"
     }
     fn detect(&self) -> Detection {
-        let Some(path) = which("claude") else {
-            return Detection { installed: false, path: None, version: None };
-        };
-        let version = std::process::Command::new(&path)
-            .arg("--version")
-            .output()
-            .ok()
-            .filter(|o| o.status.success())
-            .and_then(|o| String::from_utf8_lossy(&o.stdout).lines().next().map(|l| l.trim().to_string()))
-            .filter(|l| !l.is_empty());
-        Detection { installed: true, path: Some(path), version }
+        DETECTION.get(Instant::now(), probe)
     }
     fn models(&self) -> Vec<String> {
         ["haiku", "sonnet", "opus", "fable"].map(String::from).to_vec()
@@ -270,6 +279,16 @@ mod tests {
     #[test]
     fn unknown_event_is_ignored() {
         assert_eq!(ClaudeAdapter.parse_hook(&json!({"hook_event_name":"Nope"})), vec![]);
+    }
+
+    #[test]
+    fn detection_is_cached() {
+        // Other tests may detect concurrently: two calls here probe at most once between them.
+        let before = DETECTION.probes();
+        let a = ClaudeAdapter.detect();
+        let b = ClaudeAdapter.detect();
+        assert!(DETECTION.probes() - before <= 1, "claude --version ran {} times", DETECTION.probes() - before);
+        assert_eq!(a, b);
     }
 
     #[test]

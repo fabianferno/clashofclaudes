@@ -50,7 +50,8 @@ export default function SidePanel() {
         {selection.kind === 'workspace' && <WorkspacePanel key={selection.id} workspaceId={selection.id} />}
         {selection.kind === 'builder' && <BuilderPanel key={selection.id} builderId={selection.id} />}
         {selection.kind === 'session' && sessions[selection.id] && (
-          <SessionPanel key={selection.id} sessionId={selection.id} onClosed={(o) => { onClosed(o, selection.id); setSelection(null); }} />
+          // Unkeyed: the panel and its terminal stay mounted across session switches.
+          <SessionPanel sessionId={selection.id} onClosed={(o) => { onClosed(o, selection.id); setSelection(null); }} />
         )}
       </div>
     </aside>

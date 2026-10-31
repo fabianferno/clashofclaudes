@@ -18,7 +18,7 @@ pub struct LaunchSpec {
 
 /// Grace between SIGHUP and the SIGKILL escalation in `kill()`.
 pub const KILL_GRACE: Duration = Duration::from_secs(2);
-const REAP_POLL: Duration = Duration::from_millis(20);
+pub const REAP_POLL: Duration = Duration::from_millis(20);
 
 struct Shared {
     /// Reaping happens only while this lock is held, so a signal sent under the
@@ -161,6 +161,21 @@ impl PtyHandle {
             .map_err(|_| anyhow!("master poisoned"))?
             .resize(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 })?;
         Ok(())
+    }
+
+    /// The child has exited and been reaped.
+    pub fn has_exited(&self) -> bool {
+        self.shared.exited.load(Ordering::SeqCst)
+    }
+
+    /// SIGKILL to the child's process group now, unless the child has already been reaped
+    /// (checked under the reaping lock, so the signal can't hit a recycled pid).
+    pub fn kill_now(&self) {
+        let Some(pid) = self.pid else { return };
+        let _g = self.shared.child.lock().unwrap_or_else(|e| e.into_inner());
+        if !self.shared.exited.load(Ordering::SeqCst) {
+            let _ = platform::signal_group_kill(pid);
+        }
     }
 
     /// SIGHUP now; SIGKILL after `KILL_GRACE` if still alive (on a background thread).

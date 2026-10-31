@@ -3,7 +3,7 @@ use crate::adapters::{terminal_launch, terminal_policy, AdapterRegistry, AgentAd
 use crate::git::{self, GitBaseline, Review};
 use crate::hooks::HookServer;
 use crate::model::{Builder, SessionInfo, SessionKind, SessionState, Tile, Workspace, WorktreeInfo};
-use crate::pty::{LaunchSpec, PtyHandle};
+use crate::pty::{LaunchSpec, PtyHandle, REAP_POLL};
 use crate::scrollback::{Scrollback, SCROLLBACK_CAP};
 use crate::status::{is_terminal_report_only, next_state, screen_text, StatusEvent, StatusPolicy};
 use anyhow::{anyhow, bail, Result};
@@ -11,7 +11,8 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::collections::VecDeque;
 use std::sync::mpsc::{self, Sender};
-use std::sync::{Arc, Mutex, MutexGuard, Weak};
+use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, Weak};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
@@ -186,6 +187,48 @@ pub struct SessionManager {
     sessions: Mutex<Sessions>,
     tx: Sender<ManagerEvent>,
     weak: Weak<SessionManager>,
+    flusher: Arc<FlushWake>,
+}
+
+/// Parks the flush loop while no session can produce output, so a hidden, idle app uses no CPU.
+/// Shared with the loop's thread, which holds only a `Weak` manager: a parked loop keeps
+/// nothing alive. Lock order: the sessions lock, then `state`.
+#[derive(Default)]
+struct FlushWake {
+    state: Mutex<FlushState>,
+    cv: Condvar,
+    /// Loop iterations run (tests check that a parked loop stays flat).
+    iterations: AtomicU64,
+}
+
+#[derive(Default)]
+struct FlushState {
+    active: bool,
+    /// The manager is gone: the loop ends.
+    closed: bool,
+}
+
+impl FlushWake {
+    fn lock(&self) -> MutexGuard<'_, FlushState> {
+        self.state.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn wake(&self) {
+        let mut st = self.lock();
+        if !st.active {
+            st.active = true;
+            self.cv.notify_one();
+        }
+    }
+
+    /// Blocks while parked; false once the manager is gone.
+    fn wait_active(&self) -> bool {
+        let mut st = self.lock();
+        while !st.active && !st.closed {
+            st = self.cv.wait(st).unwrap_or_else(|e| e.into_inner());
+        }
+        !st.closed
+    }
 }
 
 impl SessionManager {
@@ -204,19 +247,24 @@ impl SessionManager {
             sessions: Mutex::new(HashMap::new()),
             tx,
             weak: weak.clone(),
+            flusher: Arc::default(),
         });
-        // Output flushes every 16 ms and the 1 s silence tick; ends once the manager is gone.
+        // Output flushes every 16 ms and the 1 s silence tick, parked while no session has a
+        // process or unsent output (see `park_if_idle`); ends once the manager is gone.
         let weak = Arc::downgrade(&mgr);
+        let flusher = mgr.flusher.clone();
         std::thread::spawn(move || {
             let mut last_tick = Instant::now();
-            loop {
+            while flusher.wait_active() {
                 std::thread::sleep(FLUSH_EVERY);
                 let Some(m) = weak.upgrade() else { break };
+                flusher.iterations.fetch_add(1, AtomicOrdering::Relaxed);
                 m.flush_due();
                 if last_tick.elapsed() >= TICK_EVERY {
                     last_tick = Instant::now();
                     m.tick(now_ms());
                 }
+                m.park_if_idle();
             }
         });
         mgr
@@ -344,6 +392,7 @@ impl SessionManager {
                 prompt_seen: None,
                 adapter,
             });
+            self.flusher.wake(); // under the sessions lock, so `park_if_idle` can't miss it
         }
         // The entry exists before the child does, so early output and exit find it.
         let (w_out, w_exit) = (self.weak.clone(), self.weak.clone());
@@ -416,6 +465,9 @@ impl SessionManager {
         if e.last_flush.elapsed() >= FLUSH_EVERY {
             e.flush(&self.tx);
         }
+        if !e.pending.is_empty() {
+            self.flusher.wake(); // e.g. output drained after the exit, while the loop is parked
+        }
     }
 
     fn on_exit(&self, id: &str, code: Option<i32>) {
@@ -446,6 +498,15 @@ impl SessionManager {
             if !e.pending.is_empty() && e.last_flush.elapsed() >= FLUSH_EVERY {
                 e.flush(&self.tx);
             }
+        }
+    }
+
+    /// Parks the flush loop when nothing can need it: no session has a running (or starting)
+    /// process or unsent output. Spawning, output and acks wake it again.
+    fn park_if_idle(&self) {
+        let g = self.lock();
+        if g.values().all(|e| e.exited && e.pending.is_empty()) {
+            self.flusher.lock().active = false;
         }
     }
 
@@ -645,6 +706,9 @@ impl SessionManager {
             if !e.pending.is_empty() && e.last_flush.elapsed() >= FLUSH_EVERY {
                 e.flush(&self.tx);
             }
+            if !e.pending.is_empty() {
+                self.flusher.wake();
+            }
         }
         Ok(())
     }
@@ -712,6 +776,56 @@ impl SessionManager {
         self.lock().values().filter(|e| !e.exited).count()
     }
 
+    /// Quitting: closes every session (SIGHUP to each process group), waits up to `grace` for
+    /// the processes to exit, then SIGKILLs the groups whose leader is still alive. Blocks for
+    /// about `grace` at most (less when everything exits on SIGHUP); keep it off the UI thread.
+    pub fn shutdown(&self, grace: Duration) {
+        let ptys: Vec<Arc<PtyHandle>> = self.lock().values().filter_map(|e| e.pty.clone()).collect();
+        for s in self.list() {
+            let _ = self.close(&s.id);
+        }
+        let end = Instant::now() + grace;
+        while Instant::now() < end && ptys.iter().any(|p| !p.has_exited()) {
+            std::thread::sleep(REAP_POLL);
+        }
+        for p in &ptys {
+            p.kill_now();
+        }
+    }
+
+    /// Removes `<data>/sessions/<id>` dirs that no session owns: left behind by a crash or a
+    /// forced quit (sessions never outlive the app). Only real directories whose name is a
+    /// session id (a lowercase hyphenated UUID) are touched; symlinks are never followed.
+    /// Returns what was removed. Run at startup.
+    pub fn sweep_stale_session_dirs(&self) -> Vec<PathBuf> {
+        let Ok(entries) = std::fs::read_dir(self.data_dir.join("sessions")) else { return vec![] };
+        let mut removed = Vec::new();
+        for entry in entries.flatten() {
+            let Ok(name) = entry.file_name().into_string() else { continue };
+            let is_id = Uuid::try_parse(&name).is_ok_and(|u| u.hyphenated().to_string() == name);
+            // `DirEntry::file_type` does not follow symlinks.
+            let is_dir = entry.file_type().is_ok_and(|t| t.is_dir());
+            if !is_id || !is_dir || self.lock().contains_key(&name) {
+                continue;
+            }
+            let path = entry.path();
+            match std::fs::remove_dir_all(&path) {
+                Ok(()) => {
+                    eprintln!("removed stale session dir {}", path.display());
+                    removed.push(path);
+                }
+                Err(err) => eprintln!("could not remove stale session dir {}: {err}", path.display()),
+            }
+        }
+        removed.sort();
+        removed
+    }
+
+    #[cfg(test)]
+    fn flush_loop_iterations(&self) -> u64 {
+        self.flusher.iterations.load(AtomicOrdering::Relaxed)
+    }
+
     fn remove_session_dir(&self, id: &str) {
         let _ = std::fs::remove_dir_all(self.data_dir.join("sessions").join(id));
     }
@@ -720,6 +834,8 @@ impl SessionManager {
 impl Drop for SessionManager {
     /// No child outlives the manager.
     fn drop(&mut self) {
+        self.flusher.lock().closed = true;
+        self.flusher.cv.notify_one();
         let sessions = self.sessions.get_mut().unwrap_or_else(|e| e.into_inner());
         for (id, e) in sessions.drain() {
             if let Some(p) = &e.pty {
@@ -774,6 +890,7 @@ mod tests {
     use super::*;
     use crate::adapters::ClaudeAdapter;
     use crate::model::AgentKind;
+    use crate::pty::KILL_GRACE;
 
     type Events = Arc<Mutex<Vec<ManagerEvent>>>;
 
@@ -1296,6 +1413,148 @@ mod tests {
         assert!(info(&fx, &s.id).awaiting_decision, "a cursor report is not the user answering");
         fx.mgr.write(&s.id, b"\x1b[B").unwrap();
         assert!(!info(&fx, &s.id).awaiting_decision);
+    }
+
+    /// pid printed as `pid:<n>` by a test script.
+    fn printed_pid(fx: &Fx, id: &str) -> i32 {
+        assert!(wait_until(|| scrollback(fx, id).contains("pid:") && scrollback(fx, id).split("pid:").nth(1).is_some_and(|t| t.contains('\n'))));
+        scrollback(fx, id).split("pid:").nth(1).unwrap().split_whitespace().next().unwrap().parse().unwrap()
+    }
+
+    fn alive(pid: i32) -> bool {
+        // SAFETY: signal 0 only probes for existence.
+        unsafe { libc::kill(pid, 0) == 0 }
+    }
+
+    #[test]
+    fn quit_kills_survivors_after_grace() {
+        let fx = fixture();
+        // Both the shell (the group leader) and its child ignore SIGHUP.
+        let s = fx.mgr.start_with_spec(&fx.ws, &custom("b1", ""), sh(&fx, "trap '' HUP; sleep 30 & echo pid:$!; wait"), Arc::new(crate::adapters::CustomAdapter)).unwrap();
+        let t = fx.mgr.start_terminal(&fx.ws).unwrap(); // exits on SIGHUP at once
+        let grandchild = printed_pid(&fx, &s.id);
+        let _ = t;
+        let started = Instant::now();
+        fx.mgr.shutdown(Duration::from_millis(500));
+        let took = started.elapsed();
+        // Reparented to launchd once its shell dies; give the reaper a moment.
+        let end = Instant::now() + Duration::from_millis(500);
+        while alive(grandchild) && Instant::now() < end {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let survived = alive(grandchild);
+        if survived {
+            unsafe { libc::kill(grandchild, libc::SIGKILL); }
+        }
+        assert!(!survived, "a SIGHUP-ignoring process survived shutdown");
+        assert!(took >= Duration::from_millis(450), "waited the grace for the survivor: {took:?}");
+        assert!(took < Duration::from_millis(1500), "then killed it promptly: {took:?}");
+        assert!(fx.mgr.list().is_empty());
+    }
+
+    #[test]
+    fn quit_returns_early_when_everything_exits_on_sighup() {
+        let fx = fixture();
+        fx.mgr.start_agent(&fx.ws, &custom("b1", "sleep 30"), None).unwrap();
+        fx.mgr.start_terminal(&fx.ws).unwrap();
+        std::thread::sleep(Duration::from_millis(200));
+        let started = Instant::now();
+        fx.mgr.shutdown(KILL_GRACE);
+        assert!(started.elapsed() < Duration::from_secs(1), "no survivor, no full grace: {:?}", started.elapsed());
+    }
+
+    #[test]
+    fn flush_loop_parks_without_sessions() {
+        let fx = fixture();
+        std::thread::sleep(Duration::from_millis(100));
+        let a = fx.mgr.flush_loop_iterations();
+        std::thread::sleep(Duration::from_millis(300));
+        assert_eq!(fx.mgr.flush_loop_iterations(), a, "the loop ran with no sessions");
+        // The next start wakes it.
+        let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "printf hi; sleep 0.3"), None).unwrap();
+        assert!(wait_until(|| fx.mgr.flush_loop_iterations() > a + 5), "the loop woke for the session");
+        // Once the only process has exited it parks again, even though the session is still listed.
+        assert!(wait_until(|| fx.mgr.running_process_count() == 0));
+        std::thread::sleep(Duration::from_millis(100));
+        let b = fx.mgr.flush_loop_iterations();
+        std::thread::sleep(Duration::from_millis(300));
+        assert_eq!(fx.mgr.flush_loop_iterations(), b, "the loop ran with only an exited session");
+        assert_eq!(fx.mgr.list().len(), 1);
+        fx.mgr.close(&s.id).unwrap();
+        // And wakes again for the next one.
+        fx.mgr.start_terminal(&fx.ws).unwrap();
+        assert!(wait_until(|| fx.mgr.flush_loop_iterations() > b + 5));
+    }
+
+    #[test]
+    fn parked_loop_still_flushes_output_after_wake() {
+        let fx = fixture();
+        std::thread::sleep(Duration::from_millis(100));
+        let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "printf one; sleep 0.2; printf two; sleep 5"), None).unwrap();
+        let (snap, _) = fx.mgr.attach(&s.id).unwrap();
+        let snap = String::from_utf8_lossy(&snap).into_owned();
+        assert!(wait_until(|| snap.clone() + &output(&fx, &s.id) == "onetwo"), "got {:?}", snap + &output(&fx, &s.id));
+    }
+
+    #[test]
+    fn silent_custom_agent_finishes_after_20s() {
+        let fx = fixture();
+        let s = fx.mgr.start_with_spec(&fx.ws, &custom("b1", ""), sh(&fx, "sleep 30"), Arc::new(crate::adapters::CustomAdapter)).unwrap();
+        let t0 = info(&fx, &s.id).started_at;
+        fx.mgr.tick(t0 + 19_000);
+        assert_eq!(state(&fx, &s.id), SessionState::Starting, "not yet");
+        fx.mgr.tick(t0 + 20_000);
+        assert_eq!(state(&fx, &s.id), SessionState::Finished);
+        assert!(info(&fx, &s.id).reached_finished);
+        assert!(wait_until(|| last_update(&fx, &s.id).is_some_and(|i| i.state == SessionState::Finished)), "Updated emitted");
+    }
+
+    #[test]
+    fn silent_claude_session_stays_starting() {
+        let fx = fixture();
+        let s = fx.mgr.start_with_spec(&fx.ws, &claude("b1"), sleeper(&fx), Arc::new(ClaudeAdapter)).unwrap();
+        fx.mgr.tick(info(&fx, &s.id).started_at + 60_000);
+        assert_eq!(state(&fx, &s.id), SessionState::Starting, "hook agents wait for their hooks");
+    }
+
+    #[test]
+    fn startup_sweeps_stale_session_dirs() {
+        let fx = fixture();
+        let sessions = fx.data_dir.join("sessions");
+        std::fs::create_dir_all(&sessions).unwrap();
+        let live = fx.mgr.start_with_spec(&fx.ws, &claude("b1"), sleeper(&fx), Arc::new(ClaudeAdapter)).unwrap();
+        let live_dir = sessions.join(&live.id);
+        std::fs::create_dir(&live_dir).unwrap();
+        std::fs::write(live_dir.join("claude-settings.json"), "{}").unwrap();
+        let stale = sessions.join(Uuid::new_v4().to_string());
+        std::fs::create_dir_all(stale.join("nested")).unwrap();
+        std::fs::write(stale.join("nested/claude-settings.json"), "{}").unwrap();
+        let not_uuid = sessions.join("keep-me");
+        std::fs::create_dir(&not_uuid).unwrap();
+        let upper = sessions.join(Uuid::new_v4().to_string().to_uppercase());
+        std::fs::create_dir(&upper).unwrap();
+        let file = sessions.join(Uuid::new_v4().to_string());
+        std::fs::write(&file, "x").unwrap();
+        // A symlink named like a session must not be followed (its target is outside).
+        let outside = fx.data_dir.join("outside");
+        std::fs::create_dir(&outside).unwrap();
+        std::fs::write(outside.join("precious"), "x").unwrap();
+        let link = sessions.join(Uuid::new_v4().to_string());
+        std::os::unix::fs::symlink(&outside, &link).unwrap();
+
+        let removed = fx.mgr.sweep_stale_session_dirs();
+
+        assert_eq!(removed, vec![stale.clone()]);
+        assert!(!stale.exists());
+        assert!(live_dir.join("claude-settings.json").exists(), "a live session keeps its dir");
+        assert!(not_uuid.exists() && upper.exists() && file.exists());
+        assert!(link.symlink_metadata().is_ok() && outside.join("precious").exists(), "symlink and its target untouched");
+    }
+
+    #[test]
+    fn sweep_without_sessions_dir_is_a_no_op() {
+        let fx = fixture();
+        assert!(fx.mgr.sweep_stale_session_dirs().is_empty());
     }
 
     #[test]

@@ -193,6 +193,41 @@ pub fn terminal_policy() -> StatusPolicy {
     }
 }
 
+/// Test support: proves an adapter writes nothing under the user's home or config dirs.
+#[cfg(test)]
+pub(crate) mod fake_home {
+    /// Set in the child test process; only there do the `*_in_fake_home` tests do anything.
+    pub const CHILD_FLAG: &str = "COC_FAKE_HOME_CHILD";
+
+    /// True in the child process started by `run`.
+    pub fn is_child() -> bool {
+        std::env::var_os(CHILD_FLAG).is_some()
+    }
+
+    /// Runs the ignored test `name` in a child copy of this test binary whose `HOME`,
+    /// `XDG_CONFIG_HOME` and `CODEX_HOME` point into an empty temp dir (the env is injected into
+    /// the child only; this process's env is never changed), then asserts the child passed and
+    /// that nothing at all was created in that dir.
+    pub fn run(name: &str) {
+        let home = tempfile::tempdir().unwrap();
+        let out = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([name, "--exact", "--ignored", "--test-threads=1"])
+            .env("HOME", home.path())
+            .env("XDG_CONFIG_HOME", home.path().join(".config"))
+            .env("CODEX_HOME", home.path().join(".codex"))
+            .env_remove("GEMINI_CLI_SYSTEM_SETTINGS_PATH")
+            .env_remove("OPENCODE_CONFIG_DIR")
+            .env(CHILD_FLAG, "1")
+            .output()
+            .unwrap();
+        let text = String::from_utf8_lossy(&out.stdout);
+        assert!(out.status.success(), "{name} failed in the fake home:\n{text}\n{}", String::from_utf8_lossy(&out.stderr));
+        assert!(text.contains("test result: ok. 1 passed"), "the child did not run {name}:\n{text}");
+        let left: Vec<_> = std::fs::read_dir(home.path()).unwrap().map(|e| e.unwrap().path()).collect();
+        assert!(left.is_empty(), "{name} created files in HOME: {left:?}");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -282,12 +282,26 @@ mod tests {
         }
     }
 
-    #[test]
-    fn codex_writes_only_inside_session_dir() {
+    fn launch_writes_nothing() {
         let d = tempfile::tempdir().unwrap();
         CodexAdapter.launch(&req(d.path(), Some("m"), Some("high"), Some("t"))).unwrap();
         // Launch writes nothing at all: no data-dir entries, hence none outside the session dir.
         assert_eq!(std::fs::read_dir(d.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn codex_writes_only_inside_session_dir() {
+        launch_writes_nothing();
+        // And nothing under HOME / XDG_CONFIG_HOME / CODEX_HOME (run with those faked).
+        crate::adapters::fake_home::run("adapters::codex::tests::codex_launch_in_fake_home");
+    }
+
+    #[test]
+    #[ignore = "run by codex_writes_only_inside_session_dir with a fake HOME"]
+    fn codex_launch_in_fake_home() {
+        if crate::adapters::fake_home::is_child() {
+            launch_writes_nothing();
+        }
     }
 
     #[test]

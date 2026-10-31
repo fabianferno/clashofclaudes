@@ -234,6 +234,20 @@ mod tests {
 
     #[test]
     fn opencode_writes_only_inside_session_dir() {
+        launch_writes_only_session_dir();
+        // And nothing under HOME / XDG_CONFIG_HOME (run with those faked).
+        crate::adapters::fake_home::run("adapters::opencode::tests::opencode_launch_in_fake_home");
+    }
+
+    #[test]
+    #[ignore = "run by opencode_writes_only_inside_session_dir with a fake HOME"]
+    fn opencode_launch_in_fake_home() {
+        if crate::adapters::fake_home::is_child() {
+            launch_writes_only_session_dir();
+        }
+    }
+
+    fn launch_writes_only_session_dir() {
         let d = tempfile::tempdir().unwrap();
         OpenCodeAdapter.launch(&req(d.path(), Some("a/b"), Some("low"), Some("t"))).unwrap();
         let top: Vec<_> = std::fs::read_dir(d.path()).unwrap().map(|e| e.unwrap().file_name()).collect();

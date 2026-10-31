@@ -350,8 +350,22 @@ mod tests {
 
     #[test]
     fn gemini_writes_only_inside_session_dir() {
+        launch_writes_only_session_dir(|r, d| GeminiAdapter.launch_with(r, &none(d)).unwrap());
+        // And nothing under HOME / XDG_CONFIG_HOME, through the real `launch` (run with those faked).
+        crate::adapters::fake_home::run("adapters::gemini::tests::gemini_launch_in_fake_home");
+    }
+
+    #[test]
+    #[ignore = "run by gemini_writes_only_inside_session_dir with a fake HOME"]
+    fn gemini_launch_in_fake_home() {
+        if crate::adapters::fake_home::is_child() {
+            launch_writes_only_session_dir(|r, _| GeminiAdapter.launch(r).unwrap());
+        }
+    }
+
+    fn launch_writes_only_session_dir(launch: impl Fn(&LaunchRequest, &Path) -> LaunchSpec) {
         let d = tempfile::tempdir().unwrap();
-        GeminiAdapter.launch_with(&req(d.path(), Some("pro"), Some("low"), Some("t")), &none(d.path())).unwrap();
+        launch(&req(d.path(), Some("pro"), Some("low"), Some("t")), d.path());
         let ls = |p: PathBuf| -> Vec<_> { std::fs::read_dir(p).unwrap().map(|e| e.unwrap().file_name()).collect() };
         assert_eq!(ls(d.path().to_path_buf()), vec![std::ffi::OsString::from("sessions")]);
         assert_eq!(ls(d.path().join("sessions")), vec![std::ffi::OsString::from("sid")]);

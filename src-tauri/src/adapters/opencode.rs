@@ -120,8 +120,7 @@ impl AgentAdapter for OpenCodeAdapter {
             Some("session.idle") => vec![StatusEvent::TurnFinished],
             Some("permission.asked") => vec![StatusEvent::PermissionRequested { message: "OpenCode wants permission".into() }],
             Some("tool.execute.after") => vec![StatusEvent::ToolUsed],
-            // There is no Failed event: an error needs the user, so it surfaces as NeedsYou.
-            Some("session.error") => vec![StatusEvent::PermissionRequested { message: "OpenCode reported an error".into() }],
+            Some("session.error") => vec![StatusEvent::Failed { reason: "OpenCode reported an error".into() }],
             _ => vec![],
         }
     }
@@ -215,7 +214,7 @@ mod tests {
         assert_eq!(p("session.idle"), vec![StatusEvent::TurnFinished]);
         assert_eq!(p("permission.asked"), vec![StatusEvent::PermissionRequested { message: "OpenCode wants permission".into() }]);
         assert_eq!(p("tool.execute.after"), vec![StatusEvent::ToolUsed]);
-        assert_eq!(p("session.error"), vec![StatusEvent::PermissionRequested { message: "OpenCode reported an error".into() }]);
+        assert_eq!(p("session.error"), vec![StatusEvent::Failed { reason: "OpenCode reported an error".into() }]);
         assert_eq!(p("message.updated"), vec![]);
     }
 

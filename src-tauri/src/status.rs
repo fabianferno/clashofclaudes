@@ -10,6 +10,8 @@ pub enum StatusEvent {
     PermissionRequested { message: String },
     WaitingForInput,
     ToolUsed,
+    /// The agent reported an error. Stuck (not NeedsYou): there is no prompt to answer.
+    Failed { reason: String },
     PromptSubmitted,
     UserInput,
     Exited { code: Option<i32> },
@@ -40,6 +42,13 @@ impl StatusPolicy {
 }
 
 const SILENCE_STUCK_PREFIX: &str = "no output for ";
+const EXIT_STUCK_PREFIX: &str = "exited with code ";
+const EXIT_STUCK_NONE: &str = "process ended";
+
+/// Stuck from a stall or an agent-reported failure recovers on activity; exit-stuck does not.
+fn stuck_recovers(reason: &str) -> bool {
+    !(reason.starts_with(EXIT_STUCK_PREFIX) || reason == EXIT_STUCK_NONE)
+}
 
 /// Pure transition table (spec section 5.3). Anything not listed leaves `state` unchanged.
 pub fn next_state(state: &SessionState, ev: &StatusEvent, policy: &StatusPolicy) -> SessionState {
@@ -52,9 +61,10 @@ pub fn next_state(state: &SessionState, ev: &StatusEvent, policy: &StatusPolicy)
     match (state, ev) {
         (_, E::Exited { code }) if policy.any_exit_ends => S::Ended { exit_code: *code },
         (_, E::Exited { code: Some(0) }) => S::Ended { exit_code: Some(0) },
-        (_, E::Exited { code: Some(c) }) => S::Stuck { reason: format!("exited with code {c}") },
-        (_, E::Exited { code: None }) => S::Stuck { reason: "process ended".into() },
+        (_, E::Exited { code: Some(c) }) => S::Stuck { reason: format!("{EXIT_STUCK_PREFIX}{c}") },
+        (_, E::Exited { code: None }) => S::Stuck { reason: EXIT_STUCK_NONE.into() },
 
+        (_, E::Failed { reason }) => S::Stuck { reason: reason.clone() },
         (_, E::PromptSubmitted) => S::Working,
         (S::Starting | S::NeedsYou { .. } | S::Finished, E::ToolUsed) => S::Working,
         (_, E::TurnFinished) => S::Finished,
@@ -75,8 +85,8 @@ pub fn next_state(state: &SessionState, ev: &StatusEvent, policy: &StatusPolicy)
         {
             S::Stuck { reason: format!("{SILENCE_STUCK_PREFIX}{} min", secs / 60) }
         }
-        // Only a stall from silence recovers on output; exit-stuck stays put.
-        (S::Stuck { reason }, E::Output) if reason.starts_with(SILENCE_STUCK_PREFIX) => S::Working,
+        // A stall or a reported failure recovers on new output or typing; exit-stuck stays put.
+        (S::Stuck { reason }, E::Output | E::UserInput) if stuck_recovers(reason) => S::Working,
 
         // Unlisted pairs, including later-added events, are unchanged.
         _ => state.clone(),
@@ -188,6 +198,26 @@ mod tests {
         assert_eq!(next_state(&Starting, &Silence{secs:900}, &term()), Starting);
     }
     #[test] fn long_silence_is_stuck() { assert_eq!(next_state(&Working, &Silence{secs:900}, &hooks()), Stuck{reason:"no output for 15 min".into()}); }
+    #[test] fn failed_event_goes_stuck() {
+        for from in [Starting, Working, Finished, NeedsYou{reason:"x".into()}] {
+            assert_eq!(next_state(&from, &Failed{reason:"boom".into()}, &hooks()), Stuck{reason:"boom".into()});
+        }
+        assert_eq!(next_state(&Ended{exit_code:None}, &Failed{reason:"boom".into()}, &hooks()), Ended{exit_code:None});
+    }
+    #[test] fn stuck_from_failure_recovers_on_output() {
+        let s = Stuck{reason:"boom".into()};
+        for p in [hooks(), plain()] {
+            assert_eq!(next_state(&s, &Output, &p), Working);
+            assert_eq!(next_state(&s, &UserInput, &p), Working);
+        }
+        // Exit-stuck still stays put.
+        let e = Stuck{reason:"exited with code 1".into()};
+        assert_eq!(next_state(&e, &Output, &hooks()), e);
+        assert_eq!(next_state(&e, &UserInput, &plain()), e);
+        // Silence-stuck recovers on output as before.
+        let q = Stuck{reason:"no output for 15 min".into()};
+        assert_eq!(next_state(&q, &Output, &hooks()), Working);
+    }
     #[test] fn nonzero_exit_is_stuck() { assert_eq!(next_state(&Working, &Exited{code:Some(1)}, &hooks()), Stuck{reason:"exited with code 1".into()}); }
     #[test] fn clean_exit_ends() { assert_eq!(next_state(&Finished, &Exited{code:Some(0)}, &hooks()), Ended{exit_code:Some(0)}); }
     #[test] fn ended_is_terminal() { assert_eq!(next_state(&Ended{exit_code:Some(0)}, &PromptSubmitted, &hooks()), Ended{exit_code:Some(0)}); }

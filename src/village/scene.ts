@@ -76,7 +76,7 @@ function wallEntities(wsId: string, c: Compound, spots: Tile[], level: number): 
   const out: Entity[] = [];
   for (const t of enclosure(c, spots, level, seedOf(wsId)).walls) {
     if (t.x === gate.x && t.y === gate.y) continue;
-    out.push(ent(`wall:${wsId}:${t.x}:${t.y}`, 'wall', t.x + 1, t.y + 1, `wall:${t.dir}`));
+    out.push(ent(`wall:${wsId}:${t.x}:${t.y}`, 'wall', t.x + 1, t.y + 1, `wall:${t.links}`));
   }
   out.push(ent(`gate:${wsId}`, 'gate', gate.x + 1, gate.y + 1, `gate:${gateSide(c)}`));
   return out;
@@ -145,7 +145,7 @@ export function artFor(key: string): Art {
     case 'hall': return drawHall();
     case 'house': return drawHouse(Number(a) as 0 | 1 | 2 | 3 | 4, b, c);
     case 'struct': return drawStructure(a as AgentKind, b as StructStage, Number(c));
-    case 'wall': return drawWallSeg(a as 'x' | 'y' | 'post');
+    case 'wall': return drawWallSeg(a ?? '');
     case 'gate': return drawGate(a as 'n' | 's' | 'e' | 'w');
     case 'badge': return drawBadge(Number(a));
     case 'builder': return drawBuilder(a as AgentKind, Number(b) as ClassTier, Number(c) as Gear, d as Pose, Number(e) as 1 | -1);

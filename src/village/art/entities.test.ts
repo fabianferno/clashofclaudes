@@ -29,7 +29,7 @@ describe('art', () => {
           for (const pose of ['idle', 'walk0', 'walk1', 'hammer0', 'hammer1', 'cheer', 'sad'] as const)
             for (const face of [1, -1] as const) ok(drawBuilder(a, cls, gear, pose, face));
     }
-    for (const d of ['x', 'y'] as const) ok(drawWallSeg(d));
+    for (const l of ['ew', 'ns', 'es', 'nw', 'nesw', '']) ok(drawWallSeg(l));
     for (const s of ['n', 's', 'e', 'w'] as const) ok(drawGate(s));
     for (const v of [0, 1, 2, 3] as const) ok(drawTree(v));
     ok(drawStatusBar('working', '12m · 34 steps'));

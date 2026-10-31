@@ -14,28 +14,29 @@ function log(p: Pt, h: number, r: number): void {
 }
 
 /**
- * One tile of wooden palisade running along x or y, or a thicker corner post where it turns or ends.
+ * One tile of wooden palisade, joined to the neighbouring wall tiles in `links` (see `WallTile`),
+ * with a thicker post where it turns, ends or branches.
  * Anchor: the tile's front corner, grid point (tx+1, ty+1) for tile (tx, ty).
  */
-export function drawWallSeg(dir: 'x' | 'y' | 'post'): Art {
+export function drawWallSeg(links: string): Art {
   return bake(110, 90, 55, 72, () => {
-    if (dir === 'post') {
-      log(iso(0.5, 0.5), 27, 4.2);
-      return;
-    }
-    // back to front: along x the nearer logs have larger x, along y larger y
-    const n = 4;
-    const at = (t: number) => (dir === 'x' ? iso(t, 0.5) : iso(0.5, t));
-    const rail = (h: number) => {
-      const a = up(at(0.02), h), b = up(at(0.98), h);
-      line(a, b, OUT, 5); line(a, b, '#8a5e30', 2.6);
+    // Half a run from the tile's centre toward each linked neighbour (n: y-1, e: x+1, s: y+1,
+    // w: x-1). Back to front: the n and w halves sit behind the centre, e and s in front of it.
+    const half = (d: string) => {
+      const along = (t: number) => (d === 'n' || d === 's' ? iso(0.5, t) : iso(t, 0.5));
+      const [t0, t1] = d === 'n' || d === 'w' ? [0.02, 0.5] : [0.5, 0.98];
+      const rail = (h: number) => {
+        const a = up(along(t0), h), b = up(along(t1), h);
+        line(a, b, OUT, 5); line(a, b, '#8a5e30', 2.6);
+      };
+      rail(7);
+      for (const t of [t0 + 0.11, t0 + 0.355]) log(along(t), 21 + ((Math.round(t * 8) * 7) % 3) * 1.5, 3.4);
+      rail(16);
     };
-    rail(7);
-    for (let i = 0; i < n; i++) {
-      const t = (i + 0.5) / n;
-      log(at(t), 21 + ((i * 7) % 3) * 1.5, 3.4);
-    }
-    rail(16);
+    const straight = links === 'ew' || links === 'ns';
+    for (const d of ['n', 'w']) if (links.includes(d)) half(d);
+    if (!straight) log(iso(0.5, 0.5), 27, 4.2); // a corner, end or junction post
+    for (const d of ['e', 's']) if (links.includes(d)) half(d);
   }, iso(1, 1));
 }
 

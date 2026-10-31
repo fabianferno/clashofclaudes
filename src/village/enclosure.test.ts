@@ -73,9 +73,21 @@ describe('enclosure', () => {
     expect(new Set(['alpha', 'beta', 'gamma', 'delta'].map(shape)).size).toBeGreaterThan(1);
   });
 
-  it('marks straight runs and posts', () => {
-    const { c } = grown(0);
-    const dirs = new Set(enclosure(c, [], 1, seedOf('w')).walls.map((w) => w.dir));
-    expect(dirs).toEqual(new Set(['x', 'y', 'post']));
+  it('links_every_wall_tile_to_its_wall_neighbours_so_the_ring_has_no_gaps', () => {
+    for (const lvl of [1, 3, 5]) {
+      const { c, spots } = grown(lvl);
+      const { walls } = enclosure(c, spots, lvl, seedOf('w'));
+      const at = new Map(walls.map((t) => [`${t.x},${t.y}`, t]));
+      const step = { n: [0, -1], e: [1, 0], s: [0, 1], w: [-1, 0] } as const;
+      const back = { n: 's', e: 'w', s: 'n', w: 'e' } as const;
+      for (const t of walls) {
+        expect(t.links.length).toBeGreaterThanOrEqual(2); // a closed ring: no dead ends or lone posts
+        for (const d of t.links as unknown as (keyof typeof step)[]) {
+          const o = at.get(`${t.x + step[d][0]},${t.y + step[d][1]}`)!;
+          expect(o.links).toContain(back[d]); // links are mutual
+        }
+      }
+      expect(new Set(walls.map((t) => t.links))).toContain('es'); // corners join both runs
+    }
   });
 });

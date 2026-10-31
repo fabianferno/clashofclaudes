@@ -1,8 +1,12 @@
 import type { Compound, Tile } from '../api/types';
 import { HOUSE, STRUCT, gateInside, gateSide } from './layout';
 
-/** A wall tile and how it joins its neighbours: a run along x, a run along y, or a post (corner/end). */
-export interface WallTile { x: number; y: number; dir: 'x' | 'y' | 'post' }
+/**
+ * A wall tile and the neighbouring wall tiles it joins, in `nesw` order: n is y-1, e is x+1, s is
+ * y+1, w is x-1 (e.g. `ew` is a straight run along x, `es` a corner). The gate tile counts as wall,
+ * so runs meet the gate.
+ */
+export interface WallTile { x: number; y: number; links: string }
 
 export interface Enclosure {
   /** Interior tiles, as `x,y` keys. */
@@ -93,9 +97,9 @@ export function enclosure(c: Compound, spots: Tile[], level: number, seed: numbe
   }
   const walls: WallTile[] = [...wallSet].map((k) => {
     const [x, y] = k.split(',').map(Number);
-    const wx = wallSet.has(key(x - 1, y)) || wallSet.has(key(x + 1, y));
-    const wy = wallSet.has(key(x, y - 1)) || wallSet.has(key(x, y + 1));
-    return { x, y, dir: wx && !wy ? 'x' : wy && !wx ? 'y' : 'post' };
+    const links = ([['n', 0, -1], ['e', 1, 0], ['s', 0, 1], ['w', -1, 0]] as const)
+      .filter(([, dx, dy]) => wallSet.has(key(x + dx, y + dy))).map(([d]) => d).join('');
+    return { x, y, links };
   });
   walls.sort((a, b) => a.y - b.y || a.x - b.x);
   return { inside, walls };

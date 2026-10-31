@@ -1,4 +1,6 @@
-# Plan 1 follow-ups (carry into Plans 2/3)
+# Follow-ups (Plan 1, carried through Plans 2 and 3)
+
+Status after v1 (Plan 3 Task 9): see "Status after v1" at the end for what was resolved and what remains. The sections below are the historical record; items marked FIXED are done.
 
 Collected from the Plan 1 execution ledger at merge time. All were triaged CAN-WAIT by the final review except where noted.
 
@@ -27,17 +29,17 @@ Collected from the Plan 1 execution ledger at merge time. All were triaged CAN-W
     TerminalView host now keeps one `Terminal` and swaps sessions with `reset()` plus replay.
     40 switches, panel closed + 30 s: 297 → **228 MB** (dev, village hidden). See
     docs/verification/plan-2-village.md, "Remount follow-up".
-- Closing a session that never reached Finished gives no feedback (no XP, no message). Show "closed: unfinished, no XP".
-- Builders are only visible in the New session builder picker; after Close the builder seems to vanish. The Plan 2 builders bar covers this.
-- Claude's first-run "Do you trust this folder?" menu (default "No, exit") appears before any hook fires: the session shows Working, never NeedsYou. Add screen-pattern detection → NeedsYou with its own keys.
-- Add a monotonic `rev` to SessionInfo so stale start responses / hydrate can't overwrite fresher event state.
-- Disarm `awaiting_decision` when the user answers a permission prompt by typing in the terminal (hook agents).
-- Serde shape tests for the tagged enums (SessionState/SessionKind).
+- FIXED (Plan 2, `cedebbd` unfinished-close notice): Closing a session that never reached Finished gives no feedback (no XP, no message). Show "closed: unfinished, no XP".
+- FIXED (Plan 2, builders bar): Builders are only visible in the New session builder picker; after Close the builder seems to vanish.
+- FIXED (Plan 1 final round, `63f6c2e`): Claude's first-run "Do you trust this folder?" menu now goes to NeedsYou through screen-pattern detection with its own keys.
+- FIXED (`63f6c2e`): Add a monotonic `rev` to SessionInfo so stale start responses / hydrate can't overwrite fresher event state.
+- FIXED (`63f6c2e`): Disarm `awaiting_decision` when the user answers a permission prompt by typing in the terminal (hook agents).
+- FIXED (`63f6c2e`): Serde shape tests for the tagged enums (SessionState/SessionKind).
 
 ## Found in the owner GUI run (2026-10-31)
 - Fixed: Cmd+Q / menu Quit skipped the quit dialog. The predefined Quit item calls `terminate:`, which never raises ExitRequested; replaced with a custom Quit item that calls `app.exit(0)` (`lib.rs::app_menu`).
 - Fixed: the quit dialog's buttons were unclickable over a terminal (xterm's z-indexed layers sat above the unindexed fixed overlay). `.modal-bg` gets `z-index`, `.terminal-wrap` gets `isolation: isolate`.
-- Open: + Session / + Terminal on a missing workspace are disabled with no explanation; add a "folder not found" tooltip.
+- FIXED (Plan 2, `816a0a2`): + Session / + Terminal on a missing workspace now carry a "Folder not found: <path>" tooltip and a panel warning.
 - Open: the doc's `pgrep -f "claude --session-id"` check also matches any shell whose command line contains that text; check children of the app pid instead.
 
 ## Final-review minors not yet fixed
@@ -72,3 +74,31 @@ Collected from the Plan 1 execution ledger at merge time. All were triaged CAN-W
 
 ## Owner GUI checks still open
 See docs/verification/plan-1-e2e.md (OWNER-GUI-CHECK items, incl. memory figure and an unbounded `yes` memory watch).
+
+## Status after v1 (Plan 3 Task 9)
+
+Resolved across Plans 1-3: everything marked FIXED above (remount memory churn, quit SIGKILL escalation, flush-loop parking, silent custom agents, stale session dirs, detection caching, trust-menu detection, `rev`, folder-not-found tooltip, unfinished-close feedback, builders bar).
+
+Still open: the owner checklist in `docs/verification/plan-3-v1.md` (rendering budgets, each non-Claude agent against its real CLI, notifications on a bundled build, signing and notarization, updater end to end, DMG icon layout).
+
+### What remains after v1, grouped (from the Plan 3 ledger and the older lists above)
+
+User-visible:
+- Open: the quit-time kill misses a SIGHUP-ignoring child when its group leader has already exited, and a session still starting at quit gets only SIGHUP (`kill_now` skips reaped leaders; `killpg` would be safe).
+- Open: after Codex's first notify, an interrupted turn stays Working until the 900 s Stuck rule. Failure-stuck (OpenCode `session.error`) clears only on typing or the next agent event.
+- Open: update toast: the button does nothing after a cancelled restart (the pending update was taken), no download feedback, double-click not guarded.
+- Open: the welcome card never shows if `listState` errors on first run (it fails closed); "Copied" on the install-command button never resets; the New-folder name is cleared before creation succeeds (lost on cancel).
+- Open: the notification permission-denied path is dormant (the desktop plugin always reports Granted) and the notifier starts as focused, so a launch in the background is silent until the first focus event. Badge counts are computed at emit time and can lag one event.
+- Open (from Plan 1): `remove_workspace` leaves Ended sessions orphaned; no UI to remove a missing workspace; the missing flag never clears during a run; builders/workspaces are not de-duplicated; dropped output is not signalled to the frontend; a "1 sessions" plural; review is not cleared after leaving Finished.
+
+Agent adapters (need real CLIs):
+- Open: verify event shapes, flag forms (`--model=`, `--prompt=`, `--prompt-interactive=`, `--` before the task) and prompt wording for Codex, OpenCode and Gemini, then flip `canApprove` per agent. Antigravity (`agy`) has no adapter; users run it as a Custom command.
+- Open: the shared-folder note reaches Gemini and OpenCode only when a task is given (display-only limitation).
+- Open: the session hook URL with its token is visible in `ps` argv and inherited by an agent's subprocesses (local only; it can only forge status for that session). The sh+curl notify script is not portable to Windows.
+
+Release:
+- Open: signed, notarized and updater paths are unexercised until credentials exist. `release.sh` does not refuse `OWNER/REPO` or the placeholder pubkey when building a signed `latest.json`. The identifier ends in `.app` (Tauri warns); changing it moves the data dir.
+- Open: the public name and trademark check (see `docs/release.md`).
+
+Code health (internal):
+- Reason-string prefixes decide Stuck recovery (use a typed kind); `sessions.rs` is large; `all lib.rs modules pub` for the integration test (use a test-support feature); blocking calls inside async commands (use `spawn_blocking`); no Tauri-command integration tests; weak or constant-asserting tests in the Codex adapter; no TerminalView tests for rapid A-B-A switches or real-xterm reset; template cruft (greet command, unused svgs, jest-dom unwired); `src-tauri/gen/schemas` committed; unbounded `read_to_string` of Gemini's system settings file; `save()` lacks fsync before rename.

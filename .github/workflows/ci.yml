@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # The app is macOS-only (v1), and the Rust tests drive real PTYs.
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.3.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: pnpm install --frozen-lockfile
+      - name: Typecheck and frontend tests
+        run: pnpm exec tsc --noEmit && pnpm test
+      - name: Script tests
+        run: pnpm test:scripts
+      - name: Rust tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+      - name: Frontend build
+        run: pnpm build

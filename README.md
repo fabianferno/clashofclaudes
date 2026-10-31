@@ -1,8 +1,23 @@
-# Clash of Claudes
+<p align="center"><img src="docs/brand/app-icon.png" width="128" alt="Clash of Claudes icon"></p>
+
+<h1 align="center">Clash of Claudes</h1>
+
+<p align="center"><b>Run all your coding agents from one village.</b><br>
+Claude Code, Codex, Antigravity CLI and OpenCode sessions as builders raising tents in an isometric town.</p>
+
+<p align="center">
+<img alt="macOS 13+" src="https://img.shields.io/badge/macOS-13%2B-1f2937">
+<img alt="MIT license" src="https://img.shields.io/badge/license-MIT-2f855a">
+<img alt="Built with Tauri" src="https://img.shields.io/badge/Tauri-2-24c8db">
+</p>
+
+![The village: each project is a walled compound around the Town Hall, each agent session a builder at its tent](docs/brand/screenshot.jpg)
 
 A macOS desktop app for people who run several coding agents at once. Every project folder is a walled compound in an isometric village, and every running agent session is a builder raising a structure inside it. You see at a glance which agents are working, which need you, which are stuck and which have finished. The real terminal is always one click away.
 
-Working name. v1 is Mac only (macOS 13 or later, Apple Silicon and Intel).
+v1 is Mac only (macOS 13 or later, Apple Silicon and Intel). Free and open source under the MIT license.
+
+**Why:** with three or four agents running in different repos, terminal tabs stop telling you which one is waiting on a permission prompt and which one finished ten minutes ago. Here the answer is on screen: a builder hammering away is working, a "!" bubble needs you, a medal means it shipped. Allow or deny a permission right from the village, or click through to the real terminal.
 
 ## Install
 
@@ -31,7 +46,7 @@ The app does not install agents, log in for you, or manage API keys. Each agent 
 | Claude Code | Working, needs you (permission request), finished, tool-step count. Also detects the first-run "trust this folder" menu. | Yes |
 | Codex | Working, finished (turn complete). Needs you is detected from the on-screen approval and trust prompts. **For app sessions, Codex's `notify` and `developer_instructions` settings are overridden** (`-c notify=…`, `-c developer_instructions=…`): a `notify` program or developer instructions you set in `~/.codex/config.toml` do not apply in sessions started from the app (your file is never edited). | No: answer in the terminal |
 | OpenCode | Working, needs you (permission request), finished, stuck on error. The shared-folder note is only delivered when you give a task (it is prefixed to the first prompt). | No: answer in the terminal |
-| Antigravity CLI (`agy`) | Working, needs you (permission, question or sign-in), finished, failed, read from the status reports agy writes into its own terminal output (no settings files at all). The shared-folder note is only delivered when you give a task. | Yes (Enter / Esc) |
+| Antigravity CLI (`agy`) | Working, needs you (permission or question), finished, stopped after an interrupt, failed, tool-step count, read from the status reports agy writes into its own terminal output (no settings files at all). The shared-folder note is only delivered when you give a task. | Yes (Enter / Esc) |
 | Custom command | Working while it prints, finished after quiet time, stuck if it exits non-zero or is silent for long. | n/a |
 
 For Codex, OpenCode and Antigravity, a session that goes quiet before the agent has reported anything (typically a login, auth or first-run screen) shows **Needs you: "Waiting in the terminal"**, never Finished. Codex and OpenCode have no model list: type a model id in the picker (OpenCode takes `provider/model`), or leave it empty for the agent's default.
@@ -69,3 +84,11 @@ node --test scripts/*.test.mjs
 ```
 
 Design and plans are in `docs/superpowers/`. Verification results and the owner checklist are in `docs/verification/plan-3-v1.md`.
+
+## Contributing
+
+Bug reports, agent-support fixes and art are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and the ground rules (the big one: the app never edits your agents' own configuration). Security issues: [SECURITY.md](SECURITY.md).
+
+## License
+
+[MIT](LICENSE)

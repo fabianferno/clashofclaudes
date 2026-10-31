@@ -1,8 +1,9 @@
 [package]
+license = "MIT"
 name = "clash-of-claudes"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "Run all your coding agents from one village"
+authors = ["Clash of Claudes contributors"]
 edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

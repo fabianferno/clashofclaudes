@@ -1,0 +1,19 @@
+name: Feature request
+description: Suggest something the village should do
+labels: [enhancement]
+body:
+  - type: textarea
+    id: moment
+    attributes:
+      label: The moment you wished for this
+      description: What were you doing, and what got in the way?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Anything you tried instead

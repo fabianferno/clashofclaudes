@@ -1,0 +1,37 @@
+name: Bug report
+description: Something in the app behaves wrongly
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. Open a folder\n2. Start a Claude Code session with ...\n3. ..."
+    validations:
+      required: true
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Agent involved
+      options: [None / not agent-related, Claude Code, Codex, Antigravity CLI, OpenCode, Custom command]
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: App version (Town Hall), macOS version, and the agent CLI's version if relevant
+      placeholder: "Clash of Claudes 0.1.0 · macOS 15.2 · claude 2.1.x"
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshots or logs
+      description: Please remove task text, file names or terminal output you'd rather not share.

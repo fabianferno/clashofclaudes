@@ -57,9 +57,15 @@ become real structures** in their compound instead of a number badge on the hous
 - Collectors stand around the town hall on tiles that compounds can never take (the hall keeps a
   4-tile gap): fixed slots so they never shuffle — Claude beside the hall's left corner (−5, 3),
   Codex beside its right corner (3, −5), Antigravity in front (4, 4), each 2×2. A first try in a
-  row in front of the hall hid its facade. They are not draggable.
-- Each label names its agent ("Codex 62% · 5h"; "Claude · no reading" before the first reading),
-  since only a small pennant in the agent's colour tells the tanks apart.
+  row in front of the hall hid its facade.
+- Each label names its agent ("Codex 62% · 5h"; "Claude · no reading" before the first reading).
+- Each tank holds its agent's elixir (owner's request, 2026-11-01): Claude coral, Codex white,
+  Antigravity blue; the label bar takes the same colour while plenty is left (Codex's is silver so
+  the white text reads), and still turns orange at ≤ 25 % and red at ≤ 10 %.
+- Collectors are draggable (owner's request, 2026-11-01). A collector may stand anywhere clear of
+  the hall and compound walls by one tile, off the other collectors, and within 8 tiles of the
+  village. Dropped tiles persist in `state.json` (`collectorSpots`). If a compound later grows over
+  a dropped collector, it returns to its default slot, or the nearest free tile to it.
 - Readings persist in `<data dir>/quota.json` so collectors show the last known level after a
   restart, with "as of" age in the panel.
 - Fill levels are quantised to tenths for textures; the label shows the exact percentage.

@@ -2,7 +2,8 @@ import type { SessionInfo } from '../api/types';
 import type { Entity } from './scene';
 
 /** The bar over a structure (spec 5.3.2): its colour and text. */
-export type StatusTone = 'working' | 'needs' | 'stuck' | 'elixir';
+/** `elixir-<agent>`: a collector with plenty left, in its agent's elixir colour. */
+export type StatusTone = 'working' | 'needs' | 'stuck' | 'elixir-claude' | 'elixir-codex' | 'elixir-antigravity';
 
 /** Elapsed time at minute granularity, so a label (and its texture) changes at most once a minute. */
 export function elapsedLabel(ms: number): string {

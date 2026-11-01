@@ -2,9 +2,10 @@
 #![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "lowercase")]
 pub enum AgentKind {
     Claude,
@@ -90,6 +91,9 @@ pub struct AppData {
     pub stats: Stats,
     #[serde(default)]
     pub settings: Settings,
+    /// Top-left tiles of the elixir collectors the owner has dragged; the rest stand in their default slots.
+    #[serde(default)]
+    pub collector_spots: BTreeMap<AgentKind, Tile>,
 }
 
 /// User preferences. `updates_enabled` gates the updater, the app's only network access.
@@ -112,7 +116,14 @@ impl Default for Settings {
 
 impl Default for AppData {
     fn default() -> Self {
-        Self { version: 2, workspaces: Vec::new(), builders: Vec::new(), stats: Stats::default(), settings: Settings::default() }
+        Self {
+            version: 2,
+            workspaces: Vec::new(),
+            builders: Vec::new(),
+            stats: Stats::default(),
+            settings: Settings::default(),
+            collector_spots: BTreeMap::new(),
+        }
     }
 }
 

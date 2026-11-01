@@ -206,6 +206,17 @@ export function spotFor(
   }
 }
 
+/** Tiles: HALL and every wall rect (unpadded). */
+export function villageRect(compounds: Compound[]): Rect {
+  let x0 = HALL.x0, y0 = HALL.y0, x1 = HALL.x0 + HALL.w, y1 = HALL.y0 + HALL.h;
+  for (const c of compounds) {
+    const r = wallRect(c);
+    x0 = Math.min(x0, r.x0); y0 = Math.min(y0, r.y0);
+    x1 = Math.max(x1, r.x0 + r.w); y1 = Math.max(y1, r.y0 + r.h);
+  }
+  return { x0, y0, w: x1 - x0, h: y1 - y0 };
+}
+
 /** Test helper: throws if any wall rect is < GAP from another or from HALL. */
 export function assertNoCollisions(all: Compound[]): void {
   all.forEach((c, i) => {

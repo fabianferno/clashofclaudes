@@ -10,7 +10,7 @@ use crate::sessions::{ClosedSession, SessionManager, WorkspaceMissing};
 use crate::xp;
 use anyhow::{anyhow, bail, Context};
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -93,6 +93,7 @@ pub struct StateSnapshot {
     builders: Vec<Builder>,
     sessions: Vec<SessionInfo>,
     stats: Stats,
+    collector_spots: BTreeMap<AgentKind, Tile>,
 }
 
 #[derive(Serialize)]
@@ -122,7 +123,13 @@ pub struct ConfirmQuit {
 #[tauri::command]
 pub fn list_state(state: State<'_, AppState>) -> StateSnapshot {
     let d = state.data();
-    StateSnapshot { workspaces: d.workspaces.clone(), builders: d.builders.clone(), sessions: state.manager.list(), stats: d.stats.clone() }
+    StateSnapshot {
+        workspaces: d.workspaces.clone(),
+        builders: d.builders.clone(),
+        sessions: state.manager.list(),
+        stats: d.stats.clone(),
+        collector_spots: d.collector_spots.clone(),
+    }
 }
 
 #[tauri::command]
@@ -454,6 +461,23 @@ pub fn set_compound(workspace_id: String, compound: Compound, app: AppHandle, st
     };
     let _ = app.emit("workspace-updated", ws.clone());
     Ok(ws)
+}
+
+/// Moves `agent`'s elixir collector (Claude Code, Codex and Antigravity have one); returns every moved collector.
+pub fn apply_collector_spot(d: &mut AppData, agent: AgentKind, spot: Tile) -> Result<BTreeMap<AgentKind, Tile>, String> {
+    if !matches!(agent, AgentKind::Claude | AgentKind::Codex | AgentKind::Antigravity) {
+        return Err("this agent has no collector".into());
+    }
+    d.collector_spots.insert(agent, spot);
+    Ok(d.collector_spots.clone())
+}
+
+#[tauri::command]
+pub fn set_collector_spot(agent: AgentKind, spot: Tile, state: State<'_, AppState>) -> Result<BTreeMap<AgentKind, Tile>, String> {
+    let mut d = state.data();
+    let spots = apply_collector_spot(&mut d, agent, spot)?;
+    state.save(&d)?;
+    Ok(spots)
 }
 
 /// Quota readings and the poller behind `refresh_quotas`.
@@ -806,6 +830,19 @@ mod tests {
         assert!(!o.stuck && o.earned_xp);
         let o = apply_close(&mut d, &closed(false, false, true), 1);
         assert!(!o.stuck, "terminals stay quiet");
+    }
+
+    #[test]
+    fn collector_spot_persists_and_rejects_agents_without_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("state.json");
+        let mut d = village();
+        let spots = apply_collector_spot(&mut d, AgentKind::Codex, Tile { x: 7, y: -6 }).unwrap();
+        assert_eq!(spots.get(&AgentKind::Codex), Some(&Tile { x: 7, y: -6 }));
+        persist::save(&p, &d).unwrap();
+        assert_eq!(persist::load(&p).collector_spots, spots);
+        assert!(apply_collector_spot(&mut d, AgentKind::OpenCode, Tile { x: 0, y: 9 }).is_err());
+        assert_eq!(d.collector_spots.len(), 1);
     }
 
     #[test]

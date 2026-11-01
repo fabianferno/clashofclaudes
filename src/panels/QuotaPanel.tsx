@@ -2,10 +2,14 @@ import { useEffect, useState } from 'react';
 import { ipc } from '../api/ipc';
 import type { AgentKind, QuotaWindow } from '../api/types';
 import { useApp } from '../state/store';
-import { leftNow, primaryWindow, quotaTone, untilText } from '../village/quota';
+import { ELIXIR } from '../village/look';
+import { isCollectorAgent, leftNow, primaryWindow, quotaTone, untilText } from '../village/quota';
 
+const elixirBar = (a: keyof typeof ELIXIR) => `linear-gradient(${ELIXIR[a].lit}, ${ELIXIR[a].label})`;
 const BAR: Record<ReturnType<typeof quotaTone>, string> = {
-  elixir: 'linear-gradient(#f39af5, #c23bd0)',
+  'elixir-claude': elixirBar('claude'),
+  'elixir-codex': elixirBar('codex'),
+  'elixir-antigravity': elixirBar('antigravity'),
   working: 'linear-gradient(#ffd27a, #f5a623)',
   needs: 'linear-gradient(#ff8a7e, #ff4b3e)',
   stuck: 'linear-gradient(#cfcfcf, #8e8e8e)',
@@ -64,7 +68,7 @@ export default function QuotaPanel({ agent }: { agent: AgentKind }) {
                   <span className="sp-t">{w.label}{w.id === primary?.id && <span className="quota-tank"> · tank</span>}</span>
                   <span className="sp-t">{Math.round(left)}% left</span>
                 </div>
-                <div className="sp-xp"><i style={{ width: `${left}%`, background: BAR[quotaTone(left)] }} /></div>
+                <div className="sp-xp"><i style={{ width: `${left}%`, background: BAR[isCollectorAgent(agent) ? quotaTone(left, agent) : 'stuck'] }} /></div>
                 <div className="sp-d quota-reset">
                   {refilled ? 'Refilled' : w.resetsAt !== null ? `Refills in ${untilText(w.resetsAt - now)} · ${fmtTime(w.resetsAt)}` : 'No reset time reported'}
                 </div>

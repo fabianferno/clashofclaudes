@@ -1,4 +1,5 @@
 import { iso } from '../iso';
+import { ELIXIR } from '../look';
 import { OUT, bake, ctx, dot, flag, line, outlinedText, poly, roundRect, shadow, up, type Art, type Pt } from './draw';
 
 const LOG = '#a0703c';
@@ -119,7 +120,10 @@ export function drawPuff(): Art {
   });
 }
 
-const STATUS_FILL = { working: '#f5a623', needs: '#ff4b3e', stuck: '#8e8e8e', elixir: '#c54fd6' } as const;
+const STATUS_FILL = {
+  working: '#f5a623', needs: '#ff4b3e', stuck: '#8e8e8e',
+  'elixir-claude': ELIXIR.claude.label, 'elixir-codex': ELIXIR.codex.label, 'elixir-antigravity': ELIXIR.antigravity.label,
+} as const;
 
 /**
  * The small bar over a structure at work (spec 5.3.2): elapsed time and steps, "Waiting for you" or

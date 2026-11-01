@@ -18,7 +18,7 @@ import {
 } from './camera';
 import { DRAG_PX, createDragController } from './drag';
 import { clickPoint, compoundAt, dragTarget, hitTest, selectionOf } from './input';
-import { COLLECTOR_AGENTS, COLLECTOR_SLOT, collectorLook } from './quota';
+import { COLLECTOR_AGENTS, COLLECTOR_NAME, COLLECTOR_SLOT, collectorLook } from './quota';
 import { FxRenderer, POP_SECONDS, ORB_SECONDS, Particles, RELOCATE_SECONDS, lifecycleEvents, type Snap } from './effects';
 
 // ---------------------------------------------------------------- pure part
@@ -104,7 +104,9 @@ export function collectorEntities(input: Pick<VillageInput, 'quotas' | 'installe
     const t = COLLECTOR_SLOT[agent];
     const look = collectorLook(q, now);
     out.push(ent(`collector:${agent}`, 'collector', t.x + STRUCT, t.y + STRUCT, `collector:${agent}:${look?.tenths ?? 'none'}`));
-    if (look) out.push(ent(`status:collector:${agent}`, 'status', t.x + STRUCT / 2, t.y + STRUCT / 2, `status:${look.tone}:${look.label}`));
+    // named, since only a small pennant tells the tanks apart
+    const label = look ? `status:${look.tone}:${COLLECTOR_NAME[agent]} ${look.label}` : `status:stuck:${COLLECTOR_NAME[agent]} · no reading`;
+    out.push(ent(`status:collector:${agent}`, 'status', t.x + STRUCT / 2, t.y + STRUCT / 2, label));
   }
   return out;
 }

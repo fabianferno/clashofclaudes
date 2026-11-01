@@ -54,9 +54,12 @@ become real structures** in their compound instead of a number badge on the hous
 
 ## Decisions (mine, recorded so the owner can check them)
 
-- Collectors stand in a row in front of the town hall on tiles that compounds can never take
-  (the hall keeps a 4-tile gap): fixed slots so they never shuffle — Claude at (−2, 4), Codex at
-  (0, 4), Antigravity at (2, 4), each 2×2. They are not draggable.
+- Collectors stand around the town hall on tiles that compounds can never take (the hall keeps a
+  4-tile gap): fixed slots so they never shuffle — Claude beside the hall's left corner (−5, 3),
+  Codex beside its right corner (3, −5), Antigravity in front (4, 4), each 2×2. A first try in a
+  row in front of the hall hid its facade. They are not draggable.
+- Each label names its agent ("Codex 62% · 5h"; "Claude · no reading" before the first reading),
+  since only a small pennant in the agent's colour tells the tanks apart.
 - Readings persist in `<data dir>/quota.json` so collectors show the last known level after a
   restart, with "as of" age in the panel.
 - Fill levels are quantised to tenths for textures; the label shows the exact percentage.

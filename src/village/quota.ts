@@ -15,6 +15,9 @@ export const COLLECTOR_SLOT: Record<CollectorAgent, Tile> = {
   antigravity: { x: 4, y: 4 },
 };
 
+/** Short names for the collectors' labels. */
+export const COLLECTOR_NAME: Record<CollectorAgent, string> = { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity' };
+
 export const isCollectorAgent = (a: string): a is CollectorAgent => (COLLECTOR_AGENTS as readonly string[]).includes(a);
 
 /** Percent left now: a window whose reset time has passed has refilled. */

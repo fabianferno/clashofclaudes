@@ -295,8 +295,8 @@ export function drawWorkshop(lit: boolean): Art {
       g.fillStyle = gr; g.beginPath(); g.arc(m.x, m.y, 30, 0, Math.PI * 2); g.fill();
       g.save();
       g.translate(m.x, m.y);
-      g.transform(1, -0.5, 0, 1, 0, 0); // lie on the face
-      g.font = '400 12px "Lilita One", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.transform(1, 0.5, 0, 1, 0, 0); // lie on the front-left face (it falls 1 px per 2 to the right)
+      g.font = '400 14px "Lilita One", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
       g.fillStyle = '#0d2b1a'; g.fillText('>_', 0, 0);
       g.restore();
     }

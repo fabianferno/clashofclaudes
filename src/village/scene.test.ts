@@ -144,8 +144,8 @@ describe('collectors', () => {
     ]));
     expect(cols).toHaveLength(2); // OpenCode reports no limits
     const label = es.find((e) => e.id === 'status:collector:codex')!;
-    expect(label.texKey).toBe('status:elixir:62% · 5h');
-    expect(es.some((e) => e.id === 'status:collector:claude')).toBe(false); // no reading, no label
+    expect(label.texKey).toBe('status:elixir:Codex 62% · 5h');
+    expect(es.find((e) => e.id === 'status:collector:claude')?.texKey).toBe('status:stuck:Claude · no reading');
     const c = cols.find((e) => e.id === 'collector:codex')!;
     expect([c.x, c.y]).toEqual([COLLECTOR_SLOT.codex.x + 2, COLLECTOR_SLOT.codex.y + 2]);
   });
@@ -166,7 +166,7 @@ describe('collectors', () => {
     const quotas = { claude: q('claude', 0, now + 90 * 60_000) };
     const before = buildEntities({ ...base, quotas });
     expect(before.find((e) => e.id === 'collector:claude')?.texKey).toBe('collector:claude:0');
-    expect(before.find((e) => e.id === 'status:collector:claude')?.texKey).toBe('status:needs:Empty · 1h 30m');
+    expect(before.find((e) => e.id === 'status:collector:claude')?.texKey).toBe('status:needs:Claude Empty · 1h 30m');
     const after = buildEntities({ ...base, quotas, now: now + 90 * 60_000 });
     expect(after.find((e) => e.id === 'collector:claude')?.texKey).toBe('collector:claude:10');
   });

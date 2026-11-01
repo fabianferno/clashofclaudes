@@ -1,6 +1,6 @@
 import type { Compound } from '../../api/types';
 import { iso, TW, TH } from '../iso';
-import { GAP, HALL, wallRect, gateTile, type Rect } from '../layout';
+import { GAP, HALL, wallRect, gateTile, roadPath, roadRects, type Rect } from '../layout';
 import { bake, ctx, type Pt } from './draw';
 import { paintTree } from './scenery';
 
@@ -34,7 +34,7 @@ const inRect = (x: number, y: number, r: Rect, pad = 0) =>
   x > r.x0 - pad && x < r.x0 + r.w + pad && y > r.y0 - pad && y < r.y0 + r.h + pad;
 
 /**
- * Grass, dirt paths hall -> each gate, and forest cleared from every wall rect (+GAP), the hall and
+ * Grass, dirt paths hall -> each gate, and forest cleared from every wall rect (+GAP), the hall, the roads and
  * the `clearings` (collector footprints, + CLEARING_PAD so no canopy is drawn over them).
  * Deterministic for a given seed. Returns a bare canvas at GROUND_SCALE density (no anchor, unlike Art),
  * sized by `groundBakeSize(bounds)`: place it at `groundOrigin(bounds)` in world px with scale 1 / GROUND_SCALE.
@@ -47,6 +47,7 @@ export function drawGround(b: Rect, compounds: Compound[], seed: number, clearin
   const area = b.w * b.h;
   const cx = HALL.x0 + HALL.w / 2, cy = HALL.y0 + HALL.h / 2;
   const walls = compounds.map(wallRect);
+  const roads = compounds.flatMap(roadRects);
   const rx = () => b.x0 + rnd() * b.w;
   const ry = () => b.y0 + rnd() * b.h;
 
@@ -77,7 +78,7 @@ export function drawGround(b: Rect, compounds: Compound[], seed: number, clearin
       dirtPad(t, HALL.x0 - 0.3, HALL.y0 - 0.3, HALL.w + 0.6, HALL.h + 0.6, 0.7);
       for (const c of compounds) {
         const gt = gateTile(c);
-        dirtRoad(t, { x: cx, y: cy }, { x: gt.x + 0.5, y: gt.y + 0.5 }, gt.x * 31 + gt.y * 17);
+        dirtRoad(t, roadPath(c), gt.x * 31 + gt.y * 17);
       }
       // the plaza on top, so roads run out from under it
       dirtPad(t, HALL.x0 - 0.3, HALL.y0 - 0.3, HALL.w + 0.6, HALL.h + 0.6, 0.7, false);
@@ -97,13 +98,14 @@ export function drawGround(b: Rect, compounds: Compound[], seed: number, clearin
         g.stroke();
       }
     }
-    // forest: sparse near the village, dense further out; never inside a wall rect + GAP, the hall or a clearing
+    // forest: sparse near the village, dense further out; never inside a wall rect + GAP, the hall, a road or a clearing
     forest
       .filter((t) => {
         const d = Math.max(Math.abs(t.x - cx), Math.abs(t.y - cy));
         if (inRect(t.x, t.y, HALL, 1.5)) return false;
         if (walls.some((r) => inRect(t.x, t.y, r, GAP))) return false;
         if (clearings.some((r) => inRect(t.x, t.y, r, CLEARING_PAD))) return false;
+        if (roads.some((r) => inRect(t.x, t.y, r, 1))) return false;
         return t.r < Math.max(0.06, Math.min(0.95, (d - 8) / 6));
       })
       .sort((a, c) => a.x + a.y - (c.x + c.y))
@@ -146,9 +148,9 @@ function speckle(g: CanvasRenderingContext2D, pts: { x: number; y: number }[], r
   }
 }
 
-/** A dirt road from `a` to `b` (tile coords): soft edge, rim, fill, a worn centre and pebbles. */
-function dirtRoad(g: CanvasRenderingContext2D, a: { x: number; y: number }, b: { x: number; y: number }, seed: number): void {
-  const trace = () => { g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); };
+/** A dirt road along the points `pts` (tile coords): soft edge, rim, fill, a worn centre and pebbles. */
+function dirtRoad(g: CanvasRenderingContext2D, pts: { x: number; y: number }[], seed: number): void {
+  const trace = () => { g.beginPath(); pts.forEach((p, i) => (i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y))); };
   g.lineCap = 'round';
   g.lineJoin = 'round';
   for (const [w, col] of [[1.42, DIRT_EDGE], [1.22, DIRT_RIM], [1.02, DIRT], [0.42, DIRT_WORN]] as [number, string][]) {
@@ -158,15 +160,17 @@ function dirtRoad(g: CanvasRenderingContext2D, a: { x: number; y: number }, b: {
     g.stroke();
   }
   const rnd = seeded(seed);
-  const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
-  const nx = -(b.y - a.y) / len, ny = (b.x - a.x) / len;
-  const pts = Array.from({ length: Math.round(len * 9) }, () => {
-    const t = rnd(), edge = rnd() < 0.35;
-    // most specks inside the road; some grass sits on the rim to break its line
-    const off = edge ? (rnd() < 0.5 ? -1 : 1) * (0.5 + rnd() * 0.12) : (rnd() - 0.5) * 0.85;
-    return { x: a.x + (b.x - a.x) * t + nx * off, y: a.y + (b.y - a.y) * t + ny * off };
-  });
-  speckle(g, pts, rnd);
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i];
+    const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    const nx = -(b.y - a.y) / len, ny = (b.x - a.x) / len;
+    speckle(g, Array.from({ length: Math.round(len * 9) }, () => {
+      const t = rnd(), edge = rnd() < 0.35;
+      // most specks inside the road; some grass sits on the rim to break its line
+      const off = edge ? (rnd() < 0.5 ? -1 : 1) * (0.5 + rnd() * 0.12) : (rnd() - 0.5) * 0.85;
+      return { x: a.x + (b.x - a.x) * t + nx * off, y: a.y + (b.y - a.y) * t + ny * off };
+    }), rnd);
+  }
 }
 
 /** A dirt pad over the tile rect (x, y, w, h) with rounded corners `r`; `rim` draws the soft edge. */

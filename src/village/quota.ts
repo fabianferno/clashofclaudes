@@ -1,5 +1,5 @@
 import type { AgentKind, AgentQuota, Compound, QuotaWindow, Tile } from '../api/types';
-import { HALL, STRUCT, gapBetween, villageRect, wallRect, type Rect } from './layout';
+import { HALL, STRUCT, gapBetween, roadRects, villageRect, wallRect, type Rect } from './layout';
 import type { StatusTone } from './status';
 
 /** Agents that ration usage; OpenCode uses whatever provider key it is given. */
@@ -109,6 +109,7 @@ export function collectorFits(at: Tile, compounds: Compound[], others: readonly 
   const r = footprint(at);
   if (gapBetween(r, HALL) < 1) return false;
   if (compounds.some((c) => gapBetween(r, wallRect(c)) < 1)) return false;
+  if (compounds.some((c) => roadRects(c).some((q) => gapBetween(r, q) < 0))) return false;
   if (others.some((o) => gapBetween(r, footprint(o)) < 0)) return false;
   const v = villageRect(compounds);
   const k = COLLECTOR_REACH;

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Compound, Tile } from '../api/types';
 import {
   GAP, GROW, HALL, HOUSE, START, STRUCT, Rect, assertNoCollisions, canPlace, expand,
-  findSpot, gapBetween, gateInside, gateOutside, gateSide, gateTile, placeCompound, spotFor, wallRect,
+  findSpot, gapBetween, gateInside, gateOutside, gateSide, gateTile, placeCompound, roadPath, spotFor, wallRect,
 } from './layout';
 
 const sq = (t: Tile, s: number): Rect => ({ x0: t.x, y0: t.y, w: s, h: s });
@@ -189,6 +189,30 @@ describe('gate geometry', () => {
       // the wall tile does not touch the house footprint (gap >= 1 including diagonals)
       expect(gapBetween({ x0: g.x, y0: g.y, w: 1, h: 1 }, sq(c.house, HOUSE))).toBeGreaterThanOrEqual(1);
     }
+  });
+  it('road_runs_along_grid_lines_from_hall_face_to_gate', () => {
+    const hall = { x0: HALL.x0 - 0.3, y0: HALL.y0 - 0.3, w: HALL.w + 0.6, h: HALL.h + 0.6 };
+    const inHall = (p: Tile) => p.x >= hall.x0 && p.x <= hall.x0 + hall.w && p.y >= hall.y0 && p.y <= hall.y0 + hall.h;
+    for (const c of [...compounds(), { x0: 12, y0: -18, w: 7, h: 7, house: { x: 12, y: -14 } }]) {
+      const r = roadPath(c), g = gateTile(c);
+      expect(r[r.length - 1]).toEqual({ x: g.x + 0.5, y: g.y + 0.5 });
+      expect(inHall(r[0])).toBe(true);
+      // every leg is straight along x or y
+      for (let i = 1; i < r.length; i++) expect(r[i].x === r[i - 1].x || r[i].y === r[i - 1].y).toBe(true);
+      // it leaves the gate square to its wall
+      const [a, b] = r.slice(-2), alongX = gateSide(c) === 'w' || gateSide(c) === 'e';
+      expect(alongX ? a.y === b.y : a.x === b.x).toBe(true);
+    }
+  });
+  it('road_is_straight_when_the_gate_faces_the_hall_and_jogs_otherwise', () => {
+    const e: Compound = { x0: 9, y0: -3, w: 7, h: 7, house: { x: 9, y: -3 } };
+    expect(roadPath(e)).toHaveLength(2);
+    const ne: Compound = { x0: 12, y0: -18, w: 7, h: 7, house: { x: 12, y: -14 } };
+    const r = roadPath(ne);
+    expect(r).toHaveLength(4);
+    expect(r[0].y).toBeGreaterThanOrEqual(HALL.y0);
+    expect(r[1].x).toBeGreaterThan(HALL.x0 + HALL.w);
+    expect(r[1].x).toBeLessThan(wallRect(ne).x0);
   });
   it('inside_is_interior_and_free_outside_is_beyond_wall', () => {
     for (const c of compounds()) {

@@ -1,5 +1,5 @@
 import type { Compound, Tile } from '../api/types';
-import { HOUSE, STRUCT, gateInside, gateOutside } from './layout';
+import { HOUSE, STRUCT, gateInside, gateOutside, roadPath } from './layout';
 
 export interface Walker {
   id: string;
@@ -118,19 +118,22 @@ function plazaPoint(p: Tile): Tile {
   return { x: HALL_C.x + (dx / d) * r, y: HALL_C.y + (dy / d) * r };
 }
 
+/** The road's bends between the plaza and the gate (`roadPath`), plaza side first; none when it runs straight. */
+const bends = (c: Compound): Tile[] => roadPath(c).slice(1, -1);
+
 /**
- * Plaza -> gate (outside, then inside) -> the stand tile beside the spot; given `walk` (see
- * `walkable`), around the house, the structures and the bends of the wall.
+ * Plaza -> along the road's bends -> gate (outside, then inside) -> the stand tile beside the spot;
+ * given `walk` (see `walkable`), around the house, the structures and the bends of the wall.
  */
 export function routeToSite(_from: Tile, c: Compound, spot: Tile, walk?: Set<string>): Tile[] {
   const gate = centre(gateInside(c)), stand = standTile(c, spot, c.house, walk);
-  return [centre(gateOutside(c)), gate, ...(walk ? interiorPath(walk, gate, stand) : [stand])];
+  return [...bends(c), centre(gateOutside(c)), gate, ...(walk ? interiorPath(walk, gate, stand) : [stand])];
 }
 
-/** Back out through the gate (inside, then outside) to the plaza, over `walk` when given. */
+/** Back out through the gate (inside, then outside) and along the road to the plaza, over `walk` when given. */
 export function routeHome(from: Tile, c: Compound, walk?: Set<string>): Tile[] {
-  const gate = centre(gateInside(c)), out = centre(gateOutside(c));
-  return [...(walk ? interiorPath(walk, from, gate) : [gate]), out, plazaPoint(out)];
+  const gate = centre(gateInside(c)), out = centre(gateOutside(c)), b = bends(c);
+  return [...(walk ? interiorPath(walk, from, gate) : [gate]), out, ...b.slice().reverse(), plazaPoint(b[0] ?? out)];
 }
 
 /**

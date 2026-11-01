@@ -1,11 +1,12 @@
 import { useEffect } from 'react';
 import { useApp, type Selection } from '../state/store';
-import { CLASS_NAMES, classOf } from '../village/look';
+import { CLASS_NAMES, PALETTE, classOf } from '../village/look';
 import { PANEL_W } from '../village/camera';
 import SessionPanel from './SessionPanel';
 import BuilderPanel from './BuilderPanel';
 import TownHallPanel from './TownHallPanel';
 import WorkspacePanel from './WorkspacePanel';
+import QuotaPanel from './QuotaPanel';
 import '../hud/hud.css';
 import './panels.css';
 
@@ -49,6 +50,7 @@ export default function SidePanel() {
         {selection.kind === 'hall' && <TownHallPanel />}
         {selection.kind === 'workspace' && <WorkspacePanel key={selection.id} workspaceId={selection.id} />}
         {selection.kind === 'builder' && <BuilderPanel key={selection.id} builderId={selection.id} />}
+        {selection.kind === 'quota' && <QuotaPanel key={selection.agent} agent={selection.agent} />}
         {selection.kind === 'session' && sessions[selection.id] && (
           // Unkeyed: the panel and its terminal stay mounted across session switches.
           <SessionPanel sessionId={selection.id} onClosed={(o, id) => {
@@ -84,5 +86,6 @@ function headOf(
       const b = s.kind.kind === 'agent' ? st.builders.find((x) => x.id === (s.kind as { builderId: string }).builderId) : undefined;
       return { title: s.task ?? (b ? b.name : 'Terminal'), sub: `${w?.name ?? ''} · ${b?.name ?? 'Terminal'}` };
     }
+    case 'quota': return { title: 'Elixir', sub: `${PALETTE[sel.agent].label} limits` };
   }
 }

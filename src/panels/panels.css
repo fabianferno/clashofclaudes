@@ -109,3 +109,7 @@
 .welcome-card h2 { margin: 0 0 6px; font: 400 26px 'Lilita One', sans-serif; color: #fff; }
 .welcome-card p { margin: 0 0 12px; font-size: 14px; font-weight: 700; color: var(--sp-ink-soft); }
 .welcome-card .sp-btns { justify-content: center; }
+.quota-row { padding: 8px 10px; }
+.quota-head { display: flex; justify-content: space-between; gap: 8px; }
+.quota-tank { color: #a22fb0; font-weight: 900; }
+.quota-reset { margin-top: 5px; }

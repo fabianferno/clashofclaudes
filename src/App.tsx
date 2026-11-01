@@ -27,6 +27,7 @@ function App() {
     keep(ipc.onSessionRemoved((id) => useApp.getState().removeSession(id)));
     keep(ipc.onWorkspaceUpdated((w) => useApp.getState().updateWorkspace(w)));
     keep(ipc.onStatsUpdated((s) => useApp.getState().setStats(s)));
+    keep(ipc.onQuotaUpdated((q) => useApp.getState().setQuota(q)));
     keep(ipc.onSelectSession((id) => {
       if (useApp.getState().sessions[id]) useApp.getState().setSelection({ kind: 'session', id });
     }));
@@ -36,7 +37,7 @@ function App() {
       .then((s) => {
         if (cancelled) return;
         useApp.getState().hydrate(s);
-        // Compounds for workspaces without one, spots for agent sessions without one (never terminals).
+        // Compounds for workspaces without one, spots for sessions without one.
         stopLayout = autoLayout((e) => useApp.getState().setError(String(e)));
       })
       .catch((e) => {
@@ -46,6 +47,7 @@ function App() {
         // Workspaces added from here on still need compounds and spots.
         stopLayout = autoLayout((err) => useApp.getState().setError(String(err)));
       });
+    ipc.getQuotas().then((q) => !cancelled && useApp.getState().setQuotas(q)).catch(() => {}); // collectors just stay unread
     ipc.detectAgents().then((a) => !cancelled && useApp.getState().setAgents(a)).catch((e) => useApp.getState().setError(String(e)));
     const preload = window.setTimeout(preloadTerminal, 2000); // after the village's first frames
     return () => { cancelled = true; window.clearTimeout(preload); stopLayout?.(); unlisten.forEach((u) => u()); };

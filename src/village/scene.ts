@@ -1,13 +1,13 @@
 import { Application, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
-import type { AgentKind, Builder, CloseOutcome, Compound, SessionInfo, SessionState, Tile, Workspace } from '../api/types';
+import type { AgentKind, AgentQuota, Builder, CloseOutcome, Compound, SessionInfo, SessionState, Tile, Workspace } from '../api/types';
 import { iso, toGrid } from './iso';
 import { HALL, HOUSE, STRUCT, gateSide, gateTile, wallRect, type Rect } from './layout';
 import { enclosure, seedOf } from './enclosure';
 import { classOf, gearOf, houseColors, houseStage, scaffoldHeight, type ClassTier, type Gear } from './look';
 import { onGround, retarget, routeHome, routeToSite, standTile, step, walkable, type Walker } from './walkers';
 import {
-  GROUND_SCALE, drawBadge, drawBubble, drawBuilder, drawGate, drawGround, drawHall, drawHouse, drawPuff, drawRing, drawStatusBar, drawStructure,
-  drawWallSeg, groundOrigin,
+  GROUND_SCALE, drawBubble, drawBuilder, drawCollector, drawGate, drawGround, drawHall, drawHouse, drawPuff, drawRing, drawStatusBar, drawStructure,
+  drawWallSeg, drawWorkshop, groundOrigin,
   type Art, type Pose,
 } from './art/entities';
 import { getTexture, holdTextures, prepareArt, releaseRetired, spriteTextures } from './textures';
@@ -18,6 +18,7 @@ import {
 } from './camera';
 import { DRAG_PX, createDragController } from './drag';
 import { clickPoint, compoundAt, dragTarget, hitTest, selectionOf } from './input';
+import { COLLECTOR_AGENTS, COLLECTOR_NAME, COLLECTOR_SLOT, collectorLook } from './quota';
 import { FxRenderer, POP_SECONDS, ORB_SECONDS, Particles, RELOCATE_SECONDS, lifecycleEvents, type Snap } from './effects';
 
 // ---------------------------------------------------------------- pure part
@@ -30,9 +31,13 @@ export interface VillageInput {
   closed?: Record<string, CloseOutcome>;
   /** Wall-clock ms for the status bars over working structures; without it no bars are emitted. */
   now?: number;
+  /** Latest quota reading per agent: the elixir collectors by the hall. */
+  quotas?: Partial<Record<AgentKind, AgentQuota>>;
+  /** Installed agents: each rationed one gets a collector even before its first reading. */
+  installed?: readonly AgentKind[];
 }
 
-export type EntityKind = 'hall' | 'house' | 'structure' | 'builder' | 'wall' | 'gate' | 'tree' | 'badge' | 'status';
+export type EntityKind = 'hall' | 'house' | 'structure' | 'collector' | 'builder' | 'wall' | 'gate' | 'tree' | 'status';
 
 /**
  * One drawable. `x`/`y` is the grid point of the sprite's anchor (for footprints, the front
@@ -51,7 +56,7 @@ export interface Entity {
 }
 
 const KIND_RANK: Record<EntityKind, number> = {
-  tree: 0, wall: 1, gate: 2, hall: 3, house: 4, structure: 5, builder: 6, badge: 7, status: 8,
+  tree: 0, wall: 1, gate: 2, hall: 3, house: 4, structure: 5, collector: 5, builder: 6, status: 8,
 };
 
 const ent = (id: string, kind: EntityKind, x: number, y: number, texKey: string): Entity =>
@@ -82,6 +87,30 @@ function wallEntities(wsId: string, c: Compound, spots: Tile[], level: number): 
   return out;
 }
 
+/** Top-left tiles of the structures (agent and terminal sessions) standing in a workspace's compound. */
+export function spotsIn(sessions: readonly SessionInfo[], wsId: string): Tile[] {
+  return sessions.flatMap((s) => (s.workspaceId === wsId && s.spot ? [s.spot] : []));
+}
+
+/**
+ * The elixir collectors and their labels: one per rationed agent with a reading or installed.
+ * The labels are `status` bars (minute-quantized, so the status clock re-syncs them).
+ */
+export function collectorEntities(input: Pick<VillageInput, 'quotas' | 'installed'>, now: number): Entity[] {
+  const out: Entity[] = [];
+  for (const agent of COLLECTOR_AGENTS) {
+    const q = input.quotas?.[agent];
+    if (!q && !input.installed?.includes(agent)) continue;
+    const t = COLLECTOR_SLOT[agent];
+    const look = collectorLook(q, now);
+    out.push(ent(`collector:${agent}`, 'collector', t.x + STRUCT, t.y + STRUCT, `collector:${agent}:${look?.tenths ?? 'none'}`));
+    // named, since only a small pennant tells the tanks apart
+    const label = look ? `status:${look.tone}:${COLLECTOR_NAME[agent]} ${look.label}` : `status:stuck:${COLLECTOR_NAME[agent]} · no reading`;
+    out.push(ent(`status:collector:${agent}`, 'status', t.x + STRUCT / 2, t.y + STRUCT / 2, label));
+  }
+  return out;
+}
+
 /** Everything the village draws for this state, sorted back to front. Pure. */
 export function buildEntities(input: VillageInput): Entity[] {
   const out: Entity[] = [ent('hall', 'hall', HALL.x0 + HALL.w, HALL.y0 + HALL.h, 'hall')];
@@ -93,16 +122,14 @@ export function buildEntities(input: VillageInput): Entity[] {
     compounds.set(w.id, c);
     const { roof, wall } = houseColors(w.id);
     out.push(ent(`house:${w.id}`, 'house', c.house.x + HOUSE, c.house.y + HOUSE, `house:${houseStage(w.level)}:${roof}:${wall}`));
-    const spots = input.sessions.flatMap((s) => (s.workspaceId === w.id && s.kind.kind === 'agent' && s.spot ? [s.spot] : []));
-    out.push(...wallEntities(w.id, c, spots, w.level));
-    const terminals = input.sessions.filter(
-      (s) => s.workspaceId === w.id && s.kind.kind === 'terminal' && s.state.kind !== 'ended',
-    ).length;
-    if (terminals > 0)
-      out.push(ent(`badge:${w.id}`, 'badge', c.house.x + HOUSE / 2, c.house.y + HOUSE / 2, `badge:${terminals}`));
+    out.push(...wallEntities(w.id, c, spotsIn(input.sessions, w.id), w.level));
   }
   for (const s of input.sessions) {
-    if (s.kind.kind !== 'agent' || !s.spot || !compounds.has(s.workspaceId)) continue;
+    if (!s.spot || !compounds.has(s.workspaceId)) continue;
+    if (s.kind.kind === 'terminal') {
+      out.push(ent(`struct:${s.id}`, 'structure', s.spot.x + STRUCT, s.spot.y + STRUCT, `workshop:${s.state.kind === 'ended' ? 'dark' : 'lit'}`));
+      continue;
+    }
     const { stage, height } = structureLook(s);
     const agent = agentOf.get(s.kind.builderId) ?? 'custom';
     // Quantized so a long-running session reuses a bounded set of textures.
@@ -111,6 +138,7 @@ export function buildEntities(input: VillageInput): Entity[] {
     const sk = input.now === undefined ? null : statusKey(s, input.now);
     if (sk) out.push(ent(`status:${s.id}`, 'status', s.spot.x + STRUCT / 2, s.spot.y + STRUCT / 2, sk));
   }
+  out.push(...collectorEntities(input, input.now ?? Date.now()));
   return out.sort((a, b) => a.depth - b.depth);
 }
 
@@ -147,7 +175,8 @@ export function artFor(key: string): Art {
     case 'struct': return drawStructure(a as AgentKind, b as StructStage, Number(c));
     case 'wall': return drawWallSeg(a ?? '');
     case 'gate': return drawGate(a as 'n' | 's' | 'e' | 'w');
-    case 'badge': return drawBadge(Number(a));
+    case 'collector': return drawCollector(a as AgentKind, b === 'none' ? null : Number(b));
+    case 'workshop': return drawWorkshop(a === 'lit');
     case 'builder': return drawBuilder(a as AgentKind, Number(b) as ClassTier, Number(c) as Gear, d as Pose, Number(e) as 1 | -1);
     case 'bubble': return drawBubble(a as 'needs' | 'stuck');
     case 'ring': return drawRing();
@@ -344,7 +373,8 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     statusClock += t.deltaMS;
     if (statusClock < 1000) return;
     statusClock = 0;
-    if (statusesDue(entities, lastState.sessions, Date.now()) !== statusSig) sync(lastState);
+    const now = Date.now();
+    if (statusesDue(entities, lastState.sessions, now, collectorEntities(lastState, now)) !== statusSig) sync(lastState);
   });
   let releaseClock = 0;
   app.ticker.add((t) => { // between syncs, evictions by builder poses are released every few seconds
@@ -551,7 +581,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     const walkOf = (wsId: string, c: Compound) => {
       let walk = walks.get(wsId);
       if (!walk) {
-        const spots = state.sessions.flatMap((s) => (s.workspaceId === wsId && s.kind.kind === 'agent' && s.spot ? [s.spot] : []));
+        const spots = spotsIn(state.sessions, wsId);
         const level = state.workspaces.find((w) => w.id === wsId)?.level ?? 1;
         walk = walkable(enclosure(c, spots, level, seedOf(wsId)).inside, c, spots);
         walks.set(wsId, walk);
@@ -680,7 +710,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     const snap: Snap = { structs: new Map(), compounds: new Map() };
     for (const w of state.workspaces) if (w.compound) snap.compounds.set(w.id, w.compound);
     for (const s of state.sessions)
-      if (s.kind.kind === 'agent' && s.spot && snap.compounds.has(s.workspaceId)) snap.structs.set(`struct:${s.id}`, s.workspaceId);
+      if (s.spot && snap.compounds.has(s.workspaceId)) snap.structs.set(`struct:${s.id}`, s.workspaceId);
     const ev = lifecycleEvents(prevSnap, snap);
     prevSnap = snap;
     for (const r of ev.relocated) {
@@ -701,14 +731,14 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       if (!rec) {
         const sprite = new Sprite();
         sprite.scale.set(0.5); // art is baked at 2x density
-        (e.kind === 'badge' || e.kind === 'status' ? overlay : world).addChild(sprite);
+        (e.kind === 'status' ? overlay : world).addChild(sprite);
         rec = { sprite, key: '', entity: e, base: { x: 0, y: 0 } };
         sprites.set(e.id, rec);
       }
       const { sprite } = rec;
       rec.ws = e.id.startsWith('struct:') ? snap.structs.get(e.id)
         : e.kind === 'status' ? snap.structs.get(`struct:${e.id.slice('status:'.length)}`)
-        : e.kind === 'house' || e.kind === 'gate' || e.kind === 'badge' || e.kind === 'wall' ? e.id.split(':')[1] : undefined;
+        : e.kind === 'house' || e.kind === 'gate' || e.kind === 'wall' ? e.id.split(':')[1] : undefined;
       if (sprite.texture !== t.texture) {
         sprite.texture = t.texture;
         sprite.anchor.set(t.ax / t.texture.width, t.ay / t.texture.height);
@@ -804,7 +834,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     if (s?.kind === 'session') {
       const x = lastState.sessions.find((q) => q.id === s.id);
       const c = x && lastState.workspaces.find((w) => w.id === x.workspaceId)?.compound;
-      if (!x || !c || x.kind.kind !== 'agent' || !x.spot) return null;
+      if (!x || !c || !x.spot) return null;
       return { target: { kind: 'session', id: x.id }, entityId: `struct:${x.id}`, size: STRUCT, tile: x.spot, compound: c, height: 100 };
     }
     return null;
@@ -1037,7 +1067,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
   const reveal = (sel: Selection | null) => {
     if (!sel) return;
     const id = sel.kind === 'hall' ? 'hall' : sel.kind === 'workspace' ? `house:${sel.id}`
-      : sel.kind === 'session' ? `struct:${sel.id}` : `builder:${sel.id}`;
+      : sel.kind === 'session' ? `struct:${sel.id}` : sel.kind === 'quota' ? `collector:${sel.agent}` : `builder:${sel.id}`;
     const e = hitEntities().find((x) => x.id === id);
     if (!e) return;
     const p = clickPoint(e);

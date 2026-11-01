@@ -1,4 +1,4 @@
-import type { Compound, SessionInfo, Tile } from '../api/types';
+import type { AgentKind, Compound, SessionInfo, Tile } from '../api/types';
 import { builderTarget } from '../hud/hudState';
 import type { Selection } from '../state/store';
 import { iso } from './iso';
@@ -10,6 +10,7 @@ const BOX: Partial<Record<Entity['kind'], { w: number; h: number }>> = {
   hall: { w: 5, h: 150 },
   house: { w: 3, h: 130 },
   structure: { w: 2, h: 100 },
+  collector: { w: 2, h: 100 },
 };
 const BUILDER_HALF_W = 16;
 const BUILDER_H = 70;
@@ -74,6 +75,7 @@ export function selectionOf(e: Entity | null, sessions: readonly SessionInfo[]):
   if (e.kind === 'hall') return { kind: 'hall' };
   if (e.kind === 'house') return { kind: 'workspace', id: e.id.slice('house:'.length) };
   if (e.kind === 'structure') return { kind: 'session', id: e.id.slice('struct:'.length) };
+  if (e.kind === 'collector') return { kind: 'quota', agent: e.id.slice('collector:'.length) as AgentKind };
   if (e.kind === 'builder') return builderTarget(e.id.slice('builder:'.length), [...sessions]);
   return null;
 }

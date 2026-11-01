@@ -32,7 +32,40 @@ pub(super) fn hook_command(hook_url: &str) -> String {
     format!("curl -s -m 2 -o /dev/null -X POST -H 'Content-Type: application/json' --data-binary @- '{quoted}'")
 }
 
-fn settings_json(hook_url: &str) -> serde_json::Value {
+/// Status-line command: copies Claude's status JSON (it carries `rate_limits`, read by
+/// `quota`) to the app in the background, then shows the user's own status line, fed the same
+/// JSON. The user's command replaces this shell (`exec`, under bash when Claude runs us with
+/// bash), so when Claude cancels a slow update the signal reaches it, as it would without us.
+/// Without one, shows the model name: any status line hides Claude's footer hints, and a blank
+/// row would show nothing in their place.
+pub(super) fn status_command(hook_url: &str, user_cmd: Option<&str>) -> String {
+    let post = format!("input=$(cat); printf '%s' \"$input\" | {} >/dev/null 2>&1 &", hook_command(hook_url));
+    match user_cmd.map(str::trim).filter(|c| !c.is_empty()) {
+        Some(c) => {
+            let quoted = c.replace('\'', "'\\''");
+            format!("{post}\nexec \"${{BASH:-/bin/sh}}\" -c '{quoted}' <<COC_STATUS_JSON\n$input\nCOC_STATUS_JSON")
+        }
+        None => format!(
+            "{post}\nprintf '%s' \"$input\" | sed -n 's/.*\"display_name\" *: *\"\\([^\"]*\\)\".*/\\1/p' | head -n 1"
+        ),
+    }
+}
+
+/// The status line Claude would show without the app: the first `statusLine` among the
+/// project's local and shared settings, then the user's (all read only).
+fn user_status_line(cwd: &std::path::Path) -> Option<serde_json::Value> {
+    let config = std::env::var_os("CLAUDE_CONFIG_DIR")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".claude")));
+    let mut files = vec![cwd.join(".claude/settings.local.json"), cwd.join(".claude/settings.json")];
+    files.extend(config.map(|c| c.join("settings.json")));
+    files.iter().find_map(|f| {
+        let v: serde_json::Value = serde_json::from_slice(&std::fs::read(f).ok()?).ok()?;
+        v.get("statusLine").filter(|s| s.is_object()).cloned()
+    })
+}
+
+fn settings_json(hook_url: &str, user_status: Option<&serde_json::Value>) -> serde_json::Value {
     let cmd = hook_command(hook_url);
     let mut hooks = serde_json::Map::new();
     for ev in HOOK_EVENTS {
@@ -42,7 +75,12 @@ fn settings_json(hook_url: &str) -> serde_json::Value {
         }
         hooks.insert(ev.to_string(), serde_json::json!([group]));
     }
-    serde_json::json!({ "hooks": hooks })
+    // Keep the user's other status-line options (padding); only a command line can be chained.
+    let mut status = user_status.cloned().filter(|s| s["type"] == "command").unwrap_or_else(|| serde_json::json!({}));
+    let user_cmd = status.get("command").and_then(|c| c.as_str()).map(String::from);
+    status["type"] = "command".into();
+    status["command"] = status_command(hook_url, user_cmd.as_deref()).into();
+    serde_json::json!({ "hooks": hooks, "statusLine": status })
 }
 
 /// Writes `bytes` readable by the owner only (the settings carry the hook token).
@@ -90,7 +128,7 @@ impl AgentAdapter for ClaudeAdapter {
         let dir = req.data_dir.join("sessions").join(req.session_id);
         std::fs::create_dir_all(&dir)?;
         let settings_path = dir.join("claude-settings.json");
-        write_private(&settings_path, &serde_json::to_vec_pretty(&settings_json(req.hook_url))?)?;
+        write_private(&settings_path, &serde_json::to_vec_pretty(&settings_json(req.hook_url, user_status_line(req.cwd).as_ref()))?)?;
 
         let mut args: Vec<String> = vec![
             "--session-id".into(),
@@ -235,6 +273,60 @@ mod tests {
             assert!(cmd.contains("--data-binary @-"), "{ev}");
         }
         assert_eq!(v["hooks"]["PostToolUse"][0]["matcher"], "*");
+    }
+
+    #[test]
+    fn status_line_keeps_the_users_options_and_chains_their_command() {
+        let user = json!({ "type": "command", "command": "~/bin/line.sh # mine", "padding": 2 });
+        let v = settings_json("http://127.0.0.1:1/hook/a/b", Some(&user));
+        assert_eq!(v["statusLine"]["padding"], 2);
+        let cmd = v["statusLine"]["command"].as_str().unwrap();
+        assert!(cmd.contains("'http://127.0.0.1:1/hook/a/b'") && cmd.contains("-c '~/bin/line.sh # mine' <<"), "{cmd}");
+        let none = settings_json("http://x", None);
+        assert_eq!(none["statusLine"]["command"], status_command("http://x", None));
+        // a non-command status line cannot be chained: ours replaces it
+        let other = settings_json("http://x", Some(&json!({ "type": "static", "text": "hi" })));
+        assert_eq!(other["statusLine"], json!({ "type": "command", "command": status_command("http://x", None) }));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn status_command_posts_the_json_and_prints_the_users_line() {
+        use std::sync::{Arc, Mutex};
+        let got = Arc::new(Mutex::new(vec![]));
+        let g = got.clone();
+        let srv = crate::hooks::HookServer::start(Arc::new(move |_, v| g.lock().unwrap().push(v))).await.unwrap();
+        let url = srv.register("s1");
+        let body = r#"{"model":{"id":"claude-opus-5-5","display_name":"Opus 5.5"},"rate_limits":{"five_hour":{"used_percentage":40}}}"#;
+        let run = |cmd: String| {
+            let mut child = std::process::Command::new("sh")
+                .args(["-c", &cmd])
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .spawn()
+                .unwrap();
+            std::io::Write::write_all(child.stdin.as_mut().unwrap(), body.as_bytes()).unwrap();
+            drop(child.stdin.take());
+            String::from_utf8(child.wait_with_output().unwrap().stdout).unwrap()
+        };
+        let out = tokio::task::spawn_blocking({
+            let url = url.clone();
+            move || run(status_command(&url, Some("jq -r '.rate_limits.five_hour.used_percentage' 2>/dev/null || cat # it's mine")))
+        })
+        .await
+        .unwrap();
+        assert!(out.trim() == "40" || out.trim() == body, "the user's line sees the same JSON: {out:?}");
+        let plain = tokio::task::spawn_blocking(move || run(status_command(&url, None))).await.unwrap();
+        assert_eq!(plain.trim_end(), "Opus 5.5", "without a status line of their own: the model name");
+        for _ in 0..50 {
+            if got.lock().unwrap().len() == 2 {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        let got = got.lock().unwrap();
+        assert_eq!(got.len(), 2);
+        assert_eq!(got[0]["rate_limits"]["five_hour"]["used_percentage"], 40);
     }
 
     #[cfg(unix)]

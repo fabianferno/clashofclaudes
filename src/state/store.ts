@@ -1,19 +1,20 @@
 import { create } from 'zustand';
 import { ipc } from '../api/ipc';
-import type { AgentInfo, Builder, CloseOutcome, Compound, ListState, SessionInfo, SessionState, Stats, Tile, Workspace } from '../api/types';
+import type { AgentInfo, AgentKind, AgentQuota, Builder, CloseOutcome, Compound, ListState, SessionInfo, SessionState, Stats, Tile, Workspace } from '../api/types';
 import { HOUSE, STRUCT, canPlace, placeCompound, spotFor } from '../village/layout';
 
 export type Selection =
   | { kind: 'hall' }
   | { kind: 'workspace'; id: string }
   | { kind: 'session'; id: string }
-  | { kind: 'builder'; id: string };
+  | { kind: 'builder'; id: string }
+  | { kind: 'quota'; agent: AgentKind };
 
 export interface VillageActions {
   /** The workspace's compound, placing and persisting one first if it has none. */
   ensureCompound: (wsId: string) => Promise<Compound>;
   /**
-   * The agent session's spot, finding (expanding the compound if full) and persisting one if it has none.
+   * The session's spot (agent tent or terminal workshop), finding (expanding the compound if full) and persisting one if it has none.
    * Shifting the other structures of a relocated compound never stops at one failure (a mate may have
    * closed meanwhile): the rest are still shifted and the failures are reported once via `onError`
    * (default: the app's error toast).
@@ -31,7 +32,7 @@ export function moveValid(st: Pick<AppState, 'workspaces' | 'sessions'>, target:
   const c = st.workspaces.find((w) => w.id === wsId)?.compound;
   if (!c) return false;
   const mates = (except: string | null) => Object.values(st.sessions)
-    .filter((x) => x.workspaceId === wsId && x.kind.kind === 'agent' && x.spot && x.id !== except)
+    .filter((x) => x.workspaceId === wsId && x.spot && x.id !== except)
     .map((x) => x.spot!);
   if (target.kind === 'session') return st.sessions[target.id]?.spot ? canPlace(c, mates(target.id), at, STRUCT) : false;
   // the house is checked against every structure, but not against its own current tile
@@ -77,6 +78,10 @@ export interface AppState {
   updateWorkspace: (w: Workspace) => void;
   removeWorkspace: (id: string) => void;
   setStats: (s: Stats) => void;
+  /** Latest quota reading per agent. */
+  quotas: Partial<Record<AgentKind, AgentQuota>>;
+  setQuota: (q: AgentQuota) => void;
+  setQuotas: (qs: AgentQuota[]) => void;
   addBuilder: (b: Builder) => void;
   updateBuilder: (b: Builder) => void;
   removeBuilder: (id: string) => void;
@@ -92,6 +97,7 @@ export const useApp = create<AppState>((set, get) => ({
   sessions: {},
   agents: [],
   stats: { shippedTotal: 0, recentShips: [] },
+  quotas: {},
   selectedSessionId: null,
   selection: null,
   panelOpen: false,
@@ -157,6 +163,8 @@ export const useApp = create<AppState>((set, get) => ({
   updateWorkspace: (w) => set((st) => ({ workspaces: st.workspaces.map((x) => (x.id === w.id ? w : x)) })),
   removeWorkspace: (id) => set((st) => ({ workspaces: st.workspaces.filter((x) => x.id !== id) })),
   setStats: (stats) => set({ stats }),
+  setQuota: (q) => set((st) => ({ quotas: { ...st.quotas, [q.agent]: q } })),
+  setQuotas: (qs) => set((st) => ({ quotas: { ...st.quotas, ...Object.fromEntries(qs.map((q) => [q.agent, q])) } })),
   addBuilder: (b) => set((st) => ({ builders: upsertById(st.builders, b) })),
   updateBuilder: (b) => set((st) => ({ builders: st.builders.map((x) => (x.id === b.id ? b : x)) })),
   removeBuilder: (id) => set((st) => ({ builders: st.builders.filter((x) => x.id !== id) })),
@@ -174,6 +182,7 @@ function selectionAlive(st: Pick<AppState, 'selection' | 'workspaces' | 'builder
   if (!sel || sel.kind === 'hall') return true;
   if (sel.kind === 'workspace') return st.workspaces.some((w) => w.id === sel.id);
   if (sel.kind === 'builder') return st.builders.some((b) => b.id === sel.id);
+  if (sel.kind === 'quota') return true;
   return sel.id in st.sessions;
 }
 
@@ -235,12 +244,11 @@ function villageActions(get: () => AppState): VillageActions {
   const spotOf = async (sessionId: string, onError: (e: unknown) => void): Promise<Tile> => {
     const s = get().sessions[sessionId];
     if (!s) throw new Error(`unknown session ${sessionId}`);
-    if (s.kind.kind === 'terminal') throw new Error('terminal sessions have no spot');
     if (s.spot) return s.spot;
     const c = await compoundOf(s.workspaceId);
     const st = get();
     const mates = Object.values(st.sessions).filter(
-      (x) => x.id !== sessionId && x.workspaceId === s.workspaceId && x.kind.kind === 'agent' && x.spot,
+      (x) => x.id !== sessionId && x.workspaceId === s.workspaceId && x.spot,
     );
     const all = st.workspaces.flatMap((w) => (w.compound ? [w.compound] : []));
     const r = spotFor(c, all, mates.map((x) => x.spot!));
@@ -282,7 +290,7 @@ function villageActions(get: () => AppState): VillageActions {
 
 /**
  * Keeps the village layout complete: every workspace gets a compound and every agent session a
- * spot as soon as it appears in the store. Terminals never get a spot. Returns an unsubscribe.
+ * spot as soon as it appears in the store (a terminal that already ended gets none). Returns an unsubscribe.
  */
 export function autoLayout(onError: (e: unknown) => void = () => {}): () => void {
   const pending = new Set<string>();
@@ -294,7 +302,7 @@ export function autoLayout(onError: (e: unknown) => void = () => {}): () => void
   const check = (st: AppState) => {
     for (const w of st.workspaces) if (!w.compound) run(`ws:${w.id}`, () => st.village.ensureCompound(w.id));
     for (const s of Object.values(st.sessions))
-      if (s.kind.kind === 'agent' && !s.spot) run(`s:${s.id}`, () => st.village.ensureSpot(s.id, onError));
+      if (!s.spot && !(s.kind.kind === 'terminal' && s.state.kind === 'ended')) run(`s:${s.id}`, () => st.village.ensureSpot(s.id, onError));
   };
   check(useApp.getState());
   return useApp.subscribe(check);

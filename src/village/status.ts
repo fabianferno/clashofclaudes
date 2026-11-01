@@ -2,7 +2,7 @@ import type { SessionInfo } from '../api/types';
 import type { Entity } from './scene';
 
 /** The bar over a structure (spec 5.3.2): its colour and text. */
-export type StatusTone = 'working' | 'needs' | 'stuck';
+export type StatusTone = 'working' | 'needs' | 'stuck' | 'elixir';
 
 /** Elapsed time at minute granularity, so a label (and its texture) changes at most once a minute. */
 export function elapsedLabel(ms: number): string {
@@ -44,11 +44,15 @@ export function statusSignature(entities: readonly Entity[]): string {
   return entities.filter((e) => e.kind === 'status').map((e) => `${e.id}=${e.texKey}`).sort().join('|');
 }
 
-/** The same signature as the bars over the structures in `entities` would have at `now`; a mismatch means re-sync. */
-export function statusesDue(entities: readonly Entity[], sessions: readonly SessionInfo[], now: number): string {
+/**
+ * The same signature as the bars over the structures in `entities` would have at `now`, plus the
+ * bars in `extra` (already built for `now`, e.g. the collectors' labels); a mismatch means re-sync.
+ */
+export function statusesDue(entities: readonly Entity[], sessions: readonly SessionInfo[], now: number, extra: readonly Entity[] = []): string {
   const shown = new Set(entities.filter((e) => e.kind === 'structure').map((e) => e.id));
   return sessions
     .filter((s) => shown.has(`struct:${s.id}`))
     .flatMap((s) => { const k = statusKey(s, now); return k ? [`status:${s.id}=${k}`] : []; })
+    .concat(extra.filter((e) => e.kind === 'status').map((e) => `${e.id}=${e.texKey}`))
     .sort().join('|');
 }

@@ -10,6 +10,7 @@ pub mod osc;
 pub mod persist;
 pub mod platform;
 pub mod pty;
+pub mod quota;
 pub mod scrollback;
 pub mod sessions;
 pub mod status;
@@ -131,7 +132,19 @@ pub fn run() {
             // The hook sink needs the manager, which needs the hook server: close the loop lazily.
             let cell: Arc<OnceLock<Weak<SessionManager>>> = Arc::default();
             let sink_cell = cell.clone();
+            let quota_handle = app.handle().clone();
+            let quotas = Arc::new(quota::QuotaStore::new(
+                data_dir.join("quota.json"),
+                Arc::new(move |q| {
+                    let _ = quota_handle.emit("quota-updated", q);
+                }),
+            ));
+            let sink_quotas = quotas.clone();
             let hooks = tauri::async_runtime::block_on(hooks::HookServer::start(Arc::new(move |id, body| {
+                // Claude's status line (app-launched sessions) carries its rate limits.
+                if let Some(w) = quota::parse_claude_status(&body) {
+                    sink_quotas.set(model::AgentKind::Claude, w, "Claude Code status line");
+                }
                 if let Some(m) = sink_cell.get().and_then(Weak::upgrade) {
                     m.on_hook(&id, body);
                 }
@@ -189,6 +202,16 @@ pub fn run() {
                     }
                 }
             });
+            let poller = Arc::new(quota::Poller::new(
+                quotas.clone(),
+                data_dir.clone(),
+                quota::codex_sessions_dir(),
+                Box::new(|| {
+                    adapters::AdapterRegistry::new().get(model::AgentKind::Antigravity).is_some_and(|a| a.detect().installed)
+                }),
+            ));
+            poller.clone().spawn();
+            app.manage(commands::QuotaState { store: quotas, poller });
             #[cfg(debug_assertions)]
             let data_dir_for_driver = data_dir.clone();
             let manager = SessionManager::new(adapters::AdapterRegistry::new(), Arc::new(hooks), data_dir, emit);
@@ -270,6 +293,8 @@ pub fn run() {
             commands::close_session,
             commands::set_compound,
             commands::set_session_spot,
+            commands::get_quotas,
+            commands::refresh_quotas,
             commands::open_in_editor,
             commands::review_session,
             commands::attach_session,

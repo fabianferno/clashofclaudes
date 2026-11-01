@@ -457,6 +457,29 @@ pub fn set_compound(workspace_id: String, compound: Compound, app: AppHandle, st
 }
 
 /// Records where a session's builder stands; the manager emits `session-updated`.
+/// Quota readings and the poller behind `refresh_quotas`.
+pub struct QuotaState {
+    pub store: Arc<crate::quota::QuotaStore>,
+    pub poller: Arc<crate::quota::Poller>,
+}
+
+#[tauri::command]
+pub fn get_quotas(state: State<'_, QuotaState>) -> Vec<crate::quota::AgentQuota> {
+    state.store.all()
+}
+
+/// Reads every source now (agy takes a second or two); returns the latest readings.
+#[tauri::command]
+pub async fn refresh_quotas(state: State<'_, QuotaState>) -> Result<Vec<crate::quota::AgentQuota>, String> {
+    let (store, poller) = (state.store.clone(), state.poller.clone());
+    tauri::async_runtime::spawn_blocking(move || {
+        poller.poll(true);
+        store.all()
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn set_session_spot(id: String, spot: Tile, state: State<'_, AppState>) -> Result<SessionInfo, String> {
     state.manager.set_spot(&id, spot).map_err(fmt_err)

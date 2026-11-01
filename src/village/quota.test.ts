@@ -16,12 +16,15 @@ describe('quota', () => {
     expect(leftNow(win('a', 20, 300, null), 1e12)).toBe(20);
   });
 
-  it('the tank follows the shortest window, the emptiest among equals', () => {
-    const q = quota(win('week', 5, 10_080), win('gemini-5h', 80, 300), win('claude-5h', 30, 300), win('argon', 1, null));
-    expect(primaryWindow(q, 0)?.id).toBe('claude-5h');
-    // once claude-5h has reset it is full, so the other 5-hour window leads
-    const q2 = quota(win('gemini-5h', 80, 300), win('claude-5h', 30, 300, 10));
-    expect(primaryWindow(q2, 20)?.id).toBe('gemini-5h');
+  it('every tank follows the weekly window, the emptiest among equals', () => {
+    const q = quota(win('gemini-5h', 5, 300), win('gemini-week', 80, 10_080), win('claude-week', 30, 10_080), win('odd', 1, null));
+    expect(primaryWindow(q, 0)?.id).toBe('claude-week');
+    // once claude-week has reset it is full, so the other weekly window leads
+    const q2 = quota(win('gemini-week', 80, 10_080), win('claude-week', 30, 10_080, 10));
+    expect(primaryWindow(q2, 20)?.id).toBe('gemini-week');
+    // no weekly window: the one closest to a week (Codex reports only a 30-day one on some plans)
+    expect(primaryWindow(quota(win('5h', 50, 300), win('month', 90, 43_200)), 0)?.id).toBe('month');
+    expect(primaryWindow(quota(win('5h', 50, 300), win('odd', 9, null)), 0)?.id).toBe('5h');
     expect(primaryWindow(quota(), 0)).toBeNull();
   });
 

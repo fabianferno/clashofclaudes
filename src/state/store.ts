@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { ipc } from '../api/ipc';
 import type { AgentInfo, AgentKind, AgentQuota, Builder, CloseOutcome, Compound, ListState, SessionInfo, SessionState, Stats, Tile, Workspace } from '../api/types';
-import { HOUSE, STRUCT, canPlace, placeCompound, spotFor } from '../village/layout';
+import { HOUSE, STRUCT, canPlace, compoundFits, gapBetween, placeCompound, shiftCompound, spotFor, wallRect } from '../village/layout';
 import { collectorFits, collectorTiles, shownCollectors } from '../village/quota';
 
 export type Selection =
@@ -21,25 +21,41 @@ export interface VillageActions {
    * (default: the app's error toast).
    */
   ensureSpot: (sessionId: string, onError?: (e: unknown) => void) => Promise<Tile>;
-  /** Persist a move of a structure (session), a compound's house (workspace) or a collector to `at`; false (and no ipc) when blocked. */
+  /**
+   * Persist a move to `at`: a structure (session), a compound's house within its walls (workspace),
+   * a whole compound (`at` its new interior origin) or a collector; false (and no ipc) when blocked.
+   */
   commitMove: (target: MoveTarget, at: Tile, onError?: (e: unknown) => void) => Promise<boolean>;
 }
 
-export type MoveTarget = { kind: 'session'; id: string } | { kind: 'workspace'; id: string } | { kind: 'collector'; agent: AgentKind };
+export type MoveTarget =
+  | { kind: 'session'; id: string }
+  | { kind: 'workspace'; id: string }
+  | { kind: 'compound'; id: string }
+  | { kind: 'collector'; agent: AgentKind };
 
 type MoveState = Pick<AppState, 'workspaces' | 'sessions'> & Partial<Pick<AppState, 'quotas' | 'agents' | 'collectorSpots'>>;
 
 /**
  * Whether the structure or house may stand with its top-left on `at`: inside its compound, clear of
- * everything else. A collector stands outside every compound (see `collectorFits`).
+ * everything else. A collector stands outside every compound (see `collectorFits`); a whole compound
+ * keeps its walls GAP tiles from the hall and the other compounds, and a tile clear of every collector.
  */
 export function moveValid(st: MoveState, target: MoveTarget, at: Tile): boolean {
-  if (target.kind === 'collector') {
+  if (target.kind === 'collector' || target.kind === 'compound') {
     const compounds = st.workspaces.flatMap((w) => (w.compound ? [w.compound] : []));
     const shown = shownCollectors(st.quotas, st.agents?.filter((a) => a.installed).map((a) => a.kind));
     const tiles = collectorTiles(shown, st.collectorSpots, compounds);
-    if (!tiles[target.agent as keyof typeof tiles]) return false;
-    return collectorFits(at, compounds, shown.filter((a) => a !== target.agent).map((a) => tiles[a]!));
+    if (target.kind === 'collector') {
+      if (!tiles[target.agent as keyof typeof tiles]) return false;
+      return collectorFits(at, compounds, shown.filter((a) => a !== target.agent).map((a) => tiles[a]!));
+    }
+    const c = st.workspaces.find((w) => w.id === target.id)?.compound;
+    if (!c) return false;
+    const moved = shiftCompound(c, at.x - c.x0, at.y - c.y0);
+    const walls = wallRect(moved);
+    return compoundFits(moved, compounds.filter((o) => o !== c))
+      && shown.every((a) => gapBetween({ x0: tiles[a]!.x, y0: tiles[a]!.y, w: STRUCT, h: STRUCT }, walls) >= 1);
   }
   const wsId = target.kind === 'workspace' ? target.id : st.sessions[target.id]?.workspaceId;
   const c = st.workspaces.find((w) => w.id === wsId)?.compound;
@@ -98,6 +114,8 @@ export interface AppState {
   /** Collectors the owner has dragged (top-left tiles); the rest stand in their default slots. */
   collectorSpots: Partial<Record<AgentKind, Tile>>;
   setCollectorSpots: (spots: Partial<Record<AgentKind, Tile>>) => void;
+  /** A whole compound moved: its workspace and its sessions' new spots land in one update. */
+  applyCompoundMove: (w: Workspace, sessions: SessionInfo[]) => void;
   addBuilder: (b: Builder) => void;
   updateBuilder: (b: Builder) => void;
   removeBuilder: (id: string) => void;
@@ -184,6 +202,12 @@ export const useApp = create<AppState>((set, get) => ({
   setQuota: (q) => set((st) => ({ quotas: { ...st.quotas, [q.agent]: q } })),
   setQuotas: (qs) => set((st) => ({ quotas: { ...st.quotas, ...Object.fromEntries(qs.map((q) => [q.agent, q])) } })),
   setCollectorSpots: (collectorSpots) => set({ collectorSpots }),
+  applyCompoundMove: (w, moved) =>
+    set((st) => {
+      const sessions = { ...st.sessions };
+      for (const s of moved) if (!sessions[s.id] || s.rev >= sessions[s.id].rev) sessions[s.id] = s;
+      return { workspaces: st.workspaces.map((x) => (x.id === w.id ? w : x)), sessions };
+    }),
   addBuilder: (b) => set((st) => ({ builders: upsertById(st.builders, b) })),
   updateBuilder: (b) => set((st) => ({ builders: st.builders.map((x) => (x.id === b.id ? b : x)) })),
   removeBuilder: (id) => set((st) => ({ builders: st.builders.filter((x) => x.id !== id) })),
@@ -296,6 +320,10 @@ function villageActions(get: () => AppState): VillageActions {
           st.upsertSession(await ipc.setSessionSpot(target.id, at));
         } else if (target.kind === 'collector') {
           st.setCollectorSpots(await ipc.setCollectorSpot(target.agent, at));
+        } else if (target.kind === 'compound') {
+          const c = st.workspaces.find((w) => w.id === target.id)!.compound!;
+          const r = await ipc.moveCompound(target.id, at.x - c.x0, at.y - c.y0);
+          st.applyCompoundMove(r.workspace, r.sessions);
         } else {
           const c = st.workspaces.find((w) => w.id === target.id)!.compound!;
           st.updateWorkspace(await ipc.setCompound(target.id, { ...c, house: at }));

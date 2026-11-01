@@ -15,6 +15,9 @@ test('builder_card_shows_class_and_stars', () => {
   expect(card.textContent).toContain('★★★★');
   expect(card.textContent).not.toContain('★★★★★');
   expect(screen.getByTestId('badge-b1').getAttribute('data-state')).toBe('idle');
+  // the builder's portrait, not the initial of its name
+  expect(card.querySelector('.hud-av canvas')).toBeTruthy();
+  expect(card.querySelector('.hud-av')!.textContent).toBe('');
 });
 
 test('badge follows live session state; click on a busy builder opens its session', () => {

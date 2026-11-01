@@ -1,8 +1,9 @@
 import { useRef, useState, type WheelEvent } from 'react';
 import { useApp } from '../state/store';
-import { CLASS_NAMES, PALETTE, classOf, gearOf, stars } from '../village/look';
+import { CLASS_NAMES, classOf, gearOf, stars } from '../village/look';
 import { panelInset, rosterReserve } from './layout';
 import { BADGE_LABEL, badgeOf, builderTarget, liveSessionOf } from './hudState';
+import BuilderAvatar from './BuilderAvatar';
 import './hud.css';
 
 /** Bottom, collapsible, sideways-scrolling roster of builder cards. */
@@ -29,7 +30,6 @@ export default function BuildersBar() {
         </button>
         {builders.length > 0 && <div ref={list} data-testid="builders-list" className="hud-cards" onWheel={onWheel}>
           {builders.map((b) => {
-            const pal = PALETTE[b.agent];
             const tier = classOf(b.agent, b.model);
             const live = liveSessionOf(b.id, all);
             const badge = badgeOf(live);
@@ -43,7 +43,9 @@ export default function BuildersBar() {
                 onClick={() => setSelection(builderTarget(b.id, all))}
                 title={live ? `Open ${b.name}'s session` : undefined}
               >
-                <span className="hud-av ol-lg" style={{ background: pal.body }}>{b.name.charAt(0).toUpperCase()}</span>
+                <span className="hud-av">
+                  <BuilderAvatar agent={b.agent} model={b.model} effort={b.effort} />
+                </span>
                 <span className="hud-cname ol">{b.name}</span>
                 <span className="hud-class">{CLASS_NAMES[tier]}</span>
                 <span className="hud-stars">{'★'.repeat(stars(gearOf(b.effort)))}</span>

@@ -47,6 +47,16 @@ function wallClear(wall: Rect, others: Compound[]): boolean {
   return others.every((o) => gapBetween(wall, wallRect(o)) >= GAP);
 }
 
+/** Whether compound `c` may stand where it is: its walls GAP tiles from the hall and from every other compound's walls. */
+export function compoundFits(c: Compound, others: Compound[]): boolean {
+  return wallClear(wallRect(c), others);
+}
+
+/** `c` moved by (dx, dy), house included. */
+export function shiftCompound(c: Compound, dx: number, dy: number): Compound {
+  return { ...c, x0: c.x0 + dx, y0: c.y0 + dy, house: { x: c.house.x + dx, y: c.house.y + dy } };
+}
+
 /** Nearest-to-hall interior origin of size w x h whose walls keep GAP; deterministic. */
 function findFree(w: number, h: number, others: Compound[]): Tile {
   for (let R = 40; ; R *= 2) {

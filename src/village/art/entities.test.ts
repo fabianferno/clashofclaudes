@@ -66,6 +66,15 @@ describe('art', () => {
     expect(calls(7)).not.toBe(calls(8));
   });
 
+  it('ground_clears_forest_under_a_clearing', () => {
+    const b = { x0: -30, y0: -30, w: 60, h: 60 };
+    // a patch out in the dense forest (far from the hall), as a collector dragged there
+    const count = (cl: { x0: number; y0: number; w: number; h: number }[]) =>
+      drawGround(b, [], 5, cl).getContext('2d')!.__getDrawCalls().length;
+    const none = count([]), one = count([{ x0: -24, y0: -24, w: 2, h: 2 }]);
+    expect(one).toBeLessThan(none);
+  });
+
   it('shade_accepts_hex_and_rgb', () => {
     expect(shade('#808080', 0)).toBe('rgb(128,128,128)');
     expect(shade('rgb(128,128,128)', 0)).toBe('rgb(128,128,128)');

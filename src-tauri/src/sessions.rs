@@ -739,6 +739,22 @@ impl SessionManager {
         Ok(e.info.clone())
     }
 
+    /// Shifts the spot of every session in `workspace_id` by (dx, dy), as its compound moves; returns those sessions.
+    pub fn shift_spots(&self, workspace_id: &str, dx: i32, dy: i32) -> Vec<SessionInfo> {
+        let mut g = self.lock();
+        let mut out = Vec::new();
+        for e in g.values_mut() {
+            if e.info.workspace_id != workspace_id {
+                continue;
+            }
+            let Some(t) = e.info.spot else { continue };
+            e.info.spot = Some(Tile { x: t.x + dx, y: t.y + dy });
+            self.send_updated(e);
+            out.push(e.info.clone());
+        }
+        out
+    }
+
     /// Starts framing output for a terminal view: returns the scrollback snapshot plus the
     /// stream offset of its first byte; the next `Output` starts at `start + snapshot.len()`.
     /// Replaces any earlier attachment: pending bytes (already in the snapshot) are dropped and
@@ -1277,6 +1293,19 @@ mod tests {
         assert!(got.rev > before);
         assert!(wait_until(|| info(&fx, &a.id).spot == Some(Tile { x: 3, y: 4 })), "Updated emitted");
         assert!(fx.mgr.set_spot("nope", Tile { x: 0, y: 0 }).is_err());
+    }
+
+    #[test]
+    fn shift_spots_moves_only_that_workspace() {
+        let fx = fixture();
+        let a = fx.mgr.start_with_spec(&fx.ws, &claude("b1"), sleeper(&fx), Arc::new(ClaudeAdapter)).unwrap();
+        let b = fx.mgr.start_with_spec(&fx.ws, &claude("b2"), sleeper(&fx), Arc::new(ClaudeAdapter)).unwrap();
+        fx.mgr.set_spot(&a.id, Tile { x: 3, y: 4 }).unwrap();
+        let moved = fx.mgr.shift_spots(&fx.ws.id, 10, -2);
+        assert_eq!(moved.len(), 1, "a session without a spot stays without one");
+        assert_eq!(info(&fx, &a.id).spot, Some(Tile { x: 13, y: 2 }));
+        assert_eq!(info(&fx, &b.id).spot, None);
+        assert!(fx.mgr.shift_spots("other", 1, 1).is_empty());
     }
 
     #[test]

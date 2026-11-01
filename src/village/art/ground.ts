@@ -27,15 +27,19 @@ export function groundBakeSize(b: Rect, scale = GROUND_SCALE): { w: number; h: n
   return { w, h, cw, ch, bytes: cw * ch * 4 };
 }
 
+/** Tiles of forest kept clear around a clearing; trees in front reach furthest over it. */
+export const CLEARING_PAD = 1.5;
+
 const inRect = (x: number, y: number, r: Rect, pad = 0) =>
   x > r.x0 - pad && x < r.x0 + r.w + pad && y > r.y0 - pad && y < r.y0 + r.h + pad;
 
 /**
- * Grass, dirt paths hall -> each gate, and forest cleared from every wall rect (+GAP) and the hall.
+ * Grass, dirt paths hall -> each gate, and forest cleared from every wall rect (+GAP), the hall and
+ * the `clearings` (collector footprints, + CLEARING_PAD so no canopy is drawn over them).
  * Deterministic for a given seed. Returns a bare canvas at GROUND_SCALE density (no anchor, unlike Art),
  * sized by `groundBakeSize(bounds)`: place it at `groundOrigin(bounds)` in world px with scale 1 / GROUND_SCALE.
  */
-export function drawGround(b: Rect, compounds: Compound[], seed: number): HTMLCanvasElement {
+export function drawGround(b: Rect, compounds: Compound[], seed: number, clearings: readonly Rect[] = []): HTMLCanvasElement {
   let s = (Math.abs(Math.floor(seed)) % 233280) || 5;
   const rnd = () => (s = (s * 9301 + 49297) % 233280) / 233280;
   const o = groundOrigin(b);
@@ -93,12 +97,13 @@ export function drawGround(b: Rect, compounds: Compound[], seed: number): HTMLCa
         g.stroke();
       }
     }
-    // forest: sparse near the village, dense further out; never inside a wall rect + GAP or the hall
+    // forest: sparse near the village, dense further out; never inside a wall rect + GAP, the hall or a clearing
     forest
       .filter((t) => {
         const d = Math.max(Math.abs(t.x - cx), Math.abs(t.y - cy));
         if (inRect(t.x, t.y, HALL, 1.5)) return false;
         if (walls.some((r) => inRect(t.x, t.y, r, GAP))) return false;
+        if (clearings.some((r) => inRect(t.x, t.y, r, CLEARING_PAD))) return false;
         return t.r < Math.max(0.06, Math.min(0.95, (d - 8) / 6));
       })
       .sort((a, c) => a.x + a.y - (c.x + c.y))

@@ -15,8 +15,10 @@ become real structures** in their compound instead of a number badge on the hous
 - One collector per agent that has quota data or is installed (Claude Code, Codex, Antigravity).
   OpenCode has no quota of its own (it uses whatever provider key it is given) and gets none;
   custom agents get none.
-- The tank level is "% left" of the agent's **primary window**: the shortest window it reports;
-  among equal lengths (Antigravity's per-group 5-hour limits), the one with the least left.
+- The tank level is "% left" of the agent's **primary window**. Every tank follows the same
+  limit so they compare (owner's request, 2026-11-01): the weekly window, else the window closest to a
+  week in length (Codex reports only a 30-day window on some plans); among equals (Antigravity's
+  per-group weekly limits), the one with the least left. The panel still lists every window.
 - A window whose reset time has passed counts as **full** (refilled) until a fresh reading says
   otherwise, so a tank visibly refills at its reset without waiting for new data.
 - Empty (≤ 0 % left) goes dark and its label counts down to the refill.

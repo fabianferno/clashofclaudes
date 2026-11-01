@@ -47,7 +47,8 @@ function unusedName(builders: Builder[]): string {
   return RECRUIT_NAMES.find((n) => !used.has(n.toLowerCase())) ?? '';
 }
 
-export default function NewSessionPicker({ workspaceId }: { workspaceId: string }) {
+/** `builderId`: an idle builder to start with picked (one dropped on the workspace). */
+export default function NewSessionPicker({ workspaceId, builderId }: { workspaceId: string; builderId?: string }) {
   const workspaces = useApp((s) => s.workspaces);
   const allBuilders = useApp((s) => s.builders);
   const sessions = useApp((s) => s.sessions);
@@ -56,7 +57,7 @@ export default function NewSessionPicker({ workspaceId }: { workspaceId: string 
   const offered = agents.filter((a) => a.installed || a.kind === 'custom'); // selectable; the rest are shown disabled
 
   const [wsId, setWsId] = useState(workspaceId);
-  const [picked, setPicked] = useState<string | null>(null);
+  const [picked, setPicked] = useState<string | null>(builderId ?? null);
   const [nameEdit, setNameEdit] = useState<string | null>(null);
   // Derived until the user picks one: agents may be detected after the picker mounts.
   const [kindPick, setKind] = useState<AgentKind | null>(null);

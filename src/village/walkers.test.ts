@@ -3,7 +3,7 @@ import type { Compound } from '../api/types';
 import type { Tile } from '../api/types';
 import { enclosure, seedOf } from './enclosure';
 import { gateInside, gateOutside, placeCompound, roadPath, spotFor } from './layout';
-import { PLAZA, SPEED, interiorPath, onGround, routeHome, retarget, routeToSite, standTile, step, walkable, type Walker } from './walkers';
+import { ANCHOR_HOP, PLAZA, SPEED, dropOf, interiorPath, onGround, routeHome, retarget, routeToSite, standTile, step, walkable, type Walker } from './walkers';
 
 const mk = (over: Partial<Walker> = {}): Walker =>
   ({ id: 'b', x: 0, y: 0, path: [], mode: 'idle', face: 1, wait: 0, ...over });
@@ -38,6 +38,37 @@ describe('walkers', () => {
     expect(home.slice(o + 1, o + 3)).toEqual(bends.slice().reverse());
     // straight roads add no bends
     expect(routeToSite({ x: 4, y: 0 }, east, { x: 12, y: 1 })[0]).toEqual(centre(gateOutside(east)));
+  });
+
+  it('a_builder_set_down_wanders_around_that_spot_not_the_plaza', () => {
+    const at = { x: -9, y: 9 };
+    let w = mk({ x: at.x, y: at.y, anchor: at, wait: 0 });
+    const rnd = lcg(3);
+    for (let i = 0; i < 400; i++) {
+      w = step(w, 0.1, rnd);
+      expect(Math.hypot(w.x - at.x, w.y - at.y)).toBeLessThanOrEqual(ANCHOR_HOP + 1e-9);
+    }
+  });
+
+  it('a_builder_waiting_at_the_gate_goes_straight_in', () => {
+    const ne: Compound = { x0: 12, y0: -18, w: 7, h: 7, house: { x: 12, y: -14 } };
+    const out = centre(gateOutside(ne));
+    expect(routeToSite(out, ne, { x: 15, y: -17 })[0]).toEqual(out);
+    expect(routeToSite({ x: 4, y: 0 }, ne, { x: 15, y: -17 })[0]).toEqual(roadPath(ne)[1]);
+  });
+
+  it('dropping_a_builder_assigns_it_sets_it_down_or_refuses', () => {
+    const wss = [{ id: 'e', missing: false, compound: east }, { id: 'gone', missing: true, compound: { ...east, x0: -16, house: { x: -16, y: -3 } } }];
+    expect(dropOf({ x: 12.3, y: 0.4 }, wss, [], true)).toEqual({ kind: 'assign', workspaceId: 'e' });
+    expect(dropOf({ x: 8.5, y: 0.5 }, wss, [], true)).toEqual({ kind: 'assign', workspaceId: 'e' }); // on the wall counts
+    expect(dropOf({ x: 12.3, y: 0.4 }, wss, [], false)).toEqual({ kind: 'blocked' }); // busy
+    expect(dropOf({ x: -12, y: 0.5 }, wss, [], true)).toEqual({ kind: 'blocked' }); // folder missing
+    expect(dropOf({ x: 0.5, y: 0.5 }, wss, [], true)).toEqual({ kind: 'blocked' }); // on the hall
+    expect(dropOf({ x: 4.5, y: 0.5 }, wss, [], true)).toEqual({ kind: 'blocked' }); // hugging the hall
+    expect(dropOf({ x: 6.5, y: 0.5 }, wss, [], true)).toEqual({ kind: 'blocked' }); // hugging the wall (x 8)
+    expect(dropOf({ x: 0.5, y: 6.5 }, wss, [], false)).toEqual({ kind: 'place' }); // open ground, busy or not
+    expect(dropOf({ x: 0.5, y: 6.5 }, wss, [{ x: 0, y: 6 }], true)).toEqual({ kind: 'blocked' }); // on a collector
+    expect(dropOf({ x: 0.5, y: 40.5 }, wss, [], true)).toEqual({ kind: 'blocked' }); // off in the forest
   });
 
   it('standTile_offset', () => {

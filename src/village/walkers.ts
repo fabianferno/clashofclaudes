@@ -1,5 +1,5 @@
 import type { Compound, Tile } from '../api/types';
-import { HOUSE, STRUCT, gateInside, gateOutside, roadPath } from './layout';
+import { HALL, HOUSE, STRUCT, gapBetween, gateInside, gateOutside, roadPath, villageRect, wallRect } from './layout';
 
 export interface Walker {
   id: string;
@@ -12,6 +12,8 @@ export interface Walker {
   face: 1 | -1;
   /** Seconds left to stand still before the next wander (idle only). */
   wait: number;
+  /** Where the owner set an idle builder down: it wanders around here instead of the plaza. */
+  anchor?: Tile;
 }
 
 /** Tiles per second. */
@@ -23,6 +25,9 @@ export const PLAZA = 6;
 const HALL_C = { x: 0.5, y: 0.5 };
 const RING_MIN = 4.6;
 const RING_MAX = 5.6;
+
+/** How far (tiles) an idle builder set down by the owner strays from where it was dropped. */
+export const ANCHOR_HOP = 1.2;
 
 const centre = (t: Tile): Tile => ({ x: t.x + 0.5, y: t.y + 0.5 });
 const key = (x: number, y: number) => `${x},${y}`;
@@ -125,9 +130,11 @@ const bends = (c: Compound): Tile[] => roadPath(c).slice(1, -1);
  * Plaza -> along the road's bends -> gate (outside, then inside) -> the stand tile beside the spot;
  * given `walk` (see `walkable`), around the house, the structures and the bends of the wall.
  */
-export function routeToSite(_from: Tile, c: Compound, spot: Tile, walk?: Set<string>): Tile[] {
-  const gate = centre(gateInside(c)), stand = standTile(c, spot, c.house, walk);
-  return [...bends(c), centre(gateOutside(c)), gate, ...(walk ? interiorPath(walk, gate, stand) : [stand])];
+export function routeToSite(from: Tile, c: Compound, spot: Tile, walk?: Set<string>): Tile[] {
+  const gate = centre(gateInside(c)), out = centre(gateOutside(c)), stand = standTile(c, spot, c.house, walk);
+  // a builder already waiting at the gate (dropped there) goes straight in
+  const road = Math.hypot(from.x - out.x, from.y - out.y) < 0.75 ? [] : bends(c);
+  return [...road, out, gate, ...(walk ? interiorPath(walk, gate, stand) : [stand])];
 }
 
 /** Back out through the gate (inside, then outside) and along the road to the plaza, over `walk` when given. */
@@ -157,6 +164,34 @@ export function retarget(w: Walker, c: Compound, spot: Tile | null, walk?: Set<s
   return w;
 }
 
+export type BuilderDrop = { kind: 'assign'; workspaceId: string } | { kind: 'place' } | { kind: 'blocked' };
+
+/** Empty tiles a builder set down keeps from walls and the hall, so its wander (ANCHOR_HOP) stays clear of them. */
+const DROP_CLEAR = 2;
+/** How far (tiles) beyond the village a builder may be set down. */
+const DROP_REACH = 6;
+
+/**
+ * What dropping a builder at tile point `p` does. Inside a workspace's walls an idle builder is put to
+ * work there (a busy one, or a workspace whose folder is missing, refuses); on open ground clear of
+ * walls, the hall and collectors (`collectors`: their 2x2 corners) and near the village, it is set down.
+ */
+export function dropOf(
+  p: Tile, workspaces: readonly { id: string; missing: boolean; compound: Compound | null }[],
+  collectors: readonly Tile[], idle: boolean,
+): BuilderDrop {
+  const t = { x0: Math.floor(p.x), y0: Math.floor(p.y), w: 1, h: 1 };
+  const compounds = workspaces.flatMap((w) => (w.compound ? [w.compound] : []));
+  const on = workspaces.find((w) => w.compound && gapBetween(t, wallRect(w.compound)) < 0);
+  if (on) return idle && !on.missing ? { kind: 'assign', workspaceId: on.id } : { kind: 'blocked' };
+  if (gapBetween(t, HALL) < DROP_CLEAR || compounds.some((c) => gapBetween(t, wallRect(c)) < DROP_CLEAR)) return { kind: 'blocked' };
+  if (collectors.some((c) => gapBetween(t, { x0: c.x, y0: c.y, w: STRUCT, h: STRUCT }) < 1)) return { kind: 'blocked' };
+  const v = villageRect(compounds);
+  const near = t.x0 >= v.x0 - DROP_REACH && t.y0 >= v.y0 - DROP_REACH
+    && t.x0 < v.x0 + v.w + DROP_REACH && t.y0 < v.y0 + v.h + DROP_REACH;
+  return near ? { kind: 'place' } : { kind: 'blocked' };
+}
+
 /** Advance `dt` seconds: walk the path; when idle with an empty path, rest then pick a new plaza target. */
 export function step(w: Walker, dt: number, rnd: () => number): Walker {
   let { x, y, face, mode, wait } = w;
@@ -180,9 +215,15 @@ export function step(w: Walker, dt: number, rnd: () => number): Walker {
   } else if (!path.length && mode === 'idle') {
     wait -= dt;
     if (wait <= 0) {
-      const a = Math.atan2(y - HALL_C.y, x - HALL_C.x) + (rnd() < 0.5 ? -1 : 1) * (0.5 + rnd() * 0.7);
-      const r = RING_MIN + rnd() * (RING_MAX - RING_MIN);
-      path.push({ x: HALL_C.x + Math.cos(a) * r, y: HALL_C.y + Math.sin(a) * r });
+      const at = w.anchor;
+      if (at) {
+        const a = rnd() * Math.PI * 2, r = rnd() * ANCHOR_HOP;
+        path.push({ x: at.x + Math.cos(a) * r, y: at.y + Math.sin(a) * r });
+      } else {
+        const a = Math.atan2(y - HALL_C.y, x - HALL_C.x) + (rnd() < 0.5 ? -1 : 1) * (0.5 + rnd() * 0.7);
+        const r = RING_MIN + rnd() * (RING_MAX - RING_MIN);
+        path.push({ x: HALL_C.x + Math.cos(a) * r, y: HALL_C.y + Math.sin(a) * r });
+      }
       wait = 1 + rnd() * 3;
     }
   }

@@ -85,6 +85,7 @@ mod tests {
             version: 2,
             stats: Stats::default(),
             settings: Settings::default(),
+            collector_spots: [(AgentKind::Codex, Tile { x: 9, y: -3 })].into(),
             workspaces: vec![Workspace {
                 id: "w1".into(),
                 name: "Café".into(),

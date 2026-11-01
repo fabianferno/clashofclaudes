@@ -81,6 +81,8 @@ export interface ListState {
   builders: Builder[];
   sessions: SessionInfo[];
   stats: Stats;
+  /** Collectors the owner has dragged (top-left tiles). */
+  collectorSpots?: Partial<Record<AgentKind, Tile>>;
 }
 
 /** One rationed window an agent reports (see src-tauri/src/quota.rs). */

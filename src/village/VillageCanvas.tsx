@@ -11,6 +11,7 @@ const inputOf = (s: AppState): VillageInput => ({
   closed: s.lastClosed,
   quotas: s.quotas,
   installed: s.agents.filter((a) => a.installed).map((a) => a.kind),
+  collectorSpots: s.collectorSpots,
 });
 
 /** The Pixi village, full-window; syncs from the store on every change (also while hidden). */
@@ -41,7 +42,7 @@ export default function VillageCanvas({ onError }: { onError?: (e: unknown) => v
           if (st.zoomRequest !== prev.zoomRequest && st.zoomRequest) s.fitCompound(st.zoomRequest.id);
           if (st.selection !== prev.selection) { s.reveal(st.selection); s.select(st.selection); }
           if (st.workspaces !== prev.workspaces || st.sessions !== prev.sessions || st.builders !== prev.builders || st.lastClosed !== prev.lastClosed
-            || st.quotas !== prev.quotas || st.agents !== prev.agents)
+            || st.quotas !== prev.quotas || st.agents !== prev.agents || st.collectorSpots !== prev.collectorSpots)
             s.sync(inputOf(st));
         });
       },

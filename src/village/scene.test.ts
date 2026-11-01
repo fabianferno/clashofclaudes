@@ -144,10 +144,18 @@ describe('collectors', () => {
     ]));
     expect(cols).toHaveLength(2); // OpenCode reports no limits
     const label = es.find((e) => e.id === 'status:collector:codex')!;
-    expect(label.texKey).toBe('status:elixir:Codex 62% · 5h');
+    expect(label.texKey).toBe('status:elixir-codex:Codex 62% · 5h');
     expect(es.find((e) => e.id === 'status:collector:claude')?.texKey).toBe('status:stuck:Claude · no reading');
     const c = cols.find((e) => e.id === 'collector:codex')!;
     expect([c.x, c.y]).toEqual([COLLECTOR_SLOT.codex.x + 2, COLLECTOR_SLOT.codex.y + 2]);
+  });
+
+  it('a_dragged_collector_stands_where_it_was_dropped', () => {
+    const es = buildEntities({ ...base, installed: ['claude', 'codex'], collectorSpots: { codex: { x: -6, y: -6 } } });
+    const at = (id: string) => { const e = es.find((x) => x.id === id)!; return [e.x, e.y]; };
+    expect(at('collector:codex')).toEqual([-4, -4]);
+    expect(at('status:collector:codex')).toEqual([-5, -5]);
+    expect(at('collector:claude')).toEqual([COLLECTOR_SLOT.claude.x + 2, COLLECTOR_SLOT.claude.y + 2]);
   });
 
   it('collector_slots_stay_clear_of_the_hall_and_any_compound', () => {

@@ -5,7 +5,7 @@ import type { Builder, Compound, SessionInfo, SessionState, Tile, Workspace } fr
 import { ipc } from '../api/ipc';
 import { GAP, assertNoCollisions, findSpot, placeCompound, spotFor } from '../village/layout';
 
-vi.mock('../api/ipc', () => ({ ipc: { setCompound: vi.fn(), setSessionSpot: vi.fn() } }));
+vi.mock('../api/ipc', () => ({ ipc: { setCompound: vi.fn(), setSessionSpot: vi.fn(), setCollectorSpot: vi.fn() } }));
 
 const sess = (id: string, ws: string, builderId?: string, startedAt = 0, state: SessionState = { kind: 'working' }): SessionInfo => ({
   id, workspaceId: ws, kind: builderId ? { kind: 'agent', builderId } : { kind: 'terminal' },
@@ -232,6 +232,30 @@ describe('commitMove', () => {
     expect(await useApp.getState().village.commitMove({ kind: 'workspace', id: 'w1' }, { x: 7, y: 7 }, (e) => errs.push(e))).toBe(false);
     expect(useApp.getState().workspaces[0]).toBe(ws);
     expect(errs).toHaveLength(2);
+  });
+});
+
+describe('collector moves', () => {
+  const agent = (kind: 'claude' | 'codex') => ({ kind, label: kind, installed: true, version: null, models: [], efforts: [], canApprove: false });
+  beforeEach(() => {
+    vi.mocked(ipc.setCollectorSpot).mockReset();
+    useApp.setState({ workspaces: [], sessions: {}, quotas: {}, collectorSpots: {}, agents: [agent('claude'), agent('codex')] });
+  });
+
+  it('a_collector_drops_on_open_ground_and_is_remembered', async () => {
+    vi.mocked(ipc.setCollectorSpot).mockImplementation(async (a, spot) => ({ [a]: spot }));
+    const t = { kind: 'collector', agent: 'codex' } as const;
+    expect(await useApp.getState().village.commitMove(t, { x: -6, y: -6 })).toBe(true);
+    expect(ipc.setCollectorSpot).toHaveBeenCalledWith('codex', { x: -6, y: -6 });
+    expect(useApp.getState().collectorSpots).toEqual({ codex: { x: -6, y: -6 } });
+  });
+
+  it('a_collector_never_lands_on_the_hall_another_collector_or_a_hidden_agent', async () => {
+    const st = useApp.getState();
+    expect(await st.village.commitMove({ kind: 'collector', agent: 'codex' }, { x: 0, y: 0 })).toBe(false); // the hall
+    expect(await st.village.commitMove({ kind: 'collector', agent: 'codex' }, { x: -5, y: 3 })).toBe(false); // Claude's tank
+    expect(await st.village.commitMove({ kind: 'collector', agent: 'antigravity' }, { x: -6, y: -6 })).toBe(false); // not installed
+    expect(ipc.setCollectorSpot).not.toHaveBeenCalled();
   });
 });
 

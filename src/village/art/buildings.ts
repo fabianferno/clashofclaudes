@@ -1,6 +1,6 @@
 import type { AgentKind } from '../../api/types';
 import { iso } from '../iso';
-import { PALETTE } from '../look';
+import { ELIXIR, PALETTE } from '../look';
 import {
   OUT, bake, ctx, dot, faceQuad, flag, isoBox, lerp, line, outlinedText, poly, roof, shadow, shade, spire, up,
   type Art, type Box, type Pt, type RoofPts,
@@ -183,15 +183,13 @@ function ribbon(p: Pt): void {
   g.lineCap = 'butt';
 }
 
-const ELIXIR = '#d23fd9', ELIXIR_LIT = '#f39af5', ELIXIR_DEEP = '#7d1d8f';
-
 /**
  * Elixir collector, 2x2 footprint: a glass tank on a stone base, banded in gold, a pump on top and
- * the agent's pennant. `tenths` (0-10) is how full the tank is; null means no reading yet (an empty
+ * the agent's pennant, filled with the agent's elixir. `tenths` (0-10) is how full the tank is; null means no reading yet (an empty
  * tank with a "?"). Anchor: the footprint's front corner, grid point (gx+2, gy+2).
  */
-export function drawCollector(agent: AgentKind, tenths: number | null): Art {
-  const P = PALETTE[agent];
+export function drawCollector(agent: keyof typeof ELIXIR, tenths: number | null): Art {
+  const P = PALETTE[agent], E = ELIXIR[agent];
   return bake(200, 220, 100, 190, () => {
     const g = ctx();
     const c = iso(1, 1);
@@ -214,21 +212,21 @@ export function drawCollector(agent: AgentKind, tenths: number | null): Art {
     g.ellipse(c.x, top, rx, ry, 0, Math.PI, Math.PI * 2);
     g.lineTo(c.x + rx, bot);
     g.closePath();
-    g.fillStyle = 'rgba(60, 44, 84, 0.78)'; g.fill();
+    g.fillStyle = 'rgba(46, 50, 62, 0.78)'; g.fill();
     g.clip();
     const level = tenths === null ? 0 : Math.max(0, Math.min(10, tenths)) / 10;
     if (level > 0) {
       const surf = bot - (H - 4) * level;
       const gr = g.createLinearGradient(c.x - rx, 0, c.x + rx, 0);
-      gr.addColorStop(0, ELIXIR_DEEP); gr.addColorStop(0.35, ELIXIR); gr.addColorStop(0.7, ELIXIR); gr.addColorStop(1, ELIXIR_DEEP);
+      gr.addColorStop(0, E.deep); gr.addColorStop(0.35, E.mid); gr.addColorStop(0.7, E.mid); gr.addColorStop(1, E.deep);
       g.fillStyle = gr;
       g.fillRect(c.x - rx, surf, rx * 2, bot - surf + ry + 2);
       g.beginPath(); g.ellipse(c.x, surf, rx - 1, ry - 1, 0, 0, Math.PI * 2);
-      g.fillStyle = ELIXIR_LIT; g.fill();
-      g.strokeStyle = 'rgba(125, 29, 143, 0.6)'; g.lineWidth = 1.5; g.stroke();
+      g.fillStyle = E.lit; g.fill();
+      g.strokeStyle = E.deep; g.lineWidth = 1.5; g.stroke();
       // a few bubbles rising through the elixir
       for (const [dx, dy, r] of [[-10, 0.35, 3], [6, 0.6, 2.2], [13, 0.25, 1.8], [-4, 0.8, 1.6]] as const)
-        if (bot - (bot - surf) * dy > surf + 4) dot(c.x + dx, bot - (bot - surf) * dy, r, 'rgba(255, 214, 255, 0.75)');
+        if (bot - (bot - surf) * dy > surf + 4) dot(c.x + dx, bot - (bot - surf) * dy, r, E.bubble);
     }
     // glass sheen
     g.fillStyle = 'rgba(255, 255, 255, 0.28)';
@@ -245,7 +243,7 @@ export function drawCollector(agent: AgentKind, tenths: number | null): Art {
       g.strokeStyle = GOLD; g.lineWidth = 3; g.stroke();
     }
     g.beginPath(); g.ellipse(c.x, top, rx, ry, 0, 0, Math.PI * 2);
-    g.fillStyle = 'rgba(90, 70, 110, 0.55)'; g.fill(); g.strokeStyle = OUT; g.lineWidth = 2.5; g.stroke();
+    g.fillStyle = 'rgba(80, 86, 100, 0.55)'; g.fill(); g.strokeStyle = OUT; g.lineWidth = 2.5; g.stroke();
     // the cap: a gold-trimmed timber lid with the pump and its crank
     g.beginPath(); g.ellipse(c.x, top - 2, rx + 4, ry + 2, 0, 0, Math.PI * 2);
     g.fillStyle = '#8a5a2b'; g.fill(); g.strokeStyle = OUT; g.lineWidth = 2.5; g.stroke();

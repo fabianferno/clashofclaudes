@@ -51,6 +51,8 @@ export const ipc = {
   setCompound: (workspaceId: string, compound: Compound) =>
     invoke<Workspace>('set_compound', { workspaceId, compound }),
   setSessionSpot: (id: string, spot: Tile) => invoke<SessionInfo>('set_session_spot', { id, spot }),
+  setCollectorSpot: (agent: AgentKind, spot: Tile) =>
+    invoke<Partial<Record<AgentKind, Tile>>>('set_collector_spot', { agent, spot }),
   openInEditor: (path: string) => invoke<void>('open_in_editor', { path }),
   reviewSession: (id: string) => invoke<Review>('review_session', { id }),
   detachSession: (id: string) => invoke<void>('detach_session', { id }),

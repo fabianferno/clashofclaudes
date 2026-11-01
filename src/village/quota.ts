@@ -1,4 +1,5 @@
-import type { AgentKind, AgentQuota, QuotaWindow, Tile } from '../api/types';
+import type { AgentKind, AgentQuota, Compound, QuotaWindow, Tile } from '../api/types';
+import { HALL, STRUCT, gapBetween, villageRect, wallRect, type Rect } from './layout';
 import type { StatusTone } from './status';
 
 /** Agents that ration usage; OpenCode uses whatever provider key it is given. */
@@ -6,8 +7,8 @@ export const COLLECTOR_AGENTS = ['claude', 'codex', 'antigravity'] as const sati
 export type CollectorAgent = (typeof COLLECTOR_AGENTS)[number];
 
 /**
- * Collector top-left tiles (2x2): beside the town hall's left and right corners and in front of
- * it, inside the 4-tile gap every compound keeps from the hall, so nothing else can stand there.
+ * Default collector top-left tiles (2x2): beside the town hall's left and right corners and in
+ * front of it, inside the 4-tile gap every compound keeps from the hall. The owner can drag them.
  */
 export const COLLECTOR_SLOT: Record<CollectorAgent, Tile> = {
   claude: { x: -5, y: 3 },
@@ -43,9 +44,9 @@ export function tankTenths(left: number): number {
   return Math.min(9, Math.max(1, Math.round(left / 10)));
 }
 
-/** Label colour: elixir pink while plenty is left, orange at 25 % or less, red at 10 % or less. */
-export function quotaTone(left: number): StatusTone {
-  return left > 25 ? 'elixir' : left > 10 ? 'working' : 'needs';
+/** Label colour: the agent's elixir while plenty is left, orange at 25 % or less, red at 10 % or less. */
+export function quotaTone(left: number, agent: CollectorAgent): StatusTone {
+  return left > 25 ? `elixir-${agent}` : left > 10 ? 'working' : 'needs';
 }
 
 /** "3d 4h", "2h 10m", "12m", "<1m". */
@@ -69,7 +70,7 @@ export function windowShort(mins: number | null): string {
 }
 
 /** What the collector shows; null level means no reading yet. Labels change at most once a minute. */
-export function collectorLook(q: AgentQuota | undefined, now: number): { tenths: number | null; tone: StatusTone; label: string } | null {
+export function collectorLook(q: AgentQuota | undefined, now: number, agent: CollectorAgent): { tenths: number | null; tone: StatusTone; label: string } | null {
   const w = q && primaryWindow(q, now);
   if (!w) return null;
   const left = leftNow(w, now);
@@ -77,5 +78,63 @@ export function collectorLook(q: AgentQuota | undefined, now: number): { tenths:
   const label = left > 0
     ? `${Math.round(left)}%${short ? ` · ${short}` : ''}`
     : w.resetsAt !== null ? `Empty · ${untilText(w.resetsAt - now)}` : 'Empty';
-  return { tenths: tankTenths(left), tone: quotaTone(left), label };
+  return { tenths: tankTenths(left), tone: quotaTone(left, agent), label };
+}
+
+/** Collectors the village shows: every rationed agent with a reading or installed. */
+export function shownCollectors(quotas: Partial<Record<AgentKind, AgentQuota>> | undefined, installed: readonly AgentKind[] | undefined): CollectorAgent[] {
+  return COLLECTOR_AGENTS.filter((a) => quotas?.[a] || installed?.includes(a));
+}
+
+/** How far out from the village (hall and compound walls) a collector may be dragged, in tiles. */
+export const COLLECTOR_REACH = 8;
+
+const footprint = (t: Tile): Rect => ({ x0: t.x, y0: t.y, w: STRUCT, h: STRUCT });
+
+/**
+ * Whether a collector may stand with its top-left on `at`: a tile clear of the hall and of every
+ * compound's walls (so gates and paths stay open), off the `others` collectors, and no further
+ * than COLLECTOR_REACH tiles out from the village.
+ */
+export function collectorFits(at: Tile, compounds: Compound[], others: readonly Tile[]): boolean {
+  const r = footprint(at);
+  if (gapBetween(r, HALL) < 1) return false;
+  if (compounds.some((c) => gapBetween(r, wallRect(c)) < 1)) return false;
+  if (others.some((o) => gapBetween(r, footprint(o)) < 0)) return false;
+  const v = villageRect(compounds);
+  const k = COLLECTOR_REACH;
+  return r.x0 >= v.x0 - k && r.y0 >= v.y0 - k && r.x0 + r.w <= v.x0 + v.w + k && r.y0 + r.h <= v.y0 + v.h + k;
+}
+
+/** The free tile nearest `from` (ring by ring, in a fixed order), or `from` when none is within reach. */
+function nearestFit(from: Tile, compounds: Compound[], others: readonly Tile[]): Tile {
+  for (let r = 1; r <= 24; r++)
+    for (let dy = -r; dy <= r; dy++)
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        const t = { x: from.x + dx, y: from.y + dy };
+        if (collectorFits(t, compounds, others)) return t;
+      }
+  return from;
+}
+
+/**
+ * Where each shown collector stands. Dragged tiles (`spots`) win; a collector without one, or whose
+ * tile a compound has since grown over, takes its default slot, or the nearest free tile to it.
+ */
+export function collectorTiles(
+  shown: readonly CollectorAgent[], spots: Partial<Record<AgentKind, Tile>> | undefined, compounds: Compound[],
+): Partial<Record<CollectorAgent, Tile>> {
+  const out: Partial<Record<CollectorAgent, Tile>> = {};
+  const placed = () => Object.values(out);
+  for (const a of shown) {
+    const t = spots?.[a];
+    if (t && collectorFits(t, compounds, placed())) out[a] = t;
+  }
+  for (const a of shown) {
+    if (out[a]) continue;
+    const slot = COLLECTOR_SLOT[a];
+    out[a] = collectorFits(slot, compounds, placed()) ? slot : nearestFit(slot, compounds, placed());
+  }
+  return out;
 }

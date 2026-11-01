@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Compound } from '../api/types';
 import type { Tile } from '../api/types';
 import { enclosure, seedOf } from './enclosure';
-import { gateInside, gateOutside, placeCompound, spotFor } from './layout';
+import { gateInside, gateOutside, placeCompound, roadPath, spotFor } from './layout';
 import { PLAZA, SPEED, interiorPath, onGround, routeHome, retarget, routeToSite, standTile, step, walkable, type Walker } from './walkers';
 
 const mk = (over: Partial<Walker> = {}): Walker =>
@@ -25,6 +25,19 @@ describe('walkers', () => {
     const hi = h.findIndex((p) => p.x === centre(gateInside(east)).x && p.y === centre(gateInside(east)).y);
     expect(hi).toBeGreaterThanOrEqual(0);
     expect(ho).toBeGreaterThan(hi);
+  });
+
+  it('route_follows_the_road_bends_both_ways', () => {
+    const ne: Compound = { x0: 12, y0: -18, w: 7, h: 7, house: { x: 12, y: -14 } };
+    const bends = roadPath(ne).slice(1, -1);
+    expect(bends).toHaveLength(2);
+    const to = routeToSite({ x: 4, y: 0 }, ne, { x: 15, y: -17 });
+    expect(to.slice(0, 3)).toEqual([...bends, centre(gateOutside(ne))]);
+    const home = routeHome({ x: 15, y: -14 }, ne);
+    const o = home.findIndex((p) => p.x === centre(gateOutside(ne)).x && p.y === centre(gateOutside(ne)).y);
+    expect(home.slice(o + 1, o + 3)).toEqual(bends.slice().reverse());
+    // straight roads add no bends
+    expect(routeToSite({ x: 4, y: 0 }, east, { x: 12, y: 1 })[0]).toEqual(centre(gateOutside(east)));
   });
 
   it('standTile_offset', () => {

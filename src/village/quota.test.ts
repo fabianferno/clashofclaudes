@@ -56,12 +56,15 @@ describe('quota', () => {
       expect(shownCollectors(undefined, undefined)).toEqual([]);
     });
 
-    it('a collector fits clear of the hall, compound walls and other collectors, near the village', () => {
+    it('a collector fits clear of the hall, compound walls, roads and other collectors, near the village', () => {
       expect(collectorFits({ x: 4, y: 4 }, [], [])).toBe(true);
       expect(collectorFits({ x: 2, y: 2 }, [], [])).toBe(false); // on the hall
       expect(collectorFits({ x: 3, y: 0 }, [], [])).toBe(false); // touching the hall
       expect(collectorFits({ x: 5, y: 0 }, [c], [])).toBe(false); // touching the west wall (x 7)
-      expect(collectorFits({ x: 4, y: 0 }, [c], [])).toBe(true);
+      expect(collectorFits({ x: 4, y: -3 }, [c], [])).toBe(true);
+      expect(collectorFits({ x: 4, y: 0 }, [c], [])).toBe(false); // on the road to the gate (row 0)
+      expect(collectorFits({ x: 4, y: -1 }, [c], [])).toBe(false); // half on it
+      expect(collectorFits({ x: 4, y: 1 }, [c], [])).toBe(true); // beside it
       expect(collectorFits({ x: 10, y: 0 }, [c], [])).toBe(false); // inside the compound
       expect(collectorFits({ x: 4, y: 4 }, [], [{ x: 5, y: 5 }])).toBe(false); // on another collector
       expect(collectorFits({ x: 4, y: 4 }, [], [{ x: 6, y: 4 }])).toBe(true); // side by side

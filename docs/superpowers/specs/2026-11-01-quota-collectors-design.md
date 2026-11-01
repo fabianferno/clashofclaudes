@@ -65,8 +65,8 @@ become real structures** in their compound instead of a number badge on the hous
   Antigravity blue; the label bar takes the same colour while plenty is left (Codex's is silver so
   the white text reads), and still turns orange at ≤ 25 % and red at ≤ 10 %.
 - Collectors are draggable (owner's request, 2026-11-01). A collector may stand anywhere clear of
-  the hall and compound walls by one tile, off the other collectors, and within 8 tiles of the
-  village. Dropped tiles persist in `state.json` (`collectorSpots`). If a compound later grows over
+  the hall and compound walls by one tile, off the roads and the other collectors, and within 8 tiles of the
+  village. Dropped tiles persist in `state.json` (`collectorSpots`). If a compound (or its road) later grows over
   a dropped collector, it returns to its default slot, or the nearest free tile to it.
 - Readings persist in `<data dir>/quota.json` so collectors show the last known level after a
   restart, with "as of" age in the panel.

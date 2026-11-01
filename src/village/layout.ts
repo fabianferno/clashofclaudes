@@ -139,6 +139,36 @@ export function gateOutside(c: Compound): Tile {
   return { x: g.x + d.x, y: g.y + d.y };
 }
 
+/**
+ * The dirt road from the hall to the gate along grid lines, never diagonal: square out of the gate,
+ * and when the gate is off the hall's face, a jog halfway along that lines up with the face, then
+ * square into the hall. Points in tile coords, hall end (under the plaza) first, gate centre last.
+ */
+export function roadPath(c: Compound): Tile[] {
+  const g = gateTile(c), side = gateSide(c);
+  const alongX = side === 'w' || side === 'e';
+  const pt = (a: number, b: number): Tile => (alongX ? { x: a, y: b } : { x: b, y: a });
+  const ga = (alongX ? g.x : g.y) + 0.5, gc = (alongX ? g.y : g.x) + 0.5;
+  const lo = alongX ? HALL.x0 : HALL.y0, len = alongX ? HALL.w : HALL.h;
+  const clo = alongX ? HALL.y0 : HALL.x0, clen = alongX ? HALL.h : HALL.w;
+  // the hall face the road enters: the near edge, toward the gate
+  const edge = side === 'w' || side === 'n' ? lo + len : lo;
+  const t = Math.min(Math.max(gc, clo + 0.5), clo + clen - 0.5);
+  if (t === gc) return [pt(edge, gc), pt(ga, gc)];
+  const mid = Math.floor((ga + edge) / 2) + 0.5;
+  return [pt(edge, t), pt(mid, t), pt(mid, gc), pt(ga, gc)];
+}
+
+/** The tiles under each leg of `roadPath(c)`: one tile wide, end to end. Trees and collectors keep off them. */
+export function roadRects(c: Compound): Rect[] {
+  const r = roadPath(c);
+  return r.slice(1).map((b, i) => {
+    const a = r[i];
+    const x0 = Math.floor(Math.min(a.x, b.x)), y0 = Math.floor(Math.min(a.y, b.y));
+    return { x0, y0, w: Math.floor(Math.max(a.x, b.x)) + 1 - x0, h: Math.floor(Math.max(a.y, b.y)) + 1 - y0 };
+  });
+}
+
 /** Inside the interior and not overlapping the house or any taken 2x2 structure. */
 export function canPlace(c: Compound, taken: Tile[], at: Tile, size: number): boolean {
   if (at.x < c.x0 || at.y < c.y0 || at.x + size > c.x0 + c.w || at.y + size > c.y0 + c.h) return false;

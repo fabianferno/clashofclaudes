@@ -3,9 +3,9 @@ import type { CloseOutcome } from '../api/types';
 import { autoLayout, useApp, sessionsByWorkspace, idleBuilders, stateLabel } from './store';
 import type { Builder, Compound, SessionInfo, SessionState, Tile, Workspace } from '../api/types';
 import { ipc } from '../api/ipc';
-import { GAP, assertNoCollisions, findSpot, placeCompound, spotFor } from '../village/layout';
+import { GAP, assertNoCollisions, findSpot, placeCompound, shiftCompound, spotFor } from '../village/layout';
 
-vi.mock('../api/ipc', () => ({ ipc: { setCompound: vi.fn(), setSessionSpot: vi.fn(), setCollectorSpot: vi.fn() } }));
+vi.mock('../api/ipc', () => ({ ipc: { setCompound: vi.fn(), setSessionSpot: vi.fn(), setCollectorSpot: vi.fn(), moveCompound: vi.fn() } }));
 
 const sess = (id: string, ws: string, builderId?: string, startedAt = 0, state: SessionState = { kind: 'working' }): SessionInfo => ({
   id, workspaceId: ws, kind: builderId ? { kind: 'agent', builderId } : { kind: 'terminal' },
@@ -256,6 +256,48 @@ describe('collector moves', () => {
     expect(await st.village.commitMove({ kind: 'collector', agent: 'codex' }, { x: -5, y: 3 })).toBe(false); // Claude's tank
     expect(await st.village.commitMove({ kind: 'collector', agent: 'antigravity' }, { x: -6, y: -6 })).toBe(false); // not installed
     expect(ipc.setCollectorSpot).not.toHaveBeenCalled();
+  });
+});
+
+describe('compound moves', () => {
+  // walls (5..14, 5..14); another compound's walls start at x 25
+  const c: Compound = { x0: 6, y0: 6, w: 8, h: 8, house: { x: 6, y: 6 } };
+  const other: Compound = { x0: 26, y0: 6, w: 8, h: 8, house: { x: 26, y: 6 } };
+  const ws = (id: string, compound: Compound) => ({ id, compound }) as unknown as Workspace;
+  beforeEach(() => {
+    vi.mocked(ipc.moveCompound).mockReset();
+    useApp.setState({ workspaces: [ws('w1', c), ws('w2', other)], sessions: {}, quotas: {}, collectorSpots: {}, agents: [] });
+    useApp.getState().upsertSession({ ...sess('s1', 'w1', 'b1'), spot: { x: 10, y: 10 } });
+  });
+
+  it('a_compound_moves_with_its_structures_in_one_update', async () => {
+    vi.mocked(ipc.moveCompound).mockImplementation(async (id, dx, dy) => ({
+      workspace: ws(id, shiftCompound(c, dx, dy)),
+      sessions: [{ ...sess('s1', 'w1', 'b1'), spot: { x: 10 + dx, y: 10 + dy }, rev: 2 }],
+    }));
+    const seen: string[] = [];
+    const unsub = useApp.subscribe((st) => seen.push(`${st.workspaces[0].compound?.x0},${st.sessions.s1.spot?.x}`));
+    expect(await useApp.getState().village.commitMove({ kind: 'compound', id: 'w1' }, { x: 6, y: 20 })).toBe(true);
+    unsub();
+    expect(ipc.moveCompound).toHaveBeenCalledWith('w1', 0, 14);
+    expect(useApp.getState().workspaces[0].compound).toEqual({ ...c, y0: 20, house: { x: 6, y: 20 } });
+    expect(useApp.getState().sessions.s1.spot).toEqual({ x: 10, y: 24 });
+    expect(seen).toEqual(['6,10']); // compound and spots never land apart
+  });
+
+  it('a_compound_keeps_its_distance_from_the_hall_other_compounds_and_collectors', async () => {
+    const st = useApp.getState();
+    const t = { kind: 'compound', id: 'w1' } as const;
+    expect(await st.village.commitMove(t, { x: 2, y: 2 })).toBe(false); // over the hall
+    expect(await st.village.commitMove(t, { x: 20, y: 6 })).toBe(false); // walls 3 tiles from w2's
+    useApp.setState({
+      agents: [{ kind: 'codex', label: 'Codex', installed: true, version: null, models: [], efforts: [], canApprove: false }],
+      collectorSpots: { codex: { x: -10, y: 6 } },
+    });
+    expect(await st.village.commitMove(t, { x: -19, y: 6 })).toBe(false); // walls (x -20..-10) touch Codex's tank
+    expect(ipc.moveCompound).not.toHaveBeenCalled();
+    vi.mocked(ipc.moveCompound).mockResolvedValue({ workspace: ws('w1', shiftCompound(c, -27, 0)), sessions: [] });
+    expect(await st.village.commitMove(t, { x: -21, y: 6 })).toBe(true); // a tile clear of it
   });
 });
 

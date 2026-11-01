@@ -463,6 +463,37 @@ pub fn set_compound(workspace_id: String, compound: Compound, app: AppHandle, st
     Ok(ws)
 }
 
+/// Moves workspace `id`'s whole compound by (dx, dy): walls, house and every structure inside.
+pub fn apply_compound_shift(d: &mut AppData, id: &str, dx: i32, dy: i32) -> Result<Workspace, String> {
+    let w = d.workspaces.iter_mut().find(|w| w.id == id).ok_or("unknown workspace")?;
+    let c = w.compound.as_mut().ok_or("workspace has no compound yet")?;
+    c.x0 += dx;
+    c.y0 += dy;
+    c.house = Tile { x: c.house.x + dx, y: c.house.y + dy };
+    Ok(w.clone())
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MovedCompound {
+    workspace: Workspace,
+    sessions: Vec<SessionInfo>,
+}
+
+/// The owner dragged a workspace: its compound and the spots of its sessions move together.
+#[tauri::command]
+pub fn move_compound(workspace_id: String, dx: i32, dy: i32, app: AppHandle, state: State<'_, AppState>) -> Result<MovedCompound, String> {
+    let ws = {
+        let mut d = state.data();
+        let ws = apply_compound_shift(&mut d, &workspace_id, dx, dy)?;
+        state.save(&d)?;
+        ws
+    };
+    let sessions = state.manager.shift_spots(&workspace_id, dx, dy);
+    let _ = app.emit("workspace-updated", ws.clone());
+    Ok(MovedCompound { workspace: ws, sessions })
+}
+
 /// Moves `agent`'s elixir collector (Claude Code, Codex and Antigravity have one); returns every moved collector.
 pub fn apply_collector_spot(d: &mut AppData, agent: AgentKind, spot: Tile) -> Result<BTreeMap<AgentKind, Tile>, String> {
     if !matches!(agent, AgentKind::Claude | AgentKind::Codex | AgentKind::Antigravity) {
@@ -830,6 +861,16 @@ mod tests {
         assert!(!o.stuck && o.earned_xp);
         let o = apply_close(&mut d, &closed(false, false, true), 1);
         assert!(!o.stuck, "terminals stay quiet");
+    }
+
+    #[test]
+    fn compound_shift_moves_walls_and_house_together() {
+        let mut d = village();
+        assert!(apply_compound_shift(&mut d, "w1", 1, 1).is_err(), "no compound yet");
+        apply_compound(&mut d, "w1", Compound { x0: 2, y0: 3, w: 6, h: 5, house: Tile { x: 4, y: 5 } }).unwrap();
+        let ws = apply_compound_shift(&mut d, "w1", -10, 4).unwrap();
+        assert_eq!(ws.compound, Some(Compound { x0: -8, y0: 7, w: 6, h: 5, house: Tile { x: -6, y: 9 } }));
+        assert!(apply_compound_shift(&mut d, "nope", 1, 1).is_err());
     }
 
     #[test]

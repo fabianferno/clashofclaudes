@@ -27,12 +27,21 @@ export function leftNow(w: QuotaWindow, now: number): number {
   return Math.max(0, Math.min(100, w.leftPct));
 }
 
-/** The tank's window: the shortest one; among equal lengths, the one with the least left. */
+/** Every tank follows the same limit where an agent reports it, so the tanks compare: the weekly one. */
+export const TANK_WINDOW_MINS = 10_080;
+
+/** How far a window's length is from the tank's (as a ratio, so 5 hours and 30 days weigh fairly); unknown lengths last. */
+const tankDistance = (w: QuotaWindow) => (w.windowMins ? Math.abs(Math.log(w.windowMins / TANK_WINDOW_MINS)) : Infinity);
+
+/**
+ * The tank's window: the weekly one, else the one closest to a week in length; among equals
+ * (Antigravity reports a weekly limit per model group), the one with the least left.
+ */
 export function primaryWindow(q: AgentQuota, now: number): QuotaWindow | null {
   let best: QuotaWindow | null = null;
   for (const w of q.windows) {
-    const len = w.windowMins ?? Infinity, bestLen = best?.windowMins ?? Infinity;
-    if (!best || len < bestLen || (len === bestLen && leftNow(w, now) < leftNow(best, now))) best = w;
+    const d = tankDistance(w), bestD = best ? tankDistance(best) : Infinity;
+    if (!best || d < bestD || (d === bestD && leftNow(w, now) < leftNow(best, now))) best = w;
   }
   return best;
 }

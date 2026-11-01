@@ -388,7 +388,6 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
   const pendingClose = new Map<string, { wsId: string; from: { x: number; y: number }; until: number }>();
   let prevSnap: Snap | null = null;
   const OUTCOME_WAIT = 2; // seconds to wait for the close outcome after a structure vanishes
-  const centre = (t: Tile, size: number) => iso(t.x + size / 2, t.y + size / 2);
   const easeOutBack = (k: number) => { const c = 1.70158; return 1 + (c + 1) * Math.pow(k - 1, 3) + c * Math.pow(k - 1, 2); };
   const smooth = (k: number) => k * k * (3 - 2 * k);
   const relocOffset = (ws: string | undefined) => {
@@ -439,7 +438,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
         if (rec.ws && !relocs.has(rec.ws)) rec.sprite.position.set(rec.base.x, rec.base.y);
       }
       applyRelocs();
-      if (!relocs.size) syncGround(lastState.workspaces.flatMap((w) => (w.compound ? [w.compound] : []))); // the one re-bake
+      if (!relocs.size) syncGround(lastState.workspaces.flatMap((w) => (w.compound ? [w.compound] : [])), lastState); // the one re-bake
     }
     for (const [id, p] of pendingClose) {
       if (fxClock > p.until) { pendingClose.delete(id); opts.onClosedConsumed?.(id); }
@@ -521,16 +520,19 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
   };
   const onContextRestored = () => {
     groundKey = ''; // the released canvas cannot be re-uploaded: bake again
-    syncGround(lastState.workspaces.flatMap((w) => (w.compound ? [w.compound] : [])));
+    syncGround(lastState.workspaces.flatMap((w) => (w.compound ? [w.compound] : [])), lastState);
   };
   app.canvas.addEventListener('webglcontextrestored', onContextRestored);
-  const syncGround = (compounds: Compound[]) => {
+  const syncGround = (compounds: Compound[], state: VillageInput) => {
     const b = groundBounds(compounds);
-    const key = JSON.stringify([b, compounds.map((c) => [c.x0, c.y0, c.w, c.h, c.house.x, c.house.y])]);
+    // trees are baked into the ground, so each collector clears its own patch of forest
+    const clearings = Object.values(collectorTiles(shownCollectors(state.quotas, state.installed), state.collectorSpots, compounds))
+      .map((t): Rect => ({ x0: t.x, y0: t.y, w: STRUCT, h: STRUCT }));
+    const key = JSON.stringify([b, compounds.map((c) => [c.x0, c.y0, c.w, c.h, c.house.x, c.house.y]), clearings]);
     if (key === groundKey) return;
     groundKey = key;
     const old = ground.texture;
-    const canvas = drawGround(b, compounds, GROUND_SEED); // half density (see GROUND_SCALE), shown at 2x
+    const canvas = drawGround(b, compounds, GROUND_SEED, clearings); // half density (see GROUND_SCALE), shown at 2x
     const tex = Texture.from(canvas);
     ground.texture = tex;
     if (old !== Texture.EMPTY) old.destroy(true);
@@ -707,10 +709,11 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     const ev = lifecycleEvents(prevSnap, snap);
     prevSnap = snap;
     for (const r of ev.relocated) {
+      if (pending?.m.group === r.wsId) continue; // the owner dropped it there: no travel from the old site
       const d = iso(r.dx, r.dy), cur = relocOffset(r.wsId);
       relocs.set(r.wsId, { ox: -d.x + (cur?.x ?? 0), oy: -d.y + (cur?.y ?? 0), t: 0 });
     }
-    if (!relocs.size) syncGround(compounds); // while a compound travels the old ground stays; it is re-baked once at the end
+    if (!relocs.size) syncGround(compounds, state); // while a compound travels the old ground stays; it is re-baked once at the end
     syncBuilders(state);
     entities = buildEntities({ ...state, now: Date.now() });
     statusSig = statusSignature(entities);
@@ -816,25 +819,42 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
   });
 
 
-  // ---- move affordance: selected structure/house/collector shows a glow, arrows and a chip; dragging shows the grid
-  /** `compound`: where the grid is drawn while dragging; a collector (null) gets a patch of grid around it. */
-  interface Movable { target: MoveTarget; entityId: string; size: number; tile: Tile; compound: Compound | null; height: number }
-  const movableOf = (s: Selection | null): Movable | null => {
+  // ---- move affordance: selected structure/house/collector shows a glow, arrows and a chip; dragging shows the grid.
+  // A selected workspace drags as a whole compound (walls, house and structures); Option-drag moves only its house.
+  /**
+   * `entityId` is the drag handle. The footprint is `w` x `h` tiles from `tile` less `inset` (a compound's
+   * tile is its interior origin, its footprint the walls). `compound`: where the grid is drawn while
+   * dragging; null gets a patch of grid around the footprint. `group`: a workspace whose sprites all follow.
+   */
+  interface Movable {
+    target: MoveTarget; entityId: string; w: number; h: number; inset: number; tile: Tile; compound: Compound | null;
+    height: number; group?: string; chip: string;
+  }
+  const movableOf = (s: Selection | null, houseOnly = false): Movable | null => {
     if (s?.kind === 'workspace') {
       const w = lastState.workspaces.find((x) => x.id === s.id);
-      if (!w?.compound) return null;
-      return { target: { kind: 'workspace', id: w.id }, entityId: `house:${w.id}`, size: HOUSE, tile: w.compound.house, compound: w.compound, height: 130 };
+      const c = w?.compound;
+      if (!c) return null;
+      if (houseOnly)
+        return { target: { kind: 'workspace', id: s.id }, entityId: `house:${s.id}`, w: HOUSE, h: HOUSE, inset: 0, tile: c.house, compound: c, height: 130, chip: '' };
+      return {
+        target: { kind: 'compound', id: s.id }, entityId: `house:${s.id}`, w: c.w + 2, h: c.h + 2, inset: 1, tile: { x: c.x0, y: c.y0 },
+        compound: null, height: 130, group: s.id, chip: 'Drag to move \u00b7 \u2325 house only',
+      };
     }
     if (s?.kind === 'session') {
       const x = lastState.sessions.find((q) => q.id === s.id);
       const c = x && lastState.workspaces.find((w) => w.id === x.workspaceId)?.compound;
       if (!x || !c || !x.spot) return null;
-      return { target: { kind: 'session', id: x.id }, entityId: `struct:${x.id}`, size: STRUCT, tile: x.spot, compound: c, height: 100 };
+      return { target: { kind: 'session', id: x.id }, entityId: `struct:${x.id}`, w: STRUCT, h: STRUCT, inset: 0, tile: x.spot, compound: c, height: 100, chip: '' };
     }
     if (s?.kind === 'quota') {
       const e = entities.find((q) => q.id === `collector:${s.agent}`);
       if (!e) return null;
-      return { target: { kind: 'collector', agent: s.agent }, entityId: e.id, size: STRUCT, tile: { x: e.x - STRUCT, y: e.y - STRUCT }, compound: null, height: 110 };
+      return {
+        target: { kind: 'collector', agent: s.agent }, entityId: e.id, w: STRUCT, h: STRUCT, inset: 0, tile: { x: e.x - STRUCT, y: e.y - STRUCT },
+        compound: null, height: 110, chip: '',
+      };
     }
     return null;
   };
@@ -852,21 +872,27 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
   });
   const arrowBase = ARROW_DIRS.map(() => ({ x: 0, y: 0, dx: 0, dy: 0 }));
   const chip = new Container();
-  {
-    const label = new Text({
-      text: 'Drag to move',
-      style: { fontFamily: 'Lilita One', fontSize: 16, fill: '#ffffff', stroke: { color: '#1d130b', width: 4 } },
-      resolution: 2,
-    });
-    label.anchor.set(0.5);
-    const bg = new Graphics().roundRect(-label.width / 2 - 10, -label.height / 2 - 3, label.width + 20, label.height + 6, 10)
+  const chipLabel = new Text({
+    text: 'Drag to move',
+    style: { fontFamily: 'Lilita One', fontSize: 16, fill: '#ffffff', stroke: { color: '#1d130b', width: 4 } },
+    resolution: 2,
+  });
+  chipLabel.anchor.set(0.5);
+  const chipBg = new Graphics();
+  chip.addChild(chipBg, chipLabel);
+  chip.visible = false;
+  overlay.addChild(chip);
+  const setChip = (text: string) => {
+    if (chipLabel.text === text && chipBg.width) return;
+    chipLabel.text = text;
+    chipBg.clear().roundRect(-chipLabel.width / 2 - 10, -chipLabel.height / 2 - 3, chipLabel.width + 20, chipLabel.height + 6, 10)
       .fill({ color: 0x2b1d12, alpha: 0.85 }).stroke({ width: 2, color: 0xffd84a });
-    chip.addChild(bg, label);
-    chip.visible = false;
-    overlay.addChild(chip);
-  }
-  const footprint = (t: Tile, size: number) => {
-    const a = iso(t.x, t.y), b = iso(t.x + size, t.y), c = iso(t.x + size, t.y + size), d = iso(t.x, t.y + size);
+  };
+  /** The footprint's top-left tile when the movable's tile is `t`. */
+  const cornerOf = (m: Movable, t: Tile): Tile => ({ x: t.x - m.inset, y: t.y - m.inset });
+  const footprint = (m: Movable, t: Tile) => {
+    const o = cornerOf(m, t);
+    const a = iso(o.x, o.y), b = iso(o.x + m.w, o.y), c = iso(o.x + m.w, o.y + m.h), d = iso(o.x, o.y + m.h);
     return [a.x, a.y, b.x, b.y, c.x, c.y, d.x, d.y];
   };
   let overlayKey = '';
@@ -883,25 +909,28 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     for (const a of arrows) a.visible = false;
     if (!m) return;
     if (dragging && od) {
-      const c = m.compound ?? { x0: od.target.x - 6, y0: od.target.y - 6, w: 14, h: 14 };
+      const o = cornerOf(m, od.target);
+      const c = m.compound ?? { x0: o.x - 6, y0: o.y - 6, w: m.w + 12, h: m.h + 12 };
       for (let i = 0; i <= c.w; i++) { const a = iso(c.x0 + i, c.y0), b = iso(c.x0 + i, c.y0 + c.h); fx.moveTo(a.x, a.y).lineTo(b.x, b.y); }
       for (let j = 0; j <= c.h; j++) { const a = iso(c.x0, c.y0 + j), b = iso(c.x0 + c.w, c.y0 + j); fx.moveTo(a.x, a.y).lineTo(b.x, b.y); }
       fx.stroke({ width: 1, color: 0xffffff, alpha: 0.3 });
-      fxTop.poly(footprint(od.target, m.size)).fill({ color: od.valid ? 0x5cf05c : 0xff3b2f, alpha: 0.4 })
+      fxTop.poly(footprint(m, od.target)).fill({ color: od.valid ? 0x5cf05c : 0xff3b2f, alpha: 0.4 })
         .stroke({ width: 4, color: od.valid ? 0x1f8a1f : 0xb02218 });
       return;
     }
-    fx.poly(footprint(m.tile, m.size)).fill({ color: 0xffd84a, alpha: 0.35 }).stroke({ width: 3, color: 0xffd84a, alpha: 0.9 });
-    const cx = m.tile.x + m.size / 2, cy = m.tile.y + m.size / 2;
+    fx.poly(footprint(m, m.tile)).fill({ color: 0xffd84a, alpha: 0.35 }).stroke({ width: 3, color: 0xffd84a, alpha: 0.9 });
+    const o = cornerOf(m, m.tile), cx = o.x + m.w / 2, cy = o.y + m.h / 2;
     ARROW_DIRS.forEach((d, i) => {
-      const r = m.size / 2 + 0.6;
-      const p = iso(cx + d.x * r, cy + d.y * r), v = iso(d.x, d.y), n = Math.hypot(v.x, v.y);
+      const p = iso(cx + d.x * (m.w / 2 + 0.6), cy + d.y * (m.h / 2 + 0.6)), v = iso(d.x, d.y), n = Math.hypot(v.x, v.y);
       arrowBase[i] = { x: p.x, y: p.y, dx: v.x / n, dy: v.y / n };
       arrows[i].rotation = Math.atan2(v.y, v.x);
       arrows[i].position.set(p.x, p.y);
       arrows[i].visible = true;
     });
-    const top = iso(cx, cy);
+    // a compound's chip floats over its house, the drag handle
+    const handle = m.group ? lastState.workspaces.find((w) => w.id === m.group)?.compound?.house : null;
+    const top = handle ? iso(handle.x + HOUSE / 2, handle.y + HOUSE / 2) : iso(cx, cy);
+    setChip(m.chip || 'Drag to move');
     chip.position.set(top.x, top.y - m.height - 22);
     chip.visible = true;
   };
@@ -910,19 +939,33 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     const k = Math.sin(time * 4) * 3;
     arrows.forEach((a, i) => a.position.set(arrowBase[i].x + arrowBase[i].dx * k, arrowBase[i].y + arrowBase[i].dy * k));
   });
-  /** While dragging, the object's sprite follows the snapped target tile. */
+  /** While dragging, the object's sprite (or a compound's every sprite) follows the snapped target tile. */
   const applyDragSprite = () => {
     const g = od?.moved ? { m: od.m, t: od.target } : pending ? { m: pending.m, t: pending.tile } : null;
     if (!g) return;
+    if (g.m.group) {
+      // relative to where the store has the compound now, so this holds once the move lands too
+      const c = lastState.workspaces.find((w) => w.id === g.m.group)?.compound;
+      if (!c) return;
+      const d = iso(g.t.x - c.x0, g.t.y - c.y0);
+      for (const rec of sprites.values()) {
+        if (rec.ws !== g.m.group) continue;
+        rec.sprite.position.set(rec.base.x + d.x, rec.base.y + d.y);
+        rec.sprite.zIndex = rec.entity.depth + 10000;
+        rec.sprite.alpha = 0.85;
+      }
+      return;
+    }
     const rec = sprites.get(g.m.entityId);
     if (!rec) return;
-    const p = iso(g.t.x + g.m.size, g.t.y + g.m.size);
+    const size = g.m.w;
+    const p = iso(g.t.x + size, g.t.y + size);
     rec.sprite.position.set(p.x, p.y);
     rec.sprite.zIndex = 10000;
     rec.sprite.alpha = 0.85;
     const bar = sprites.get(g.m.entityId.startsWith('struct:') ? g.m.entityId.replace(/^struct:/, 'status:') : `status:${g.m.entityId}`);
     if (bar && bar !== rec) {
-      const q = iso(g.t.x + g.m.size / 2, g.t.y + g.m.size / 2);
+      const q = iso(g.t.x + size / 2, g.t.y + size / 2);
       bar.sprite.position.set(q.x, q.y - STATUS_LIFT);
     }
   };
@@ -956,7 +999,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     const p = localPoint(ev);
     pointerId = ev.pointerId;
     downAt = p;
-    const m = movableOf(selected);
+    const m = movableOf(selected, ev.altKey);
     if (m) {
       // a press on the selected object drags the object; anywhere else pans the camera
       const w = screenToWorld(cam, p.x, p.y);
@@ -1007,7 +1050,8 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       });
     } else {
       if (ev && !d.valid) {
-        particles.dust(centre(d.target, d.m.size), 10, false); // snap back immediately, with a puff where it was refused
+        const o = cornerOf(d.m, d.target);
+        particles.dust(iso(o.x + d.m.w / 2, o.y + d.m.h / 2), 10, false); // snap back immediately, with a puff where it was refused
         opts.onBlockedDrop?.(d.target);
       }
       endDragVisual();

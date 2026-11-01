@@ -33,7 +33,8 @@ test('every window shows what is left and when it refills, grouped, shortest fir
   const five = screen.getByTestId('quota-g:5h');
   expect(five.textContent).toContain('40% left');
   expect(five.textContent).toContain('Refills in 2h 10m');
-  expect(five.textContent).toContain('tank'); // the 5-hour window with the least left (the reset one counts full)
+  expect(five.textContent).not.toContain('tank');
+  expect(screen.getByTestId('quota-g:weekly').textContent).toContain('tank'); // every tank follows the weekly window
   expect(screen.getByTestId('quota-c:5h').textContent).toContain('100% left');
   expect(screen.getByTestId('quota-c:5h').textContent).toContain('Refilled');
   expect(screen.getByTestId('quota-asof').textContent).toBe('Read 4m ago from agy /usage.');

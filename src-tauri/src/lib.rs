@@ -293,6 +293,7 @@ pub fn run() {
             commands::close_session,
             commands::set_compound,
             commands::set_collector_spot,
+            commands::move_compound,
             commands::set_session_spot,
             commands::get_quotas,
             commands::refresh_quotas,

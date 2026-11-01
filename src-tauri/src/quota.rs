@@ -250,10 +250,14 @@ pub fn latest_codex_rollout(root: &Path) -> Option<PathBuf> {
     best.map(|(_, p)| p)
 }
 
-/// The last rate-limit reading in a Codex rollout file.
-pub fn read_codex_rollout(path: &Path) -> Option<Vec<QuotaWindow>> {
+/// The last rate-limit reading in a Codex rollout file, with when Codex wrote it (epoch ms).
+pub fn read_codex_rollout(path: &Path) -> Option<(Vec<QuotaWindow>, Option<i64>)> {
     let text = std::fs::read_to_string(path).ok()?;
-    text.lines().rev().find_map(parse_codex_line)
+    text.lines().rev().find_map(|l| {
+        let w = parse_codex_line(l)?;
+        let at = serde_json::from_str::<Value>(l).ok().and_then(|v| v.get("timestamp").and_then(time_ms));
+        Some((w, at))
+    })
 }
 
 /// Runs `agy -p /usage` in `cwd` and parses it; None on a missing binary, error or timeout.
@@ -314,28 +318,48 @@ impl QuotaStore {
         v
     }
 
-    /// Stores a reading; emits and persists only when the windows changed (the status line
-    /// posts several times a second while Claude streams).
-    pub fn set(&self, agent: AgentKind, windows: Vec<QuotaWindow>, source: &str) {
-        let q = AgentQuota { agent, windows, updated_at: now_ms(), source: source.into() };
-        let snapshot = {
-            let mut m = self.map.lock().unwrap_or_else(|e| e.into_inner());
-            let k = key(&q.agent);
-            let same = m.get(&k).is_some_and(|old| old.windows == q.windows && q.updated_at - old.updated_at < 60_000);
-            if same {
-                return;
+    /// Stores a reading taken at `at` (epoch ms; None: now). Emits and persists only when it
+    /// changed (the status line posts several times a second while Claude streams).
+    pub fn set(&self, agent: AgentKind, windows: Vec<QuotaWindow>, source: &str, at: Option<i64>) {
+        self.store(agent, windows, source, at, false);
+    }
+
+    /// Like `set`, but keeps earlier windows missing from this reading once their reset time has
+    /// passed: Claude drops a window from its status JSON when it resets, and a reset window is a
+    /// full one (the tank must not switch to the weekly window at every 5-hour reset).
+    pub fn set_keeping_reset(&self, agent: AgentKind, windows: Vec<QuotaWindow>, source: &str) {
+        self.store(agent, windows, source, None, true);
+    }
+
+    fn store(&self, agent: AgentKind, mut windows: Vec<QuotaWindow>, source: &str, at: Option<i64>, keep_reset: bool) {
+        let now = now_ms();
+        let mut m = self.map.lock().unwrap_or_else(|e| e.into_inner());
+        let k = key(&agent);
+        if keep_reset && let Some(old) = m.get(&k) {
+            for w in &old.windows {
+                if w.resets_at.is_some_and(|r| r <= now) && !windows.iter().any(|n| n.id == w.id) {
+                    windows.push(w.clone());
+                }
             }
-            m.insert(k, q.clone());
-            let mut all: Vec<AgentQuota> = m.values().cloned().collect();
-            all.sort_by_key(|q| key(&q.agent));
-            all
-        };
-        if let Ok(bytes) = serde_json::to_vec_pretty(&snapshot) {
+        }
+        let q = AgentQuota { agent, windows, updated_at: at.unwrap_or(now), source: source.into() };
+        let same = m.get(&k).is_some_and(|old| {
+            old.windows == q.windows && if at.is_some() { old.updated_at == q.updated_at } else { q.updated_at - old.updated_at < 60_000 }
+        });
+        if same {
+            return;
+        }
+        m.insert(k, q.clone());
+        let mut all: Vec<AgentQuota> = m.values().cloned().collect();
+        all.sort_by_key(|q| key(&q.agent));
+        // Written under the lock: the hook server and the poller both store readings.
+        if let Ok(bytes) = serde_json::to_vec_pretty(&all) {
             let tmp = self.path.with_extension("json.tmp");
             if std::fs::write(&tmp, bytes).is_ok() {
                 let _ = std::fs::rename(&tmp, &self.path);
             }
         }
+        drop(m);
         (self.emit)(&q);
     }
 }
@@ -380,9 +404,9 @@ impl Poller {
             let mark = mtime.map(|t| (path.clone(), t));
             let changed = { self.last.lock().unwrap_or_else(|e| e.into_inner()).codex_file != mark };
             if (changed || force)
-                && let Some(w) = read_codex_rollout(&path)
+                && let Some((w, at)) = read_codex_rollout(&path)
             {
-                self.store.set(AgentKind::Codex, w, "Codex session log");
+                self.store.set(AgentKind::Codex, w, "Codex session log", at);
                 self.last.lock().unwrap_or_else(|e| e.into_inner()).codex_file = mark;
             }
         }
@@ -398,7 +422,7 @@ impl Poller {
             && (self.agy_installed)()
             && let Some(w) = read_agy_usage(&self.cwd, AGY_TIMEOUT)
         {
-            self.store.set(AgentKind::Antigravity, w, "agy /usage");
+            self.store.set(AgentKind::Antigravity, w, "agy /usage", None);
         }
     }
 
@@ -494,7 +518,7 @@ Gemini 4 Argon\tGemini 4 Argon Weekly Limit\t100%\t2026-11-07T16:00:11Z\n";
         std::fs::write(&new, format!("{}\n{}\n{{\"payload\":{{}}}}\n", l(10.0), l(30.0))).unwrap();
         std::fs::write(day.join("notes.txt"), "x").unwrap();
         assert_eq!(latest_codex_rollout(dir.path()), Some(new.clone()));
-        assert_eq!(read_codex_rollout(&new).unwrap()[0].left_pct, 70.0);
+        assert_eq!(read_codex_rollout(&new).unwrap().0[0].left_pct, 70.0);
     }
 
     #[test]
@@ -523,6 +547,38 @@ Gemini 4 Argon\tGemini 4 Argon Weekly Limit\t100%\t2026-11-07T16:00:11Z\n";
     }
 
     #[test]
+    fn codex_readings_keep_the_time_codex_wrote_them() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = dir.path().join("rollout-a.jsonl");
+        std::fs::write(&f, r#"{"timestamp":"2026-08-17T10:52:51.096Z","payload":{"rate_limits":{"primary":{"used_percent":5,"window_minutes":300}}}}"#).unwrap();
+        let (w, at) = read_codex_rollout(&f).unwrap();
+        assert_eq!(at, parse_iso_ms("2026-08-17T10:52:51.096Z"));
+        let hits = Arc::new(Mutex::new(0));
+        let h = hits.clone();
+        let store = QuotaStore::new(dir.path().join("quota.json"), Arc::new(move |_| *h.lock().unwrap() += 1));
+        store.set(AgentKind::Codex, w.clone(), "codex", at);
+        store.set(AgentKind::Codex, w, "codex", at); // re-read after a restart: same reading
+        assert_eq!(*hits.lock().unwrap(), 1);
+        assert_eq!(store.all()[0].updated_at, at.unwrap());
+    }
+
+    #[test]
+    fn claude_keeps_a_reset_window_it_stopped_reporting() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = QuotaStore::new(dir.path().join("quota.json"), Arc::new(|_| {}));
+        let w = |id: &str, left: f64, resets_at: i64| QuotaWindow { id: id.into(), label: id.into(), group: None, left_pct: left, resets_at: Some(resets_at), window_mins: None };
+        let past = now_ms() - 1000;
+        let later = now_ms() + 3_600_000;
+        store.set_keeping_reset(AgentKind::Claude, vec![w("five_hour", 3.0, past), w("seven_day", 80.0, later)], "claude");
+        store.set_keeping_reset(AgentKind::Claude, vec![w("seven_day", 79.0, later)], "claude");
+        let ids: Vec<String> = store.all()[0].windows.iter().map(|w| w.id.clone()).collect();
+        assert_eq!(ids, ["seven_day", "five_hour"], "the reset 5-hour window stays (it reads as full)");
+        // a window that has not reset yet and goes missing is dropped
+        store.set_keeping_reset(AgentKind::Claude, vec![w("five_hour", 50.0, later)], "claude");
+        assert_eq!(store.all()[0].windows.len(), 1);
+    }
+
+    #[test]
     fn store_persists_and_skips_repeats() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("quota.json");
@@ -530,8 +586,8 @@ Gemini 4 Argon\tGemini 4 Argon Weekly Limit\t100%\t2026-11-07T16:00:11Z\n";
         let h = hits.clone();
         let store = QuotaStore::new(path.clone(), Arc::new(move |_| *h.lock().unwrap() += 1));
         let w = parse_agy_usage(AGY).unwrap();
-        store.set(AgentKind::Antigravity, w.clone(), "agy");
-        store.set(AgentKind::Antigravity, w.clone(), "agy");
+        store.set(AgentKind::Antigravity, w.clone(), "agy", None);
+        store.set(AgentKind::Antigravity, w.clone(), "agy", None);
         assert_eq!(*hits.lock().unwrap(), 1, "an unchanged reading is not re-emitted");
         let again = QuotaStore::new(path, Arc::new(|_| {}));
         assert_eq!(again.all().len(), 1);

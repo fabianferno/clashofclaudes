@@ -143,7 +143,7 @@ pub fn run() {
             let hooks = tauri::async_runtime::block_on(hooks::HookServer::start(Arc::new(move |id, body| {
                 // Claude's status line (app-launched sessions) carries its rate limits.
                 if let Some(w) = quota::parse_claude_status(&body) {
-                    sink_quotas.set(model::AgentKind::Claude, w, "Claude Code status line");
+                    sink_quotas.set_keeping_reset(model::AgentKind::Claude, w, "Claude Code status line");
                 }
                 if let Some(m) = sink_cell.get().and_then(Weak::upgrade) {
                     m.on_hook(&id, body);

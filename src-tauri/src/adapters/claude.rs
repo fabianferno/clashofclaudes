@@ -33,14 +33,21 @@ pub(super) fn hook_command(hook_url: &str) -> String {
 }
 
 /// Status-line command: copies Claude's status JSON (it carries `rate_limits`, read by
-/// `quota`) to the app in the background, then pipes the same JSON to the user's own status
-/// line so it still shows. Without one, prints nothing (no status line, as before).
+/// `quota`) to the app in the background, then shows the user's own status line, fed the same
+/// JSON. The user's command replaces this shell (`exec`, under bash when Claude runs us with
+/// bash), so when Claude cancels a slow update the signal reaches it, as it would without us.
+/// Without one, shows the model name: any status line hides Claude's footer hints, and a blank
+/// row would show nothing in their place.
 pub(super) fn status_command(hook_url: &str, user_cmd: Option<&str>) -> String {
     let post = format!("input=$(cat); printf '%s' \"$input\" | {} >/dev/null 2>&1 &", hook_command(hook_url));
     match user_cmd.map(str::trim).filter(|c| !c.is_empty()) {
-        // The newline before `}` ends a trailing comment or a command without `;`.
-        Some(c) => format!("{post}\nprintf '%s' \"$input\" | {{\n{c}\n}}"),
-        None => post,
+        Some(c) => {
+            let quoted = c.replace('\'', "'\\''");
+            format!("{post}\nexec \"${{BASH:-/bin/sh}}\" -c '{quoted}' <<COC_STATUS_JSON\n$input\nCOC_STATUS_JSON")
+        }
+        None => format!(
+            "{post}\nprintf '%s' \"$input\" | sed -n 's/.*\"display_name\" *: *\"\\([^\"]*\\)\".*/\\1/p' | head -n 1"
+        ),
     }
 }
 
@@ -274,7 +281,7 @@ mod tests {
         let v = settings_json("http://127.0.0.1:1/hook/a/b", Some(&user));
         assert_eq!(v["statusLine"]["padding"], 2);
         let cmd = v["statusLine"]["command"].as_str().unwrap();
-        assert!(cmd.contains("'http://127.0.0.1:1/hook/a/b'") && cmd.contains("~/bin/line.sh # mine\n}"), "{cmd}");
+        assert!(cmd.contains("'http://127.0.0.1:1/hook/a/b'") && cmd.contains("-c '~/bin/line.sh # mine' <<"), "{cmd}");
         let none = settings_json("http://x", None);
         assert_eq!(none["statusLine"]["command"], status_command("http://x", None));
         // a non-command status line cannot be chained: ours replaces it
@@ -290,7 +297,7 @@ mod tests {
         let g = got.clone();
         let srv = crate::hooks::HookServer::start(Arc::new(move |_, v| g.lock().unwrap().push(v))).await.unwrap();
         let url = srv.register("s1");
-        let body = r#"{"rate_limits":{"five_hour":{"used_percentage":40}}}"#;
+        let body = r#"{"model":{"id":"claude-opus-5-5","display_name":"Opus 5.5"},"rate_limits":{"five_hour":{"used_percentage":40}}}"#;
         let run = |cmd: String| {
             let mut child = std::process::Command::new("sh")
                 .args(["-c", &cmd])
@@ -309,8 +316,8 @@ mod tests {
         .await
         .unwrap();
         assert!(out.trim() == "40" || out.trim() == body, "the user's line sees the same JSON: {out:?}");
-        let silent = tokio::task::spawn_blocking(move || run(status_command(&url, None))).await.unwrap();
-        assert_eq!(silent, "");
+        let plain = tokio::task::spawn_blocking(move || run(status_command(&url, None))).await.unwrap();
+        assert_eq!(plain.trim_end(), "Opus 5.5", "without a status line of their own: the model name");
         for _ in 0..50 {
             if got.lock().unwrap().len() == 2 {
                 break;

@@ -67,6 +67,15 @@ become real structures** in their compound instead of a number badge on the hous
 - Terminal structures reuse the agent structure footprint (2×2) and spot logic so walls,
   walkers and dragging keep working unchanged.
 
+- Any custom status line makes Claude hide most footer hints ("esc to interrupt"). Users who had
+  their own status line keep it unchanged (their command runs in place of the wrapper, fed the
+  same JSON). Users without one now see the model name in that row instead of a blank one; that
+  is the cost of reading Claude's limits, recorded after review on 2026-11-01.
+- Claude drops a window from its JSON once it resets; the store keeps the last reading of such a
+  window (it reads as full) until Claude reports it again. Verified live: an account on a plan with
+  no 5-hour window reports only `seven_day`, and its tank follows the weekly limit.
+- Codex readings carry the time Codex wrote them, so "Read 5d ago" stays honest after a restart.
+
 ## Left to the builder
 
 Exact art, panel styling, module boundaries, polling cadence for Codex (cheap file read).

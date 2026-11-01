@@ -30,6 +30,7 @@ export default function VillageCanvas({ onError }: { onError?: (e: unknown) => v
       canMove: (t, at) => moveValid(useApp.getState(), t, at),
       onMove: (t, at) => useApp.getState().village.commitMove(t, at, onError),
       onClosedConsumed: (id) => useApp.getState().consumeClosed(id),
+      onBuilderAssign: (builderId, id) => useApp.getState().setSelection({ kind: 'workspace', id, builder: builderId }),
       panelWidth: () => (useApp.getState().panelOpen ? PANEL_W : 0),
     }).then(
       (s) => {

@@ -6,7 +6,8 @@ import { collectorFits, collectorTiles, shownCollectors } from '../village/quota
 
 export type Selection =
   | { kind: 'hall' }
-  | { kind: 'workspace'; id: string }
+  /** `builder`: open the new-session form with this idle builder picked (dropped on the workspace). */
+  | { kind: 'workspace'; id: string; builder?: string }
   | { kind: 'session'; id: string }
   | { kind: 'builder'; id: string }
   | { kind: 'quota'; agent: AgentKind };

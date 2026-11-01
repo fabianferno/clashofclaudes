@@ -1,10 +1,10 @@
 import { Application, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import type { AgentKind, AgentQuota, Builder, CloseOutcome, Compound, SessionInfo, SessionState, Tile, Workspace } from '../api/types';
 import { iso, toGrid } from './iso';
-import { HALL, HOUSE, STRUCT, gateSide, gateTile, villageRect, wallRect, type Rect } from './layout';
+import { HALL, HOUSE, STRUCT, gateOutside, gateSide, gateTile, villageRect, wallRect, type Rect } from './layout';
 import { enclosure, seedOf } from './enclosure';
 import { classOf, gearOf, houseColors, houseStage, scaffoldHeight, type ClassTier, type Gear } from './look';
-import { onGround, retarget, routeHome, routeToSite, standTile, step, walkable, type Walker } from './walkers';
+import { dropOf, onGround, retarget, routeHome, routeToSite, standTile, step, walkable, type BuilderDrop, type Walker } from './walkers';
 import {
   GROUND_SCALE, drawBubble, drawBuilder, drawCollector, drawGate, drawGround, drawHall, drawHouse, drawPuff, drawRing, drawStatusBar, drawStructure,
   drawWallSeg, drawWorkshop, groundOrigin,
@@ -205,9 +205,13 @@ interface BuilderView {
   puffs: Sprite[];
   /** The compound a builder is walking home from, to re-aim if its house (and gate) moves. */
   leaving: { wsId: string; c: Compound } | null;
+  /** Picked up by the owner: the tile point it hangs over (not walking meanwhile). */
+  held: Tile | null;
 }
 
 const HEAD_HEIGHT: Record<ClassTier, number> = { 0: 46, 1: 56, 2: 80 };
+/** Px a picked-up builder hangs above the tile it would be set down on. */
+const HELD_LIFT = 18;
 const HAMMER_PERIOD = 0.18;
 const WALK_PERIOD = 0.25;
 
@@ -272,6 +276,8 @@ export interface SceneOptions {
   onMove?: (t: MoveTarget, at: Tile) => Promise<boolean>;
   /** Hook: a drag was released on a blocked tile (nothing persisted, the object snapped back; the scene adds the dust). */
   onBlockedDrop?: (at: Tile) => void;
+  /** An idle builder was dropped on a workspace: offer to start a session there with it. */
+  onBuilderAssign?: (builderId: string, workspaceId: string) => void;
   /** The scene has played (or given up on) the close outcome for this session id. */
   onClosedConsumed?: (sessionId: string) => void;
 }
@@ -567,6 +573,13 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     return sp;
   };
 
+  /** Walkable ground inside a compound (see `walkable`). */
+  const walkFor = (state: VillageInput, wsId: string, c: Compound) => {
+    const spots = spotsIn(state.sessions, wsId);
+    const level = state.workspaces.find((w) => w.id === wsId)?.level ?? 1;
+    return walkable(enclosure(c, spots, level, seedOf(wsId)).inside, c, spots);
+  };
+
   /** Bring the walkers in line with the store. The walk is cosmetic: nothing here waits on it. */
   const syncBuilders = (state: VillageInput) => {
     const compounds = new Map<string, Compound>();
@@ -575,12 +588,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     const walks = new Map<string, Set<string>>();
     const walkOf = (wsId: string, c: Compound) => {
       let walk = walks.get(wsId);
-      if (!walk) {
-        const spots = spotsIn(state.sessions, wsId);
-        const level = state.workspaces.find((w) => w.id === wsId)?.level ?? 1;
-        walk = walkable(enclosure(c, spots, level, seedOf(wsId)).inside, c, spots);
-        walks.set(wsId, walk);
-      }
+      if (!walk) { walk = walkFor(state, wsId, c); walks.set(wsId, walk); }
       return walk;
     };
     const live = new Set<string>();
@@ -596,7 +604,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
         v = {
           walker: { id: b.id, x: 0.5 + Math.cos(a) * 5.1, y: 0.5 + Math.sin(a) * 5.1, path: [], mode: 'idle', face: 1, wait: 0.5 },
           agent: b.agent, cls: classOf(b.agent, b.model), gear: gearOf(b.effort), site: null,
-          pose: 'idle', sprite, bubble: null, ring: null, puffs: [], leaving: null,
+          pose: 'idle', sprite, bubble: null, ring: null, puffs: [], leaving: null, held: null,
         };
         views.set(b.id, v);
       }
@@ -604,7 +612,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       const w = v.walker, was = v.site;
       if (site) {
         if (!was || was.sessionId !== site.sessionId) {
-          v.walker = { ...w, mode: 'toSite', path: routeToSite(w, site.compound, site.spot, walkOf(site.workspaceId, site.compound)) };
+          v.walker = { ...w, mode: 'toSite', anchor: undefined, path: routeToSite(w, site.compound, site.spot, walkOf(site.workspaceId, site.compound)) };
         } else if (was.spot.x !== site.spot.x || was.spot.y !== site.spot.y) {
           const st = standTile(site.compound, site.spot, site.compound.house, walkOf(site.workspaceId, site.compound)); // moved structure: the builder is simply there
           v.walker = { ...w, x: st.x, y: st.y, path: [], mode: 'atSite', face: -1 };
@@ -644,16 +652,17 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     time += dt;
     for (const v of views.values()) {
       const before = v.walker.mode;
-      v.walker = step(v.walker, dt, Math.random);
+      // a held builder hangs over the pointer instead of walking
+      v.walker = v.held ? { ...v.walker, x: v.held.x, y: v.held.y } : step(v.walker, dt, Math.random);
       const w = v.walker;
       if (before !== 'atSite' && w.mode === 'atSite') w.face = -1; // look at the structure
-      v.pose = poseOf(w, v.site, time);
+      v.pose = v.held ? 'cheer' : poseOf(w, v.site, time);
       setTex(v.sprite, `builder:${v.agent}:${v.cls}:${v.gear}:${v.pose}:${w.face}`);
       const p = iso(w.x, w.y);
       const ro = relocOffset(v.site?.workspaceId);
-      v.sprite.position.set(p.x + (ro?.x ?? 0), p.y + (ro?.y ?? 0));
-      v.sprite.zIndex = w.x + w.y + KIND_RANK.builder * 0.001;
-      if (v.site && w.mode === 'atSite') {
+      v.sprite.position.set(p.x + (ro?.x ?? 0), p.y + (ro?.y ?? 0) - (v.held ? HELD_LIFT : 0));
+      v.sprite.zIndex = v.held ? 20000 : w.x + w.y + KIND_RANK.builder * 0.001;
+      if (v.site && w.mode === 'atSite' && !v.held) {
         // the stand tile sits behind the structure and often the house; hammering must stay visible
         const c = v.site.compound, sp = v.site.spot;
         v.sprite.zIndex = Math.max(sp.x + sp.y + STRUCT, c.house.x + c.house.y + 2 * HOUSE) + 0.002;
@@ -994,26 +1003,103 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     setTarget: (t) => { camTarget = t; },
     onAutoFitOff: () => { autoFit = false; canvas.style.cursor = 'grabbing'; },
   });
+  // ---- builders: press and drag one to pick it up; drop it on a workspace to put it to work there
+  // (idle builders), or on open ground to set it down. A press without a drag is still a click.
+  let bd: { id: string; hit: Entity; grab: { x: number; y: number }; orig: Walker | null; drop: BuilderDrop } | null = null;
+  const bdFx = new Graphics(); // where a held builder would land: the workspace, or the tile
+  groundLayer.addChild(bdFx);
+  const idleBuilder = (id: string) =>
+    !lastState.sessions.some((x) => x.kind.kind === 'agent' && x.kind.builderId === id && x.state.kind !== 'ended');
+  const collectorCorners = () =>
+    entities.filter((e) => e.kind === 'collector').map((e) => ({ x: e.x - STRUCT, y: e.y - STRUCT }));
+  const drawDrop = (at: Tile, drop: BuilderDrop) => {
+    bdFx.clear();
+    const ws = drop.kind === 'assign' ? lastState.workspaces.find((w) => w.id === drop.workspaceId)?.compound : null;
+    const r = ws ? wallRect(ws) : { x0: Math.floor(at.x), y0: Math.floor(at.y), w: 1, h: 1 };
+    const a = iso(r.x0, r.y0), b = iso(r.x0 + r.w, r.y0), c = iso(r.x0 + r.w, r.y0 + r.h), d = iso(r.x0, r.y0 + r.h);
+    const ok = drop.kind !== 'blocked';
+    bdFx.poly([a.x, a.y, b.x, b.y, c.x, c.y, d.x, d.y]).fill({ color: ok ? 0x5cf05c : 0xff3b2f, alpha: ws ? 0.22 : 0.4 })
+      .stroke({ width: ws ? 4 : 3, color: ok ? 0x1f8a1f : 0xb02218 });
+  };
+  const endBuilderDrag = (ev: PointerEvent | null) => {
+    const d = bd;
+    bd = null;
+    bdFx.clear();
+    canvas.style.cursor = '';
+    if (ev) { try { canvas.releasePointerCapture(ev.pointerId); } catch { /* see onDown */ } }
+    const v = d && views.get(d.id);
+    if (!d || !v) return;
+    if (!d.orig) { // no drag: a click on the builder
+      if (ev) opts.onSelect?.(selectionOf(d.hit, lastState.sessions));
+      return;
+    }
+    const at = v.held ?? { x: v.walker.x, y: v.walker.y };
+    v.held = null;
+    const drop = ev ? d.drop : { kind: 'blocked' as const };
+    if (drop.kind === 'assign') {
+      const c = lastState.workspaces.find((w) => w.id === drop.workspaceId)?.compound;
+      const o = c ? gateOutside(c) : at;
+      // waits at the gate while the owner fills in the task; walks back to the plaza if nothing starts
+      v.walker = { ...d.orig, x: o.x + 0.5, y: o.y + 0.5, path: [], mode: 'idle', wait: 30, anchor: undefined, face: -1 };
+      v.leaving = null;
+      opts.onBuilderAssign?.(d.id, drop.workspaceId);
+    } else if (drop.kind === 'place') {
+      const site = v.site && !idleBuilder(d.id) ? v.site : null;
+      v.walker = site
+        // a builder at work walks straight back to its structure
+        ? { ...d.orig, x: at.x, y: at.y, anchor: undefined, mode: 'toSite', path: routeToSite(at, site.compound, site.spot, walkFor(lastState, site.workspaceId, site.compound)) }
+        : { ...d.orig, x: at.x, y: at.y, anchor: at, mode: 'idle', path: [], wait: 1 + Math.random() * 2 };
+      if (!site) v.leaving = null;
+    } else {
+      v.walker = d.orig; // snap back, with a puff where it was refused
+      if (ev) particles.dust(iso(at.x, at.y), 8, false);
+    }
+  };
+
   const onDown = (ev: PointerEvent) => {
     if (ev.button !== 0) return;
     const p = localPoint(ev);
     pointerId = ev.pointerId;
     downAt = p;
+    const w = screenToWorld(cam, p.x, p.y);
     const m = movableOf(selected, ev.altKey);
-    if (m) {
-      // a press on the selected object drags the object; anywhere else pans the camera
-      const w = screenToWorld(cam, p.x, p.y);
-      if (hitTest(entities, w.x, w.y)?.id === m.entityId) {
-        const g = toGrid(w.x, w.y);
-        od = { m, grab: { x: g.x - m.tile.x, y: g.y - m.tile.y }, moved: false, target: m.tile, valid: true };
-        try { canvas.setPointerCapture(ev.pointerId); } catch { /* synthetic events have no live pointer */ }
-        return;
-      }
+    // a press on the selected object drags the object; anywhere else pans the camera
+    if (m && hitTest(entities, w.x, w.y)?.id === m.entityId) {
+      const g = toGrid(w.x, w.y);
+      od = { m, grab: { x: g.x - m.tile.x, y: g.y - m.tile.y }, moved: false, target: m.tile, valid: true };
+      try { canvas.setPointerCapture(ev.pointerId); } catch { /* synthetic events have no live pointer */ }
+      return;
+    }
+    const hit = hitTest(hitEntities(), w.x, w.y);
+    const v = hit?.kind === 'builder' ? views.get(hit.id.slice('builder:'.length)) : undefined;
+    if (hit && v) {
+      // keep the feet where they were relative to the pointer
+      const f = iso(v.walker.x, v.walker.y);
+      bd = { id: hit.id.slice('builder:'.length), hit, grab: { x: f.x - w.x, y: f.y - w.y }, orig: null, drop: { kind: 'blocked' } };
+      try { canvas.setPointerCapture(ev.pointerId); } catch { /* synthetic events have no live pointer */ }
+      return;
     }
     drag.down(p.x, p.y);
     try { canvas.setPointerCapture(ev.pointerId); } catch { /* synthetic events have no live pointer */ }
   };
   const onMove = (ev: PointerEvent) => {
+    if (bd && ev.pointerId === pointerId) {
+      const p = localPoint(ev);
+      const v = views.get(bd.id);
+      if (!v) return;
+      if (!bd.orig) {
+        if (Math.hypot(p.x - downAt.x, p.y - downAt.y) <= DRAG_PX) return;
+        bd.orig = v.walker;
+        canvas.style.cursor = 'grabbing';
+      }
+      const w = screenToWorld(cam, p.x, p.y);
+      // the feet stay under the grab point, the figure lifted above the tile it would land on
+      const at = toGrid(w.x + bd.grab.x, w.y + bd.grab.y + HELD_LIFT);
+      v.held = at;
+      bd.drop = dropOf(at, lastState.workspaces, collectorCorners(), idleBuilder(bd.id));
+      drawDrop(at, bd.drop);
+      return;
+    }
     if (od && ev.pointerId === pointerId) {
       const p = localPoint(ev);
       if (!od.moved) {
@@ -1059,6 +1145,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     redrawOverlay();
   };
   const onUp = (ev: PointerEvent) => {
+    if (bd && ev.pointerId === pointerId) { endBuilderDrag(ev); return; }
     if (od && ev.pointerId === pointerId) { endObjectDrag(ev); return; }
     if (!drag.active || ev.pointerId !== pointerId) return;
     canvas.style.cursor = '';
@@ -1067,7 +1154,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     const w = screenToWorld(cam, downAt.x, downAt.y);
     opts.onSelect?.(selectionOf(hitTest(hitEntities(), w.x, w.y), lastState.sessions));
   };
-  const onCancel = () => { if (od) endObjectDrag(null); drag.cancel(); canvas.style.cursor = ''; };
+  const onCancel = () => { if (od) endObjectDrag(null); if (bd) endBuilderDrag(null); drag.cancel(); canvas.style.cursor = ''; };
   const onWheel = (ev: WheelEvent) => {
     ev.preventDefault();
     const p = localPoint(ev);

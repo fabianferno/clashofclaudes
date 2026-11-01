@@ -77,6 +77,15 @@ test('terminals_listed_not_as_structures', () => {
   expect(screen.getByTestId('session-row-s1').textContent).toContain('Working');
 });
 
+test('a_builder_dropped_on_the_workspace_opens_the_new_session_form_until_back', () => {
+  act(() => useApp.setState({ selection: { kind: 'workspace', id: 'w1', builder: 'b1' } }));
+  render(<WorkspacePanel workspaceId="w1" />);
+  expect(screen.queryByRole('button', { name: '+ New session' })).toBeNull(); // the form, not the overview
+  fireEvent.click(screen.getByRole('button', { name: '‹ Back' }));
+  expect(useApp.getState().selection).toEqual({ kind: 'workspace', id: 'w1' });
+  expect(screen.getByRole('button', { name: '+ New session' })).toBeTruthy();
+});
+
 test('remove_workspace_confirms_inline', async () => {
   render(<WorkspacePanel workspaceId="w1" />);
   fireEvent.click(screen.getByRole('button', { name: 'Remove workspace' }));

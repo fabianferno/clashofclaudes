@@ -211,3 +211,11 @@ test('a long model list hides the tick labels and names only the chosen model', 
   expect(screen.getByLabelText('Model').getAttribute('aria-valuetext')).toBe('m4');
   expect(container.querySelectorAll('.slider-ticks')).toHaveLength(1); // the effort slider's only
 });
+
+test('a builder dropped on the workspace starts out picked', async () => {
+  setup({ builders: [bld('b1', 'Ada'), bld('b2', 'Bo')] });
+  vi.mocked(ipc.startSession).mockResolvedValue(sess('s1', 'b2', { kind: 'working' }));
+  render(<NewSessionPicker workspaceId="w" builderId="b2" />);
+  expect(screen.getByRole('button', { name: /Bo/ }).className).toContain('picked');
+  expect(screen.getByRole('button', { name: /Ada/ }).className).not.toContain('picked');
+});

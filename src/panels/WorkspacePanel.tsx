@@ -10,6 +10,8 @@ export default function WorkspacePanel({ workspaceId }: { workspaceId: string })
   const sessionMap = useApp((s) => s.sessions);
   const builders = useApp((s) => s.builders);
   const [form, setForm] = useState(false);
+  // a builder dropped on this workspace opens the form with them picked
+  const preset = useApp((s) => (s.selection?.kind === 'workspace' && s.selection.id === workspaceId ? s.selection.builder : undefined));
   const [confirm, setConfirm] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   if (!ws) return null;
@@ -26,11 +28,15 @@ export default function WorkspacePanel({ workspaceId }: { workspaceId: string })
     try { await f(); } catch (e) { setErr(String(e)); }
   };
 
-  if (form) {
+  if (form || preset) {
+    const back = () => {
+      setForm(false);
+      if (preset) useApp.getState().setSelection({ kind: 'workspace', id: workspaceId });
+    };
     return (
       <>
-        <button className="hud-btn grey sm" onClick={() => setForm(false)}>‹ Back</button>
-        <NewSessionPicker key={workspaceId} workspaceId={workspaceId} />
+        <button className="hud-btn grey sm" onClick={back}>‹ Back</button>
+        <NewSessionPicker key={`${workspaceId}:${preset ?? ''}`} workspaceId={workspaceId} builderId={preset} />
       </>
     );
   }

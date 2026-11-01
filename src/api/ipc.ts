@@ -1,9 +1,6 @@
 import { invoke, Channel } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type {
-  AgentInfo, AgentKind, Builder, CloseOutcome, Compound, ConfirmQuit, Frame, ListState,
-  Review, SessionInfo, Settings, Stats, Tile, UpdateStatus, Workspace,
-} from './types';
+import type { AgentInfo, AgentKind, AgentQuota, Builder, CloseOutcome, Compound, ConfirmQuit, Frame, ListState, Review, SessionInfo, Settings, Stats, Tile, UpdateStatus, Workspace } from './types';
 
 const SKIP_FLAG = 1n << 63n;
 
@@ -29,6 +26,11 @@ export const ipc = {
   listState: () => invoke<ListState>('list_state'),
   /** `force` bypasses the 60 s detection cache (Re-check). */
   detectAgents: (force = false) => invoke<AgentInfo[]>('detect_agents', { force }),
+  getQuotas: () => invoke<AgentQuota[]>('get_quotas'),
+  /** Reads every quota source now (Antigravity takes a second or two). */
+  refreshQuotas: () => invoke<AgentQuota[]>('refresh_quotas'),
+  onQuotaUpdated: (cb: (q: AgentQuota) => void): Promise<UnlistenFn> =>
+    listen<AgentQuota>('quota-updated', (e) => cb(e.payload)),
   addWorkspace: (path: string) => invoke<Workspace>('add_workspace', { path }),
   /** `parent` null: inside the default projects folder (~/Documents/.clashofclaudes). */
   createWorkspace: (parent: string | null, name: string) => invoke<Workspace>('create_workspace', { parent, name }),

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { Builder, Compound, SessionInfo, SessionState, Tile, Workspace } from '../api/types';
-import { findSpot, placeCompound, wallRect } from './layout';
+import type { AgentQuota, Builder, Compound, SessionInfo, SessionState, Tile, Workspace } from '../api/types';
+import { findSpot, gapBetween, placeCompound, wallRect } from './layout';
+import { COLLECTOR_SLOT } from './quota';
 import { enclosure, seedOf } from './enclosure';
 import { scaffoldHeight } from './look';
 import { buildEntities, needsRefit, rendererOptions, structureLook, type VillageInput } from './scene';
@@ -75,12 +76,26 @@ describe('buildEntities', () => {
       expect(+tx >= r.x0 && +tx < r.x0 + r.w && +ty >= r.y0 && +ty < r.y0 + r.h).toBe(true);
     }
     expect(count('gate')).toBe(2);
-    const badges = es.filter((e) => e.kind === 'badge');
-    expect(badges).toHaveLength(1);
-    expect(badges[0].id).toBe('badge:w1');
-    expect(badges[0].texKey).toBe('badge:1');
-    // the terminal session adds no structure
+    // a terminal without a spot (yet) adds no structure
     expect(es.some((e) => e.id === 'struct:t1')).toBe(false);
+  });
+
+  it('terminals_stand_as_workshops_that_count_for_the_walls', () => {
+    const c1 = placeCompound([]);
+    const s1 = findSpot(c1, [])!;
+    const s2 = findSpot(c1, [s1])!;
+    const input: VillageInput = {
+      workspaces: [ws('w1', c1)],
+      builders: [bld('b1')],
+      sessions: [sess('a1', 'w1', 'b1', s1), sess('t1', 'w1', null, s2), sess('t2', 'w1', null, null)],
+    };
+    const es = buildEntities(input);
+    const shop = es.find((e) => e.id === 'struct:t1')!;
+    expect([shop.kind, shop.texKey, shop.x, shop.y]).toEqual(['structure', 'workshop:lit', s2.x + 2, s2.y + 2]);
+    expect(es.filter((e) => e.kind === 'wall')).toHaveLength(enclosure(c1, [s1, s2], 1, seedOf('w1')).walls.length - 1);
+    expect(es.some((e) => e.id === 'status:t1')).toBe(false); // no status bar over a terminal
+    const ended = buildEntities({ ...input, sessions: [sess('t1', 'w1', null, s2, { kind: 'ended', exitCode: 0 })] });
+    expect(ended.find((e) => e.id === 'struct:t1')?.texKey).toBe('workshop:dark');
   });
 
   it('ended terminals do not count; agents without a spot or compound are skipped', () => {
@@ -94,7 +109,6 @@ describe('buildEntities', () => {
         sess('a2', 'w2', 'b1', { x: 0, y: 0 }),
       ],
     });
-    expect(es.filter((e) => e.kind === 'badge')).toHaveLength(0);
     expect(es.filter((e) => e.kind === 'structure')).toHaveLength(0);
     expect(es.filter((e) => e.kind === 'house')).toHaveLength(1);
   });
@@ -112,6 +126,49 @@ describe('buildEntities', () => {
     expect(es[far].depth).toBeGreaterThan(es[near].depth);
     // the list is sorted by depth
     for (let i = 1; i < es.length; i++) expect(es[i].depth).toBeGreaterThanOrEqual(es[i - 1].depth);
+  });
+});
+
+describe('collectors', () => {
+  const now = 1_000_000;
+  const q = (agent: AgentQuota['agent'], leftPct: number, resetsAt: number | null = null): AgentQuota =>
+    ({ agent, windows: [{ id: 'five_hour', label: '5-hour limit', group: null, leftPct, resetsAt, windowMins: 300 }], updatedAt: 0, source: 't' });
+  const base: VillageInput = { workspaces: [], sessions: [], builders: [], now };
+
+  it('one_collector_per_rationed_agent_with_a_reading_or_installed', () => {
+    const es = buildEntities({ ...base, quotas: { codex: q('codex', 62) }, installed: ['claude', 'opencode'] });
+    const cols = es.filter((e) => e.kind === 'collector');
+    expect(cols.map((e) => [e.id, e.texKey])).toEqual(expect.arrayContaining([
+      ['collector:codex', 'collector:codex:6'],
+      ['collector:claude', 'collector:claude:none'],
+    ]));
+    expect(cols).toHaveLength(2); // OpenCode reports no limits
+    const label = es.find((e) => e.id === 'status:collector:codex')!;
+    expect(label.texKey).toBe('status:elixir:62% · 5h');
+    expect(es.some((e) => e.id === 'status:collector:claude')).toBe(false); // no reading, no label
+    const c = cols.find((e) => e.id === 'collector:codex')!;
+    expect([c.x, c.y]).toEqual([COLLECTOR_SLOT.codex.x + 2, COLLECTOR_SLOT.codex.y + 2]);
+  });
+
+  it('collector_slots_stay_clear_of_the_hall_and_any_compound', () => {
+    const hall = { x0: -2, y0: -2, w: 5, h: 5 };
+    const slots = Object.values(COLLECTOR_SLOT).map((t) => ({ x0: t.x, y0: t.y, w: 2, h: 2 }));
+    let others: Compound[] = [];
+    for (let i = 0; i < 8; i++) others = [...others, placeCompound(others)];
+    for (const r of slots) {
+      expect(gapBetween(r, hall)).toBeGreaterThanOrEqual(1);
+      for (const c of others) expect(gapBetween(r, wallRect(c))).toBeGreaterThanOrEqual(1);
+      for (const o of slots) if (o !== r) expect(gapBetween(r, o)).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('an_emptied_tank_refills_at_its_reset', () => {
+    const quotas = { claude: q('claude', 0, now + 90 * 60_000) };
+    const before = buildEntities({ ...base, quotas });
+    expect(before.find((e) => e.id === 'collector:claude')?.texKey).toBe('collector:claude:0');
+    expect(before.find((e) => e.id === 'status:collector:claude')?.texKey).toBe('status:needs:Empty · 1h 30m');
+    const after = buildEntities({ ...base, quotas, now: now + 90 * 60_000 });
+    expect(after.find((e) => e.id === 'collector:claude')?.texKey).toBe('collector:claude:10');
   });
 });
 

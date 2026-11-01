@@ -71,6 +71,13 @@ describe('house placement', () => {
   });
 });
 
+describe('collector hits', () => {
+  it('a collector is clickable like a structure', () => {
+    const c = e('collector:claude', 'collector', 2, 2);
+    expect(hitTest([c], 0, 20)?.id).toBe('collector:claude');
+  });
+});
+
 describe('selectionOf', () => {
   const agent = (id: string, builderId: string, state: SessionState, startedAt = 0) =>
     ({ id, workspaceId: 'w', kind: { kind: 'agent', builderId }, state, startedAt }) as SessionInfo;
@@ -88,6 +95,7 @@ describe('selectionOf', () => {
     expect(selectionOf(e('hall', 'hall', 0, 0), [])).toEqual({ kind: 'hall' });
     expect(selectionOf(e('house:w1', 'house', 0, 0), [])).toEqual({ kind: 'workspace', id: 'w1' });
     expect(selectionOf(e('struct:s9', 'structure', 0, 0), [])).toEqual({ kind: 'session', id: 's9' });
+    expect(selectionOf(e('collector:codex', 'collector', 0, 0), [])).toEqual({ kind: 'quota', agent: 'codex' });
     expect(selectionOf(e('status:s9', 'status', 0, 0), [])).toBeNull();
     expect(selectionOf(null, [])).toBeNull();
   });

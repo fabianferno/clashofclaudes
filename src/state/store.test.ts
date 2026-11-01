@@ -1,6 +1,6 @@
 import { vi } from 'vitest';
 import type { CloseOutcome } from '../api/types';
-import { useApp, sessionsByWorkspace, idleBuilders, stateLabel } from './store';
+import { autoLayout, useApp, sessionsByWorkspace, idleBuilders, stateLabel } from './store';
 import type { Builder, Compound, SessionInfo, SessionState, Tile, Workspace } from '../api/types';
 import { ipc } from '../api/ipc';
 import { GAP, assertNoCollisions, findSpot, placeCompound, spotFor } from '../village/layout';
@@ -106,15 +106,26 @@ describe('village', () => {
     expect(Object.values(useApp.getState().sessions).every((s) => s.spot)).toBe(true);
   });
 
-  it('ensureSpot creates the compound first when missing; terminals are refused', async () => {
+  it('ensureSpot creates the compound first when missing; terminals get a spot of their own', async () => {
     useApp.setState({ workspaces: [W('w1', null)] });
     useApp.getState().upsertSession(sess('a', 'w1', 'b1'));
     useApp.getState().upsertSession(sess('t', 'w1'));
     const v = useApp.getState().village;
-    await v.ensureSpot('a');
+    const a = await v.ensureSpot('a');
     expect(useApp.getState().workspaces[0].compound).not.toBeNull();
-    await expect(v.ensureSpot('t')).rejects.toThrow(/terminal/);
-    expect(ipc.setSessionSpot).toHaveBeenCalledTimes(1);
+    const t = await v.ensureSpot('t');
+    expect(t).not.toEqual(a);
+    expect(ipc.setSessionSpot).toHaveBeenCalledTimes(2);
+  });
+
+  it('autoLayout places live terminals but not ones that already ended', async () => {
+    useApp.setState({ workspaces: [W('w1', null)] });
+    useApp.getState().upsertSession(sess('t', 'w1'));
+    useApp.getState().upsertSession(sess('old', 'w1', undefined, 0, { kind: 'ended', exitCode: 0 }));
+    const stop = autoLayout();
+    await vi.waitFor(() => expect(useApp.getState().sessions.t.spot).not.toBeNull());
+    stop();
+    expect(useApp.getState().sessions.old.spot).toBeNull();
   });
 
   it('relocation keeps shifting past a failed mate and reports the failure once', async () => {

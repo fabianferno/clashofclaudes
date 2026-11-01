@@ -1,5 +1,5 @@
 import { iso } from '../iso';
-import { OUT, bake, chip, ctx, dot, flag, line, outlinedText, poly, roundRect, shadow, up, type Art, type Pt } from './draw';
+import { OUT, bake, ctx, dot, flag, line, outlinedText, poly, roundRect, shadow, up, type Art, type Pt } from './draw';
 
 const LOG = '#a0703c';
 const LOG_LIT = '#c8935a';
@@ -87,16 +87,6 @@ export function drawTree(variant: 0 | 1 | 2 | 3): Art {
   return bake(100, 130, 50, 112, () => paintTree(variant === 1 || variant === 3, s));
 }
 
-/**
- * Count of a workspace's live plain terminals, shown on its house (spec 5.2). Anchor: the house
- * footprint's centre, grid point (hx+1.5, hy+1.5); the chip floats above the roof's right side.
- */
-export function drawBadge(count: number): Art {
-  return bake(160, 180, 50, 170, () => {
-    chip(40, -150, `>_ ${count}`, '#2b2f3a', 20);
-  });
-}
-
 /** Speech bubble over a builder's head: "!" (needs you) or "?!" (stuck). Anchor: the tail tip. */
 export function drawBubble(kind: 'needs' | 'stuck'): Art {
   return bake(60, 60, 30, 56, () => {
@@ -129,13 +119,13 @@ export function drawPuff(): Art {
   });
 }
 
-const STATUS_FILL = { working: '#f5a623', needs: '#ff4b3e', stuck: '#8e8e8e' } as const;
+const STATUS_FILL = { working: '#f5a623', needs: '#ff4b3e', stuck: '#8e8e8e', elixir: '#c54fd6' } as const;
 
 /**
  * The small bar over a structure at work (spec 5.3.2): elapsed time and steps, "Waiting for you" or
  * "Stuck". Static (no moving stripes: no per-frame drawing). Anchor: the bar's bottom centre.
  */
-export function drawStatusBar(tone: 'working' | 'needs' | 'stuck', label: string): Art {
+export function drawStatusBar(tone: keyof typeof STATUS_FILL, label: string): Art {
   const bw = Math.max(92, Math.ceil(label.length * 6.4) + 18);
   return bake(bw + 8, 24, bw / 2 + 4, 21, () => {
     const g = ctx();

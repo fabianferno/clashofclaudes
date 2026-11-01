@@ -83,6 +83,27 @@ export interface ListState {
   stats: Stats;
 }
 
+/** One rationed window an agent reports (see src-tauri/src/quota.rs). */
+export interface QuotaWindow {
+  id: string;
+  label: string;
+  /** Model group the window applies to (Antigravity). */
+  group: string | null;
+  /** Percent left, 0-100. */
+  leftPct: number;
+  /** Epoch ms; past means the window has refilled. */
+  resetsAt: number | null;
+  windowMins: number | null;
+}
+
+/** The latest quota reading for one agent. */
+export interface AgentQuota {
+  agent: AgentKind;
+  windows: QuotaWindow[];
+  updatedAt: number;
+  source: string;
+}
+
 export interface AgentInfo {
   kind: AgentKind;
   label: string;

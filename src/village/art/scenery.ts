@@ -121,7 +121,7 @@ export function drawPuff(): Art {
 }
 
 const STATUS_FILL = {
-  working: '#f5a623', needs: '#ff4b3e', stuck: '#8e8e8e',
+  working: '#f5a623', needs: '#ff4b3e', stuck: '#8e8e8e', app: '#2fbf71',
   'elixir-claude': ELIXIR.claude.label, 'elixir-codex': ELIXIR.codex.label, 'elixir-antigravity': ELIXIR.antigravity.label,
 } as const;
 

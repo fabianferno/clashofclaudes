@@ -511,6 +511,17 @@ pub fn set_collector_spot(agent: AgentKind, spot: Tile, state: State<'_, AppStat
     Ok(spots)
 }
 
+/// The local web apps last found in the workspaces (see `apps`).
+#[derive(Default)]
+pub struct AppsState {
+    pub latest: Mutex<Vec<crate::apps::AppPreview>>,
+}
+
+#[tauri::command]
+pub fn get_apps(state: State<'_, AppsState>) -> Vec<crate::apps::AppPreview> {
+    state.latest.lock().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
 /// Quota readings and the poller behind `refresh_quotas`.
 pub struct QuotaState {
     pub store: Arc<crate::quota::QuotaStore>,

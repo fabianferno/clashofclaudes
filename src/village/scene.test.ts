@@ -80,6 +80,27 @@ describe('buildEntities', () => {
     expect(es.some((e) => e.id === 'struct:t1')).toBe(false);
   });
 
+  it('app_boards_show_their_preview_through_a_cut_out_and_count_for_the_walls', () => {
+    const c1 = placeCompound([]);
+    const s1 = findSpot(c1, [])!;
+    const s2 = findSpot(c1, [s1])!;
+    const board = (key: string, spot: Tile, frameable: boolean) =>
+      ({ key, workspaceId: 'w1', url: 'http://localhost:3000/', label: 'Shop: admin', port: 3000, frameable, spot });
+    const input: VillageInput = { workspaces: [ws('w1', c1)], builders: [], sessions: [], boards: [board('w1:3000', s1, true), board('w1:4000', s2, false)] };
+    const es = buildEntities(input);
+    const live = es.find((e) => e.id === 'board:w1:3000')!;
+    expect([live.kind, live.x, live.y, live.texKey]).toEqual(['board', s1.x + 2, s1.y + 2, `board:live:${encodeURIComponent('Shop: admin')}`]);
+    const hole = es.find((e) => e.id === 'hole:w1:3000')!;
+    // the cut-out is drawn right after its board, so whatever stands in front still covers the preview
+    expect(es.indexOf(hole)).toBe(es.indexOf(live) + 1);
+    expect(es.find((e) => e.id === 'board:w1:4000')?.texKey).toMatch(/^board:card:/);
+    expect(es.some((e) => e.id === 'hole:w1:4000')).toBe(false); // a page that refuses framing gets a card
+    expect(es.find((e) => e.id === 'status:board:w1:3000')?.texKey).toBe('status:app:Shop  admin \u00b7 3000');
+    expect(es.filter((e) => e.kind === 'wall')).toHaveLength(enclosure(c1, [s1, s2], 1, seedOf('w1')).walls.length - 1);
+    // no compound, no board
+    expect(buildEntities({ ...input, workspaces: [ws('w1', null)] }).some((e) => e.kind === 'board')).toBe(false);
+  });
+
   it('terminals_stand_as_rune_stones_that_count_for_the_walls', () => {
     const c1 = placeCompound([]);
     const s1 = findSpot(c1, [])!;

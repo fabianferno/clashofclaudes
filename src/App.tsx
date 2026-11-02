@@ -8,6 +8,7 @@ import BuildButtons from './hud/BuildButtons';
 import WelcomeCard from './panels/WelcomeCard';
 import UpdateToast from './hud/UpdateToast';
 import SidePanel from './panels/SidePanel';
+import PopOutApp from './panels/PopOutApp';
 import { preloadTerminal } from './components/LazyTerminalView';
 import './App.css';
 
@@ -28,6 +29,7 @@ function App() {
     keep(ipc.onWorkspaceUpdated((w) => useApp.getState().updateWorkspace(w)));
     keep(ipc.onStatsUpdated((s) => useApp.getState().setStats(s)));
     keep(ipc.onQuotaUpdated((q) => useApp.getState().setQuota(q)));
+    keep(ipc.onAppsUpdated((a) => useApp.getState().setApps(a)));
     keep(ipc.onSelectSession((id) => {
       if (useApp.getState().sessions[id]) useApp.getState().setSelection({ kind: 'session', id });
     }));
@@ -48,6 +50,7 @@ function App() {
         stopLayout = autoLayout((err) => useApp.getState().setError(String(err)));
       });
     ipc.getQuotas().then((q) => !cancelled && useApp.getState().setQuotas(q)).catch(() => {}); // collectors just stay unread
+    ipc.getApps().then((a) => !cancelled && useApp.getState().setApps(a)).catch(() => {}); // boards come with the next scan
     ipc.detectAgents().then((a) => !cancelled && useApp.getState().setAgents(a)).catch((e) => useApp.getState().setError(String(e)));
     const preload = window.setTimeout(preloadTerminal, 2000); // after the village's first frames
     return () => { cancelled = true; window.clearTimeout(preload); stopLayout?.(); unlisten.forEach((u) => u()); };
@@ -61,6 +64,7 @@ function App() {
     <BuildButtons />
     <WelcomeCard />
     <SidePanel />
+    <PopOutApp />
     <UpdateToast />
     <div className="toasts">
       {error && <div className="error" onClick={() => setError(null)}>{error}</div>}

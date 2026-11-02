@@ -11,6 +11,7 @@ const BOX: Partial<Record<Entity['kind'], { w: number; h: number }>> = {
   house: { w: 3, h: 130 },
   structure: { w: 2, h: 100 },
   collector: { w: 2, h: 100 },
+  board: { w: 2, h: 100 },
 };
 const BUILDER_HALF_W = 16;
 const BUILDER_H = 70;

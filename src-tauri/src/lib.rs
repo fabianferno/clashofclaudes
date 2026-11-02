@@ -1,4 +1,5 @@
 pub mod adapters;
+pub mod apps;
 pub mod commands;
 #[cfg(debug_assertions)]
 pub mod driver;
@@ -106,6 +107,41 @@ fn app_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+/// How often the machine is scanned for local web apps in a workspace.
+const APP_SCAN_EVERY: std::time::Duration = std::time::Duration::from_secs(4);
+
+/// Scans for local web apps in the workspaces (see `apps`) and emits `apps-updated` when the list changes.
+fn spawn_app_scanner<R: Runtime>(app: AppHandle<R>) {
+    // the app's own dev server is not a workspace app, even when the workspace is this repo
+    let skip: Vec<u16> = if cfg!(debug_assertions) {
+        app.config().build.dev_url.as_ref().and_then(|u| u.port()).into_iter().collect()
+    } else {
+        Vec::new()
+    };
+    std::thread::spawn(move || {
+        let scanner = apps::Scanner::default();
+        loop {
+            let roots: Vec<(String, std::path::PathBuf)> = {
+                let st = app.state::<AppState>();
+                let data = st.data.lock().unwrap_or_else(|e| e.into_inner());
+                let mut r: Vec<_> = data.workspaces.iter().filter(|w| !w.missing).map(|w| (w.id.clone(), w.path.clone())).collect();
+                drop(data);
+                r.extend(st.manager.list().into_iter().filter_map(|s| s.worktree.map(|wt| (s.workspace_id, wt.path))));
+                r
+            };
+            let found = scanner.scan(&roots, &skip);
+            let st = app.state::<commands::AppsState>();
+            let mut cur = st.latest.lock().unwrap_or_else(|e| e.into_inner());
+            if *cur != found {
+                *cur = found.clone();
+                drop(cur);
+                let _ = app.emit("apps-updated", found);
+            }
+            std::thread::sleep(APP_SCAN_EVERY);
+        }
+    });
+}
+
 pub fn run() {
     // A Dock/Finder launch inherits launchd's minimal PATH: import the login shell's before
     // anything else, so `which`, the adapters' probes and PTY spawns find the agent CLIs.
@@ -240,6 +276,8 @@ pub fn run() {
                 exit_confirmed: AtomicBool::new(false),
                 pending_update: Mutex::new(None),
             });
+            app.manage(commands::AppsState::default());
+            spawn_app_scanner(app.handle().clone());
             #[cfg(debug_assertions)]
             {
                 app.manage(Arc::new(driver::Driver::default()));
@@ -296,6 +334,7 @@ pub fn run() {
             commands::move_compound,
             commands::set_session_spot,
             commands::get_quotas,
+            commands::get_apps,
             commands::refresh_quotas,
             commands::open_in_editor,
             commands::review_session,

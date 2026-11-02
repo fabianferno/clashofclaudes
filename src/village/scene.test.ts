@@ -80,7 +80,7 @@ describe('buildEntities', () => {
     expect(es.some((e) => e.id === 'struct:t1')).toBe(false);
   });
 
-  it('terminals_stand_as_workshops_that_count_for_the_walls', () => {
+  it('terminals_stand_as_rune_stones_that_count_for_the_walls', () => {
     const c1 = placeCompound([]);
     const s1 = findSpot(c1, [])!;
     const s2 = findSpot(c1, [s1])!;
@@ -91,11 +91,11 @@ describe('buildEntities', () => {
     };
     const es = buildEntities(input);
     const shop = es.find((e) => e.id === 'struct:t1')!;
-    expect([shop.kind, shop.texKey, shop.x, shop.y]).toEqual(['structure', 'workshop:lit', s2.x + 2, s2.y + 2]);
+    expect([shop.kind, shop.texKey, shop.x, shop.y]).toEqual(['structure', 'runestone:lit', s2.x + 2, s2.y + 2]);
     expect(es.filter((e) => e.kind === 'wall')).toHaveLength(enclosure(c1, [s1, s2], 1, seedOf('w1')).walls.length - 1);
     expect(es.some((e) => e.id === 'status:t1')).toBe(false); // no status bar over a terminal
     const ended = buildEntities({ ...input, sessions: [sess('t1', 'w1', null, s2, { kind: 'ended', exitCode: 0 })] });
-    expect(ended.find((e) => e.id === 'struct:t1')?.texKey).toBe('workshop:dark');
+    expect(ended.find((e) => e.id === 'struct:t1')?.texKey).toBe('runestone:dark');
   });
 
   it('ended terminals do not count; agents without a spot or compound are skipped', () => {

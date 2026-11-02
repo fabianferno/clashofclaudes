@@ -16,7 +16,7 @@ export interface VillageActions {
   /** The workspace's compound, placing and persisting one first if it has none. */
   ensureCompound: (wsId: string) => Promise<Compound>;
   /**
-   * The session's spot (agent tent or terminal workshop), finding (expanding the compound if full) and persisting one if it has none.
+   * The session's spot (agent tent or terminal rune stone), finding (expanding the compound if full) and persisting one if it has none.
    * Shifting the other structures of a relocated compound never stops at one failure (a mate may have
    * closed meanwhile): the rest are still shifted and the failures are reported once via `onError`
    * (default: the app's error toast).

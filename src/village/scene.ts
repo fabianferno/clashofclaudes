@@ -1009,7 +1009,8 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
   };
   let overlayKey = '';
   const redrawOverlay = () => {
-    const m0 = movableOf(selected);
+    // a board is dragged without being selected (a click on it opens it)
+    const m0 = od?.m.target.kind === 'board' ? od.m : movableOf(selected);
     const m = m0 && pending && pending.m.entityId === m0.entityId ? { ...m0, tile: pending.tile } : m0;
     const dragging = !!(od && od.moved);
     const key = JSON.stringify([m && [m.target, m.tile, m.compound], dragging && od && [od.target, od.valid]]);
@@ -1075,6 +1076,9 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     rec.sprite.position.set(p.x, p.y);
     rec.sprite.zIndex = 10000;
     rec.sprite.alpha = 0.85;
+    // a board's cut-out (and so its live preview) travels with it, still drawn right after it
+    const hole = g.m.target.kind === 'board' ? sprites.get(`hole:${g.m.target.key}`) : undefined;
+    if (hole) { hole.sprite.position.set(p.x, p.y); hole.sprite.zIndex = 10000; }
     const bar = sprites.get(g.m.entityId.startsWith('struct:') ? g.m.entityId.replace(/^struct:/, 'status:') : `status:${g.m.entityId}`);
     if (bar && bar !== rec) {
       const q = iso(g.t.x + size / 2, g.t.y + size / 2);
@@ -1165,9 +1169,16 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     pointerId = ev.pointerId;
     downAt = p;
     const w = screenToWorld(cam, p.x, p.y);
-    const m = movableOf(selected, ev.altKey);
-    // a press on the selected object drags the object; anywhere else pans the camera
-    if (m && hitTest(entities, w.x, w.y)?.id === m.entityId) {
+    const top = hitTest(entities, w.x, w.y);
+    const front = hitTest(hitEntities(), w.x, w.y); // a builder in front of a board is picked up instead
+    const b = front?.kind === 'board' ? lastState.boards?.find((x) => `board:${x.key}` === front.id) : undefined;
+    const c = b && lastState.workspaces.find((x) => x.id === b.workspaceId)?.compound;
+    // a press on a board drags it (a press without a drag opens it); on the selected object drags
+    // that; anywhere else pans the camera
+    const m = b && c
+      ? { target: { kind: 'board', key: b.key } as const, entityId: top!.id, w: STRUCT, h: STRUCT, inset: 0, tile: b.spot, compound: c, height: 100, chip: '' }
+      : movableOf(selected, ev.altKey);
+    if (m && top?.id === m.entityId) {
       const g = toGrid(w.x, w.y);
       od = { m, grab: { x: g.x - m.tile.x, y: g.y - m.tile.y }, moved: false, target: m.tile, valid: true };
       try { canvas.setPointerCapture(ev.pointerId); } catch { /* synthetic events have no live pointer */ }
@@ -1227,6 +1238,11 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     od = null;
     canvas.style.cursor = '';
     if (ev) { try { canvas.releasePointerCapture(ev.pointerId); } catch { /* see onDown */ } }
+    if (d && !d.moved && ev && d.m.target.kind === 'board') {
+      const key = d.m.target.key;
+      const b = lastState.boards?.find((x) => x.key === key);
+      if (b) opts.onOpenApp?.(b);
+    }
     if (!d || !d.moved) { redrawOverlay(); return; } // a plain click on the selected object changes nothing
     const same = d.target.x === d.m.tile.x && d.target.y === d.m.tile.y;
     if (ev && d.valid && !same && opts.onMove) {
@@ -1255,13 +1271,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     try { canvas.releasePointerCapture(ev.pointerId); } catch { /* see onDown */ }
     if (drag.up() !== 'click') return;
     const w = screenToWorld(cam, downAt.x, downAt.y);
-    const hit = hitTest(hitEntities(), w.x, w.y);
-    if (hit?.kind === 'board') {
-      const b = lastState.boards?.find((x) => `board:${x.key}` === hit.id);
-      if (b) opts.onOpenApp?.(b);
-      return;
-    }
-    opts.onSelect?.(selectionOf(hit, lastState.sessions));
+    opts.onSelect?.(selectionOf(hitTest(hitEntities(), w.x, w.y), lastState.sessions));
   };
   const onCancel = () => { if (od) endObjectDrag(null); if (bd) endBuilderDrag(null); drag.cancel(); canvas.style.cursor = ''; };
   const onWheel = (ev: WheelEvent) => {

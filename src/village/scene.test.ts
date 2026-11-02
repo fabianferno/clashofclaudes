@@ -15,7 +15,7 @@ const sess = (
 ): SessionInfo => ({
   id, workspaceId: wsId, kind: builderId ? { kind: 'agent', builderId } : { kind: 'terminal' },
   task: null, state, steps, startedAt: 0, lastOutputAt: 0, reachedFinished, worktree: null,
-  commandPreview: '', awaitingDecision: false, rev: 1, spot,
+  commandPreview: '', awaitingDecision: false, busy: false, rev: 1, spot,
 });
 const bld = (id: string, agent: Builder['agent'] = 'claude'): Builder =>
   ({ id, name: id, agent, model: null, effort: null, customCommand: null });
@@ -101,21 +101,23 @@ describe('buildEntities', () => {
     expect(buildEntities({ ...input, workspaces: [ws('w1', null)] }).some((e) => e.kind === 'board')).toBe(false);
   });
 
-  it('terminals_stand_as_rune_stones_that_count_for_the_walls', () => {
+  it('terminals_stand_as_rune_stones_lit_only_while_a_command_runs', () => {
     const c1 = placeCompound([]);
     const s1 = findSpot(c1, [])!;
     const s2 = findSpot(c1, [s1])!;
     const input: VillageInput = {
       workspaces: [ws('w1', c1)],
       builders: [bld('b1')],
-      sessions: [sess('a1', 'w1', 'b1', s1), sess('t1', 'w1', null, s2), sess('t2', 'w1', null, null)],
+      sessions: [sess('a1', 'w1', 'b1', s1), { ...sess('t1', 'w1', null, s2), busy: true }, sess('t2', 'w1', null, null)],
     };
     const es = buildEntities(input);
     const shop = es.find((e) => e.id === 'struct:t1')!;
     expect([shop.kind, shop.texKey, shop.x, shop.y]).toEqual(['structure', 'runestone:lit', s2.x + 2, s2.y + 2]);
     expect(es.filter((e) => e.kind === 'wall')).toHaveLength(enclosure(c1, [s1, s2], 1, seedOf('w1')).walls.length - 1);
     expect(es.some((e) => e.id === 'status:t1')).toBe(false); // no status bar over a terminal
-    const ended = buildEntities({ ...input, sessions: [sess('t1', 'w1', null, s2, { kind: 'ended', exitCode: 0 })] });
+    // dark while the shell waits at its prompt
+    expect(buildEntities({ ...input, sessions: [sess('t1', 'w1', null, s2)] }).find((e) => e.id === 'struct:t1')?.texKey).toBe('runestone:dark');
+    const ended = buildEntities({ ...input, sessions: [{ ...sess('t1', 'w1', null, s2, { kind: 'ended', exitCode: 0 }), busy: true }] });
     expect(ended.find((e) => e.id === 'struct:t1')?.texKey).toBe('runestone:dark');
   });
 

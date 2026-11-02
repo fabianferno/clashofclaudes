@@ -173,6 +173,12 @@ impl PtyHandle {
         self.pid
     }
 
+    /// A command, not the shell, holds the terminal: the foreground process group is not the leader's.
+    pub fn foreground_busy(&self) -> bool {
+        let fg = self.master.lock().unwrap_or_else(|e| e.into_inner()).process_group_leader();
+        matches!((fg, self.pid), (Some(fg), Some(pid)) if fg as u32 != pid)
+    }
+
     /// The leader is unreaped, or some process it left behind is still in its group.
     pub fn group_alive(&self) -> bool {
         self.pid.is_some_and(|pid| !self.has_exited() || platform::group_exists(pid))

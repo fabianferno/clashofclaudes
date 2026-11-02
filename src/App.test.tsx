@@ -50,7 +50,7 @@ test('App does not re-render on session updates; error and notices still show', 
   const before = appRenders;
   act(() => useApp.getState().upsertSession({
     id: 's1', workspaceId: 'w1', kind: { kind: 'terminal' }, task: null, state: { kind: 'working' }, steps: 0, startedAt: 0,
-    lastOutputAt: 0, reachedFinished: false, worktree: null, commandPreview: '', awaitingDecision: false, rev: 1, spot: null,
+    lastOutputAt: 0, reachedFinished: false, worktree: null, commandPreview: '', awaitingDecision: false, busy: false, rev: 1, spot: null,
   }));
   act(() => useApp.getState().upsertSession({ ...useApp.getState().sessions.s1, steps: 1, rev: 2 }));
   expect(appRenders).toBe(before);
@@ -63,7 +63,7 @@ test('App does not re-render on session updates; error and notices still show', 
 test('select-session selects that session and opens the panel; unknown ids are ignored', async () => {
   render(<App />);
   await act(async () => { await Promise.resolve(); });
-  act(() => useApp.getState().upsertSession({ id: 's9', workspaceId: 'w1', kind: { kind: 'terminal' }, task: null, state: { kind: 'working' }, steps: 0, startedAt: 0, lastOutputAt: 0, reachedFinished: false, worktree: null, commandPreview: '', awaitingDecision: false, rev: 1, spot: null }));
+  act(() => useApp.getState().upsertSession({ id: 's9', workspaceId: 'w1', kind: { kind: 'terminal' }, task: null, state: { kind: 'working' }, steps: 0, startedAt: 0, lastOutputAt: 0, reachedFinished: false, worktree: null, commandPreview: '', awaitingDecision: false, busy: false, rev: 1, spot: null }));
   act(() => onSelectSession('nope'));
   expect(useApp.getState().selection).not.toEqual({ kind: 'session', id: 'nope' });
   act(() => onSelectSession('s9'));

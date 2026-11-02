@@ -169,6 +169,9 @@ pub struct SessionInfo {
     /// A permission prompt is open and can be answered with approve/deny. False after an
     /// answer until the agent asks again.
     pub awaiting_decision: bool,
+    /// Terminals: a command (not the idle shell) is running in the foreground. Always false for agents.
+    #[serde(default)]
+    pub busy: bool,
     /// Strictly increasing per session across every emitted update (first is 1); lets the
     /// frontend drop an update that arrives after a newer one.
     pub rev: u64,

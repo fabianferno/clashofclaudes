@@ -32,7 +32,7 @@ const builder = (o: Partial<Builder> = {}): Builder => ({
 });
 const sess = (o: Partial<SessionInfo> = {}): SessionInfo => ({
   id: 's1', workspaceId: 'w1', kind: { kind: 'agent', builderId: 'b1' }, task: 'Do it', state: { kind: 'working' },
-  steps: 3, startedAt: 1, lastOutputAt: 1, reachedFinished: false, worktree: null, commandPreview: '', awaitingDecision: false,
+  steps: 3, startedAt: 1, lastOutputAt: 1, reachedFinished: false, worktree: null, commandPreview: '', awaitingDecision: false, busy: false,
   rev: 1, spot: null, ...o,
 });
 const agents: AgentInfo[] = [

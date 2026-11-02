@@ -386,6 +386,7 @@ impl SessionManager {
             worktree: None,
             command_preview: command_preview(&spec),
             awaiting_decision: false,
+            busy: false,
             rev: 0,
             spot: None,
         };
@@ -829,7 +830,12 @@ impl SessionManager {
         let mut g = self.lock();
         for e in g.values_mut().filter(|e| !e.exited) {
             let secs = (now_ms - e.quiet_since_ms).max(0) as u64 / 1000;
-            if e.apply(&StatusEvent::Silence { secs }, now_ms) {
+            let mut changed = e.apply(&StatusEvent::Silence { secs }, now_ms);
+            if e.info.kind == SessionKind::Terminal {
+                let busy = e.pty.as_ref().is_some_and(|p| p.foreground_busy());
+                changed |= std::mem::replace(&mut e.info.busy, busy) != busy;
+            }
+            if changed {
                 self.send_updated(e);
             }
         }
@@ -1166,6 +1172,21 @@ mod tests {
         fx.mgr.write(&s.id, b"exit 3\r").unwrap();
         assert!(wait_until(|| fx.mgr.running_process_count() == 0));
         assert_eq!(state(&fx, &s.id), SessionState::Ended { exit_code: Some(3) });
+    }
+
+    #[test]
+    fn terminal_is_busy_only_while_a_command_runs() {
+        let fx = fixture();
+        let s = fx.mgr.start_terminal(&fx.ws).unwrap();
+        let busy = |fx: &Fx| {
+            fx.mgr.tick(now_ms());
+            info(fx, &s.id).busy
+        };
+        // the shell at its prompt (its start-up may run commands of its own first)
+        assert!(wait_until(|| !busy(&fx)), "an idle shell is not busy");
+        fx.mgr.write(&s.id, b"sleep 2\r").unwrap();
+        assert!(wait_until(|| busy(&fx)), "a foreground command makes the terminal busy");
+        assert!(wait_until(|| !busy(&fx)), "and it is idle again once the command returns");
     }
 
     #[test]

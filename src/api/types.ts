@@ -70,6 +70,8 @@ export interface SessionInfo {
   commandPreview: string;
   /** A permission prompt can be answered with approve/deny right now. */
   awaitingDecision: boolean;
+  /** Terminals: a command (not the idle shell) is running in the foreground. Always false for agents. */
+  busy: boolean;
   /** Strictly increasing per session; the store drops updates older than the one it holds. */
   rev: number;
   /** Where the builder stands in the village; not persisted. */

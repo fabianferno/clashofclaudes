@@ -188,6 +188,13 @@ export interface AppState {
   /** The app popped out full-window from its board, if any (`browserId` for the owner's browsers). */
   appPopout: { url: string; title: string; browserId?: string } | null;
   setAppPopout: (a: { url: string; title: string; browserId?: string } | null) => void;
+  /** The latest snapshot of each board's page, by url: a data: JPEG and when it was taken. */
+  snapshots: Record<string, { data: string; at: number }>;
+  setSnapshot: (url: string, data: string, at: number) => void;
+  /** Full-window views open over the village (pop-outs, Kanban); the village stops drawing under them. */
+  covers: number;
+  /** Count one more cover; returns its removal. */
+  cover: () => () => void;
   /** Tasks written down and not started yet, oldest first (persisted by the backend). */
   todos: Todo[];
   addTodo: (t: Todo) => void;
@@ -223,6 +230,8 @@ export const useApp = create<AppState>((set, get) => ({
   apps: [],
   boardSpots: {},
   appPopout: null,
+  snapshots: {},
+  covers: 0,
   todos: [],
   kanban: null,
   browsers: [],
@@ -316,6 +325,12 @@ export const useApp = create<AppState>((set, get) => ({
         ...(st.appPopout?.browserId === id ? { appPopout: null } : {}),
       };
     }),
+  setSnapshot: (url, data, at) => set((st) => ({ snapshots: { ...st.snapshots, [url]: { data, at } } })),
+  cover: () => {
+    set((st) => ({ covers: st.covers + 1 }));
+    let done = false;
+    return () => { if (!done) { done = true; set((st) => ({ covers: st.covers - 1 })); } };
+  },
   addTodo: (t) => set((st) => ({ todos: [...st.todos.filter((x) => x.id !== t.id), t] })),
   removeTodo: (id) => set((st) => ({ todos: st.todos.filter((x) => x.id !== id) })),
   setKanban: (kanban) => set({ kanban }),

@@ -6,7 +6,7 @@ import { enclosure, seedOf } from './enclosure';
 import { classOf, gearOf, houseColors, houseStage, scaffoldHeight, type ClassTier, type Gear } from './look';
 import { dropOf, onGround, retarget, routeHome, routeToSite, standTile, step, walkable, type BuilderDrop, type Walker } from './walkers';
 import {
-  BOARD, GROUND_SCALE, boardFacePoint, drawBoard, drawBoardHole, drawBubble, drawBuilder, drawCollector, drawGate, drawGround, drawHall, drawHouse, drawPuff, drawRing, drawStatusBar, drawStructure,
+  GROUND_SCALE, drawBoard, drawBubble, drawBuilder, drawCollector, drawGate, drawGround, drawHall, drawHouse, drawPuff, drawRing, drawStatusBar, drawStructure,
   drawWallSeg, drawRuneStone, groundOrigin,
   type Art, type Pose,
 } from './art/entities';
@@ -51,13 +51,15 @@ export interface BoardInput {
   port: number | null;
   /** Set for a browser the owner opened. */
   browserId?: string;
-  /** The page may be framed: the board shows it live; otherwise a card with the label. */
+  /** The page may be framed: a click pops it out; otherwise it opens in the browser. */
   frameable: boolean;
+  /** Key of the board's latest snapshot (see `art/boardImages`); without one the board shows a card. */
+  snapshot?: string;
   /** Top-left tile. */
   spot: Tile;
 }
 
-export type EntityKind = 'hall' | 'house' | 'structure' | 'collector' | 'board' | 'hole' | 'builder' | 'wall' | 'gate' | 'tree' | 'status';
+export type EntityKind = 'hall' | 'house' | 'structure' | 'collector' | 'board' | 'builder' | 'wall' | 'gate' | 'tree' | 'status';
 
 /**
  * One drawable. `x`/`y` is the grid point of the sprite's anchor (for footprints, the front
@@ -76,7 +78,7 @@ export interface Entity {
 }
 
 const KIND_RANK: Record<EntityKind, number> = {
-  tree: 0, wall: 1, gate: 2, hall: 3, house: 4, structure: 5, collector: 5, board: 5, hole: 5, builder: 6, status: 8,
+  tree: 0, wall: 1, gate: 2, hall: 3, house: 4, structure: 5, collector: 5, board: 5, builder: 6, status: 8,
 };
 
 const ent = (id: string, kind: EntityKind, x: number, y: number, texKey: string): Entity =>
@@ -113,18 +115,12 @@ export function spotsIn(sessions: readonly SessionInfo[], wsId: string, boards: 
     .concat(boards.flatMap((b) => (b.workspaceId === wsId ? [b.spot] : [])));
 }
 
-/**
- * The app boards in the compounds: the board, the cut-out its live preview shows through (drawn
- * right after it, so whatever stands in front still covers the preview) and its name bar.
- */
+/** The app boards in the compounds: the board (its app's latest snapshot on the screen) and its name bar. */
 export function boardEntities(input: Pick<VillageInput, 'boards' | 'workspaces'>): Entity[] {
   const out: Entity[] = [];
   for (const b of input.boards ?? []) {
     if (!input.workspaces.some((w) => w.id === b.workspaceId && w.compound)) continue;
-    const board = ent(`board:${b.key}`, 'board', b.spot.x + STRUCT, b.spot.y + STRUCT, `board:${b.frameable ? 'live' : 'card'}:${encodeURIComponent(b.label)}`);
-    out.push(board);
-    // the same depth as the board: the sorts are stable, so the cut-out lands right after its own board
-    if (b.frameable) out.push({ ...ent(`hole:${b.key}`, 'hole', board.x, board.y, 'boardhole'), depth: board.depth });
+    out.push(ent(`board:${b.key}`, 'board', b.spot.x + STRUCT, b.spot.y + STRUCT, `board:${encodeURIComponent(b.label)}:${b.snapshot ?? ''}`));
     // texture keys split on ':', so the label holds none
     const label = `${b.label.replace(/:/g, ' ').slice(0, 24)}${b.port === null ? '' : ` \u00b7 ${b.port}`}`;
     out.push(ent(`status:board:${b.key}`, 'status', b.spot.x + STRUCT / 2, b.spot.y + STRUCT / 2, `status:app:${label}`));
@@ -210,8 +206,7 @@ export function artFor(key: string): Art {
     case 'gate': return drawGate(a as 'n' | 's' | 'e' | 'w');
     case 'collector': return drawCollector(a as CollectorAgent, b === 'none' ? null : Number(b));
     case 'runestone': return drawRuneStone(a === 'lit');
-    case 'board': return drawBoard(a === 'live', decodeURIComponent(b ?? ''));
-    case 'boardhole': return drawBoardHole();
+    case 'board': return drawBoard(decodeURIComponent(a ?? ''), b || null);
     case 'builder': return drawBuilder(a as AgentKind, Number(b) as ClassTier, Number(c) as Gear, d as Pose, Number(e) as 1 | -1);
     case 'bubble': return drawBubble(a as 'needs' | 'stuck');
     case 'ring': return drawRing();
@@ -341,20 +336,11 @@ export interface Scene {
   reveal(sel: Selection | null): void;
   /** Tell the scene which thing is selected (draws the move affordance for structures and houses). */
   select(sel: Selection | null): void;
+  /** A full-window view covers the village: stop drawing it until uncovered. */
+  setCovered(covered: boolean): void;
 }
 
 const GROUND_SEED = 7;
-
-/** An app board's screen corners (world px from the footprint's front corner, the sprite's anchor) and the preview page size. */
-const FRONT = iso(STRUCT, STRUCT);
-const FACE = {
-  tl: boardFacePoint(BOARD.screen.u0, BOARD.screen.v1),
-  tr: boardFacePoint(BOARD.screen.u1, BOARD.screen.v1),
-  bl: boardFacePoint(BOARD.screen.u0, BOARD.screen.v0),
-};
-/** The page is laid out at a desktop width and scaled down onto the screen, keeping the screen's proportions. */
-const PREVIEW_W = 1280;
-const PREVIEW_H = Math.round(PREVIEW_W * Math.hypot(FACE.bl.x - FACE.tl.x, FACE.bl.y - FACE.tl.y) / Math.hypot(FACE.tr.x - FACE.tl.x, FACE.tr.y - FACE.tl.y));
 /**
  * Live scenes, newest last; the dev driver always points at the newest one. React StrictMode
  * creates two and destroys one, in either order, so a single "owner" slot is not enough.
@@ -384,9 +370,6 @@ export function rendererOptions(dpr: number) {
     antialias: false,
     preference: 'webgl' as const,
     background: '#3f7d22',
-    // a transparent canvas, so an app board's cut-out shows the live preview laid under it (the
-    // host element paints the same green behind the canvas)
-    backgroundAlpha: 0,
   };
 }
 
@@ -395,11 +378,6 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
   await app.init({ resizeTo: canvasHost, ...rendererOptions(window.devicePixelRatio || 1) });
   await prepareArt();
   canvasHost.appendChild(app.canvas);
-  // Live app previews: iframes under the canvas, each seen through its board's cut-out (see boardEntities).
-  const previewLayer = document.createElement('div');
-  previewLayer.className = 'app-previews';
-  canvasHost.insertBefore(previewLayer, app.canvas);
-  const previews = new Map<string, { frame: HTMLIFrameElement; url: string; css: string }>();
 
   // view holds the layers and is what the camera transforms.
   const view = new Container();
@@ -531,14 +509,21 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     if (now - lastCapCheck > 500) { lastCapCheck = now; applyCap(); }
   };
   app.ticker.add(countFrame);
+  // a full-window view (an app or terminal popped out, a Kanban) hides the village: no drawing under it
+  let covered = false;
   const onVisibility = () => {
-    if (document.hidden) {
+    if (document.hidden || covered) {
       app.ticker.stop();
       ticks.length = 0;
     } else {
       applyCap();
       app.ticker.start();
     }
+  };
+  const setCovered = (c: boolean) => {
+    if (c === covered || destroyed) return;
+    covered = c;
+    onVisibility();
   };
   window.addEventListener('focus', applyCap);
   window.addEventListener('blur', applyCap);
@@ -769,42 +754,6 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
   app.ticker.add((t) => updateBuilders(Math.min(t.deltaMS / 1000, 0.25)));
   app.ticker.add((t) => updateFx(Math.min(t.deltaMS / 1000, 0.25)));
 
-  /** One iframe per board cut-out, loading the board's app. */
-  const syncPreviews = () => {
-    const want = new Map<string, string>();
-    for (const b of lastState.boards ?? []) if (sprites.has(`hole:${b.key}`)) want.set(`hole:${b.key}`, b.url);
-    for (const [id, p] of previews) if (want.get(id) !== p.url) { p.frame.remove(); previews.delete(id); }
-    for (const [id, url] of want) {
-      if (previews.has(id)) continue;
-      const frame = document.createElement('iframe');
-      frame.src = url;
-      frame.title = 'App preview';
-      frame.tabIndex = -1;
-      frame.setAttribute('aria-hidden', 'true');
-      // no popups, dialogs or navigating the village away
-      frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms');
-      frame.style.width = `${PREVIEW_W}px`;
-      frame.style.height = `${PREVIEW_H}px`;
-      frame.style.display = 'none';
-      previewLayer.appendChild(frame);
-      previews.set(id, { frame, url, css: '' });
-    }
-  };
-  // Lay each preview onto its cut-out, following the camera and any move of its board.
-  app.ticker.add(() => {
-    for (const [id, p] of previews) {
-      const sp = sprites.get(id)?.sprite;
-      const at = (q: { x: number; y: number }) => world.toGlobal({ x: (sp?.x ?? 0) + q.x - FRONT.x, y: (sp?.y ?? 0) + q.y - FRONT.y });
-      const tl = at(FACE.tl), tr = at(FACE.tr), bl = at(FACE.bl);
-      const css = !sp?.visible || Math.hypot(tr.x - tl.x, tr.y - tl.y) < 12 ? 'none'
-        : `matrix(${(tr.x - tl.x) / PREVIEW_W}, ${(tr.y - tl.y) / PREVIEW_W}, ${(bl.x - tl.x) / PREVIEW_H}, ${(bl.y - tl.y) / PREVIEW_H}, ${tl.x}, ${tl.y})`;
-      if (css === p.css) continue;
-      p.css = css;
-      p.frame.style.display = css === 'none' ? 'none' : '';
-      if (css !== 'none') p.frame.style.transform = css;
-    }
-  });
-
   const sync = (state: VillageInput) => {
     if (destroyed) return;
     workspaces = state.workspaces;
@@ -835,14 +784,13 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       if (!rec) {
         const sprite = new Sprite();
         sprite.scale.set(0.5); // art is baked at 2x density
-        if (e.kind === 'hole') sprite.blendMode = 'erase';
         (e.kind === 'status' ? overlay : world).addChild(sprite);
         rec = { sprite, key: '', entity: e, base: { x: 0, y: 0 } };
         sprites.set(e.id, rec);
       }
       const { sprite } = rec;
       rec.ws = e.id.startsWith('struct:') ? snap.structs.get(e.id)
-        : e.kind === 'board' || e.kind === 'hole' ? e.id.split(':')[1]
+        : e.kind === 'board' ? e.id.split(':')[1]
         : e.id.startsWith('status:board:') ? e.id.split(':')[2]
         : e.kind === 'status' ? snap.structs.get(`struct:${e.id.slice('status:'.length)}`)
         : e.kind === 'house' || e.kind === 'gate' || e.kind === 'wall' ? e.id.split(':')[1] : undefined;
@@ -858,7 +806,6 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       sprite.position.set(p.x, p.y);
       sprite.zIndex = e.depth;
     });
-    syncPreviews();
     const closedIds = new Map(ev.closed.map((c) => [c.id, c.wsId]));
     for (const [id, rec] of sprites) {
       if (seen.has(id)) continue;
@@ -1076,9 +1023,6 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     rec.sprite.position.set(p.x, p.y);
     rec.sprite.zIndex = 10000;
     rec.sprite.alpha = 0.85;
-    // a board's cut-out (and so its live preview) travels with it, still drawn right after it
-    const hole = g.m.target.kind === 'board' ? sprites.get(`hole:${g.m.target.key}`) : undefined;
-    if (hole) { hole.sprite.position.set(p.x, p.y); hole.sprite.zIndex = 10000; }
     const bar = sprites.get(g.m.entityId.startsWith('struct:') ? g.m.entityId.replace(/^struct:/, 'status:') : `status:${g.m.entityId}`);
     if (bar && bar !== rec) {
       const q = iso(g.t.x + size / 2, g.t.y + size / 2);
@@ -1333,8 +1277,6 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     app.renderer.off('resize', onResize);
     app.canvas.removeEventListener('webglcontextrestored', onContextRestored);
     sprites.clear();
-    previewLayer.remove();
-    previews.clear();
     unholdTextures();
     fxRender.destroy();
     const gt = ground.texture;
@@ -1358,5 +1300,5 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
 
   const select = (sel: Selection | null) => { selected = sel; redrawOverlay(); };
 
-  return { sync, destroy, world, debug, fitVillage, fitCompound, zoomBy, reveal, select };
+  return { sync, destroy, world, debug, fitVillage, fitCompound, zoomBy, reveal, select, setCovered };
 }

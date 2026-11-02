@@ -29,6 +29,8 @@ export const ipc = {
   getQuotas: () => invoke<AgentQuota[]>('get_quotas'),
   addTodo: (workspaceId: string, text: string) => invoke<Todo>('add_todo', { workspaceId, text }),
   removeTodo: (id: string) => invoke<void>('remove_todo', { id }),
+  /** A small JPEG of a page for its board, as a data: URL (taken in a hidden window; a few seconds). */
+  snapshotApp: (url: string) => invoke<string>('snapshot_app', { url }),
   /** Local web apps last found in the workspaces. */
   getApps: () => invoke<AppPreview[]>('get_apps'),
   onAppsUpdated: (cb: (a: AppPreview[]) => void): Promise<UnlistenFn> =>

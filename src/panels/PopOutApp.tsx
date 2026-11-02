@@ -15,6 +15,8 @@ export default function PopOutApp() {
   const [addr, setAddr] = useState('');
   const [bad, setBad] = useState(false);
   useEffect(() => { setAddr(app?.url ?? ''); setBad(false); }, [app?.url]);
+  const open = !!app;
+  useEffect(() => (open ? useApp.getState().cover() : undefined), [open]);
   useEffect(() => {
     if (!app) return;
     // keys typed inside the page stay in the page; this only sees them with focus outside it

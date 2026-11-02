@@ -14,6 +14,7 @@ pub mod pty;
 pub mod quota;
 pub mod scrollback;
 pub mod sessions;
+pub mod snapshot;
 pub mod status;
 pub mod updater;
 pub mod xp;
@@ -277,6 +278,7 @@ pub fn run() {
                 pending_update: Mutex::new(None),
             });
             app.manage(commands::AppsState::default());
+            app.manage(snapshot::Snapper::default());
             spawn_app_scanner(app.handle().clone());
             #[cfg(debug_assertions)]
             {
@@ -288,6 +290,14 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            // only the village's window counts: the hidden snapshot window (see `snapshot`) has no say
+            if window.label() != "main" {
+                return;
+            }
+            if let WindowEvent::Destroyed = event {
+                // the hidden window would otherwise keep the app alive with nothing on screen
+                snapshot::close(window.app_handle());
+            }
             if let WindowEvent::Focused(f) = event
                 && let Some(ns) = window.try_state::<NotifyState>()
             {
@@ -335,6 +345,7 @@ pub fn run() {
             commands::set_session_spot,
             commands::get_quotas,
             commands::get_apps,
+            commands::snapshot_app,
             commands::add_todo,
             commands::remove_todo,
             commands::refresh_quotas,

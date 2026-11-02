@@ -340,13 +340,23 @@ export function boardFacePoint(u: number, v: number): Pt {
   return up(iso(BOARD.x0 + (BOARD.x1 - BOARD.x0) * u, BOARD.y), BOARD.z0 + BOARD.h * v);
 }
 
+/** Decoded snapshots for the boards, by key (see `setBoardImage`). */
+const boardImages = new Map<string, CanvasImageSource & { width: number; height: number }>();
+
+/** Make a decoded snapshot drawable as `drawBoard(..., key)`; `null` forgets it. */
+export function setBoardImage(key: string, img: (CanvasImageSource & { width: number; height: number }) | null): void {
+  if (img) boardImages.set(key, img);
+  else boardImages.delete(key);
+}
+
 /**
  * An app board, 2x2 footprint: a framed wooden panel on two posts, propped from behind, made up as a
- * browser window (title bar with three lights and an address pill). `live` leaves the screen plain
- * white: the scene cuts it out and shows the app's live preview through it. Otherwise the screen
- * shows `label` as a card. Anchor: the footprint's front corner, grid point (gx+2, gy+2).
+ * browser window (title bar with three lights and an address pill). The screen shows the snapshot
+ * registered as `snapshot`; without one (not taken yet) it shows `label` as a card.
+ * Anchor: the footprint's front corner, grid point (gx+2, gy+2).
  */
-export function drawBoard(live: boolean, label: string): Art {
+export function drawBoard(label: string, snapshot: string | null): Art {
+  const img = snapshot ? boardImages.get(snapshot) : undefined;
   return bake(200, 220, 100, 190, () => {
     const g = ctx();
     shadow(iso(1, 1.05), 50, 19, 0.2, 4, 3);
@@ -382,8 +392,21 @@ export function drawBoard(live: boolean, label: string): Art {
       dot(p.x, p.y, 1.9, c);
     });
     quad(0.32, 0.86, dy - 0.045, dy + 0.045, '#ffffff');
-    quad(sc.u0, sc.u1, sc.v0, sc.v1, live ? '#ffffff' : '#26303d', 2);
-    if (!live) {
+    quad(sc.u0, sc.u1, sc.v0, sc.v1, img ? '#ffffff' : '#26303d', 2);
+    if (img) {
+      // the snapshot, laid onto the face (it falls 1 px per 2 to the right), inside the screen's outline
+      const tl = at(sc.u0, sc.v1), tr = at(sc.u1, sc.v1), bl = at(sc.u0, sc.v0);
+      g.save();
+      g.beginPath();
+      g.moveTo(tl.x, tl.y); g.lineTo(tr.x, tr.y); g.lineTo(tr.x + bl.x - tl.x, tr.y + bl.y - tl.y); g.lineTo(bl.x, bl.y);
+      g.closePath();
+      g.clip();
+      g.transform((tr.x - tl.x) / img.width, (tr.y - tl.y) / img.width, (bl.x - tl.x) / img.height, (bl.y - tl.y) / img.height, tl.x, tl.y);
+      g.imageSmoothingQuality = 'high';
+      g.drawImage(img, 0, 0);
+      g.restore();
+      quad(sc.u0, sc.u1, sc.v0, sc.v1, 'rgba(0,0,0,0)', 2); // the outline again, over the picture's edge
+    } else {
       // the card: the app's name on the screen, lying on the face
       const m = at((sc.u0 + sc.u1) / 2, (sc.v0 + sc.v1) / 2);
       g.save();
@@ -399,15 +422,5 @@ export function drawBoard(live: boolean, label: string): Art {
       g.fillText(t, 0, 7);
       g.restore();
     }
-  }, iso(2, 2));
-}
-
-/** The board's screen, filled: the scene erases this from the canvas so the live preview shows through. Same anchor as `drawBoard`. */
-export function drawBoardHole(): Art {
-  return bake(200, 220, 100, 190, () => {
-    const { u0, u1, v0, v1 } = BOARD.screen;
-    const at = boardFacePoint;
-    // a hair inside the screen's outline, so the frame's stroke stays whole
-    poly([at(u0 + 0.004, v0 + 0.01), at(u1 - 0.004, v0 + 0.01), at(u1 - 0.004, v1 - 0.01), at(u0 + 0.004, v1 - 0.01)], '#ffffff');
   }, iso(2, 2));
 }

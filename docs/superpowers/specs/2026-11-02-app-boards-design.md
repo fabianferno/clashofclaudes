@@ -39,15 +39,27 @@ latest. Excluded: the app's own process and, in dev builds, its own dev server p
 This catches servers however they were started (an agent's background shell, a terminal session,
 or a shell outside the app) without parsing anyone's output.
 
-## Rendering
+## Rendering (revised 2026-11-02: snapshots, not live previews)
 
-- The village canvas is transparent (`backgroundAlpha: 0`; the host paints the same green).
-- Each live board has an iframe under the canvas, laid onto the board's screen with a CSS matrix
-  every frame (follows camera, drags and compound moves). The page is laid out at 1280 px wide.
-- Right after the board sprite, a `hole` sprite with blend mode `erase` cuts the screen out of the
-  canvas, so the iframe shows through and anything standing in front still covers it.
-- Preview iframes are sandboxed (`allow-scripts allow-same-origin allow-forms`), take no pointer
-  events or focus; the pop-out's iframe also allows modals, popups and downloads.
+The first version showed each app live in an iframe under a transparent canvas. Measured on the
+owner's portfolio (Next.js dev, three.js): the preview alone cost ~6% web-process CPU, ~4% GPU-process
+CPU and ~200 MB, spiked the GPU process to 107% while loading, and ran on the village's main thread
+(WKWebView keeps cross-origin iframes in the same web process). The pop-out ran a second copy.
+
+Now:
+- `src-tauri/src/snapshot.rs`: one hidden, borderless window loads the page at 1280x800, waits for
+  it to load plus 2.2 s, takes WebKit's snapshot at 360 pt wide (JPEG, ~25 KB), then goes to
+  `about:blank`, so the app runs only those few seconds, in its own web process. The window closes
+  after 45 s without a capture. Window events from it are ignored; closing the main window closes it.
+- `src/state/snapshots.ts`: one capture at a time, a board's page with no picture first, then the
+  stalest past 45 s; failures retried after 60 s; only while the window is visible, focused and not
+  covered.
+- The board draws the picture onto its screen face in its baked texture (a card until the first
+  one). The canvas is opaque again; no iframes on boards.
+- The live app runs only in the pop-out. While a full-window view is open (app or terminal pop-out,
+  Kanban) the village stops drawing.
+- Detection counts only pages: a successful or redirecting HTML response at `/` (tools' local
+  servers and APIs answering 401/404/JSON are not apps).
 
 ## Layout
 
@@ -57,6 +69,6 @@ walls and walkable ground, and block structure/house drags. Their spots live in 
 
 ## Owner checks
 
-- Release build: confirm the preview shows from the `tauri://` origin (WebKit treats
-  `http://localhost` as potentially trustworthy, so it should not count as mixed content; only
-  the dev origin was verified).
+- Release build: confirm the pop-out shows the app from the `tauri://` origin (WebKit treats
+  `http://localhost` as potentially trustworthy; only the dev origin was verified). Board pictures
+  come from a top-level window, so they do not depend on this.

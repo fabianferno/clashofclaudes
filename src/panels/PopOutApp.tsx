@@ -71,6 +71,10 @@ export default function PopOutApp() {
         >
           Open in browser
         </button>
+        {app.key && (
+          <button className="hud-btn red sm" title={app.browserId ? 'Close this browser' : 'Hide this board until the app stops'}
+            onClick={() => useApp.getState().removeBoard({ key: app.key!, browserId: app.browserId })}>Remove board</button>
+        )}
         <button className="hud-btn grey sm" aria-label="Close app" onClick={() => close(null)}>✕</button>
       </header>
       <div className="popout-body">

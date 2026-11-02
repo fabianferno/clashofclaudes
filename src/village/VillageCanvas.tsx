@@ -70,7 +70,7 @@ export default function VillageCanvas({ onError }: { onError?: (e: unknown) => v
       panelWidth: () => (useApp.getState().panelOpen ? PANEL_W : 0),
       // a page that refuses framing would pop out blank: that one goes to the browser
       onOpenApp: (b) => {
-        if (b.frameable) useApp.getState().setAppPopout({ url: b.url, title: b.label, browserId: b.browserId });
+        if (b.frameable) useApp.getState().setAppPopout({ url: b.url, title: b.label, key: b.key, browserId: b.browserId });
         else openUrl(b.url).catch((e) => useApp.getState().setError(`Could not open ${b.url}: ${String(e)}`));
       },
     }).then(

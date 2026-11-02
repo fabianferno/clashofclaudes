@@ -22,7 +22,7 @@ export interface VillageActions {
    * (default: the app's error toast).
    */
   ensureSpot: (sessionId: string, onError?: (e: unknown) => void) => Promise<Tile>;
-  /** An app board's spot (see `boardKey`), found the same way; null when the app went away first. */
+  /** A board's spot (see `boardItems`), found the same way; null when the board went away first. */
   ensureBoardSpot: (key: string, onError?: (e: unknown) => void) => Promise<Tile | null>;
   /**
    * Persist a move to `at`: a structure (session), a compound's house within its walls (workspace),
@@ -41,6 +41,50 @@ type MoveState = Pick<AppState, 'workspaces' | 'sessions'> & Partial<Pick<AppSta
 
 /** An app's board, by workspace and port (workspace ids hold no ':'). */
 export const boardKey = (a: Pick<AppPreview, 'workspaceId' | 'port'>): string => `${a.workspaceId}:${a.port}`;
+
+/** A browser the owner opened in a workspace (not persisted, like sessions). */
+export interface Browser { id: string; workspaceId: string; url: string }
+
+/** Everything that stands as a board: the owner's browsers, then the detected apps they do not already show. */
+export interface BoardItem {
+  key: string;
+  workspaceId: string;
+  url: string;
+  /** The page title or process name (apps), or the host (browsers). */
+  label: string;
+  port: number | null;
+  frameable: boolean;
+  /** Set for a browser the owner opened (it can be closed and navigated). */
+  browserId?: string;
+}
+
+const sameUrl = (a: string, b: string) => {
+  try { return new URL(a).href === new URL(b).href; } catch { return a === b; }
+};
+
+export function boardItems(st: Pick<AppState, 'apps' | 'browsers'>): BoardItem[] {
+  const opened: BoardItem[] = st.browsers.map((b) => {
+    let label = b.url, port: number | null = null;
+    try { const u = new URL(b.url); label = u.hostname; port = u.port ? Number(u.port) : null; } catch { /* shown as typed */ }
+    return { key: `${b.workspaceId}:web-${b.id}`, workspaceId: b.workspaceId, url: b.url, label, port, frameable: true, browserId: b.id };
+  });
+  const found: BoardItem[] = st.apps
+    .filter((a) => !st.browsers.some((b) => b.workspaceId === a.workspaceId && sameUrl(b.url, a.url)))
+    .map((a) => ({ key: boardKey(a), workspaceId: a.workspaceId, url: a.url, label: a.title ?? a.command, port: a.port, frameable: a.frameable }));
+  return [...opened, ...found];
+}
+
+/** A typed address as a URL to open: `localhost:3000` and bare hosts get http://; null unless http(s). */
+export function browserUrl(typed: string): string | null {
+  const t = typed.trim();
+  if (!t) return null;
+  try {
+    const u = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(t) ? t : `http://${t}`);
+    return u.protocol === 'http:' || u.protocol === 'https:' ? u.href : null;
+  } catch {
+    return null;
+  }
+}
 
 /** Top-left tiles of the app boards standing in a workspace's compound. */
 export function boardSpotsIn(spots: Record<string, Tile> | undefined, wsId: string, except: string | null = null): Tile[] {
@@ -131,9 +175,14 @@ export interface AppState {
   setApps: (a: AppPreview[]) => void;
   /** Where each app's board stands (top-left tile), by `boardKey`; not persisted. */
   boardSpots: Record<string, Tile>;
-  /** The app popped out full-window from its board, if any. */
-  appPopout: { url: string; title: string } | null;
-  setAppPopout: (a: { url: string; title: string } | null) => void;
+  /** The app popped out full-window from its board, if any (`browserId` for the owner's browsers). */
+  appPopout: { url: string; title: string; browserId?: string } | null;
+  setAppPopout: (a: { url: string; title: string; browserId?: string } | null) => void;
+  /** Browsers the owner opened, each standing as a board in its workspace. */
+  browsers: Browser[];
+  openBrowser: (workspaceId: string, url: string) => Browser;
+  closeBrowser: (id: string) => void;
+  setBrowserUrl: (id: string, url: string) => void;
   setBoardSpots: (spots: Record<string, Tile>) => void;
   /** A whole compound moved: its workspace and its sessions' new spots land in one update. */
   applyCompoundMove: (w: Workspace, sessions: SessionInfo[]) => void;
@@ -157,6 +206,7 @@ export const useApp = create<AppState>((set, get) => ({
   apps: [],
   boardSpots: {},
   appPopout: null,
+  browsers: [],
   selectedSessionId: null,
   selection: null,
   panelOpen: false,
@@ -221,17 +271,27 @@ export const useApp = create<AppState>((set, get) => ({
   // Upserts: a workspace (or builder) already present by id is replaced, never listed twice.
   addWorkspace: (w) => set((st) => ({ workspaces: upsertById(st.workspaces, w) })),
   updateWorkspace: (w) => set((st) => ({ workspaces: st.workspaces.map((x) => (x.id === w.id ? w : x)) })),
-  removeWorkspace: (id) => set((st) => ({ workspaces: st.workspaces.filter((x) => x.id !== id) })),
+  removeWorkspace: (id) => set((st) => ({ workspaces: st.workspaces.filter((x) => x.id !== id), browsers: st.browsers.filter((b) => b.workspaceId !== id) })),
   setStats: (stats) => set({ stats }),
   setQuota: (q) => set((st) => ({ quotas: { ...st.quotas, [q.agent]: q } })),
   setQuotas: (qs) => set((st) => ({ quotas: { ...st.quotas, ...Object.fromEntries(qs.map((q) => [q.agent, q])) } })),
   setCollectorSpots: (collectorSpots) => set({ collectorSpots }),
-  setApps: (apps) =>
+  setApps: (apps) => set((st) => ({ apps, ...prunedSpots({ ...st, apps }) })),
+  openBrowser: (workspaceId, url) => {
+    const b = { id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, workspaceId, url };
+    set((st) => ({ browsers: [...st.browsers, b] }));
+    return b;
+  },
+  closeBrowser: (id) =>
     set((st) => {
-      const live = new Set(apps.map(boardKey));
-      const kept = Object.entries(st.boardSpots).filter(([k]) => live.has(k));
-      return { apps, ...(kept.length !== Object.keys(st.boardSpots).length ? { boardSpots: Object.fromEntries(kept) } : {}) };
+      const browsers = st.browsers.filter((b) => b.id !== id);
+      return {
+        browsers,
+        ...prunedSpots({ ...st, browsers }),
+        ...(st.appPopout?.browserId === id ? { appPopout: null } : {}),
+      };
     }),
+  setBrowserUrl: (id, url) => set((st) => ({ browsers: st.browsers.map((b) => (b.id === id ? { ...b, url } : b)) })),
   setBoardSpots: (boardSpots) => set({ boardSpots }),
   setAppPopout: (appPopout) => set({ appPopout }),
   applyCompoundMove: (w, moved) =>
@@ -252,6 +312,13 @@ export const useApp = create<AppState>((set, get) => ({
   zoomRequest: null,
   requestZoom: (id) => set((st) => ({ zoomRequest: { id, n: (st.zoomRequest?.n ?? 0) + 1 } })),
 }));
+
+/** The board spots of boards that still stand (`{}` when none went away, so the store keeps its object). */
+function prunedSpots(st: Pick<AppState, 'apps' | 'browsers' | 'boardSpots'>): Partial<Pick<AppState, 'boardSpots'>> {
+  const live = new Set(boardItems(st).map((b) => b.key));
+  const kept = Object.entries(st.boardSpots).filter(([k]) => live.has(k));
+  return kept.length !== Object.keys(st.boardSpots).length ? { boardSpots: Object.fromEntries(kept) } : {};
+}
 
 function upsertById<T extends { id: string }>(list: T[], item: T): T[] {
   return list.some((x) => x.id === item.id) ? list.map((x) => (x.id === item.id ? item : x)) : [...list, item];
@@ -359,11 +426,11 @@ function villageActions(get: () => AppState): VillageActions {
   };
 
   const boardSpotOf = async (key: string, onError: (e: unknown) => void): Promise<Tile | null> => {
-    const app = get().apps.find((a) => boardKey(a) === key);
-    if (!app) return null; // gone before its turn came
+    const item = boardItems(get()).find((b) => b.key === key);
+    if (!item) return null; // gone before its turn came
     if (get().boardSpots[key]) return get().boardSpots[key];
-    const spot = await freeSpot(app.workspaceId, null, key, onError);
-    if (!get().apps.some((a) => boardKey(a) === key)) return null;
+    const spot = await freeSpot(item.workspaceId, null, key, onError);
+    if (!boardItems(get()).some((b) => b.key === key)) return null;
     get().setBoardSpots({ ...get().boardSpots, [key]: spot });
     return spot;
   };
@@ -412,9 +479,8 @@ export function autoLayout(onError: (e: unknown) => void = () => {}): () => void
     for (const w of st.workspaces) if (!w.compound) run(`ws:${w.id}`, () => st.village.ensureCompound(w.id));
     for (const s of Object.values(st.sessions))
       if (!s.spot && !(s.kind.kind === 'terminal' && s.state.kind === 'ended')) run(`s:${s.id}`, () => st.village.ensureSpot(s.id, onError));
-    for (const a of st.apps) {
-      const k = boardKey(a);
-      if (!st.boardSpots[k] && st.workspaces.some((w) => w.id === a.workspaceId)) run(`b:${k}`, () => st.village.ensureBoardSpot(k, onError));
+    for (const b of boardItems(st)) {
+      if (!st.boardSpots[b.key] && st.workspaces.some((w) => w.id === b.workspaceId)) run(`b:${b.key}`, () => st.village.ensureBoardSpot(b.key, onError));
     }
   };
   check(useApp.getState());

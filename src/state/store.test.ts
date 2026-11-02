@@ -1,6 +1,6 @@
 import { vi } from 'vitest';
 import type { CloseOutcome } from '../api/types';
-import { autoLayout, boardKey, moveValid, useApp, sessionsByWorkspace, idleBuilders, stateLabel } from './store';
+import { autoLayout, boardItems, boardKey, browserUrl, moveValid, useApp, sessionsByWorkspace, idleBuilders, stateLabel } from './store';
 import type { AppPreview, Builder, Compound, SessionInfo, SessionState, Tile, Workspace } from '../api/types';
 import { ipc } from '../api/ipc';
 import { GAP, assertNoCollisions, findSpot, placeCompound, shiftCompound, spotFor } from '../village/layout';
@@ -14,7 +14,7 @@ const sess = (id: string, ws: string, builderId?: string, startedAt = 0, state: 
 const bld = (id: string): Builder => ({ id, name: id, agent: 'claude', model: null, effort: null, customCommand: null });
 
 beforeEach(() => {
-  useApp.setState({ workspaces: [], builders: [], sessions: {}, agents: [], selectedSessionId: null, apps: [], boardSpots: {}, appPopout: null });
+  useApp.setState({ workspaces: [], builders: [], sessions: {}, agents: [], selectedSessionId: null, apps: [], boardSpots: {}, appPopout: null, browsers: [] });
 });
 
 const appIn = (ws: string, port: number): AppPreview =>
@@ -145,6 +145,30 @@ describe('village', () => {
     expect(ipc.setSessionSpot).toHaveBeenCalledTimes(1); // boards are not persisted
     // a structure may not be dragged onto a board
     expect(moveValid(st, { kind: 'session', id: 'a' }, st.boardSpots[boardKey(appIn('w1', 3000))])).toBe(false);
+  });
+
+  it('the owner\'s browsers stand as boards too, and stand in for an app at the same address', async () => {
+    useApp.setState({ workspaces: [W('w1', placeCompound([]))] });
+    useApp.getState().setApps([appIn('w1', 3000), appIn('w1', 4000)]);
+    const b = useApp.getState().openBrowser('w1', 'http://localhost:3000/');
+    const items = boardItems(useApp.getState());
+    expect(items.map((x) => [x.label, x.port, x.browserId])).toEqual([['localhost', 3000, b.id], ['node', 4000, undefined]]);
+    const stop = autoLayout();
+    await vi.waitFor(() => expect(Object.keys(useApp.getState().boardSpots)).toHaveLength(2));
+    stop();
+    useApp.getState().closeBrowser(b.id);
+    expect(Object.keys(useApp.getState().boardSpots)).toEqual([boardKey(appIn('w1', 4000))]);
+    useApp.getState().openBrowser('w1', 'https://example.com');
+    useApp.getState().removeWorkspace('w1');
+    expect(useApp.getState().browsers).toEqual([]);
+  });
+
+  it('a typed address becomes an http(s) url', () => {
+    expect(browserUrl('localhost:3000')).toBe('http://localhost:3000/');
+    expect(browserUrl(' https://example.com/a ')).toBe('https://example.com/a');
+    expect(browserUrl('example.com')).toBe('http://example.com/');
+    expect(browserUrl('ftp://x')).toBeNull();
+    expect(browserUrl('')).toBeNull();
   });
 
   it('a board goes away with its app, and moves with its compound', () => {

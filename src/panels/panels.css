@@ -66,6 +66,13 @@
 .popout-body { flex: 1; min-height: 0; display: flex; padding: 8px; }
 .popout-body .terminal-wrap { flex: 1; min-height: 0; }
 .popout-app { flex: 1; min-width: 0; border: 0; border-radius: 6px; background: #fff; }
+.popout-addr { flex: 2; min-width: 0; display: flex; }
+.popout-addr input { flex: 1; min-width: 0; padding: 5px 10px; border: 2px solid var(--hud-out); border-radius: 8px; background: #fff8e8; font: 600 13px system-ui; color: #2b2018; }
+.popout-addr input[aria-invalid='true'] { border-color: #ff4b3e; }
+.sp-browser-form { display: flex; gap: 6px; margin: 8px 0; }
+.sp-browser-form input { flex: 1; min-width: 0; border: 2px solid #c8b083; border-radius: 8px; padding: 5px 8px; background: #fff8e8; font: 600 13px system-ui; color: #2b2018; }
+.sp-browser-row { display: flex; gap: 6px; align-items: center; }
+.sp-browser-row .sp-row { flex: 1; min-width: 0; }
 .picker-list { margin-bottom: 8px; }
 .sp-row.picked { border-color: #4fb82a; background: #f1ffe0; }
 .picker-preview { display: flex; align-items: center; gap: 10px; margin: 6px 0; background: var(--sp-parch2); border: 3px solid #c8b083; border-radius: 12px; padding: 4px 10px; }

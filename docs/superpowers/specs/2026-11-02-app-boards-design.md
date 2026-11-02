@@ -16,6 +16,18 @@ questions; the calls below are the builder's.
   (its name and an ↗) and a click opens it in the system browser instead, since it would pop out blank.
 - The board goes away when the server stops.
 
+## Opening a browser yourself
+
+Owner request: "I must also be able to open a browser just like how we do the terminal and the
+session". The workspace panel has **+ Browser** next to + Terminal: it asks for an address
+(`localhost:3000` by default; bare hosts get `http://`, only http(s) is accepted), puts up a board
+for it and pops it out at once. The pop-out's address is editable (Enter goes there; an opened
+browser's board follows). The panel lists every board under "Browsers": the owner's own (with ✕
+to close) and the apps running there. Opened browsers live in the store only, like sessions they
+do not survive a restart. A detected app at the same address as an opened browser is not shown
+twice (the opened one stands for it). Opened browsers are assumed frameable (no probe); a site
+that refuses framing shows blank and "Open in browser" is the way out.
+
 ## Detection (src-tauri/src/apps.rs)
 
 Every 4 s: `lsof` lists listening loopback/wildcard TCP sockets and their processes' working

@@ -41,14 +41,16 @@ export interface VillageInput {
   boards?: BoardInput[];
 }
 
-/** A local web app's board (see src-tauri/src/apps.rs); `key` is the store's `boardKey`. */
+/** A board: a local web app (see src-tauri/src/apps.rs) or a browser the owner opened; `key` as in the store's `boardItems`. */
 export interface BoardInput {
   key: string;
   workspaceId: string;
   url: string;
-  /** The page title, or the process name when it has none. */
+  /** The page title or process name (apps), or the host (browsers). */
   label: string;
-  port: number;
+  port: number | null;
+  /** Set for a browser the owner opened. */
+  browserId?: string;
   /** The page may be framed: the board shows it live; otherwise a card with the label. */
   frameable: boolean;
   /** Top-left tile. */
@@ -124,7 +126,7 @@ export function boardEntities(input: Pick<VillageInput, 'boards' | 'workspaces'>
     // the same depth as the board: the sorts are stable, so the cut-out lands right after its own board
     if (b.frameable) out.push({ ...ent(`hole:${b.key}`, 'hole', board.x, board.y, 'boardhole'), depth: board.depth });
     // texture keys split on ':', so the label holds none
-    const label = `${b.label.replace(/:/g, ' ').slice(0, 24)} \u00b7 ${b.port}`;
+    const label = `${b.label.replace(/:/g, ' ').slice(0, 24)}${b.port === null ? '' : ` \u00b7 ${b.port}`}`;
     out.push(ent(`status:board:${b.key}`, 'status', b.spot.x + STRUCT / 2, b.spot.y + STRUCT / 2, `status:app:${label}`));
   }
   return out;

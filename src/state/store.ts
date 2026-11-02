@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { ipc } from '../api/ipc';
-import type { AgentInfo, AgentKind, AgentQuota, AppPreview, Builder, CloseOutcome, Compound, ListState, SessionInfo, SessionState, Stats, Tile, Workspace } from '../api/types';
+import type { AgentInfo, AgentKind, AgentQuota, AppPreview, Todo, Builder, CloseOutcome, Compound, ListState, SessionInfo, SessionState, Stats, Tile, Workspace } from '../api/types';
 import { HOUSE, STRUCT, canPlace, compoundFits, gapBetween, placeCompound, shiftCompound, spotFor, wallRect } from '../village/layout';
 import { collectorFits, collectorTiles, shownCollectors } from '../village/quota';
 
@@ -188,6 +188,13 @@ export interface AppState {
   /** The app popped out full-window from its board, if any (`browserId` for the owner's browsers). */
   appPopout: { url: string; title: string; browserId?: string } | null;
   setAppPopout: (a: { url: string; title: string; browserId?: string } | null) => void;
+  /** Tasks written down and not started yet, oldest first (persisted by the backend). */
+  todos: Todo[];
+  addTodo: (t: Todo) => void;
+  removeTodo: (id: string) => void;
+  /** The workspace whose Kanban is open full-page, if any. */
+  kanban: string | null;
+  setKanban: (workspaceId: string | null) => void;
   /** Browsers the owner opened, each standing as a board in its workspace. */
   browsers: Browser[];
   openBrowser: (workspaceId: string, url: string) => Browser;
@@ -216,6 +223,8 @@ export const useApp = create<AppState>((set, get) => ({
   apps: [],
   boardSpots: {},
   appPopout: null,
+  todos: [],
+  kanban: null,
   browsers: [],
   selectedSessionId: null,
   selection: null,
@@ -256,6 +265,7 @@ export const useApp = create<AppState>((set, get) => ({
       sessions: Object.fromEntries(s.sessions.map((x) => [x.id, x])),
       ...(s.stats ? { stats: s.stats } : {}),
       ...(s.collectorSpots ? { collectorSpots: s.collectorSpots } : {}),
+      ...(s.todos ? { todos: s.todos } : {}),
     }),
   markLoaded: () => set({ loaded: true }),
   upsertSession: (s) =>
@@ -281,7 +291,12 @@ export const useApp = create<AppState>((set, get) => ({
   // Upserts: a workspace (or builder) already present by id is replaced, never listed twice.
   addWorkspace: (w) => set((st) => ({ workspaces: upsertById(st.workspaces, w) })),
   updateWorkspace: (w) => set((st) => ({ workspaces: st.workspaces.map((x) => (x.id === w.id ? w : x)) })),
-  removeWorkspace: (id) => set((st) => ({ workspaces: st.workspaces.filter((x) => x.id !== id), browsers: st.browsers.filter((b) => b.workspaceId !== id) })),
+  removeWorkspace: (id) => set((st) => ({
+    workspaces: st.workspaces.filter((x) => x.id !== id),
+    browsers: st.browsers.filter((b) => b.workspaceId !== id),
+    todos: st.todos.filter((t) => t.workspaceId !== id),
+    ...(st.kanban === id ? { kanban: null } : {}),
+  })),
   setStats: (stats) => set({ stats }),
   setQuota: (q) => set((st) => ({ quotas: { ...st.quotas, [q.agent]: q } })),
   setQuotas: (qs) => set((st) => ({ quotas: { ...st.quotas, ...Object.fromEntries(qs.map((q) => [q.agent, q])) } })),
@@ -301,6 +316,9 @@ export const useApp = create<AppState>((set, get) => ({
         ...(st.appPopout?.browserId === id ? { appPopout: null } : {}),
       };
     }),
+  addTodo: (t) => set((st) => ({ todos: [...st.todos.filter((x) => x.id !== t.id), t] })),
+  removeTodo: (id) => set((st) => ({ todos: st.todos.filter((x) => x.id !== id) })),
+  setKanban: (kanban) => set({ kanban }),
   setBrowserUrl: (id, url) => set((st) => ({ browsers: st.browsers.map((b) => (b.id === id ? { ...b, url } : b)) })),
   setBoardSpots: (boardSpots) => set({ boardSpots }),
   setAppPopout: (appPopout) => set({ appPopout }),

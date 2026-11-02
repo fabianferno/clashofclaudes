@@ -94,6 +94,19 @@ pub struct AppData {
     /// Top-left tiles of the elixir collectors the owner has dragged; the rest stand in their default slots.
     #[serde(default)]
     pub collector_spots: BTreeMap<AgentKind, Tile>,
+    /// Tasks written down for the workspaces and not started yet (the Kanban's To Do), oldest first.
+    #[serde(default)]
+    pub todos: Vec<Todo>,
+}
+
+/// A task the owner wrote down for a workspace; starting it hands it to a builder as a session.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Todo {
+    pub id: String,
+    pub workspace_id: String,
+    pub text: String,
+    pub created_at: i64,
 }
 
 /// User preferences. `updates_enabled` gates the updater, the app's only network access.
@@ -123,6 +136,7 @@ impl Default for AppData {
             stats: Stats::default(),
             settings: Settings::default(),
             collector_spots: BTreeMap::new(),
+            todos: Vec::new(),
         }
     }
 }

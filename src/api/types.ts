@@ -78,6 +78,14 @@ export interface SessionInfo {
   spot: Tile | null;
 }
 
+/** A task written down for a workspace and not started yet (the Kanban's To Do). */
+export interface Todo {
+  id: string;
+  workspaceId: string;
+  text: string;
+  createdAt: number;
+}
+
 export interface ListState {
   workspaces: Workspace[];
   builders: Builder[];
@@ -85,6 +93,7 @@ export interface ListState {
   stats: Stats;
   /** Collectors the owner has dragged (top-left tiles). */
   collectorSpots?: Partial<Record<AgentKind, Tile>>;
+  todos?: Todo[];
 }
 
 /** A local web app running in a workspace (see src-tauri/src/apps.rs): it gets a board with a live preview. */

@@ -335,6 +335,8 @@ pub fn run() {
             commands::set_session_spot,
             commands::get_quotas,
             commands::get_apps,
+            commands::add_todo,
+            commands::remove_todo,
             commands::refresh_quotas,
             commands::open_in_editor,
             commands::review_session,

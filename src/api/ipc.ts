@@ -1,6 +1,6 @@
 import { invoke, Channel } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type { AppPreview, AgentInfo, AgentKind, AgentQuota, Builder, CloseOutcome, Compound, ConfirmQuit, Frame, ListState, Review, SessionInfo, Settings, Stats, Tile, UpdateStatus, Workspace } from './types';
+import type { Todo, AppPreview, AgentInfo, AgentKind, AgentQuota, Builder, CloseOutcome, Compound, ConfirmQuit, Frame, ListState, Review, SessionInfo, Settings, Stats, Tile, UpdateStatus, Workspace } from './types';
 
 const SKIP_FLAG = 1n << 63n;
 
@@ -27,6 +27,8 @@ export const ipc = {
   /** `force` bypasses the 60 s detection cache (Re-check). */
   detectAgents: (force = false) => invoke<AgentInfo[]>('detect_agents', { force }),
   getQuotas: () => invoke<AgentQuota[]>('get_quotas'),
+  addTodo: (workspaceId: string, text: string) => invoke<Todo>('add_todo', { workspaceId, text }),
+  removeTodo: (id: string) => invoke<void>('remove_todo', { id }),
   /** Local web apps last found in the workspaces. */
   getApps: () => invoke<AppPreview[]>('get_apps'),
   onAppsUpdated: (cb: (a: AppPreview[]) => void): Promise<UnlistenFn> =>

@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { ipc } from '../api/ipc';
-import { idleBuilders, useApp } from '../state/store';
+import { useApp } from '../state/store';
 import * as wsActions from '../state/workspaceActions';
 import AgentsStatus from './AgentsStatus';
 import FolderHint from './FolderHint';
-import { CLASS_NAMES, PALETTE, classOf, houseColors } from '../village/look';
+import { CLASS_NAMES, PALETTE, classOf, gearOf, houseColors, stars } from '../village/look';
+import BuilderAvatar from '../hud/BuilderAvatar';
+import { BADGE_LABEL, badgeOf, builderTarget, liveSessionOf } from '../hud/hudState';
 
 export default function TownHallPanel() {
   const workspaces = useApp((s) => s.workspaces);
@@ -24,7 +26,7 @@ export default function TownHallPanel() {
     setUpdatesEnabled(on);
     ipc.setSettings({ updatesEnabled: on }).catch((e) => { setUpdatesEnabled(!on); useApp.getState().setError(String(e)); });
   };
-  const idle = idleBuilders({ builders, sessions });
+  const all = Object.values(sessions);
   const count = (id: string) => Object.values(sessions).filter((s) => s.workspaceId === id).length;
 
   return (
@@ -54,19 +56,23 @@ export default function TownHallPanel() {
           )}
       </div>
       {newName !== null && <FolderHint disabled={!newName.trim()} onChoose={() => void create(true)} />}
-      <div className="sp-sec">Idle builders ({idle.length})</div>
-      {idle.length === 0 && (
-        <div className="sp-note">{builders.length === 0 ? 'No builders yet — recruit one from + New session.' : 'Every builder is in a session.'}</div>
-      )}
-      {idle.map((b) => (
-        <button key={b.id} className="sp-row" data-testid={`idle-builder-${b.id}`} onClick={() => setSelection({ kind: 'builder', id: b.id })}>
-          <span className="sp-av" style={{ background: PALETTE[b.agent].body }}><span className="ol">{b.name.charAt(0).toUpperCase()}</span></span>
-          <span className="sp-rowtext">
-            <span className="sp-t">{b.name}</span>
-            <span className="sp-d">{CLASS_NAMES[classOf(b.agent, b.model)]} · {PALETTE[b.agent].label}</span>
-          </span>
-        </button>
-      ))}
+      <div className="sp-sec">Builders ({builders.length})</div>
+      {builders.length === 0 && <div className="sp-note">No builders yet — recruit one from + New session.</div>}
+      {builders.map((b) => {
+        // as on the builder cards: the portrait, and a busy builder opens its session
+        const live = liveSessionOf(b.id, all);
+        const badge = badgeOf(live);
+        return (
+          <button key={b.id} className="sp-row" data-testid={`hall-builder-${b.id}`} onClick={() => setSelection(builderTarget(b.id, all))}>
+            <span className="hud-av"><BuilderAvatar agent={b.agent} model={b.model} effort={b.effort} /></span>
+            <span className="sp-rowtext">
+              <span className="sp-t">{b.name} <span className="hud-stars">{'★'.repeat(stars(gearOf(b.effort)))}</span></span>
+              <span className="sp-d">{CLASS_NAMES[classOf(b.agent, b.model)]} · {PALETTE[b.agent].label}</span>
+            </span>
+            <span className="hud-badge ol" data-state={badge} style={{ background: `var(--hud-${badge})` }}>{BADGE_LABEL[badge]}</span>
+          </button>
+        );
+      })}
       <div className="sp-sec">Agents</div>
       <AgentsStatus />
       <div className="sp-sec">Settings</div>

@@ -95,7 +95,7 @@ export default function WorkspacePanel({ workspaceId }: { workspaceId: string })
           onClick={() => { setErr(null); setAddr((a) => (a === null ? 'http://localhost:3000' : null)); }}>+ Browser</button>
         <button className="hud-btn sm" onClick={() => st.setKanban(workspaceId)}>Kanban</button>
         <button className="hud-btn grey sm" disabled={ws.missing} title={why} onClick={() => guard(() => ipc.openInEditor(ws.path))}>Open in editor</button>
-        <button className="hud-btn blue sm" disabled={ws.missing || !ws.compound} title={why} onClick={() => useApp.getState().requestZoom(workspaceId)}>Zoom in</button>
+        <button className="hud-btn blue sm" disabled={ws.missing || !ws.compound} title={why} onClick={() => useApp.getState().requestZoom(workspaceId)}>Focus</button>
       </div>
       {addr !== null && (
         <form className="sp-browser-form" onSubmit={(e) => { e.preventDefault(); openBrowser(); }}>

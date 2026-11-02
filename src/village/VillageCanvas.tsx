@@ -1,15 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { boardKey, moveValid, useApp, type AppState } from '../state/store';
+import { boardItems, moveValid, useApp, type AppState } from '../state/store';
 import ZoomControls from '../hud/ZoomControls';
 import { PANEL_W } from './camera';
 import { createScene, type BoardInput, type Scene, type VillageInput } from './scene';
 
-/** The apps whose board has a spot, as the scene draws them. */
-const boardsOf = (s: AppState): BoardInput[] => s.apps.flatMap((a) => {
-  const key = boardKey(a), spot = s.boardSpots[key];
-  return spot ? [{ key, workspaceId: a.workspaceId, url: a.url, label: a.title ?? a.command, port: a.port, frameable: a.frameable, spot }] : [];
-});
+/** The boards that have a spot, as the scene draws them. */
+const boardsOf = (s: AppState): BoardInput[] => boardItems(s).flatMap((b) => (s.boardSpots[b.key] ? [{ ...b, spot: s.boardSpots[b.key] }] : []));
 
 const inputOf = (s: AppState): VillageInput => ({
   workspaces: s.workspaces,
@@ -42,7 +39,7 @@ export default function VillageCanvas({ onError }: { onError?: (e: unknown) => v
       panelWidth: () => (useApp.getState().panelOpen ? PANEL_W : 0),
       // a page that refuses framing would pop out blank: that one goes to the browser
       onOpenApp: (b) => {
-        if (b.frameable) useApp.getState().setAppPopout({ url: b.url, title: b.label });
+        if (b.frameable) useApp.getState().setAppPopout({ url: b.url, title: b.label, browserId: b.browserId });
         else openUrl(b.url).catch((e) => useApp.getState().setError(`Could not open ${b.url}: ${String(e)}`));
       },
     }).then(
@@ -57,7 +54,7 @@ export default function VillageCanvas({ onError }: { onError?: (e: unknown) => v
           if (st.selection !== prev.selection) { s.reveal(st.selection); s.select(st.selection); }
           if (st.workspaces !== prev.workspaces || st.sessions !== prev.sessions || st.builders !== prev.builders || st.lastClosed !== prev.lastClosed
             || st.quotas !== prev.quotas || st.agents !== prev.agents || st.collectorSpots !== prev.collectorSpots
-            || st.apps !== prev.apps || st.boardSpots !== prev.boardSpots)
+            || st.apps !== prev.apps || st.browsers !== prev.browsers || st.boardSpots !== prev.boardSpots)
             s.sync(inputOf(st));
         });
       },

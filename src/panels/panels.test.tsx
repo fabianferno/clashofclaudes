@@ -42,20 +42,44 @@ const agents: AgentInfo[] = [
 
 beforeEach(() => {
   Object.values(ipc).forEach((f) => f.mockClear());
-  act(() => useApp.setState({ workspaces: [ws()], builders: [builder()], sessions: {}, agents, selection: null, panelOpen: false }));
+  act(() => useApp.setState({ workspaces: [ws()], builders: [builder()], sessions: {}, agents, selection: null, panelOpen: false, apps: [], browsers: [], appPopout: null }));
 });
 afterEach(cleanup);
 
 test('missing_workspace_buttons_explain', () => {
   act(() => useApp.setState({ workspaces: [ws({ missing: true })] }));
   render(<WorkspacePanel workspaceId="w1" />);
-  for (const name of ['+ New session', '+ Terminal', 'Open in editor', 'Zoom in']) {
+  for (const name of ['+ New session', '+ Terminal', '+ Browser', 'Open in editor', 'Zoom in']) {
     const b = screen.getByRole('button', { name }) as HTMLButtonElement;
     expect(b.disabled).toBe(true);
     expect(b.title).toBe('Folder not found: /p/proj');
   }
   expect(screen.getByText(/Folder not found: \/p\/proj/, { selector: '.panel-warn' })).toBeTruthy();
   expect((screen.getByRole('button', { name: 'Remove workspace' }) as HTMLButtonElement).disabled).toBe(false);
+});
+
+test('plus_browser_opens_a_browser_board_and_pops_it_out', () => {
+  render(<WorkspacePanel workspaceId="w1" />);
+  fireEvent.click(screen.getByRole('button', { name: '+ Browser' }));
+  const field = screen.getByRole('textbox', { name: 'Web address' }) as HTMLInputElement;
+  expect(field.value).toBe('http://localhost:3000');
+  fireEvent.change(field, { target: { value: 'ftp://nope' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Open' }));
+  expect(screen.getByText(/Type a web address/)).toBeTruthy();
+  expect(useApp.getState().browsers).toEqual([]);
+  fireEvent.change(field, { target: { value: 'localhost:5173' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Open' }));
+  const [b] = useApp.getState().browsers;
+  expect(b).toMatchObject({ workspaceId: 'w1', url: 'http://localhost:5173/' });
+  expect(useApp.getState().appPopout).toEqual({ url: 'http://localhost:5173/', title: 'localhost', browserId: b.id });
+  // listed with the apps running here; only the owner's own browser can be closed
+  act(() => useApp.setState({ apps: [{ workspaceId: 'w1', port: 3000, url: 'http://localhost:3000/', title: 'Shop', frameable: true, command: 'node' }] }));
+  expect(screen.getByText('Browsers (2)')).toBeTruthy();
+  expect(screen.getByText('http://localhost:3000/ · running here')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Close localhost' }));
+  expect(useApp.getState().browsers).toEqual([]);
+  expect(useApp.getState().appPopout).toBeNull();
+  expect(screen.queryByRole('button', { name: /^Close / })).toBeNull();
 });
 
 test('workspace_xp_bar_uses_need_curve', () => {

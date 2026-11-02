@@ -263,48 +263,68 @@ export function drawCollector(agent: keyof typeof ELIXIR, tenths: number | null)
 }
 
 /**
- * A terminal's workshop, 2x2 footprint: a small timber shed with a slate roof, a chimney and a
- * window glowing with a prompt while the shell runs (dark once it has ended).
- * Anchor: the footprint's front corner, grid point (gx+2, gy+2).
+ * A terminal's rune stone, 2x2 footprint: a tapered standing stone on a stepped plinth, its face
+ * carved with a `>_` prompt and a few lines of output that glow green while the shell runs (bare
+ * grooves once it has ended). Anchor: the footprint's front corner, grid point (gx+2, gy+2).
  */
-export function drawWorkshop(lit: boolean): Art {
+export function drawRuneStone(lit: boolean): Art {
   return bake(200, 220, 100, 190, () => {
     const g = ctx();
-    shadow(iso(1, 1), 50, 25, 0.2, 5, 3);
-    const gx = 0.3, w = 1.4, H = 40;
-    isoBox(gx - 0.08, gx - 0.08, w + 0.16, w + 0.16, 7, '#b0a898', '#a19a8c', '#8d867a');
-    const k = isoBox(gx, gx, w, w, H, null, '#9b6b40', '#7d5431');
-    // plank seams
-    g.strokeStyle = 'rgba(29,19,11,.28)'; g.lineWidth = 1.2;
-    for (const [a, b] of [[k.D, k.C], [k.C, k.B]] as [Pt, Pt][]) {
-      for (let v = 0.25; v < 1; v += 0.25) {
-        const p = up(a, H * v), q = up(b, H * v);
-        g.beginPath(); g.moveTo(p.x, p.y); g.lineTo(q.x, q.y); g.stroke();
-      }
-    }
-    // the screen-window on the front-left face, the door on the front-right
-    const glow = lit ? '#58e89a' : '#3a4048';
-    faceQuad(k.D, k.C, H, 0.18, 0.82, 0.32, 0.86, '#2b2018', 2);
-    faceQuad(k.D, k.C, H, 0.24, 0.76, 0.38, 0.8, glow, 0);
+    shadow(iso(1, 1), 46, 23, 0.2, 5, 3);
+    /** A box from height z0 to z1 whose top is pulled `inset` of the way toward its centre; returns its front-left face. */
+    const prism = (gx: number, gy: number, w: number, d: number, z0: number, z1: number,
+      top: string | null, left: string, right: string, inset = 0) => {
+      const cx = gx + w / 2, cy = gy + d / 2;
+      const at = (x: number, y: number, z: number, k: number) => up(iso(x + (cx - x) * k, y + (cy - y) * k), z);
+      const [, B, C, D] = [[gx, gy], [gx + w, gy], [gx + w, gy + d], [gx, gy + d]].map(([x, y]) => at(x, y, z0, 0));
+      const [tA, tB, tC, tD] = [[gx, gy], [gx + w, gy], [gx + w, gy + d], [gx, gy + d]].map(([x, y]) => at(x, y, z1, inset));
+      poly([D, C, tC, tD], left, OUT, 2);
+      poly([C, B, tB, tC], right, OUT, 2);
+      if (top) poly([tA, tB, tC, tD], top, OUT, 2);
+      return { B, C, D, tA, tB, tC, tD };
+    };
+    prism(0.16, 0.16, 1.68, 1.68, 0, 7, '#bdb5a8', '#a9a196', '#958d80');
+    prism(0.38, 0.52, 1.24, 0.96, 7, 13, '#c9c1b4', '#b3ab9e', '#9d968a');
+    const H = 76;
+    const f = prism(0.5, 0.79, 1, 0.42, 13, 13 + H, null, '#8e96a2', '#6c7480', 0.14);
+    // a low pyramid cap on the slab
+    const apex = up(lerp(f.tA, f.tC, 0.5), 9);
+    poly([f.tD, f.tC, apex], '#a9b1bc', OUT, 2);
+    poly([f.tC, f.tB, apex], '#838b97', OUT, 2);
+    // a point on the front-left face: u runs left to right, v bottom to top
+    const at = (u: number, v: number) => lerp(lerp(f.D, f.C, u), lerp(f.tD, f.tC, u), v);
+    // weathering: a crack on the shaded face and moss at the foot
+    g.strokeStyle = 'rgba(29,19,11,.35)'; g.lineWidth = 1.2;
+    const side = (u: number, v: number) => lerp(lerp(f.C, f.B, u), lerp(f.tC, f.tB, u), v);
+    const crack = [side(0.35, 0.78), side(0.6, 0.66), side(0.45, 0.55)];
+    g.beginPath(); g.moveTo(crack[0].x, crack[0].y); for (const p of crack.slice(1)) g.lineTo(p.x, p.y); g.stroke();
+    for (const [u, r] of [[0.08, 4], [0.2, 3], [0.9, 3.5]] as const) { const m = at(u, 0.02); dot(m.x, m.y, r, '#5f9a3a', OUT, 1.2); }
+    const rune = lit ? '#7dffb3' : '#4b525c';
     if (lit) {
-      const m = up(lerp(k.D, k.C, 0.5), H * 0.59);
-      const gr = g.createRadialGradient(m.x, m.y, 2, m.x, m.y, 30);
-      gr.addColorStop(0, 'rgba(120,255,170,.35)'); gr.addColorStop(1, 'rgba(120,255,170,0)');
-      g.fillStyle = gr; g.beginPath(); g.arc(m.x, m.y, 30, 0, Math.PI * 2); g.fill();
-      g.save();
-      g.translate(m.x, m.y);
-      g.transform(1, 0.5, 0, 1, 0, 0); // lie on the front-left face (it falls 1 px per 2 to the right)
-      g.font = '400 14px "Lilita One", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-      g.fillStyle = '#0d2b1a'; g.fillText('>_', 0, 0);
-      g.restore();
+      const m = at(0.5, 0.55);
+      const gr = g.createRadialGradient(m.x, m.y, 4, m.x, m.y, 46);
+      gr.addColorStop(0, 'rgba(120,255,170,.4)'); gr.addColorStop(1, 'rgba(120,255,170,0)');
+      g.fillStyle = gr; g.beginPath(); g.arc(m.x, m.y, 46, 0, Math.PI * 2); g.fill();
     }
-    faceQuad(k.C, k.B, H, 0.35, 0.65, 0, 0.72, '#5a3518', 2);
-    dot(lerp(k.C, k.B, 0.6).x, lerp(k.C, k.B, 0.6).y - H * 0.36, 1.6, GOLD);
-    // chimney behind the ridge, then the roof
-    const ch = up(iso(gx + w * 0.75, gx + w * 0.3), H);
-    poly([ch, { x: ch.x + 9, y: ch.y - 4 }, { x: ch.x + 9, y: ch.y - 34 }, { x: ch.x, y: ch.y - 30 }], '#8c8378', OUT, 2);
-    poly([{ x: ch.x, y: ch.y - 30 }, { x: ch.x + 9, y: ch.y - 34 }, { x: ch.x + 15, y: ch.y - 31 }, { x: ch.x + 6, y: ch.y - 27 }], '#6d655b', OUT, 2);
-    if (lit) for (const [dx, dy, r] of [[8, 42, 5], [12, 52, 4]] as const) dot(ch.x + dx, ch.y - dy, r, 'rgba(200,200,200,.6)');
-    roof(gx, gx, w, w, H, 26, '#5b6472');
+    g.save();
+    if (lit) { g.shadowColor = 'rgba(90,255,160,.9)'; g.shadowBlur = 6; }
+    const stroke = (pts: Pt[], lw: number) => {
+      g.strokeStyle = rune; g.lineWidth = lw; g.lineCap = 'round'; g.lineJoin = 'round';
+      g.beginPath(); g.moveTo(pts[0].x, pts[0].y); for (const p of pts.slice(1)) g.lineTo(p.x, p.y); g.stroke();
+    };
+    // the prompt, then lines of output
+    stroke([at(0.2, 0.84), at(0.34, 0.78), at(0.2, 0.72)], 3);
+    stroke([at(0.44, 0.71), at(0.66, 0.71)], 3);
+    for (const [v, segs] of [[0.58, [[0.2, 0.5], [0.58, 0.78]]], [0.47, [[0.2, 0.36], [0.44, 0.8]]], [0.36, [[0.2, 0.62]]],
+      [0.25, [[0.2, 0.3], [0.38, 0.56]]]] as [number, [number, number][]][])
+      for (const [u0, u1] of segs) stroke([at(u0, v), at(u1, v)], 2.2);
+    g.restore();
+    g.lineCap = 'butt'; g.lineJoin = 'miter';
+    // motes drifting up off the glowing face
+    if (lit) for (const [u, dv, r] of [[0.15, 1.12, 2.2], [0.85, 1.28, 1.8], [0.4, 1.42, 1.5], [1.05, 0.9, 1.6]] as const) {
+      const p = at(u, dv);
+      dot(p.x, p.y, r + 2.5, 'rgba(120,255,170,.25)');
+      dot(p.x, p.y, r, '#b8ffd4');
+    }
   }, iso(2, 2));
 }

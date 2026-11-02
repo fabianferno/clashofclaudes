@@ -7,7 +7,7 @@ import { classOf, gearOf, houseColors, houseStage, scaffoldHeight, type ClassTie
 import { dropOf, onGround, retarget, routeHome, routeToSite, standTile, step, walkable, type BuilderDrop, type Walker } from './walkers';
 import {
   GROUND_SCALE, drawBubble, drawBuilder, drawCollector, drawGate, drawGround, drawHall, drawHouse, drawPuff, drawRing, drawStatusBar, drawStructure,
-  drawWallSeg, drawWorkshop, groundOrigin,
+  drawWallSeg, drawRuneStone, groundOrigin,
   type Art, type Pose,
 } from './art/entities';
 import { getTexture, holdTextures, prepareArt, releaseRetired, spriteTextures } from './textures';
@@ -130,7 +130,7 @@ export function buildEntities(input: VillageInput): Entity[] {
   for (const s of input.sessions) {
     if (!s.spot || !compounds.has(s.workspaceId)) continue;
     if (s.kind.kind === 'terminal') {
-      out.push(ent(`struct:${s.id}`, 'structure', s.spot.x + STRUCT, s.spot.y + STRUCT, `workshop:${s.state.kind === 'ended' ? 'dark' : 'lit'}`));
+      out.push(ent(`struct:${s.id}`, 'structure', s.spot.x + STRUCT, s.spot.y + STRUCT, `runestone:${s.state.kind === 'ended' ? 'dark' : 'lit'}`));
       continue;
     }
     const { stage, height } = structureLook(s);
@@ -169,7 +169,7 @@ export function artFor(key: string): Art {
     case 'wall': return drawWallSeg(a ?? '');
     case 'gate': return drawGate(a as 'n' | 's' | 'e' | 'w');
     case 'collector': return drawCollector(a as CollectorAgent, b === 'none' ? null : Number(b));
-    case 'workshop': return drawWorkshop(a === 'lit');
+    case 'runestone': return drawRuneStone(a === 'lit');
     case 'builder': return drawBuilder(a as AgentKind, Number(b) as ClassTier, Number(c) as Gear, d as Pose, Number(e) as 1 | -1);
     case 'bubble': return drawBubble(a as 'needs' | 'stuck');
     case 'ring': return drawRing();

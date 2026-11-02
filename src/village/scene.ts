@@ -6,7 +6,7 @@ import { enclosure, seedOf } from './enclosure';
 import { classOf, gearOf, houseColors, houseStage, scaffoldHeight, type ClassTier, type Gear } from './look';
 import { dropOf, onGround, retarget, routeHome, routeToSite, standTile, step, walkable, type BuilderDrop, type Walker } from './walkers';
 import {
-  GROUND_SCALE, drawBubble, drawBuilder, drawCollector, drawGate, drawGround, drawHall, drawHouse, drawPuff, drawRing, drawStatusBar, drawStructure,
+  BOARD, GROUND_SCALE, boardFacePoint, drawBoard, drawBoardHole, drawBubble, drawBuilder, drawCollector, drawGate, drawGround, drawHall, drawHouse, drawPuff, drawRing, drawStatusBar, drawStructure,
   drawWallSeg, drawRuneStone, groundOrigin,
   type Art, type Pose,
 } from './art/entities';
@@ -37,9 +37,25 @@ export interface VillageInput {
   installed?: readonly AgentKind[];
   /** Collectors the owner has dragged (top-left tiles); the rest stand in their default slots. */
   collectorSpots?: Partial<Record<AgentKind, Tile>>;
+  /** App boards that have a spot: local web apps running in a workspace. */
+  boards?: BoardInput[];
 }
 
-export type EntityKind = 'hall' | 'house' | 'structure' | 'collector' | 'builder' | 'wall' | 'gate' | 'tree' | 'status';
+/** A local web app's board (see src-tauri/src/apps.rs); `key` is the store's `boardKey`. */
+export interface BoardInput {
+  key: string;
+  workspaceId: string;
+  url: string;
+  /** The page title, or the process name when it has none. */
+  label: string;
+  port: number;
+  /** The page may be framed: the board shows it live; otherwise a card with the label. */
+  frameable: boolean;
+  /** Top-left tile. */
+  spot: Tile;
+}
+
+export type EntityKind = 'hall' | 'house' | 'structure' | 'collector' | 'board' | 'hole' | 'builder' | 'wall' | 'gate' | 'tree' | 'status';
 
 /**
  * One drawable. `x`/`y` is the grid point of the sprite's anchor (for footprints, the front
@@ -58,7 +74,7 @@ export interface Entity {
 }
 
 const KIND_RANK: Record<EntityKind, number> = {
-  tree: 0, wall: 1, gate: 2, hall: 3, house: 4, structure: 5, collector: 5, builder: 6, status: 8,
+  tree: 0, wall: 1, gate: 2, hall: 3, house: 4, structure: 5, collector: 5, board: 5, hole: 5, builder: 6, status: 8,
 };
 
 const ent = (id: string, kind: EntityKind, x: number, y: number, texKey: string): Entity =>
@@ -89,9 +105,29 @@ function wallEntities(wsId: string, c: Compound, spots: Tile[], level: number): 
   return out;
 }
 
-/** Top-left tiles of the structures (agent and terminal sessions) standing in a workspace's compound. */
-export function spotsIn(sessions: readonly SessionInfo[], wsId: string): Tile[] {
-  return sessions.flatMap((s) => (s.workspaceId === wsId && s.spot ? [s.spot] : []));
+/** Top-left tiles of the structures (agent and terminal sessions, app boards) standing in a workspace's compound. */
+export function spotsIn(sessions: readonly SessionInfo[], wsId: string, boards: readonly BoardInput[] = []): Tile[] {
+  return sessions.flatMap((s) => (s.workspaceId === wsId && s.spot ? [s.spot] : []))
+    .concat(boards.flatMap((b) => (b.workspaceId === wsId ? [b.spot] : [])));
+}
+
+/**
+ * The app boards in the compounds: the board, the cut-out its live preview shows through (drawn
+ * right after it, so whatever stands in front still covers the preview) and its name bar.
+ */
+export function boardEntities(input: Pick<VillageInput, 'boards' | 'workspaces'>): Entity[] {
+  const out: Entity[] = [];
+  for (const b of input.boards ?? []) {
+    if (!input.workspaces.some((w) => w.id === b.workspaceId && w.compound)) continue;
+    const board = ent(`board:${b.key}`, 'board', b.spot.x + STRUCT, b.spot.y + STRUCT, `board:${b.frameable ? 'live' : 'card'}:${encodeURIComponent(b.label)}`);
+    out.push(board);
+    // the same depth as the board: the sorts are stable, so the cut-out lands right after its own board
+    if (b.frameable) out.push({ ...ent(`hole:${b.key}`, 'hole', board.x, board.y, 'boardhole'), depth: board.depth });
+    // texture keys split on ':', so the label holds none
+    const label = `${b.label.replace(/:/g, ' ').slice(0, 24)} \u00b7 ${b.port}`;
+    out.push(ent(`status:board:${b.key}`, 'status', b.spot.x + STRUCT / 2, b.spot.y + STRUCT / 2, `status:app:${label}`));
+  }
+  return out;
 }
 
 /**
@@ -125,7 +161,7 @@ export function buildEntities(input: VillageInput): Entity[] {
     compounds.set(w.id, c);
     const { roof, wall } = houseColors(w.id);
     out.push(ent(`house:${w.id}`, 'house', c.house.x + HOUSE, c.house.y + HOUSE, `house:${houseStage(w.level)}:${roof}:${wall}`));
-    out.push(...wallEntities(w.id, c, spotsIn(input.sessions, w.id), w.level));
+    out.push(...wallEntities(w.id, c, spotsIn(input.sessions, w.id, input.boards), w.level));
   }
   for (const s of input.sessions) {
     if (!s.spot || !compounds.has(s.workspaceId)) continue;
@@ -142,6 +178,7 @@ export function buildEntities(input: VillageInput): Entity[] {
     if (sk) out.push(ent(`status:${s.id}`, 'status', s.spot.x + STRUCT / 2, s.spot.y + STRUCT / 2, sk));
   }
   out.push(...collectorEntities(input, input.now ?? Date.now()));
+  out.push(...boardEntities(input));
   return out.sort((a, b) => a.depth - b.depth);
 }
 
@@ -170,6 +207,8 @@ export function artFor(key: string): Art {
     case 'gate': return drawGate(a as 'n' | 's' | 'e' | 'w');
     case 'collector': return drawCollector(a as CollectorAgent, b === 'none' ? null : Number(b));
     case 'runestone': return drawRuneStone(a === 'lit');
+    case 'board': return drawBoard(a === 'live', decodeURIComponent(b ?? ''));
+    case 'boardhole': return drawBoardHole();
     case 'builder': return drawBuilder(a as AgentKind, Number(b) as ClassTier, Number(c) as Gear, d as Pose, Number(e) as 1 | -1);
     case 'bubble': return drawBubble(a as 'needs' | 'stuck');
     case 'ring': return drawRing();
@@ -280,6 +319,8 @@ export interface SceneOptions {
   onBuilderAssign?: (builderId: string, workspaceId: string) => void;
   /** The scene has played (or given up on) the close outcome for this session id. */
   onClosedConsumed?: (sessionId: string) => void;
+  /** An app board was clicked: open its app. */
+  onOpenApp?: (board: BoardInput) => void;
 }
 
 export interface Scene {
@@ -300,6 +341,17 @@ export interface Scene {
 }
 
 const GROUND_SEED = 7;
+
+/** An app board's screen corners (world px from the footprint's front corner, the sprite's anchor) and the preview page size. */
+const FRONT = iso(STRUCT, STRUCT);
+const FACE = {
+  tl: boardFacePoint(BOARD.screen.u0, BOARD.screen.v1),
+  tr: boardFacePoint(BOARD.screen.u1, BOARD.screen.v1),
+  bl: boardFacePoint(BOARD.screen.u0, BOARD.screen.v0),
+};
+/** The page is laid out at a desktop width and scaled down onto the screen, keeping the screen's proportions. */
+const PREVIEW_W = 1280;
+const PREVIEW_H = Math.round(PREVIEW_W * Math.hypot(FACE.bl.x - FACE.tl.x, FACE.bl.y - FACE.tl.y) / Math.hypot(FACE.tr.x - FACE.tl.x, FACE.tr.y - FACE.tl.y));
 /**
  * Live scenes, newest last; the dev driver always points at the newest one. React StrictMode
  * creates two and destroys one, in either order, so a single "owner" slot is not enough.
@@ -329,6 +381,9 @@ export function rendererOptions(dpr: number) {
     antialias: false,
     preference: 'webgl' as const,
     background: '#3f7d22',
+    // a transparent canvas, so an app board's cut-out shows the live preview laid under it (the
+    // host element paints the same green behind the canvas)
+    backgroundAlpha: 0,
   };
 }
 
@@ -337,6 +392,11 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
   await app.init({ resizeTo: canvasHost, ...rendererOptions(window.devicePixelRatio || 1) });
   await prepareArt();
   canvasHost.appendChild(app.canvas);
+  // Live app previews: iframes under the canvas, each seen through its board's cut-out (see boardEntities).
+  const previewLayer = document.createElement('div');
+  previewLayer.className = 'app-previews';
+  canvasHost.insertBefore(previewLayer, app.canvas);
+  const previews = new Map<string, { frame: HTMLIFrameElement; url: string; css: string }>();
 
   // view holds the layers and is what the camera transforms.
   const view = new Container();
@@ -373,7 +433,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     if (statusClock < 1000) return;
     statusClock = 0;
     const now = Date.now();
-    if (statusesDue(entities, lastState.sessions, now, collectorEntities(lastState, now)) !== statusSig) sync(lastState);
+    if (statusesDue(entities, lastState.sessions, now, [...collectorEntities(lastState, now), ...boardEntities(lastState)]) !== statusSig) sync(lastState);
   });
   let releaseClock = 0;
   app.ticker.add((t) => { // between syncs, evictions by builder poses are released every few seconds
@@ -575,7 +635,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
 
   /** Walkable ground inside a compound (see `walkable`). */
   const walkFor = (state: VillageInput, wsId: string, c: Compound) => {
-    const spots = spotsIn(state.sessions, wsId);
+    const spots = spotsIn(state.sessions, wsId, state.boards);
     const level = state.workspaces.find((w) => w.id === wsId)?.level ?? 1;
     return walkable(enclosure(c, spots, level, seedOf(wsId)).inside, c, spots);
   };
@@ -706,6 +766,42 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
   app.ticker.add((t) => updateBuilders(Math.min(t.deltaMS / 1000, 0.25)));
   app.ticker.add((t) => updateFx(Math.min(t.deltaMS / 1000, 0.25)));
 
+  /** One iframe per board cut-out, loading the board's app. */
+  const syncPreviews = () => {
+    const want = new Map<string, string>();
+    for (const b of lastState.boards ?? []) if (sprites.has(`hole:${b.key}`)) want.set(`hole:${b.key}`, b.url);
+    for (const [id, p] of previews) if (want.get(id) !== p.url) { p.frame.remove(); previews.delete(id); }
+    for (const [id, url] of want) {
+      if (previews.has(id)) continue;
+      const frame = document.createElement('iframe');
+      frame.src = url;
+      frame.title = 'App preview';
+      frame.tabIndex = -1;
+      frame.setAttribute('aria-hidden', 'true');
+      // no popups, dialogs or navigating the village away
+      frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms');
+      frame.style.width = `${PREVIEW_W}px`;
+      frame.style.height = `${PREVIEW_H}px`;
+      frame.style.display = 'none';
+      previewLayer.appendChild(frame);
+      previews.set(id, { frame, url, css: '' });
+    }
+  };
+  // Lay each preview onto its cut-out, following the camera and any move of its board.
+  app.ticker.add(() => {
+    for (const [id, p] of previews) {
+      const sp = sprites.get(id)?.sprite;
+      const at = (q: { x: number; y: number }) => world.toGlobal({ x: (sp?.x ?? 0) + q.x - FRONT.x, y: (sp?.y ?? 0) + q.y - FRONT.y });
+      const tl = at(FACE.tl), tr = at(FACE.tr), bl = at(FACE.bl);
+      const css = !sp?.visible || Math.hypot(tr.x - tl.x, tr.y - tl.y) < 12 ? 'none'
+        : `matrix(${(tr.x - tl.x) / PREVIEW_W}, ${(tr.y - tl.y) / PREVIEW_W}, ${(bl.x - tl.x) / PREVIEW_H}, ${(bl.y - tl.y) / PREVIEW_H}, ${tl.x}, ${tl.y})`;
+      if (css === p.css) continue;
+      p.css = css;
+      p.frame.style.display = css === 'none' ? 'none' : '';
+      if (css !== 'none') p.frame.style.transform = css;
+    }
+  });
+
   const sync = (state: VillageInput) => {
     if (destroyed) return;
     workspaces = state.workspaces;
@@ -736,12 +832,15 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       if (!rec) {
         const sprite = new Sprite();
         sprite.scale.set(0.5); // art is baked at 2x density
+        if (e.kind === 'hole') sprite.blendMode = 'erase';
         (e.kind === 'status' ? overlay : world).addChild(sprite);
         rec = { sprite, key: '', entity: e, base: { x: 0, y: 0 } };
         sprites.set(e.id, rec);
       }
       const { sprite } = rec;
       rec.ws = e.id.startsWith('struct:') ? snap.structs.get(e.id)
+        : e.kind === 'board' || e.kind === 'hole' ? e.id.split(':')[1]
+        : e.id.startsWith('status:board:') ? e.id.split(':')[2]
         : e.kind === 'status' ? snap.structs.get(`struct:${e.id.slice('status:'.length)}`)
         : e.kind === 'house' || e.kind === 'gate' || e.kind === 'wall' ? e.id.split(':')[1] : undefined;
       if (sprite.texture !== t.texture) {
@@ -756,6 +855,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       sprite.position.set(p.x, p.y);
       sprite.zIndex = e.depth;
     });
+    syncPreviews();
     const closedIds = new Map(ev.closed.map((c) => [c.id, c.wsId]));
     for (const [id, rec] of sprites) {
       if (seen.has(id)) continue;
@@ -1152,7 +1252,13 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     try { canvas.releasePointerCapture(ev.pointerId); } catch { /* see onDown */ }
     if (drag.up() !== 'click') return;
     const w = screenToWorld(cam, downAt.x, downAt.y);
-    opts.onSelect?.(selectionOf(hitTest(hitEntities(), w.x, w.y), lastState.sessions));
+    const hit = hitTest(hitEntities(), w.x, w.y);
+    if (hit?.kind === 'board') {
+      const b = lastState.boards?.find((x) => `board:${x.key}` === hit.id);
+      if (b) opts.onOpenApp?.(b);
+      return;
+    }
+    opts.onSelect?.(selectionOf(hit, lastState.sessions));
   };
   const onCancel = () => { if (od) endObjectDrag(null); if (bd) endBuilderDrag(null); drag.cancel(); canvas.style.cursor = ''; };
   const onWheel = (ev: WheelEvent) => {
@@ -1214,6 +1320,8 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     app.renderer.off('resize', onResize);
     app.canvas.removeEventListener('webglcontextrestored', onContextRestored);
     sprites.clear();
+    previewLayer.remove();
+    previews.clear();
     unholdTextures();
     fxRender.destroy();
     const gt = ground.texture;

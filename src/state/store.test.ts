@@ -1,7 +1,7 @@
 import { vi } from 'vitest';
 import type { CloseOutcome } from '../api/types';
-import { autoLayout, useApp, sessionsByWorkspace, idleBuilders, stateLabel } from './store';
-import type { Builder, Compound, SessionInfo, SessionState, Tile, Workspace } from '../api/types';
+import { autoLayout, boardKey, moveValid, useApp, sessionsByWorkspace, idleBuilders, stateLabel } from './store';
+import type { AppPreview, Builder, Compound, SessionInfo, SessionState, Tile, Workspace } from '../api/types';
 import { ipc } from '../api/ipc';
 import { GAP, assertNoCollisions, findSpot, placeCompound, shiftCompound, spotFor } from '../village/layout';
 
@@ -14,8 +14,11 @@ const sess = (id: string, ws: string, builderId?: string, startedAt = 0, state: 
 const bld = (id: string): Builder => ({ id, name: id, agent: 'claude', model: null, effort: null, customCommand: null });
 
 beforeEach(() => {
-  useApp.setState({ workspaces: [], builders: [], sessions: {}, agents: [], selectedSessionId: null });
+  useApp.setState({ workspaces: [], builders: [], sessions: {}, agents: [], selectedSessionId: null, apps: [], boardSpots: {}, appPopout: null });
 });
+
+const appIn = (ws: string, port: number): AppPreview =>
+  ({ workspaceId: ws, port, url: `http://localhost:${port}/`, title: null, frameable: true, command: 'node' });
 
 test('upsert then remove session', () => {
   useApp.getState().upsertSession(sess('s1', 'w1'));
@@ -126,6 +129,31 @@ describe('village', () => {
     await vi.waitFor(() => expect(useApp.getState().sessions.t.spot).not.toBeNull());
     stop();
     expect(useApp.getState().sessions.old.spot).toBeNull();
+  });
+
+  it('autoLayout stands each app board on a spot of its own, clear of the structures', async () => {
+    useApp.setState({ workspaces: [W('w1', null)] });
+    useApp.getState().upsertSession(sess('a', 'w1', 'b1'));
+    useApp.getState().setApps([appIn('w1', 3000), appIn('w1', 5173)]);
+    const stop = autoLayout();
+    await vi.waitFor(() => expect(Object.keys(useApp.getState().boardSpots)).toHaveLength(2));
+    await vi.waitFor(() => expect(useApp.getState().sessions.a.spot).not.toBeNull());
+    stop();
+    const st = useApp.getState();
+    const spots = [st.sessions.a.spot!, ...Object.values(st.boardSpots)].map((t) => `${t.x},${t.y}`);
+    expect(new Set(spots).size).toBe(3);
+    expect(ipc.setSessionSpot).toHaveBeenCalledTimes(1); // boards are not persisted
+    // a structure may not be dragged onto a board
+    expect(moveValid(st, { kind: 'session', id: 'a' }, st.boardSpots[boardKey(appIn('w1', 3000))])).toBe(false);
+  });
+
+  it('a board goes away with its app, and moves with its compound', () => {
+    const c = placeCompound([]);
+    useApp.setState({ workspaces: [W('w1', c)], boardSpots: { 'w1:3000': { x: c.x0, y: c.y0 }, 'w1:4000': { x: c.x0 + 3, y: c.y0 } } });
+    useApp.getState().setApps([appIn('w1', 3000)]);
+    expect(Object.keys(useApp.getState().boardSpots)).toEqual(['w1:3000']);
+    useApp.getState().applyCompoundMove(W('w1', shiftCompound(c, 2, -1)), []);
+    expect(useApp.getState().boardSpots['w1:3000']).toEqual({ x: c.x0 + 2, y: c.y0 - 1 });
   });
 
   it('relocation keeps shifting past a failed mate and reports the failure once', async () => {

@@ -9,6 +9,14 @@ const e = (id: string, kind: Entity['kind'], x: number, y: number): Entity =>
   ({ id, kind, x, y, depth: x + y, texKey: '' });
 
 describe('hitTest', () => {
+  it('an_app_board_is_clickable_but_its_cut_out_is_not', () => {
+    const board = e('board:w1:3000', 'board', 10, 10);
+    const hole = e('hole:w1:3000', 'hole', 10, 10);
+    const p = iso(9, 9);
+    expect(hitTest([board, hole], p.x, p.y - 40)?.id).toBe('board:w1:3000');
+    expect(selectionOf(board, [])).toBeNull(); // a board opens its app; it selects nothing
+  });
+
   it('hit_test_prefers_front_entity', () => {
     // two houses overlapping on screen; the one with the larger depth is in front
     const back = e('house:a', 'house', 10, 10);

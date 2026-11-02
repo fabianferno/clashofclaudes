@@ -54,7 +54,7 @@ export function tankTenths(left: number): number {
 }
 
 /** Label colour: the agent's elixir while plenty is left, orange at 25 % or less, red at 10 % or less. */
-export function quotaTone(left: number, agent: CollectorAgent): StatusTone {
+export function quotaTone(left: number, agent: CollectorAgent): Exclude<StatusTone, 'app'> {
   return left > 25 ? `elixir-${agent}` : left > 10 ? 'working' : 'needs';
 }
 

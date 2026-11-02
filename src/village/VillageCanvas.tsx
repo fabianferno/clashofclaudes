@@ -1,8 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import { moveValid, useApp, type AppState } from '../state/store';
+import { openUrl } from '@tauri-apps/plugin-opener';
+import { boardKey, moveValid, useApp, type AppState } from '../state/store';
 import ZoomControls from '../hud/ZoomControls';
 import { PANEL_W } from './camera';
-import { createScene, type Scene, type VillageInput } from './scene';
+import { createScene, type BoardInput, type Scene, type VillageInput } from './scene';
+
+/** The apps whose board has a spot, as the scene draws them. */
+const boardsOf = (s: AppState): BoardInput[] => s.apps.flatMap((a) => {
+  const key = boardKey(a), spot = s.boardSpots[key];
+  return spot ? [{ key, workspaceId: a.workspaceId, url: a.url, label: a.title ?? a.command, port: a.port, frameable: a.frameable, spot }] : [];
+});
 
 const inputOf = (s: AppState): VillageInput => ({
   workspaces: s.workspaces,
@@ -12,6 +19,7 @@ const inputOf = (s: AppState): VillageInput => ({
   quotas: s.quotas,
   installed: s.agents.filter((a) => a.installed).map((a) => a.kind),
   collectorSpots: s.collectorSpots,
+  boards: boardsOf(s),
 });
 
 /** The Pixi village, full-window; syncs from the store on every change (also while hidden). */
@@ -32,6 +40,11 @@ export default function VillageCanvas({ onError }: { onError?: (e: unknown) => v
       onClosedConsumed: (id) => useApp.getState().consumeClosed(id),
       onBuilderAssign: (builderId, id) => useApp.getState().setSelection({ kind: 'workspace', id, builder: builderId }),
       panelWidth: () => (useApp.getState().panelOpen ? PANEL_W : 0),
+      // a page that refuses framing would pop out blank: that one goes to the browser
+      onOpenApp: (b) => {
+        if (b.frameable) useApp.getState().setAppPopout({ url: b.url, title: b.label });
+        else openUrl(b.url).catch((e) => useApp.getState().setError(`Could not open ${b.url}: ${String(e)}`));
+      },
     }).then(
       (s) => {
         if (cancelled) { s.destroy(); return; }
@@ -43,7 +56,8 @@ export default function VillageCanvas({ onError }: { onError?: (e: unknown) => v
           if (st.zoomRequest !== prev.zoomRequest && st.zoomRequest) s.fitCompound(st.zoomRequest.id);
           if (st.selection !== prev.selection) { s.reveal(st.selection); s.select(st.selection); }
           if (st.workspaces !== prev.workspaces || st.sessions !== prev.sessions || st.builders !== prev.builders || st.lastClosed !== prev.lastClosed
-            || st.quotas !== prev.quotas || st.agents !== prev.agents || st.collectorSpots !== prev.collectorSpots)
+            || st.quotas !== prev.quotas || st.agents !== prev.agents || st.collectorSpots !== prev.collectorSpots
+            || st.apps !== prev.apps || st.boardSpots !== prev.boardSpots)
             s.sync(inputOf(st));
         });
       },

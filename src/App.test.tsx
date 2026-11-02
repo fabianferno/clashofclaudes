@@ -16,6 +16,8 @@ vi.mock('./api/ipc', () => ({
     onStatsUpdated: vi.fn().mockResolvedValue(() => {}),
     getQuotas: vi.fn().mockResolvedValue([]),
     onQuotaUpdated: vi.fn().mockResolvedValue(() => {}),
+    getApps: vi.fn().mockResolvedValue([]),
+    onAppsUpdated: vi.fn().mockResolvedValue(() => {}),
     setCompound: vi.fn(async (id: string, compound: unknown) => {
       const { useApp } = await import('./state/store');
       return { ...useApp.getState().workspaces.find((w) => w.id === id), compound };

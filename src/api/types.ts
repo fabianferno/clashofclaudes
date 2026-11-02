@@ -85,6 +85,19 @@ export interface ListState {
   collectorSpots?: Partial<Record<AgentKind, Tile>>;
 }
 
+/** A local web app running in a workspace (see src-tauri/src/apps.rs): it gets a board with a live preview. */
+export interface AppPreview {
+  workspaceId: string;
+  port: number;
+  url: string;
+  /** The page's `<title>`, if it has one. */
+  title: string | null;
+  /** False when the page forbids framing, so the board shows no live preview. */
+  frameable: boolean;
+  /** The listening process (`node`, `python3`, ...). */
+  command: string;
+}
+
 /** One rationed window an agent reports (see src-tauri/src/quota.rs). */
 export interface QuotaWindow {
   id: string;

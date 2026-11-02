@@ -328,3 +328,86 @@ export function drawRuneStone(lit: boolean): Art {
     }
   }, iso(2, 2));
 }
+
+/**
+ * An app board's face: the panel spans x0..x1 at depth y (tiles, from the footprint's top-left),
+ * from height z0 up h px; the screen is the (u, v) box on it (u left to right, v bottom to top).
+ */
+export const BOARD = { x0: 0.12, x1: 1.88, y: 1.12, z0: 20, h: 62, screen: { u0: 0.07, u1: 0.93, v0: 0.09, v1: 0.78 } };
+
+/** World point of (u, v) on the board's face, relative to iso() of the footprint's top-left grid point. */
+export function boardFacePoint(u: number, v: number): Pt {
+  return up(iso(BOARD.x0 + (BOARD.x1 - BOARD.x0) * u, BOARD.y), BOARD.z0 + BOARD.h * v);
+}
+
+/**
+ * An app board, 2x2 footprint: a framed wooden panel on two posts, propped from behind, made up as a
+ * browser window (title bar with three lights and an address pill). `live` leaves the screen plain
+ * white: the scene cuts it out and shows the app's live preview through it. Otherwise the screen
+ * shows `label` as a card. Anchor: the footprint's front corner, grid point (gx+2, gy+2).
+ */
+export function drawBoard(live: boolean, label: string): Art {
+  return bake(200, 220, 100, 190, () => {
+    const g = ctx();
+    shadow(iso(1, 1.05), 50, 19, 0.2, 4, 3);
+    const { x0, x1, y, z0, h, screen: sc } = BOARD;
+    const top = z0 + h;
+    const wood = '#8a5a2b';
+    // props behind the panel, then the posts
+    for (const x of [0.45, 1.55]) {
+      const foot = iso(x, y - 0.8), hold = up(iso(x, y - 0.12), top - 18);
+      line(foot, hold, OUT, 7, 'round');
+      line(foot, hold, shade(wood, -0.2), 4, 'round');
+    }
+    for (const x of [0.28, 1.72]) {
+      const p = iso(x, y - 0.06);
+      line(p, up(p, top + 6), OUT, 8, 'round');
+      line(p, up(p, top + 6), wood, 5, 'round');
+      dot(p.x, p.y - top - 8, 3.6, GOLD, OUT, 1.8);
+    }
+    // the panel: a slab 0.1 tile thick, from z0 to the top
+    const P = (gx: number, gy: number, z: number) => up(iso(gx, gy), z);
+    const yb = y - 0.1;
+    poly([P(x0, yb, top), P(x1, yb, top), P(x1, y, top), P(x0, y, top)], shade(wood, 0.15), OUT, 2);
+    poly([P(x1, y, z0), P(x1, yb, z0), P(x1, yb, top), P(x1, y, top)], '#5a3518', OUT, 2);
+    poly([P(x0, y, z0), P(x1, y, z0), P(x1, y, top), P(x0, y, top)], '#7a4a26', OUT, 2.5);
+    const at = boardFacePoint;
+    const quad = (u0: number, u1: number, v0: number, v1: number, fill: string, lw = 0) =>
+      poly([at(u0, v0), at(u1, v0), at(u1, v1), at(u0, v1)], fill, lw ? OUT : null, lw);
+    // window: title bar, then the screen
+    quad(sc.u0, sc.u1, sc.v0, 0.93, '#e9e4da', 2);
+    const dy = (0.93 - sc.v1) / 2 + sc.v1;
+    ([[0.12, '#ff5f57'], [0.18, '#febc2e'], [0.24, '#28c840']] as const).forEach(([u, c]) => {
+      const p = at(u, dy);
+      dot(p.x, p.y, 1.9, c);
+    });
+    quad(0.32, 0.86, dy - 0.045, dy + 0.045, '#ffffff');
+    quad(sc.u0, sc.u1, sc.v0, sc.v1, live ? '#ffffff' : '#26303d', 2);
+    if (!live) {
+      // the card: the app's name on the screen, lying on the face
+      const m = at((sc.u0 + sc.u1) / 2, (sc.v0 + sc.v1) / 2);
+      g.save();
+      g.translate(m.x, m.y);
+      g.transform(1, 0.5, 0, 1, 0, 0);
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillStyle = '#9fd3ff';
+      g.font = '400 13px "Lilita One", sans-serif';
+      g.fillText('\u2197', 0, -9);
+      g.fillStyle = '#e9eef5';
+      g.font = '400 9px "Lilita One", sans-serif';
+      const t = label.length > 14 ? `${label.slice(0, 13)}\u2026` : label;
+      g.fillText(t, 0, 7);
+      g.restore();
+    }
+  }, iso(2, 2));
+}
+
+/** The board's screen, filled: the scene erases this from the canvas so the live preview shows through. Same anchor as `drawBoard`. */
+export function drawBoardHole(): Art {
+  return bake(200, 220, 100, 190, () => {
+    const { u0, u1, v0, v1 } = BOARD.screen;
+    const at = boardFacePoint;
+    // a hair inside the screen's outline, so the frame's stroke stays whole
+    poly([at(u0 + 0.004, v0 + 0.01), at(u1 - 0.004, v0 + 0.01), at(u1 - 0.004, v1 - 0.01), at(u0 + 0.004, v1 - 0.01)], '#ffffff');
+  }, iso(2, 2));
+}

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { ipc } from '../api/ipc';
-import type { AgentInfo, AgentKind, AgentQuota, Builder, CloseOutcome, Compound, ListState, SessionInfo, SessionState, Stats, Tile, Workspace } from '../api/types';
+import type { AgentInfo, AgentKind, AgentQuota, AppPreview, Builder, CloseOutcome, Compound, ListState, SessionInfo, SessionState, Stats, Tile, Workspace } from '../api/types';
 import { HOUSE, STRUCT, canPlace, compoundFits, gapBetween, placeCompound, shiftCompound, spotFor, wallRect } from '../village/layout';
 import { collectorFits, collectorTiles, shownCollectors } from '../village/quota';
 
@@ -22,6 +22,8 @@ export interface VillageActions {
    * (default: the app's error toast).
    */
   ensureSpot: (sessionId: string, onError?: (e: unknown) => void) => Promise<Tile>;
+  /** An app board's spot (see `boardKey`), found the same way; null when the app went away first. */
+  ensureBoardSpot: (key: string, onError?: (e: unknown) => void) => Promise<Tile | null>;
   /**
    * Persist a move to `at`: a structure (session), a compound's house within its walls (workspace),
    * a whole compound (`at` its new interior origin) or a collector; false (and no ipc) when blocked.
@@ -35,7 +37,15 @@ export type MoveTarget =
   | { kind: 'compound'; id: string }
   | { kind: 'collector'; agent: AgentKind };
 
-type MoveState = Pick<AppState, 'workspaces' | 'sessions'> & Partial<Pick<AppState, 'quotas' | 'agents' | 'collectorSpots'>>;
+type MoveState = Pick<AppState, 'workspaces' | 'sessions'> & Partial<Pick<AppState, 'quotas' | 'agents' | 'collectorSpots' | 'boardSpots'>>;
+
+/** An app's board, by workspace and port (workspace ids hold no ':'). */
+export const boardKey = (a: Pick<AppPreview, 'workspaceId' | 'port'>): string => `${a.workspaceId}:${a.port}`;
+
+/** Top-left tiles of the app boards standing in a workspace's compound. */
+export function boardSpotsIn(spots: Record<string, Tile> | undefined, wsId: string, except: string | null = null): Tile[] {
+  return Object.entries(spots ?? {}).flatMap(([k, t]) => (k.startsWith(`${wsId}:`) && k !== except ? [t] : []));
+}
 
 /**
  * Whether the structure or house may stand with its top-left on `at`: inside its compound, clear of
@@ -63,7 +73,8 @@ export function moveValid(st: MoveState, target: MoveTarget, at: Tile): boolean 
   if (!c) return false;
   const mates = (except: string | null) => Object.values(st.sessions)
     .filter((x) => x.workspaceId === wsId && x.spot && x.id !== except)
-    .map((x) => x.spot!);
+    .map((x) => x.spot!)
+    .concat(boardSpotsIn(st.boardSpots, wsId!));
   if (target.kind === 'session') return st.sessions[target.id]?.spot ? canPlace(c, mates(target.id), at, STRUCT) : false;
   // the house is checked against every structure, but not against its own current tile
   return canPlace({ ...c, house: { x: -1e6, y: -1e6 } }, mates(null), at, HOUSE);
@@ -115,6 +126,15 @@ export interface AppState {
   /** Collectors the owner has dragged (top-left tiles); the rest stand in their default slots. */
   collectorSpots: Partial<Record<AgentKind, Tile>>;
   setCollectorSpots: (spots: Partial<Record<AgentKind, Tile>>) => void;
+  /** Local web apps found in the workspaces; setting them drops the boards of apps that are gone. */
+  apps: AppPreview[];
+  setApps: (a: AppPreview[]) => void;
+  /** Where each app's board stands (top-left tile), by `boardKey`; not persisted. */
+  boardSpots: Record<string, Tile>;
+  /** The app popped out full-window from its board, if any. */
+  appPopout: { url: string; title: string } | null;
+  setAppPopout: (a: { url: string; title: string } | null) => void;
+  setBoardSpots: (spots: Record<string, Tile>) => void;
   /** A whole compound moved: its workspace and its sessions' new spots land in one update. */
   applyCompoundMove: (w: Workspace, sessions: SessionInfo[]) => void;
   addBuilder: (b: Builder) => void;
@@ -134,6 +154,9 @@ export const useApp = create<AppState>((set, get) => ({
   stats: { shippedTotal: 0, recentShips: [] },
   quotas: {},
   collectorSpots: {},
+  apps: [],
+  boardSpots: {},
+  appPopout: null,
   selectedSessionId: null,
   selection: null,
   panelOpen: false,
@@ -203,11 +226,25 @@ export const useApp = create<AppState>((set, get) => ({
   setQuota: (q) => set((st) => ({ quotas: { ...st.quotas, [q.agent]: q } })),
   setQuotas: (qs) => set((st) => ({ quotas: { ...st.quotas, ...Object.fromEntries(qs.map((q) => [q.agent, q])) } })),
   setCollectorSpots: (collectorSpots) => set({ collectorSpots }),
+  setApps: (apps) =>
+    set((st) => {
+      const live = new Set(apps.map(boardKey));
+      const kept = Object.entries(st.boardSpots).filter(([k]) => live.has(k));
+      return { apps, ...(kept.length !== Object.keys(st.boardSpots).length ? { boardSpots: Object.fromEntries(kept) } : {}) };
+    }),
+  setBoardSpots: (boardSpots) => set({ boardSpots }),
+  setAppPopout: (appPopout) => set({ appPopout }),
   applyCompoundMove: (w, moved) =>
     set((st) => {
       const sessions = { ...st.sessions };
       for (const s of moved) if (!sessions[s.id] || s.rev >= sessions[s.id].rev) sessions[s.id] = s;
-      return { workspaces: st.workspaces.map((x) => (x.id === w.id ? w : x)), sessions };
+      // boards are not persisted, so they move with their compound here
+      const was = st.workspaces.find((x) => x.id === w.id)?.compound;
+      const dx = was && w.compound ? w.compound.x0 - was.x0 : 0, dy = was && w.compound ? w.compound.y0 - was.y0 : 0;
+      const boardSpots = dx || dy
+        ? Object.fromEntries(Object.entries(st.boardSpots).map(([k, t]) => [k, k.startsWith(`${w.id}:`) ? { x: t.x + dx, y: t.y + dy } : t]))
+        : st.boardSpots;
+      return { workspaces: st.workspaces.map((x) => (x.id === w.id ? w : x)), sessions, boardSpots };
     }),
   addBuilder: (b) => set((st) => ({ builders: upsertById(st.builders, b) })),
   updateBuilder: (b) => set((st) => ({ builders: st.builders.map((x) => (x.id === b.id ? b : x)) })),
@@ -285,34 +322,56 @@ function villageActions(get: () => AppState): VillageActions {
     return c;
   };
 
-  const spotOf = async (sessionId: string, onError: (e: unknown) => void): Promise<Tile> => {
-    const s = get().sessions[sessionId];
-    if (!s) throw new Error(`unknown session ${sessionId}`);
-    if (s.spot) return s.spot;
-    const c = await compoundOf(s.workspaceId);
+  /**
+   * A free spot for a structure or board in the workspace's compound, expanding it (and moving what
+   * stands in it) when it is full. `exceptSession`/`exceptBoard` is the thing being placed.
+   */
+  const freeSpot = async (wsId: string, exceptSession: string | null, exceptBoard: string | null, onError: (e: unknown) => void): Promise<Tile> => {
+    const c = await compoundOf(wsId);
     const st = get();
-    const mates = Object.values(st.sessions).filter(
-      (x) => x.id !== sessionId && x.workspaceId === s.workspaceId && x.spot,
-    );
+    const mates = Object.values(st.sessions).filter((x) => x.id !== exceptSession && x.workspaceId === wsId && x.spot);
+    const boards = Object.keys(st.boardSpots).filter((k) => k.startsWith(`${wsId}:`) && k !== exceptBoard);
     const all = st.workspaces.flatMap((w) => (w.compound ? [w.compound] : []));
-    const r = spotFor(c, all, mates.map((x) => x.spot!));
-    if (r.expanded) get().updateWorkspace(await ipc.setCompound(s.workspaceId, r.compound));
+    const r = spotFor(c, all, [...mates.map((x) => x.spot!), ...boards.map((k) => st.boardSpots[k])]);
+    if (r.expanded) get().updateWorkspace(await ipc.setCompound(wsId, r.compound));
     if (r.shift.x !== 0 || r.shift.y !== 0) {
       const failed: unknown[] = [];
       for (const m of mates) {
         const moved = { x: m.spot!.x + r.shift.x, y: m.spot!.y + r.shift.y };
         try { get().upsertSession(await ipc.setSessionSpot(m.id, moved)); } catch (e) { failed.push(e); }
       }
+      const spots = { ...get().boardSpots };
+      for (const k of boards) if (spots[k]) spots[k] = { x: spots[k].x + r.shift.x, y: spots[k].y + r.shift.y };
+      get().setBoardSpots(spots);
       if (failed.length)
         onError(new Error(`Could not move ${failed.length} of ${mates.length} structures with their compound: ${String(failed[0])}`));
     }
-    get().upsertSession(await ipc.setSessionSpot(sessionId, r.spot));
     return r.spot;
+  };
+
+  const spotOf = async (sessionId: string, onError: (e: unknown) => void): Promise<Tile> => {
+    const s = get().sessions[sessionId];
+    if (!s) throw new Error(`unknown session ${sessionId}`);
+    if (s.spot) return s.spot;
+    const spot = await freeSpot(s.workspaceId, sessionId, null, onError);
+    get().upsertSession(await ipc.setSessionSpot(sessionId, spot));
+    return spot;
+  };
+
+  const boardSpotOf = async (key: string, onError: (e: unknown) => void): Promise<Tile | null> => {
+    const app = get().apps.find((a) => boardKey(a) === key);
+    if (!app) return null; // gone before its turn came
+    if (get().boardSpots[key]) return get().boardSpots[key];
+    const spot = await freeSpot(app.workspaceId, null, key, onError);
+    if (!get().apps.some((a) => boardKey(a) === key)) return null;
+    get().setBoardSpots({ ...get().boardSpots, [key]: spot });
+    return spot;
   };
 
   return {
     ensureCompound: (wsId) => serial(() => compoundOf(wsId)),
     ensureSpot: (sessionId, onError) => serial(() => spotOf(sessionId, onError ?? ((e) => get().setError(String(e))))),
+    ensureBoardSpot: (key, onError) => serial(() => boardSpotOf(key, onError ?? ((e) => get().setError(String(e))))),
     commitMove: (target, at, onError) => serial(async () => {
       const st = get();
       if (!moveValid(st, target, at)) return false;
@@ -339,7 +398,7 @@ function villageActions(get: () => AppState): VillageActions {
 }
 
 /**
- * Keeps the village layout complete: every workspace gets a compound and every agent session a
+ * Keeps the village layout complete: every workspace gets a compound, and every agent session and app board a
  * spot as soon as it appears in the store (a terminal that already ended gets none). Returns an unsubscribe.
  */
 export function autoLayout(onError: (e: unknown) => void = () => {}): () => void {
@@ -353,6 +412,10 @@ export function autoLayout(onError: (e: unknown) => void = () => {}): () => void
     for (const w of st.workspaces) if (!w.compound) run(`ws:${w.id}`, () => st.village.ensureCompound(w.id));
     for (const s of Object.values(st.sessions))
       if (!s.spot && !(s.kind.kind === 'terminal' && s.state.kind === 'ended')) run(`s:${s.id}`, () => st.village.ensureSpot(s.id, onError));
+    for (const a of st.apps) {
+      const k = boardKey(a);
+      if (!st.boardSpots[k] && st.workspaces.some((w) => w.id === a.workspaceId)) run(`b:${k}`, () => st.village.ensureBoardSpot(k, onError));
+    }
   };
   check(useApp.getState());
   return useApp.subscribe(check);

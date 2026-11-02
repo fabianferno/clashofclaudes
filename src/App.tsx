@@ -9,6 +9,7 @@ import WelcomeCard from './panels/WelcomeCard';
 import UpdateToast from './hud/UpdateToast';
 import SidePanel from './panels/SidePanel';
 import PopOutApp from './panels/PopOutApp';
+import Kanban from './panels/Kanban';
 import { preloadTerminal } from './components/LazyTerminalView';
 import './App.css';
 
@@ -64,6 +65,7 @@ function App() {
     <BuildButtons />
     <WelcomeCard />
     <SidePanel />
+    <Kanban />
     <PopOutApp />
     <UpdateToast />
     <div className="toasts">

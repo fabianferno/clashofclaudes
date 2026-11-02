@@ -3,7 +3,7 @@
 //! (Workspace), `stats-updated` (Stats), `confirm-quit` {live, restart}, `update-progress` {pct}.
 use crate::adapters::{AdapterRegistry, AgentAdapter};
 use crate::git::{self, Review};
-use crate::model::{AgentKind, AppData, Builder, Compound, SessionInfo, SessionKind, Settings, Stats, Tile, Workspace};
+use crate::model::{AgentKind, AppData, Builder, Compound, SessionInfo, SessionKind, Settings, Stats, Tile, Todo, Workspace};
 use crate::persist;
 use crate::updater::{self, UpdateStatus};
 use crate::sessions::{ClosedSession, SessionManager, WorkspaceMissing};
@@ -94,6 +94,7 @@ pub struct StateSnapshot {
     sessions: Vec<SessionInfo>,
     stats: Stats,
     collector_spots: BTreeMap<AgentKind, Tile>,
+    todos: Vec<Todo>,
 }
 
 #[derive(Serialize)]
@@ -129,6 +130,7 @@ pub fn list_state(state: State<'_, AppState>) -> StateSnapshot {
         sessions: state.manager.list(),
         stats: d.stats.clone(),
         collector_spots: d.collector_spots.clone(),
+        todos: d.todos.clone(),
     }
 }
 
@@ -236,6 +238,7 @@ pub fn remove_workspace(id: String, state: State<'_, AppState>) -> Result<(), St
     }
     let mut d = state.data();
     d.workspaces.retain(|w| w.id != id);
+    d.todos.retain(|t| t.workspace_id != id);
     state.save(&d)?;
     drop(d);
     // Ended sessions would otherwise linger with no workspace to show them.
@@ -509,6 +512,40 @@ pub fn set_collector_spot(agent: AgentKind, spot: Tile, state: State<'_, AppStat
     let spots = apply_collector_spot(&mut d, agent, spot)?;
     state.save(&d)?;
     Ok(spots)
+}
+
+/// Writes a task down in a workspace's To Do.
+pub fn apply_add_todo(d: &mut AppData, workspace_id: &str, text: &str, now: i64) -> anyhow::Result<Todo> {
+    let text = text.trim();
+    if text.is_empty() {
+        anyhow::bail!("a task needs some text");
+    }
+    if !d.workspaces.iter().any(|w| w.id == workspace_id) {
+        anyhow::bail!("unknown workspace {workspace_id}");
+    }
+    let t = Todo { id: Uuid::new_v4().to_string(), workspace_id: workspace_id.to_string(), text: text.to_string(), created_at: now };
+    d.todos.push(t.clone());
+    Ok(t)
+}
+
+#[tauri::command]
+pub fn add_todo(workspace_id: String, text: String, state: State<'_, AppState>) -> Result<Todo, String> {
+    let mut d = state.data();
+    let t = apply_add_todo(&mut d, &workspace_id, &text, now_ms()).map_err(fmt_err)?;
+    state.save(&d)?;
+    Ok(t)
+}
+
+/// Crosses a task off the To Do (deleted, or started as a session). Unknown ids are fine: already gone.
+#[tauri::command]
+pub fn remove_todo(id: String, state: State<'_, AppState>) -> Result<(), String> {
+    let mut d = state.data();
+    let before = d.todos.len();
+    d.todos.retain(|t| t.id != id);
+    if d.todos.len() != before {
+        state.save(&d)?;
+    }
+    Ok(())
 }
 
 /// The local web apps last found in the workspaces (see `apps`).
@@ -809,6 +846,18 @@ mod tests {
         assert!(!d.workspaces[0].missing && d.workspaces[1].missing);
         assert!(flag_workspace_missing(&mut d, "b").is_none(), "already flagged: nothing to persist");
         assert!(flag_workspace_missing(&mut d, "zzz").is_none());
+    }
+
+    #[test]
+    fn todos_need_text_and_a_workspace() {
+        let mut d = village();
+        let w = d.workspaces[0].id.clone();
+        let t = apply_add_todo(&mut d, &w, "  Fix the login page \n", 5).unwrap();
+        assert_eq!((t.text.as_str(), t.workspace_id.as_str(), t.created_at), ("Fix the login page", w.as_str(), 5));
+        assert_eq!(d.todos, vec![t]);
+        assert!(apply_add_todo(&mut d, &w, "   ", 6).is_err());
+        assert!(apply_add_todo(&mut d, "nope", "x", 6).is_err());
+        assert_eq!(d.todos.len(), 1);
     }
 
     fn village() -> AppData {

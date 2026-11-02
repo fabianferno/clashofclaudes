@@ -121,3 +121,25 @@
 .quota-head { display: flex; justify-content: space-between; gap: 8px; }
 .quota-tank { color: #a22fb0; font-weight: 900; }
 .quota-reset { margin-top: 5px; }
+
+/* Kanban: a workspace's tasks and sessions, full page */
+.kanban { position: fixed; inset: 0; z-index: 7; display: flex; flex-direction: column; background: #2b2018; color: #2b2018; font-family: system-ui, sans-serif; }
+.kanban .popout-head { color: #fff; }
+.kb-cols { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; padding: 14px; }
+.kb-col { display: flex; flex-direction: column; min-height: 0; background: var(--sp-parch); border: 4px solid var(--hud-out); border-radius: 16px; overflow: hidden; box-shadow: 0 4px 0 var(--hud-out); }
+.kb-head { margin: 0; padding: 8px 12px; display: flex; align-items: center; justify-content: space-between; font: 400 20px 'Lilita One', sans-serif; color: #fff; border-bottom: 4px solid var(--hud-out); letter-spacing: .4px; }
+.kb-n { font-size: 15px; min-width: 28px; text-align: center; padding: 1px 8px; border-radius: 99px; background: rgba(20,12,6,.45); border: 2px solid var(--hud-out); }
+.kb-list { flex: 1; min-height: 0; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.kb-empty { font-size: 13px; font-weight: 700; color: var(--sp-ink-soft); text-align: center; padding: 18px 6px; }
+.kb-card { background: #fff8e8; border: 3px solid #d8c39a; border-radius: 12px; padding: 9px 10px; display: flex; flex-direction: column; gap: 6px; cursor: pointer; }
+.kb-card:hover, .kb-card:focus-visible { border-color: #a8885a; outline: none; }
+.kb-card.kb-todo { cursor: default; }
+.kb-title { font-weight: 900; font-size: 14px; line-height: 1.3; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.kb-who { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: var(--sp-ink-soft); }
+.kb-reason { font-size: 12px; font-weight: 700; color: #b02218; }
+.kb-foot { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 12px; font-weight: 700; color: var(--sp-ink-soft); }
+.kb-actions, .kb-start { display: flex; gap: 6px; align-items: center; }
+.kb-start select { flex: 1; min-width: 0; border: 2px solid #c8b083; border-radius: 8px; padding: 4px 6px; background: #fff8e8; font: 700 13px system-ui; color: #2b2018; }
+.kb-start .kb-reason { flex: 1; color: var(--sp-ink-soft); }
+.kb-add { display: flex; gap: 6px; }
+.kb-add input { flex: 1; min-width: 0; border: 2px solid #c8b083; border-radius: 8px; padding: 6px 8px; background: #fff8e8; font: 600 13px system-ui; color: #2b2018; }

@@ -196,6 +196,21 @@ describe('village', () => {
     expect(boardItems(useApp.getState()).map((b) => b.key)).toEqual(['w1:3000']);
   });
 
+  it('autoLayout stands a board anew when its spot is no longer free', async () => {
+    const c = placeCompound([]);
+    useApp.setState({ workspaces: [W('w1', c)], boardSpots: { 'w1:3000': { x: c.x0 + c.w - 1, y: c.y0 } } }); // half in the wall
+    useApp.getState().setApps([appIn('w1', 3000)]);
+    const stop = autoLayout();
+    try {
+      await vi.waitFor(() => {
+        const t = useApp.getState().boardSpots['w1:3000'];
+        expect(t && moveValid(useApp.getState(), { kind: 'board', key: 'w1:3000' }, t)).toBe(true);
+      });
+    } finally {
+      stop();
+    }
+  });
+
   it('a typed address becomes an http(s) url', () => {
     expect(browserUrl('localhost:3000')).toBe('http://localhost:3000/');
     expect(browserUrl(' https://example.com/a ')).toBe('https://example.com/a');
@@ -368,6 +383,25 @@ describe('compound moves', () => {
     expect(useApp.getState().workspaces[0].compound).toEqual({ ...c, y0: 20, house: { x: 6, y: 20 } });
     expect(useApp.getState().sessions.s1.spot).toEqual({ x: 10, y: 24 });
     expect(seen).toEqual(['6,10']); // compound and spots never land apart
+  });
+
+  it('a_compound_takes_its_boards_along_even_when_its_update_event_lands_first', async () => {
+    const at = { x: c.x0 + 6, y: c.y0 }; // clear of the house (6..8) and s1 (10..11)
+    useApp.setState({ boardSpots: { 'w1:3000': at }, hiddenApps: [], browsers: [] });
+    useApp.getState().setApps([{ workspaceId: 'w1', port: 3000, url: 'http://localhost:3000/', title: null, frameable: true, command: 'node' }]);
+    vi.mocked(ipc.moveCompound).mockImplementation(async (id, dx, dy) => {
+      // the backend's workspace-updated event arrives before the command's result
+      useApp.getState().updateWorkspace(ws(id, shiftCompound(c, dx, dy)));
+      return { workspace: ws(id, shiftCompound(c, dx, dy)), sessions: [] };
+    });
+    // with the layout running, as in the app: the board must never be seen outside its walls
+    const stop = autoLayout();
+    try {
+      expect(await useApp.getState().village.commitMove({ kind: 'compound', id: 'w1' }, { x: 6, y: 20 })).toBe(true);
+      expect(useApp.getState().boardSpots['w1:3000']).toEqual({ x: at.x, y: at.y + 14 });
+    } finally {
+      stop();
+    }
   });
 
   it('a_compound_keeps_its_distance_from_the_hall_other_compounds_and_collectors', async () => {

@@ -171,6 +171,7 @@ mod tests {
             worktree: None,
             command_preview: "SECRET OUTPUT cmd".into(),
             awaiting_decision: false,
+            busy: false,
             rev: 1,
             spot: None,
         }

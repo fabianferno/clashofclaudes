@@ -7,7 +7,7 @@ import { placeCompound, findSpot } from './layout';
 const MIN = 60_000;
 const sess = (state: SessionState, steps = 0, startedAt = 0, terminal = false): SessionInfo => ({
   id: 's', workspaceId: 'w', kind: terminal ? { kind: 'terminal' } : { kind: 'agent', builderId: 'b' }, task: null, state, steps,
-  startedAt, lastOutputAt: 0, reachedFinished: false, worktree: null, commandPreview: '', awaitingDecision: false, rev: 1, spot: { x: 0, y: 0 },
+  startedAt, lastOutputAt: 0, reachedFinished: false, worktree: null, commandPreview: '', awaitingDecision: false, busy: false, rev: 1, spot: { x: 0, y: 0 },
 });
 
 describe('statusLabel', () => {

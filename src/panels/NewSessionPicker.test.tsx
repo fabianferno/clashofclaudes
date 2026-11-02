@@ -16,7 +16,7 @@ const custom: AgentInfo = { ...claude, kind: 'custom', label: 'Custom command', 
 const bld = (id: string, name: string): Builder => ({ id, name, agent: 'claude', model: null, effort: null, customCommand: null });
 const sess = (id: string, builderId: string, state: SessionInfo['state']): SessionInfo => ({
   id, workspaceId: 'w', kind: { kind: 'agent', builderId }, task: null, state, steps: 0, startedAt: 0, lastOutputAt: 0,
-  reachedFinished: false, worktree: null, commandPreview: '', awaitingDecision: false, rev: 1, spot: null,
+  reachedFinished: false, worktree: null, commandPreview: '', awaitingDecision: false, busy: false, rev: 1, spot: null,
 });
 const ensureSpot = vi.fn().mockResolvedValue({ x: 0, y: 0 });
 

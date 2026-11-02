@@ -166,7 +166,8 @@ export function buildEntities(input: VillageInput): Entity[] {
   for (const s of input.sessions) {
     if (!s.spot || !compounds.has(s.workspaceId)) continue;
     if (s.kind.kind === 'terminal') {
-      out.push(ent(`struct:${s.id}`, 'structure', s.spot.x + STRUCT, s.spot.y + STRUCT, `runestone:${s.state.kind === 'ended' ? 'dark' : 'lit'}`));
+      // lit only while a command runs, not while the shell waits at its prompt
+      out.push(ent(`struct:${s.id}`, 'structure', s.spot.x + STRUCT, s.spot.y + STRUCT, `runestone:${s.busy && s.state.kind !== 'ended' ? 'lit' : 'dark'}`));
       continue;
     }
     const { stage, height } = structureLook(s);

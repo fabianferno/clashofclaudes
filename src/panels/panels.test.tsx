@@ -49,7 +49,7 @@ afterEach(cleanup);
 test('missing_workspace_buttons_explain', () => {
   act(() => useApp.setState({ workspaces: [ws({ missing: true })] }));
   render(<WorkspacePanel workspaceId="w1" />);
-  for (const name of ['+ New session', '+ Terminal', '+ Browser', 'Open in editor', 'Zoom in']) {
+  for (const name of ['+ New session', '+ Terminal', '+ Browser', 'Open in editor', 'Focus']) {
     const b = screen.getByRole('button', { name }) as HTMLButtonElement;
     expect(b.disabled).toBe(true);
     expect(b.title).toBe('Folder not found: /p/proj');
@@ -219,7 +219,7 @@ test('dismiss_disabled_while_busy', async () => {
   expect(useApp.getState().builders).toHaveLength(0);
 });
 
-test('town_hall_lists_idle_builders', () => {
+test('town_hall_lists_every_builder_with_its_status', () => {
   act(() => useApp.setState({
     builders: [builder(), builder({ id: 'b2', name: 'Bo', agent: 'codex', model: null, effort: null })],
     sessions: { s1: sess() },
@@ -227,8 +227,10 @@ test('town_hall_lists_idle_builders', () => {
   }));
   render(<TownHallPanel />);
   expect(screen.getByText('Bo')).toBeTruthy();
-  expect(screen.queryByTestId('idle-builder-b1')).toBeNull(); // Ada is in a session
-  expect(screen.getByTestId('idle-builder-b2')).toBeTruthy();
+  expect(screen.getByTestId('hall-builder-b1').textContent).toMatch(/Ada.*Working/); // in a session
+  expect(screen.getByTestId('hall-builder-b2').textContent).toMatch(/Bo.*Idle/);
+  fireEvent.click(screen.getByTestId('hall-builder-b1'));
+  expect(useApp.getState().selection).toEqual({ kind: 'session', id: 's1' }); // a busy builder opens its session
   expect(screen.getByText('proj')).toBeTruthy();
   expect(screen.getByText('missing')).toBeTruthy();
   expect(screen.getByText(/1 session/)).toBeTruthy();
@@ -262,15 +264,10 @@ test('switching between sessions keeps one session panel mounted', () => {
   expect(sessionPanel.mounts - before).toBe(1); // its terminal survives the switch
 });
 
-test('town hall: no-builders copy vs all-busy copy', () => {
+test('town hall: no-builders copy', () => {
   act(() => useApp.setState({ builders: [], sessions: {} }));
-  const { unmount } = render(<TownHallPanel />);
-  expect(screen.getByText('No builders yet — recruit one from + New session.')).toBeTruthy();
-  expect(screen.queryByText('Every builder is in a session.')).toBeNull();
-  unmount();
-  act(() => useApp.setState({ builders: [builder()], sessions: { s1: sess() } }));
   render(<TownHallPanel />);
-  expect(screen.getByText('Every builder is in a session.')).toBeTruthy();
+  expect(screen.getByText('No builders yet — recruit one from + New session.')).toBeTruthy();
 });
 
 test('settings_toggle_disables_updates: Town Hall checkbox persists via set_settings', async () => {

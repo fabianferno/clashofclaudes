@@ -218,7 +218,7 @@ export interface AppState {
   addBuilder: (b: Builder) => void;
   updateBuilder: (b: Builder) => void;
   removeBuilder: (id: string) => void;
-  /** Ask the village to fit a workspace's compound (the Workspace panel's Zoom in); `n` makes repeats distinct. */
+  /** Ask the village to fit a workspace's compound (the Workspace panel's Focus); `n` makes repeats distinct. */
   zoomRequest: { id: string; n: number } | null;
   requestZoom: (workspaceId: string) => void;
 }

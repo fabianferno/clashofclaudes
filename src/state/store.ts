@@ -64,7 +64,7 @@ const sameUrl = (a: string, b: string) => {
   try { return new URL(a).href === new URL(b).href; } catch { return a === b; }
 };
 
-export function boardItems(st: Pick<AppState, 'apps' | 'browsers'>): BoardItem[] {
+export function boardItems(st: Pick<AppState, 'apps' | 'browsers'> & Partial<Pick<AppState, 'hiddenApps'>>): BoardItem[] {
   const opened: BoardItem[] = st.browsers.map((b) => {
     let label = b.url, port: number | null = null;
     try { const u = new URL(b.url); label = u.hostname; port = u.port ? Number(u.port) : null; } catch { /* shown as typed */ }
@@ -72,6 +72,7 @@ export function boardItems(st: Pick<AppState, 'apps' | 'browsers'>): BoardItem[]
   });
   const found: BoardItem[] = st.apps
     .filter((a) => !st.browsers.some((b) => b.workspaceId === a.workspaceId && sameUrl(b.url, a.url)))
+    .filter((a) => !st.hiddenApps?.includes(boardKey(a)))
     .map((a) => ({ key: boardKey(a), workspaceId: a.workspaceId, url: a.url, label: a.title ?? a.command, port: a.port, frameable: a.frameable }));
   return [...opened, ...found];
 }
@@ -185,9 +186,13 @@ export interface AppState {
   setApps: (a: AppPreview[]) => void;
   /** Where each app's board stands (top-left tile), by `boardKey`; not persisted. */
   boardSpots: Record<string, Tile>;
-  /** The app popped out full-window from its board, if any (`browserId` for the owner's browsers). */
-  appPopout: { url: string; title: string; browserId?: string } | null;
-  setAppPopout: (a: { url: string; title: string; browserId?: string } | null) => void;
+  /** The app popped out full-window from its board, if any (`key` its board, `browserId` for the owner's browsers). */
+  appPopout: { url: string; title: string; key?: string; browserId?: string } | null;
+  setAppPopout: (a: { url: string; title: string; key?: string; browserId?: string } | null) => void;
+  /** Detected apps whose board the owner removed, by board key; one comes back once its server has stopped. */
+  hiddenApps: string[];
+  /** Take a board down: close an opened browser, or hide a detected app's board until its server stops. */
+  removeBoard: (b: Pick<BoardItem, 'key' | 'browserId'>) => void;
   /** The latest snapshot of each board's page, by url: a data: JPEG and when it was taken. */
   snapshots: Record<string, { data: string; at: number }>;
   setSnapshot: (url: string, data: string, at: number) => void;
@@ -230,6 +235,7 @@ export const useApp = create<AppState>((set, get) => ({
   apps: [],
   boardSpots: {},
   appPopout: null,
+  hiddenApps: [],
   snapshots: {},
   covers: 0,
   todos: [],
@@ -310,7 +316,22 @@ export const useApp = create<AppState>((set, get) => ({
   setQuota: (q) => set((st) => ({ quotas: { ...st.quotas, [q.agent]: q } })),
   setQuotas: (qs) => set((st) => ({ quotas: { ...st.quotas, ...Object.fromEntries(qs.map((q) => [q.agent, q])) } })),
   setCollectorSpots: (collectorSpots) => set({ collectorSpots }),
-  setApps: (apps) => set((st) => ({ apps, ...prunedSpots({ ...st, apps }) })),
+  setApps: (apps) => set((st) => {
+    // a hidden app whose server stopped shows again when it next starts
+    const hiddenApps = st.hiddenApps.filter((k) => apps.some((a) => boardKey(a) === k));
+    return { apps, ...(hiddenApps.length !== st.hiddenApps.length ? { hiddenApps } : {}), ...prunedSpots({ ...st, apps, hiddenApps }) };
+  }),
+  removeBoard: (b) => {
+    if (b.browserId) { get().closeBrowser(b.browserId); return; }
+    set((st) => {
+      const hiddenApps = [...st.hiddenApps, b.key];
+      return {
+        hiddenApps,
+        ...prunedSpots({ ...st, hiddenApps }),
+        ...(st.appPopout?.key === b.key ? { appPopout: null } : {}),
+      };
+    });
+  },
   openBrowser: (workspaceId, url) => {
     const b = { id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, workspaceId, url };
     set((st) => ({ browsers: [...st.browsers, b] }));
@@ -357,7 +378,7 @@ export const useApp = create<AppState>((set, get) => ({
 }));
 
 /** The board spots of boards that still stand (`{}` when none went away, so the store keeps its object). */
-function prunedSpots(st: Pick<AppState, 'apps' | 'browsers' | 'boardSpots'>): Partial<Pick<AppState, 'boardSpots'>> {
+function prunedSpots(st: Pick<AppState, 'apps' | 'browsers' | 'boardSpots' | 'hiddenApps'>): Partial<Pick<AppState, 'boardSpots'>> {
   const live = new Set(boardItems(st).map((b) => b.key));
   const kept = Object.entries(st.boardSpots).filter(([k]) => live.has(k));
   return kept.length !== Object.keys(st.boardSpots).length ? { boardSpots: Object.fromEntries(kept) } : {};

@@ -12,6 +12,7 @@ export default function WorkspacePanel({ workspaceId }: { workspaceId: string })
   const builders = useApp((s) => s.builders);
   const apps = useApp((s) => s.apps);
   const browsers = useApp((s) => s.browsers);
+  const hiddenApps = useApp((s) => s.hiddenApps);
   const [form, setForm] = useState(false);
   // the + Browser address, while it is being typed
   const [addr, setAddr] = useState<string | null>(null);
@@ -24,7 +25,7 @@ export default function WorkspacePanel({ workspaceId }: { workspaceId: string })
   const all = sessionsByWorkspace({ sessions: sessionMap }, workspaceId);
   const agentSessions = all.filter((s) => s.kind.kind === 'agent');
   const terminals = all.filter((s) => s.kind.kind === 'terminal');
-  const boards = boardItems({ apps, browsers }).filter((b) => b.workspaceId === workspaceId);
+  const boards = boardItems({ apps, browsers, hiddenApps }).filter((b) => b.workspaceId === workspaceId);
   const need = xpNeed(ws.level);
   const pct = Math.max(0, Math.min(100, Math.round((ws.xp / need) * 100)));
   const why = ws.missing ? `Folder not found: ${ws.path}` : undefined;
@@ -68,7 +69,7 @@ export default function WorkspacePanel({ workspaceId }: { workspaceId: string })
     setAddr(null);
     const b = st.openBrowser(workspaceId, url);
     const item = boardItems(useApp.getState()).find((x) => x.browserId === b.id)!;
-    st.setAppPopout({ url, title: item.label, browserId: b.id });
+    st.setAppPopout({ url, title: item.label, key: item.key, browserId: b.id });
   };
 
   return (
@@ -114,16 +115,15 @@ export default function WorkspacePanel({ workspaceId }: { workspaceId: string })
         <div key={b.key} className="sp-browser-row">
           <button className="sp-row" data-testid={`browser-row-${b.key}`}
             onClick={() => (b.frameable
-              ? st.setAppPopout({ url: b.url, title: b.label, browserId: b.browserId })
+              ? st.setAppPopout({ url: b.url, title: b.label, key: b.key, browserId: b.browserId })
               : guard(() => openUrl(b.url)))}>
             <span className="sp-rowtext">
               <span className="sp-t">{b.label}</span>
               <span className="sp-d">{b.url}{b.browserId ? '' : ' · running here'}</span>
             </span>
           </button>
-          {b.browserId && (
-            <button className="hud-btn grey sm" aria-label={`Close ${b.label}`} onClick={() => st.closeBrowser(b.browserId!)}>✕</button>
-          )}
+          <button className="hud-btn grey sm" aria-label={`Remove ${b.label}`}
+            title={b.browserId ? 'Close this browser' : 'Hide this board until the app stops'} onClick={() => st.removeBoard(b)}>✕</button>
         </div>
       ))}
       <div className="sp-sec">Danger zone</div>

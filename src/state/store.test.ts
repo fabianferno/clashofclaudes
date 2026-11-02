@@ -14,7 +14,7 @@ const sess = (id: string, ws: string, builderId?: string, startedAt = 0, state: 
 const bld = (id: string): Builder => ({ id, name: id, agent: 'claude', model: null, effort: null, customCommand: null });
 
 beforeEach(() => {
-  useApp.setState({ workspaces: [], builders: [], sessions: {}, agents: [], selectedSessionId: null, apps: [], boardSpots: {}, appPopout: null, browsers: [] });
+  useApp.setState({ workspaces: [], builders: [], sessions: {}, agents: [], selectedSessionId: null, apps: [], boardSpots: {}, appPopout: null, browsers: [], hiddenApps: [] });
 });
 
 const appIn = (ws: string, port: number): AppPreview =>
@@ -178,6 +178,22 @@ describe('village', () => {
     expect(await v.commitMove(t, free)).toBe(true);
     expect(useApp.getState().boardSpots['w1:3000']).toEqual(free);
     expect(ipc.setSessionSpot).not.toHaveBeenCalled();
+  });
+
+  it('a removed app board stays down until its server stops, then comes back with it', () => {
+    const c = placeCompound([]);
+    useApp.setState({ workspaces: [W('w1', c)], hiddenApps: [], boardSpots: { 'w1:3000': { x: c.x0, y: c.y0 } } });
+    useApp.getState().setApps([appIn('w1', 3000)]);
+    useApp.getState().setAppPopout({ url: 'http://localhost:3000/', title: 'x', key: 'w1:3000' });
+    useApp.getState().removeBoard({ key: 'w1:3000' });
+    expect(boardItems(useApp.getState())).toEqual([]);
+    expect(useApp.getState().boardSpots).toEqual({});
+    expect(useApp.getState().appPopout).toBeNull();
+    useApp.getState().setApps([appIn('w1', 3000)]); // still running: still hidden
+    expect(boardItems(useApp.getState())).toEqual([]);
+    useApp.getState().setApps([]); // stopped
+    useApp.getState().setApps([appIn('w1', 3000)]); // started again
+    expect(boardItems(useApp.getState()).map((b) => b.key)).toEqual(['w1:3000']);
   });
 
   it('a typed address becomes an http(s) url', () => {

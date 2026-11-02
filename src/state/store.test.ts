@@ -163,6 +163,23 @@ describe('village', () => {
     expect(useApp.getState().browsers).toEqual([]);
   });
 
+  it('a board moves within its compound, never onto a structure, and nothing is persisted', async () => {
+    const c = placeCompound([]);
+    const s1 = findSpot(c, [])!;
+    const s2 = findSpot(c, [s1])!;
+    useApp.setState({ workspaces: [W('w1', c)], boardSpots: { 'w1:3000': s2 } });
+    useApp.getState().upsertSession({ ...sess('a', 'w1', 'b1'), spot: s1 });
+    useApp.getState().setApps([appIn('w1', 3000)]);
+    const t = { kind: 'board', key: 'w1:3000' } as const;
+    const v = useApp.getState().village;
+    expect(await v.commitMove(t, s1)).toBe(false); // the structure's spot
+    expect(await v.commitMove(t, { x: c.x0 + c.w + 5, y: c.y0 })).toBe(false); // outside the walls
+    const free = findSpot(c, [s1, s2])!;
+    expect(await v.commitMove(t, free)).toBe(true);
+    expect(useApp.getState().boardSpots['w1:3000']).toEqual(free);
+    expect(ipc.setSessionSpot).not.toHaveBeenCalled();
+  });
+
   it('a typed address becomes an http(s) url', () => {
     expect(browserUrl('localhost:3000')).toBe('http://localhost:3000/');
     expect(browserUrl(' https://example.com/a ')).toBe('https://example.com/a');

@@ -35,7 +35,9 @@ export type MoveTarget =
   | { kind: 'session'; id: string }
   | { kind: 'workspace'; id: string }
   | { kind: 'compound'; id: string }
-  | { kind: 'collector'; agent: AgentKind };
+  | { kind: 'collector'; agent: AgentKind }
+  /** An app or browser board, by its `boardItems` key. */
+  | { kind: 'board'; key: string };
 
 type MoveState = Pick<AppState, 'workspaces' | 'sessions'> & Partial<Pick<AppState, 'quotas' | 'agents' | 'collectorSpots' | 'boardSpots'>>;
 
@@ -111,6 +113,14 @@ export function moveValid(st: MoveState, target: MoveTarget, at: Tile): boolean 
     const walls = wallRect(moved);
     return compoundFits(moved, compounds.filter((o) => o !== c))
       && shown.every((a) => gapBetween({ x0: tiles[a]!.x, y0: tiles[a]!.y, w: STRUCT, h: STRUCT }, walls) >= 1);
+  }
+  if (target.kind === 'board') {
+    const wsId = target.key.split(':')[0];
+    const c = st.workspaces.find((w) => w.id === wsId)?.compound;
+    if (!c || !st.boardSpots?.[target.key]) return false;
+    const taken = Object.values(st.sessions).filter((x) => x.workspaceId === wsId && x.spot).map((x) => x.spot!)
+      .concat(boardSpotsIn(st.boardSpots, wsId, target.key));
+    return canPlace(c, taken, at, STRUCT);
   }
   const wsId = target.kind === 'workspace' ? target.id : st.sessions[target.id]?.workspaceId;
   const c = st.workspaces.find((w) => w.id === wsId)?.compound;
@@ -443,7 +453,9 @@ function villageActions(get: () => AppState): VillageActions {
       const st = get();
       if (!moveValid(st, target, at)) return false;
       try {
-        if (target.kind === 'session') {
+        if (target.kind === 'board') {
+          st.setBoardSpots({ ...st.boardSpots, [target.key]: at }); // boards are not persisted
+        } else if (target.kind === 'session') {
           st.upsertSession(await ipc.setSessionSpot(target.id, at));
         } else if (target.kind === 'collector') {
           st.setCollectorSpots(await ipc.setCollectorSpot(target.agent, at));

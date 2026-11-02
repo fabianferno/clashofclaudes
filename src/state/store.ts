@@ -305,7 +305,8 @@ export const useApp = create<AppState>((set, get) => ({
   setAgents: (agents) => set({ agents }),
   // Upserts: a workspace (or builder) already present by id is replaced, never listed twice.
   addWorkspace: (w) => set((st) => ({ workspaces: upsertById(st.workspaces, w) })),
-  updateWorkspace: (w) => set((st) => ({ workspaces: st.workspaces.map((x) => (x.id === w.id ? w : x)) })),
+  // the backend's workspace-updated event for a compound move may land before the move's own result
+  updateWorkspace: (w) => set((st) => ({ workspaces: st.workspaces.map((x) => (x.id === w.id ? w : x)), ...boardsAlong(st, w) })),
   removeWorkspace: (id) => set((st) => ({
     workspaces: st.workspaces.filter((x) => x.id !== id),
     browsers: st.browsers.filter((b) => b.workspaceId !== id),
@@ -362,13 +363,7 @@ export const useApp = create<AppState>((set, get) => ({
     set((st) => {
       const sessions = { ...st.sessions };
       for (const s of moved) if (!sessions[s.id] || s.rev >= sessions[s.id].rev) sessions[s.id] = s;
-      // boards are not persisted, so they move with their compound here
-      const was = st.workspaces.find((x) => x.id === w.id)?.compound;
-      const dx = was && w.compound ? w.compound.x0 - was.x0 : 0, dy = was && w.compound ? w.compound.y0 - was.y0 : 0;
-      const boardSpots = dx || dy
-        ? Object.fromEntries(Object.entries(st.boardSpots).map(([k, t]) => [k, k.startsWith(`${w.id}:`) ? { x: t.x + dx, y: t.y + dy } : t]))
-        : st.boardSpots;
-      return { workspaces: st.workspaces.map((x) => (x.id === w.id ? w : x)), sessions, boardSpots };
+      return { workspaces: st.workspaces.map((x) => (x.id === w.id ? w : x)), sessions, ...boardsAlong(st, w) };
     }),
   addBuilder: (b) => set((st) => ({ builders: upsertById(st.builders, b) })),
   updateBuilder: (b) => set((st) => ({ builders: st.builders.map((x) => (x.id === b.id ? b : x)) })),
@@ -376,6 +371,22 @@ export const useApp = create<AppState>((set, get) => ({
   zoomRequest: null,
   requestZoom: (id) => set((st) => ({ zoomRequest: { id, n: (st.zoomRequest?.n ?? 0) + 1 } })),
 }));
+
+/**
+ * Boards are not persisted, so they travel with their compound here: when the stored compound of
+ * `w` is moved whole (same size, house and walls by the same offset), its boards move by that offset.
+ * Whichever update brings the move first moves them; the second sees no offset left.
+ */
+function boardsAlong(st: Pick<AppState, 'workspaces' | 'boardSpots'>, w: Workspace): Partial<Pick<AppState, 'boardSpots'>> {
+  const was = st.workspaces.find((x) => x.id === w.id)?.compound, now = w.compound;
+  if (!was || !now || was.w !== now.w || was.h !== now.h) return {};
+  const dx = now.x0 - was.x0, dy = now.y0 - was.y0;
+  if ((!dx && !dy) || now.house.x - was.house.x !== dx || now.house.y - was.house.y !== dy) return {};
+  return {
+    boardSpots: Object.fromEntries(Object.entries(st.boardSpots)
+      .map(([k, t]) => [k, k.startsWith(`${w.id}:`) ? { x: t.x + dx, y: t.y + dy } : t])),
+  };
+}
 
 /** The board spots of boards that still stand (`{}` when none went away, so the store keeps its object). */
 function prunedSpots(st: Pick<AppState, 'apps' | 'browsers' | 'boardSpots' | 'hiddenApps'>): Partial<Pick<AppState, 'boardSpots'>> {
@@ -541,10 +552,17 @@ export function autoLayout(onError: (e: unknown) => void = () => {}): () => void
     pending.add(key);
     p().catch(onError).finally(() => pending.delete(key));
   };
-  const check = (st: AppState) => {
+  const check = (now: AppState) => {
+    let st = now;
     for (const w of st.workspaces) if (!w.compound) run(`ws:${w.id}`, () => st.village.ensureCompound(w.id));
     for (const s of Object.values(st.sessions))
       if (!s.spot && !(s.kind.kind === 'terminal' && s.state.kind === 'ended')) run(`s:${s.id}`, () => st.village.ensureSpot(s.id, onError));
+    // a board left on a spot that is no longer free (its compound changed under it) is stood anew
+    const astray = Object.keys(st.boardSpots).filter((k) => !pending.has(`b:${k}`) && !moveValid(st, { kind: 'board', key: k }, st.boardSpots[k]));
+    if (astray.length) {
+      st.setBoardSpots(Object.fromEntries(Object.entries(st.boardSpots).filter(([k]) => !astray.includes(k))));
+      st = useApp.getState(); // place them in this same pass (the first pass runs before the subscription)
+    }
     for (const b of boardItems(st)) {
       if (!st.boardSpots[b.key] && st.workspaces.some((w) => w.id === b.workspaceId)) run(`b:${b.key}`, () => st.village.ensureBoardSpot(b.key, onError));
     }

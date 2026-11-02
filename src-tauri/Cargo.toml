@@ -34,6 +34,16 @@ tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2.8.0"
 tauri-plugin-updater = "2"
 
+base64 = "0.22"
+
+# App board snapshots: WKWebView's own snapshot of a hidden window (see `snapshot.rs`).
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+block2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSData", "NSDictionary", "NSError", "NSValue"] }
+objc2-app-kit = { version = "0.3", features = ["NSImage", "NSImageRep", "NSBitmapImageRep"] }
+objc2-web-kit = { version = "0.3", features = ["WKWebView", "WKSnapshotConfiguration", "block2", "objc2-app-kit"] }
+
 [dev-dependencies]
 tempfile = "3"
 toml = "1"

@@ -37,6 +37,7 @@ export default function Kanban() {
   const todos = useApp((s) => s.todos);
   const close = () => useApp.getState().setKanban(null);
   const [now, setNow] = useState(Date.now());
+  useEffect(() => (wsId ? useApp.getState().cover() : undefined), [wsId]);
   useEffect(() => {
     if (!wsId) return;
     const t = setInterval(() => setNow(Date.now()), 30_000); // elapsed times are shown in minutes

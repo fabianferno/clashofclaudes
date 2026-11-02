@@ -514,6 +514,18 @@ pub fn set_collector_spot(agent: AgentKind, spot: Tile, state: State<'_, AppStat
     Ok(spots)
 }
 
+/// A small JPEG of a web page for its board, as a `data:` URL (see `snapshot`).
+#[tauri::command]
+pub async fn snapshot_app<R: tauri::Runtime>(url: String, app: tauri::AppHandle<R>) -> Result<String, String> {
+    use base64::Engine;
+    tauri::async_runtime::spawn_blocking(move || {
+        let jpeg = app.state::<crate::snapshot::Snapper>().capture(&app, &url).map_err(fmt_err)?;
+        Ok(format!("data:image/jpeg;base64,{}", base64::engine::general_purpose::STANDARD.encode(jpeg)))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Writes a task down in a workspace's To Do.
 pub fn apply_add_todo(d: &mut AppData, workspace_id: &str, text: &str, now: i64) -> anyhow::Result<Todo> {
     let text = text.trim();

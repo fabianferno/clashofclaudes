@@ -101,13 +101,30 @@ pub struct Probe {
     pub frameable: bool,
 }
 
-/// Reads an HTTP response (head and the start of the body); None when it is not HTTP.
+/// Reads an HTTP response (head and the start of the body); None unless it is a page: a
+/// successful (or redirecting) HTML response. APIs, tools' local servers and error pages are not apps.
 pub fn parse_probe(resp: &[u8]) -> Option<Probe> {
     let text = String::from_utf8_lossy(resp);
     if !text.starts_with("HTTP/") {
         return None;
     }
     let (head, body) = text.split_once("\r\n\r\n").unwrap_or((&text, ""));
+    let status: u16 = head.split_whitespace().nth(1)?.parse().ok()?;
+    if status >= 400 {
+        return None;
+    }
+    let content_type = head.lines().skip(1).find_map(|l| {
+        let (k, v) = l.split_once(':')?;
+        k.trim().eq_ignore_ascii_case("content-type").then(|| v.trim().to_ascii_lowercase())
+    });
+    let html = match content_type {
+        Some(ct) => ct.contains("text/html"),
+        None => body.trim_start().get(..5).is_some_and(|s| s.eq_ignore_ascii_case("<!doc") || s.eq_ignore_ascii_case("<html")),
+    };
+    // a redirect has no page of its own; follow-up requests will show where it leads
+    if !html && !(300..400).contains(&status) {
+        return None;
+    }
     let mut frameable = true;
     for line in head.lines().skip(1) {
         let Some((k, v)) = line.split_once(':') else { continue };
@@ -269,12 +286,22 @@ mod tests {
     fn probe_reads_title_and_framing() {
         let ok = b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<html><head><TITLE>\n  My &amp; App </TITLE>";
         assert_eq!(parse_probe(ok), Some(Probe { title: Some("My & App".into()), frameable: true }));
-        let xfo = b"HTTP/1.1 200 OK\r\nX-Frame-Options: DENY\r\n\r\n";
+        let xfo = b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nX-Frame-Options: DENY\r\n\r\n";
         assert_eq!(parse_probe(xfo), Some(Probe { title: None, frameable: false }));
-        let csp = b"HTTP/1.1 200 OK\r\nContent-Security-Policy: default-src 'self'; frame-ancestors 'none'\r\n\r\n";
+        let csp = b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Security-Policy: default-src 'self'; frame-ancestors 'none'\r\n\r\n";
         assert!(!parse_probe(csp).unwrap().frameable);
-        let csp_ok = b"HTTP/1.1 200 OK\r\nContent-Security-Policy: frame-ancestors *\r\n\r\n";
+        let csp_ok = b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Security-Policy: frame-ancestors *\r\n\r\n";
         assert!(parse_probe(csp_ok).unwrap().frameable);
         assert_eq!(parse_probe(b"\x00\x01binary"), None);
+    }
+
+    #[test]
+    fn only_pages_are_apps() {
+        let page = |r: &[u8]| parse_probe(r).is_some();
+        assert!(page(b"HTTP/1.0 200 OK\r\nServer: SimpleHTTP\r\n\r\n<!DOCTYPE HTML>\n<html>"));
+        assert!(page(b"HTTP/1.1 307 Temporary Redirect\r\nLocation: /login\r\n\r\n"));
+        assert!(!page(b"HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\n\r\n{\"error\":1}"));
+        assert!(!page(b"HTTP/1.1 404 Not Found\r\ncontent-type: text/html\r\n\r\n<html>nope"));
+        assert!(!page(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{}"));
     }
 }

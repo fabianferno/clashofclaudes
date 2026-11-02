@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ipc } from './api/ipc';
 import { autoLayout, useApp } from './state/store';
+import { autoSnapshots } from './state/snapshots';
 import VillageCanvas from './village/VillageCanvas';
 import TopBar from './hud/TopBar';
 import BuildersBar from './hud/BuildersBar';
@@ -54,7 +55,8 @@ function App() {
     ipc.getApps().then((a) => !cancelled && useApp.getState().setApps(a)).catch(() => {}); // boards come with the next scan
     ipc.detectAgents().then((a) => !cancelled && useApp.getState().setAgents(a)).catch((e) => useApp.getState().setError(String(e)));
     const preload = window.setTimeout(preloadTerminal, 2000); // after the village's first frames
-    return () => { cancelled = true; window.clearTimeout(preload); stopLayout?.(); unlisten.forEach((u) => u()); };
+    const stopSnapshots = autoSnapshots();
+    return () => { cancelled = true; window.clearTimeout(preload); stopLayout?.(); stopSnapshots(); unlisten.forEach((u) => u()); };
   }, []);
 
   return (

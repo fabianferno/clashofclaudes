@@ -22,7 +22,9 @@ function opaqueBox(c: HTMLCanvasElement): { x0: number; y0: number; x1: number; 
 }
 
 /** The builder as it looks in the village (class, gear), head and shoulders filling the frame. */
-export default function BuilderAvatar({ agent, model, effort }: { agent: AgentKind; model: string | null; effort: string | null }) {
+export default function BuilderAvatar({ agent, model, effort, size = SIZE }: {
+  agent: AgentKind; model: string | null; effort: string | null; size?: number;
+}) {
   const ref = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -30,17 +32,18 @@ export default function BuilderAvatar({ agent, model, effort }: { agent: AgentKi
     const g = canvas?.getContext('2d');
     if (!canvas || !g) return;
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = Math.round(SIZE * dpr);
-    canvas.height = Math.round(SIZE * dpr);
+    canvas.width = Math.round(size * dpr);
+    canvas.height = Math.round(size * dpr);
     const a = drawBuilder(agent, classOf(agent, model), gearOf(effort), 'idle', 1);
     const box = opaqueBox(a.canvas);
     if (!box) return;
     // scale the top of the figure to the frame's height, centred on the figure
-    const k = ((SIZE - TOP) * dpr) / ((box.y1 - box.y0) * SHOWN);
+    const top = (TOP * size) / SIZE;
+    const k = ((size - top) * dpr) / ((box.y1 - box.y0) * SHOWN);
     const cx = (box.x0 + box.x1) / 2;
-    g.setTransform(k, 0, 0, k, (SIZE / 2) * dpr - cx * k, TOP * dpr - box.y0 * k);
+    g.setTransform(k, 0, 0, k, (size / 2) * dpr - cx * k, top * dpr - box.y0 * k);
     g.drawImage(a.canvas, 0, 0);
-  }, [agent, model, effort]);
+  }, [agent, model, effort, size]);
 
-  return <canvas ref={ref} className="hud-av-art" width={SIZE} height={SIZE} style={{ width: SIZE, height: SIZE }} aria-hidden="true" />;
+  return <canvas ref={ref} className="hud-av-art" width={size} height={size} style={{ width: size, height: size }} aria-hidden="true" />;
 }

@@ -4,6 +4,7 @@ import type { Builder, SessionInfo, Todo } from '../api/types';
 import { idleBuilders, sessionsByWorkspace, useApp } from '../state/store';
 import { elapsedLabel } from '../village/status';
 import AgentLogo from './AgentLogo';
+import BuilderPicker from './BuilderPicker';
 import { StateTag } from './tags';
 
 export type KanbanColumn = 'active' | 'needs' | 'finished';
@@ -46,7 +47,8 @@ export default function Kanban() {
       e.preventDefault();
       e.stopPropagation();
       const a = document.activeElement;
-      if (a instanceof HTMLInputElement || a instanceof HTMLSelectElement) a.blur();
+      // the builder picker closes when it loses focus
+      if (a instanceof HTMLInputElement || a instanceof HTMLSelectElement || (a instanceof HTMLElement && a.closest('.kb-pick'))) a.blur();
       else useApp.getState().setKanban(null);
     };
     window.addEventListener('keydown', onKey, true);
@@ -171,9 +173,7 @@ function TodoCard({ todo, idle, disabled }: { todo: Todo; idle: Builder[]; disab
       <div className="kb-title">{todo.text}</div>
       <div className="kb-start">
         {idle.length > 0 ? (
-          <select aria-label="Builder" value={builderId} onChange={(e) => setPick(e.target.value)} disabled={busy}>
-            {idle.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-          </select>
+          <BuilderPicker builders={idle} value={builderId} onChange={setPick} disabled={busy} />
         ) : <span className="kb-reason">All builders are busy</span>}
         <button className="hud-btn sm" disabled={disabled || busy || !builderId} onClick={() => void start()}>Start</button>
         <button className="hud-btn grey sm" aria-label={`Delete ${todo.text}`} disabled={busy} onClick={() => void remove()}>✕</button>

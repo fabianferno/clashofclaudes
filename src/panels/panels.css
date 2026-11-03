@@ -139,7 +139,20 @@
 .kb-reason { font-size: 12px; font-weight: 700; color: #b02218; }
 .kb-foot { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 12px; font-weight: 700; color: var(--sp-ink-soft); }
 .kb-actions, .kb-start { display: flex; gap: 6px; align-items: center; }
-.kb-start select { flex: 1; min-width: 0; border: 2px solid #c8b083; border-radius: 8px; padding: 4px 6px; background: #fff8e8; font: 700 13px system-ui; color: #2b2018; }
+.kb-pick { flex: 1; min-width: 0; }
+.kb-pick-btn { width: 100%; display: flex; align-items: center; gap: 7px; border: 2px solid #c8b083; border-radius: 10px; padding: 3px 6px 3px 3px; background: #fff8e8; color: #2b2018; font: 700 13px system-ui; text-align: left; cursor: pointer; }
+.kb-pick-btn:hover:not(:disabled), .kb-pick-btn[aria-expanded="true"] { border-color: #a8885a; }
+.kb-pick-btn:focus-visible { outline: 2px solid #a8885a; outline-offset: 1px; }
+.kb-pick-btn:disabled { opacity: .6; cursor: default; }
+.kb-pick-av { flex: none; width: 30px; height: 30px; border-width: 2px; border-radius: 8px; }
+.kb-pick-text { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.15; }
+.kb-pick-name { font-weight: 900; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kb-pick-class { font-size: 11px; font-weight: 700; color: var(--sp-ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kb-pick-caret { flex: none; font-size: 12px; color: var(--sp-ink-soft); }
+.kb-pick-list { position: fixed; z-index: 9; min-width: 190px; max-height: min(320px, 60vh); overflow-y: auto; margin: 0; padding: 4px; list-style: none; background: #fff8e8; border: 3px solid var(--hud-out); border-radius: 12px; box-shadow: 0 4px 0 var(--hud-out), 0 10px 24px rgba(0,0,0,.3); }
+.kb-pick-list li { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 8px; cursor: pointer; }
+.kb-pick-list li.hot { background: #f0dfb8; }
+.kb-pick-list li[aria-selected="true"] .kb-pick-name { color: #2f7d17; }
 .kb-start .kb-reason { flex: 1; color: var(--sp-ink-soft); }
 .kb-add { display: flex; gap: 6px; }
 .kb-add input { flex: 1; min-width: 0; border: 2px solid #c8b083; border-radius: 8px; padding: 6px 8px; background: #fff8e8; font: 600 13px system-ui; color: #2b2018; }

@@ -86,7 +86,7 @@ mod tests {
             stats: Stats::default(),
             settings: Settings::default(),
             collector_spots: [(AgentKind::Codex, Tile { x: 9, y: -3 })].into(),
-            todos: vec![Todo { id: "t1".into(), workspace_id: "w1".into(), text: "Fix the login page".into(), created_at: 7 }],
+            todos: vec![Todo { id: "t1".into(), workspace_id: "w1".into(), text: "Fix the login page".into(), images: vec![], created_at: 7 }],
             workspaces: vec![Workspace {
                 id: "w1".into(),
                 name: "Café".into(),

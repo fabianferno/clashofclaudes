@@ -62,6 +62,9 @@ impl AgentAdapter for AntigravityAdapter {
         if let Some(m) = req.model {
             args.push(format!("--model={m}"));
         }
+        if let Some(d) = super::images_dir(req.images) {
+            args.push(format!("--add-dir={}", d.to_string_lossy()));
+        }
         if let Some(t) = req.task.filter(|t| !t.is_empty()) {
             // `=` form in one argument: a task starting with `-` can never be read as an option.
             args.push(format!("--prompt-interactive={SHARED_FOLDER_NOTE}\n\n{t}"));
@@ -105,7 +108,7 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     fn req<'a>(model: Option<&'a str>, task: Option<&'a str>) -> LaunchRequest<'a> {
-        LaunchRequest { session_id: "sid", cwd: Path::new("/tmp"), model, effort: Some("high"), task, hook_url: "http://x", data_dir: Path::new("/nonexistent"), custom_command: None }
+        LaunchRequest { session_id: "sid", cwd: Path::new("/tmp"), model, effort: Some("high"), task, hook_url: "http://x", data_dir: Path::new("/nonexistent"), custom_command: None, images: &[] }
     }
 
     #[test]

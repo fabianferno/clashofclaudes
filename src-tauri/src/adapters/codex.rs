@@ -111,6 +111,10 @@ impl AgentAdapter for CodexAdapter {
             "-c".into(),
             format!("notify={}", notify_array(req.hook_url)),
         ]);
+        for p in req.images {
+            // attached to the first prompt as images, not only named in its text
+            args.push(format!("--image={}", p.to_string_lossy()));
+        }
         if let Some(t) = req.task.filter(|t| !t.is_empty()) {
             args.extend(["--".into(), t.into()]); // a task like `--help` is not an option
         }
@@ -159,6 +163,7 @@ mod tests {
             hook_url: "http://127.0.0.1:4242/hook/tok/sid",
             data_dir: dir,
             custom_command: None,
+            images: &[],
         }
     }
 

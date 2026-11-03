@@ -27,7 +27,15 @@ export const ipc = {
   /** `force` bypasses the 60 s detection cache (Re-check). */
   detectAgents: (force = false) => invoke<AgentInfo[]>('detect_agents', { force }),
   getQuotas: () => invoke<AgentQuota[]>('get_quotas'),
-  addTodo: (workspaceId: string, text: string) => invoke<Todo>('add_todo', { workspaceId, text }),
+  /** `images`: attachment names (from `saveAttachment` / `importAttachment`). */
+  addTodo: (workspaceId: string, text: string, images: string[] = []) => invoke<Todo>('add_todo', { workspaceId, text, images }),
+  /** Saves an image pasted into a task; returns its attachment name. The bytes travel raw. */
+  saveAttachment: (bytes: Uint8Array) => invoke<string>('save_attachment', bytes),
+  /** Saves a copy of an image file dropped on a task; returns its attachment name. */
+  importAttachment: (path: string) => invoke<string>('import_attachment', { path }),
+  readAttachment: (name: string) => invoke<ArrayBuffer>('read_attachment', { name }),
+  /** Removes attachments taken off a task before it was added or started (ones a To Do keeps stay). */
+  discardAttachments: (names: string[]) => invoke<void>('discard_attachments', { names }),
   removeTodo: (id: string) => invoke<void>('remove_todo', { id }),
   /** A small JPEG of a page for its board, as a data: URL (taken in a hidden window; a few seconds). */
   snapshotApp: (url: string) => invoke<string>('snapshot_app', { url }),
@@ -47,8 +55,9 @@ export const ipc = {
     invoke<Builder>('create_builder', { name, agent, model, effort, customCommand }),
   updateBuilder: (builder: Builder) => invoke<void>('update_builder', { builder }),
   deleteBuilder: (id: string) => invoke<void>('delete_builder', { id }),
-  startSession: (workspaceId: string, builderId: string, task: string) =>
-    invoke<SessionInfo>('start_session', { workspaceId, builderId, task }),
+  /** `images`: attachment names; the session takes them over (their originals are removed). */
+  startSession: (workspaceId: string, builderId: string, task: string, images: string[] = []) =>
+    invoke<SessionInfo>('start_session', { workspaceId, builderId, task, images }),
   startTerminal: (workspaceId: string) => invoke<SessionInfo>('start_terminal', { workspaceId }),
   writeSession: (id: string, data: number[]) => invoke<void>('write_session', { id, data }),
   resizeSession: (id: string, cols: number, rows: number) => invoke<void>('resize_session', { id, cols, rows }),

@@ -2,6 +2,7 @@
 //! Events: `session-updated` (SessionInfo), `session-removed` {id}, `workspace-updated`
 //! (Workspace), `stats-updated` (Stats), `confirm-quit` {live, restart}, `update-progress` {pct}.
 use crate::adapters::{AdapterRegistry, AgentAdapter};
+use crate::attachments;
 use crate::git::{self, Review};
 use crate::model::{AgentKind, AppData, Builder, Compound, SessionInfo, SessionKind, Settings, Stats, Tile, Todo, Workspace};
 use crate::persist;
@@ -38,6 +39,11 @@ pub struct AppState {
 impl AppState {
     fn data(&self) -> MutexGuard<'_, AppData> {
         self.data.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// The folder holding state.json, sessions/ and attachments/.
+    fn data_dir(&self) -> &Path {
+        self.data_path.parent().unwrap_or(Path::new("."))
     }
 
     /// Persists the current data (call with the guard still held so writes stay ordered).
@@ -238,8 +244,10 @@ pub fn remove_workspace(id: String, state: State<'_, AppState>) -> Result<(), St
     }
     let mut d = state.data();
     d.workspaces.retain(|w| w.id != id);
+    let gone: Vec<String> = d.todos.iter().filter(|t| t.workspace_id == id).flat_map(|t| t.images.clone()).collect();
     d.todos.retain(|t| t.workspace_id != id);
     state.save(&d)?;
+    attachments::remove(state.data_dir(), &gone);
     drop(d);
     // Ended sessions would otherwise linger with no workspace to show them.
     for s in state.manager.list().into_iter().filter(|s| s.workspace_id == id) {
@@ -338,11 +346,38 @@ fn start_err(app: &AppHandle, state: &AppState, workspace_id: &str, e: anyhow::E
 }
 
 #[tauri::command]
-pub async fn start_session(workspace_id: String, builder_id: String, task: String, app: AppHandle, state: State<'_, AppState>) -> Result<SessionInfo, String> {
+pub async fn start_session(workspace_id: String, builder_id: String, task: String, images: Vec<String>, app: AppHandle, state: State<'_, AppState>) -> Result<SessionInfo, String> {
     let ws = find_workspace(&state, &workspace_id)?;
     let builder = state.data().builders.iter().find(|b| b.id == builder_id).cloned().ok_or("unknown builder")?;
     let task = task.trim();
-    state.manager.start_agent(&ws, &builder, (!task.is_empty()).then_some(task)).map_err(|e| start_err(&app, &state, &workspace_id, e))
+    state.manager.start_agent(&ws, &builder, (!task.is_empty()).then_some(task), &images).map_err(|e| start_err(&app, &state, &workspace_id, e))
+}
+
+/// Saves an image pasted into a task (the raw bytes are the request body) and returns its name.
+#[tauri::command]
+pub fn save_attachment(request: tauri::ipc::Request<'_>, state: State<'_, AppState>) -> Result<String, String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else { return Err("expected the image bytes".into()) };
+    attachments::save(state.data_dir(), bytes).map_err(fmt_err)
+}
+
+/// Saves a copy of an image file dropped on a task and returns its name.
+#[tauri::command]
+pub async fn import_attachment(path: PathBuf, state: State<'_, AppState>) -> Result<String, String> {
+    attachments::import(state.data_dir(), &path).map_err(fmt_err)
+}
+
+/// An attachment's bytes, for its thumbnail.
+#[tauri::command]
+pub async fn read_attachment(name: String, state: State<'_, AppState>) -> Result<Response, String> {
+    attachments::read(state.data_dir(), &name).map(Response::new).map_err(fmt_err)
+}
+
+/// Removes attachments taken off a task before it was added or started. Ones a To Do keeps stay.
+#[tauri::command]
+pub fn discard_attachments(names: Vec<String>, state: State<'_, AppState>) {
+    let d = state.data();
+    let kept: Vec<String> = names.into_iter().filter(|n| !d.todos.iter().any(|t| t.images.contains(n))).collect();
+    attachments::remove(state.data_dir(), &kept);
 }
 
 #[tauri::command]
@@ -527,23 +562,24 @@ pub async fn snapshot_app<R: tauri::Runtime>(url: String, app: tauri::AppHandle<
 }
 
 /// Writes a task down in a workspace's To Do.
-pub fn apply_add_todo(d: &mut AppData, workspace_id: &str, text: &str, now: i64) -> anyhow::Result<Todo> {
+pub fn apply_add_todo(d: &mut AppData, workspace_id: &str, text: &str, images: Vec<String>, now: i64) -> anyhow::Result<Todo> {
     let text = text.trim();
-    if text.is_empty() {
-        anyhow::bail!("a task needs some text");
+    if text.is_empty() && images.is_empty() {
+        anyhow::bail!("a task needs some text or an image");
     }
+    attachments::validate(&images)?;
     if !d.workspaces.iter().any(|w| w.id == workspace_id) {
         anyhow::bail!("unknown workspace {workspace_id}");
     }
-    let t = Todo { id: Uuid::new_v4().to_string(), workspace_id: workspace_id.to_string(), text: text.to_string(), created_at: now };
+    let t = Todo { id: Uuid::new_v4().to_string(), workspace_id: workspace_id.to_string(), text: text.to_string(), images, created_at: now };
     d.todos.push(t.clone());
     Ok(t)
 }
 
 #[tauri::command]
-pub fn add_todo(workspace_id: String, text: String, state: State<'_, AppState>) -> Result<Todo, String> {
+pub fn add_todo(workspace_id: String, text: String, images: Vec<String>, state: State<'_, AppState>) -> Result<Todo, String> {
     let mut d = state.data();
-    let t = apply_add_todo(&mut d, &workspace_id, &text, now_ms()).map_err(fmt_err)?;
+    let t = apply_add_todo(&mut d, &workspace_id, &text, images, now_ms()).map_err(fmt_err)?;
     state.save(&d)?;
     Ok(t)
 }
@@ -552,11 +588,11 @@ pub fn add_todo(workspace_id: String, text: String, state: State<'_, AppState>) 
 #[tauri::command]
 pub fn remove_todo(id: String, state: State<'_, AppState>) -> Result<(), String> {
     let mut d = state.data();
-    let before = d.todos.len();
-    d.todos.retain(|t| t.id != id);
-    if d.todos.len() != before {
-        state.save(&d)?;
-    }
+    let Some(i) = d.todos.iter().position(|t| t.id == id) else { return Ok(()) };
+    let t = d.todos.remove(i);
+    state.save(&d)?;
+    // a started task's images were already moved into its session
+    attachments::remove(state.data_dir(), &t.images);
     Ok(())
 }
 
@@ -864,11 +900,23 @@ mod tests {
     fn todos_need_text_and_a_workspace() {
         let mut d = village();
         let w = d.workspaces[0].id.clone();
-        let t = apply_add_todo(&mut d, &w, "  Fix the login page \n", 5).unwrap();
+        let t = apply_add_todo(&mut d, &w, "  Fix the login page \n", vec![], 5).unwrap();
         assert_eq!((t.text.as_str(), t.workspace_id.as_str(), t.created_at), ("Fix the login page", w.as_str(), 5));
         assert_eq!(d.todos, vec![t]);
-        assert!(apply_add_todo(&mut d, &w, "   ", 6).is_err());
-        assert!(apply_add_todo(&mut d, "nope", "x", 6).is_err());
+        assert!(apply_add_todo(&mut d, &w, "   ", vec![], 6).is_err());
+        assert!(apply_add_todo(&mut d, "nope", "x", vec![], 6).is_err());
+        assert_eq!(d.todos.len(), 1);
+    }
+
+    #[test]
+    fn todos_may_be_just_images_but_only_attachment_names() {
+        let mut d = village();
+        let w = d.workspaces[0].id.clone();
+        let img = format!("{}.png", Uuid::new_v4());
+        let t = apply_add_todo(&mut d, &w, " ", vec![img.clone()], 5).unwrap();
+        assert_eq!((t.text.as_str(), t.images.clone()), ("", vec![img]));
+        assert!(apply_add_todo(&mut d, &w, "x", vec!["../state.json".into()], 6).is_err());
+        assert!(apply_add_todo(&mut d, &w, "x", vec![format!("{}.png", Uuid::new_v4()); 11], 6).is_err());
         assert_eq!(d.todos.len(), 1);
     }
 

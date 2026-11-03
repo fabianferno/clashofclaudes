@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { ipc } from '../api/ipc';
 import { idleBuilders, useApp } from '../state/store';
 import type { AgentInfo, AgentKind, Builder } from '../api/types';
@@ -7,6 +7,7 @@ import BuilderPreview from './BuilderPreview';
 import { modelPlaceholder } from './BuilderPanel';
 import { EffortSlider, ModelSlider } from './Choosers';
 import AgentPicker from './AgentPicker';
+import { AttachmentStrip, useAttachments } from './Attachments';
 
 export const RECRUIT_NAMES = ['Ivy', 'Jax', 'Kai', 'Lu', 'Mo', 'Nia', 'Oz', 'Pip', 'Quin', 'Rex'];
 
@@ -15,27 +16,30 @@ const q = (s: string) => `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 /**
  * Display-only preview of the command that will be run, mirroring each adapter's arguments
  * (src-tauri/src/adapters). `…` stands for app-supplied arguments (hook settings, the shared-folder
- * note, the project path). Effort is shown only where the agent takes it.
+ * note, the project path). Effort is shown only where the agent takes it. `images`: how many are
+ * attached; the task then lists their paths, shown as `[N images]`.
  */
 export function commandPreview(
-  agent: AgentInfo, model?: string, effort?: string, task?: string, customCommand?: string,
+  agent: AgentInfo, model?: string, effort?: string, task?: string, customCommand?: string, images = 0,
 ): string {
-  const t = task ? q(task) : '';
+  const shown = [task, images > 0 && `[${images} image${images > 1 ? 's' : ''}]`].filter(Boolean).join(' ');
+  const t = shown ? q(shown) : '';
+  const imageArgs = (flag: string) => Array.from({ length: images }, () => flag).join(' ');
   const join = (parts: Array<string | false | undefined>) => parts.filter(Boolean).join(' ');
   switch (agent.kind) {
     case 'custom':
       return join([customCommand?.trim(), t]);
     case 'claude':
-      return join(['claude …', model && `--model ${model}`, effort && `--effort ${effort}`, t && `-- ${t}`]);
+      return join(['claude …', model && `--model ${model}`, effort && `--effort ${effort}`, images > 0 && '--add-dir=…', t && `-- ${t}`]);
     case 'codex':
-      return join(['codex', model && `-m ${model}`, effort && `-c model_reasoning_effort=${q(effort)}`, '…', t && `-- ${t}`]);
+      return join(['codex', model && `-m ${model}`, effort && `-c model_reasoning_effort=${q(effort)}`, '…', imageArgs('--image=…'), t && `-- ${t}`]);
     case 'opencode': {
       // Effort goes through OPENCODE_CONFIG_CONTENT, and only for a `provider/model`.
       const providerModel = !!model && /^[^/]+\/.+$/.test(model);
       return join([effort && providerModel && 'OPENCODE_CONFIG_CONTENT=…', 'opencode …', model && `--model=${model}`, t && `--prompt=${t}`]);
     }
     case 'antigravity':
-      return join(['agy', model && `--model=${model}`, t && `--prompt-interactive=${t}`]);
+      return join(['agy', model && `--model=${model}`, images > 0 && '--add-dir=…', t && `--prompt-interactive=${t}`]);
   }
 }
 
@@ -66,6 +70,8 @@ export default function NewSessionPicker({ workspaceId, builderId }: { workspace
   const [effort, setEffort] = useState(DEFAULT);
   const [command, setCommand] = useState('');
   const [task, setTask] = useState('');
+  const taskField = useRef<HTMLLabelElement>(null);
+  const att = useAttachments(taskField);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -80,7 +86,7 @@ export default function NewSessionPicker({ workspaceId, builderId }: { workspace
   const pModel = (recruiting ? model.trim() : existing?.model) || null;
   const pEffort = (recruiting ? effort : existing?.effort) || null;
   const pCmd = recruiting ? command : existing?.customCommand ?? '';
-  const preview = agent ? commandPreview(agent, pModel ?? undefined, pEffort ?? undefined, task.trim() || undefined, pCmd) : '';
+  const preview = agent ? commandPreview(agent, pModel ?? undefined, pEffort ?? undefined, task.trim() || undefined, pCmd, att.names.length) : '';
 
   async function start() {
     const st = useApp.getState();
@@ -100,7 +106,8 @@ export default function NewSessionPicker({ workspaceId, builderId }: { workspace
         return setError('Choose a builder');
       }
       setBusy(true);
-      const s = await ipc.startSession(wsId, builderId, task.trim());
+      const s = await ipc.startSession(wsId, builderId, task.trim(), att.names);
+      att.clear(); // the session has them now
       st.upsertSession(s);
       // a spot failure must not strand a started session (a second Start would run a duplicate)
       try { await st.village.ensureSpot(s.id); } catch (e) { st.setError(String(e)); }
@@ -122,9 +129,11 @@ export default function NewSessionPicker({ workspaceId, builderId }: { workspace
           {workspaces.filter((w) => !w.missing).map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
         </select>
       </label>
-      <label className="sp-field">Task (optional)
-        <textarea rows={3} value={task} onChange={(e) => setTask(e.target.value)} />
+      <label className="sp-field" ref={taskField}>Task (optional)
+        <textarea rows={3} value={task} placeholder="Paste or drop images here too"
+          onChange={(e) => setTask(e.target.value)} onPaste={att.onPaste} />
       </label>
+      <AttachmentStrip names={att.names} onRemove={att.remove} />
 
       <div className="sp-sec">Builder</div>
       {idle.length > 0 && (
@@ -175,7 +184,7 @@ export default function NewSessionPicker({ workspaceId, builderId }: { workspace
       )}
       <code className="preview">{preview}</code>
       {error && <div className="panel-warn">{error}</div>}
-      <button type="submit" className="hud-btn sm" disabled={busy}>Start</button>
+      <button type="submit" className="hud-btn sm" disabled={busy || att.saving}>Start</button>
     </form>
   );
 }

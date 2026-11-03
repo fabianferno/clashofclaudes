@@ -1,5 +1,6 @@
 pub mod adapters;
 pub mod apps;
+pub mod attachments;
 pub mod commands;
 #[cfg(debug_assertions)]
 pub mod driver;
@@ -165,6 +166,8 @@ pub fn run() {
             let data_path = data_dir.join("state.json");
             let mut data = persist::load(&data_path);
             persist::mark_missing(&mut data);
+            // images pasted into a task that was never added or started
+            attachments::sweep(&data_dir, &data.todos.iter().flat_map(|t| t.images.iter().map(String::as_str)).collect());
 
             // The hook sink needs the manager, which needs the hook server: close the loop lazily.
             let cell: Arc<OnceLock<Weak<SessionManager>>> = Arc::default();
@@ -348,6 +351,10 @@ pub fn run() {
             commands::snapshot_app,
             commands::add_todo,
             commands::remove_todo,
+            commands::save_attachment,
+            commands::import_attachment,
+            commands::read_attachment,
+            commands::discard_attachments,
             commands::refresh_quotas,
             commands::open_in_editor,
             commands::review_session,

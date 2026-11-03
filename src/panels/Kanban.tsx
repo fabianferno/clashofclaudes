@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ipc } from '../api/ipc';
 import type { Builder, SessionInfo, Todo } from '../api/types';
 import { idleBuilders, sessionsByWorkspace, useApp } from '../state/store';
 import { elapsedLabel } from '../village/status';
 import AgentLogo from './AgentLogo';
+import { AttachmentStrip, useAttachments } from './Attachments';
 import BuilderPicker from './BuilderPicker';
 import { StateTag } from './tags';
 
@@ -128,20 +129,28 @@ export default function Kanban() {
 
 function AddTodo({ workspaceId, disabled }: { workspaceId: string; disabled: boolean }) {
   const [text, setText] = useState('');
+  const zone = useRef<HTMLDivElement>(null);
+  const att = useAttachments(zone);
+  const empty = !text.trim() && att.names.length === 0;
   const add = async () => {
-    if (!text.trim()) return;
+    if (empty || att.saving) return;
     try {
-      useApp.getState().addTodo(await ipc.addTodo(workspaceId, text));
+      useApp.getState().addTodo(await ipc.addTodo(workspaceId, text, att.names));
+      att.clear(); // the To Do keeps them now
       setText('');
     } catch (e) {
       useApp.getState().setError(String(e));
     }
   };
   return (
-    <form className="kb-add" onSubmit={(e) => { e.preventDefault(); void add(); }}>
-      <input aria-label="New task" placeholder="Add a task…" value={text} disabled={disabled} onChange={(e) => setText(e.target.value)} />
-      <button type="submit" className="hud-btn blue sm" disabled={disabled || !text.trim()}>Add</button>
-    </form>
+    <div ref={zone}>
+      <form className="kb-add" onSubmit={(e) => { e.preventDefault(); void add(); }}>
+        <input aria-label="New task" placeholder="Add a task or paste an image…" value={text} disabled={disabled}
+          onChange={(e) => setText(e.target.value)} onPaste={att.onPaste} />
+        <button type="submit" className="hud-btn blue sm" disabled={disabled || empty || att.saving}>Add</button>
+      </form>
+      <AttachmentStrip names={att.names} onRemove={att.remove} />
+    </div>
   );
 }
 
@@ -154,7 +163,7 @@ function TodoCard({ todo, idle, disabled }: { todo: Todo; idle: Builder[]; disab
     const st = useApp.getState();
     setBusy(true);
     try {
-      const s = await ipc.startSession(todo.workspaceId, builderId, todo.text);
+      const s = await ipc.startSession(todo.workspaceId, builderId, todo.text, todo.images ?? []);
       st.upsertSession(s);
       // the session holds the task now; a failure to cross it off only leaves a stale card
       try { await ipc.removeTodo(todo.id); st.removeTodo(todo.id); } catch (e) { st.setError(String(e)); }
@@ -170,13 +179,14 @@ function TodoCard({ todo, idle, disabled }: { todo: Todo; idle: Builder[]; disab
   };
   return (
     <article className="kb-card kb-todo" data-testid={`kb-todo-${todo.id}`}>
-      <div className="kb-title">{todo.text}</div>
+      {todo.text && <div className="kb-title">{todo.text}</div>}
+      <AttachmentStrip names={todo.images ?? []} />
       <div className="kb-start">
         {idle.length > 0 ? (
           <BuilderPicker builders={idle} value={builderId} onChange={setPick} disabled={busy} />
         ) : <span className="kb-reason">All builders are busy</span>}
         <button className="hud-btn sm" disabled={disabled || busy || !builderId} onClick={() => void start()}>Start</button>
-        <button className="hud-btn grey sm" aria-label={`Delete ${todo.text}`} disabled={busy} onClick={() => void remove()}>✕</button>
+        <button className="hud-btn grey sm" aria-label={`Delete ${todo.text || 'image task'}`} disabled={busy} onClick={() => void remove()}>✕</button>
       </div>
     </article>
   );

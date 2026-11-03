@@ -106,6 +106,9 @@ pub struct Todo {
     pub id: String,
     pub workspace_id: String,
     pub text: String,
+    /// Attachment names (see `attachments`); handed to the session that starts it.
+    #[serde(default)]
+    pub images: Vec<String>,
     pub created_at: i64,
 }
 

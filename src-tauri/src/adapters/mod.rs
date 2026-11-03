@@ -105,6 +105,30 @@ pub struct LaunchRequest<'a> {
     pub hook_url: &'a str,
     pub data_dir: &'a Path,
     pub custom_command: Option<&'a str>,
+    /// Images attached to the task, already copied into the session's dir. `task` names them
+    /// (see `task_with_images`); an adapter may also pass them the agent's own way.
+    pub images: &'a [PathBuf],
+}
+
+/// The task as the agent gets it: the owner's text, then the attached images by path, so any
+/// agent can open them with its file tools. None when there is neither.
+pub fn task_with_images(task: Option<&str>, images: &[PathBuf]) -> Option<String> {
+    let task = task.map(str::trim).filter(|t| !t.is_empty());
+    if images.is_empty() {
+        return task.map(str::to_string);
+    }
+    let list: Vec<String> = images.iter().map(|p| p.to_string_lossy().into_owned()).collect();
+    let head = if images.len() == 1 { "Image attached to this task" } else { "Images attached to this task" };
+    let body = format!("{head} (open with your file reading tool):\n{}", list.join("\n"));
+    Some(match task {
+        Some(t) => format!("{t}\n\n{body}"),
+        None => body,
+    })
+}
+
+/// The folder holding the attached images (they share one), for agents that need it allowed.
+pub(crate) fn images_dir(images: &[PathBuf]) -> Option<&Path> {
+    images.first().and_then(|p| p.parent())
 }
 
 /// A full-screen prompt the agent shows without any hook (e.g. a first-run trust menu).
@@ -234,6 +258,38 @@ pub(crate) mod fake_home {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn task_names_the_attached_images() {
+        assert_eq!(task_with_images(Some(" fix it "), &[]).as_deref(), Some("fix it"));
+        assert_eq!(task_with_images(Some("  "), &[]), None);
+        let imgs = [PathBuf::from("/d/images/image-1.png"), PathBuf::from("/d/images/image-2.jpg")];
+        assert_eq!(
+            task_with_images(Some("fix it"), &imgs).as_deref(),
+            Some("fix it\n\nImages attached to this task (open with your file reading tool):\n/d/images/image-1.png\n/d/images/image-2.jpg")
+        );
+        assert_eq!(
+            task_with_images(None, &imgs[..1]).as_deref(),
+            Some("Image attached to this task (open with your file reading tool):\n/d/images/image-1.png")
+        );
+        assert_eq!(images_dir(&imgs), Some(Path::new("/d/images")));
+    }
+
+    #[test]
+    fn agents_get_the_images_their_own_way() {
+        let d = tempfile::tempdir().unwrap();
+        let imgs = [PathBuf::from("/d/images/image-1.png"), PathBuf::from("/d/images/image-2.png")];
+        let req = LaunchRequest {
+            session_id: "sid", cwd: Path::new("/tmp"), model: None, effort: None, task: Some("t"),
+            hook_url: "http://127.0.0.1:1/hook/x/sid", data_dir: d.path(), custom_command: None, images: &imgs,
+        };
+        let claude = ClaudeAdapter.launch(&req).unwrap().args;
+        assert_eq!(claude[claude.len() - 3..], ["--add-dir=/d/images", "--", "t"]);
+        let codex = CodexAdapter.launch(&req).unwrap().args;
+        assert_eq!(codex[codex.len() - 4..], ["--image=/d/images/image-1.png", "--image=/d/images/image-2.png", "--", "t"]);
+        let agy = AntigravityAdapter.launch(&req).unwrap().args;
+        assert_eq!(agy[0], "--add-dir=/d/images");
+    }
 
     #[test]
     fn terminal_uses_login_shell_in_cwd() {

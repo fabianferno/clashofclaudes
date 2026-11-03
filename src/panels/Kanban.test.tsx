@@ -10,6 +10,9 @@ const ipc = vi.hoisted(() => ({
   setCompound: vi.fn(),
   approve: vi.fn().mockResolvedValue(undefined),
   deny: vi.fn().mockResolvedValue(undefined),
+  saveAttachment: vi.fn(),
+  readAttachment: vi.fn().mockResolvedValue(new ArrayBuffer(4)),
+  discardAttachments: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock('../api/ipc', () => ({ ipc }));
 import { useApp } from '../state/store';
@@ -83,7 +86,7 @@ test('a task is written down, then handed to an idle builder and becomes a sessi
   fireEvent.change(screen.getByRole('textbox', { name: 'New task' }), { target: { value: 'Fix login' } });
   fireEvent.click(screen.getByRole('button', { name: 'Add' }));
   await waitFor(() => expect(within(column('To Do')).getByText('Fix login')).toBeTruthy());
-  expect(ipc.addTodo).toHaveBeenCalledWith('w1', 'Fix login');
+  expect(ipc.addTodo).toHaveBeenCalledWith('w1', 'Fix login', []);
   const picker = screen.getByRole('combobox', { name: 'Builder' });
   expect(picker.textContent).toContain('Bo');
   expect(picker.querySelector('.hud-av canvas')).toBeTruthy(); // the builder's portrait, as on the bottom cards
@@ -99,7 +102,7 @@ test('a task is written down, then handed to an idle builder and becomes a sessi
   ipc.setSessionSpot.mockImplementation(async (id, spot) => ({ ...useApp.getState().sessions[id], spot }));
   fireEvent.click(screen.getByRole('button', { name: 'Start' }));
   await waitFor(() => expect(within(column('Active')).getByText('Fix login')).toBeTruthy());
-  expect(ipc.startSession).toHaveBeenCalledWith('w1', 'b3', 'Fix login');
+  expect(ipc.startSession).toHaveBeenCalledWith('w1', 'b3', 'Fix login', []);
   expect(ipc.removeTodo).toHaveBeenCalledWith('t1');
   expect(within(column('To Do')).queryByText('Fix login')).toBeNull();
 });
@@ -131,4 +134,27 @@ test('esc closes the board', () => {
   render(<Kanban />);
   fireEvent.keyDown(window, { key: 'Escape' });
   expect(useApp.getState().kanban).toBeNull();
+});
+
+test('images pasted into a new task go with it, show on its card and are handed to the session', async () => {
+  URL.createObjectURL = vi.fn(() => 'blob:img');
+  const img = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.png';
+  ipc.saveAttachment.mockResolvedValue(img);
+  ipc.addTodo.mockImplementation(async (_w, text, images) => ({ id: 't1', workspaceId: 'w1', text, images, createdAt: 1 }));
+  render(<Kanban />);
+  const input = screen.getByRole('textbox', { name: 'New task' });
+  const add = screen.getByRole('button', { name: 'Add' }) as HTMLButtonElement;
+  expect(add.disabled).toBe(true);
+  const file = new File([new Uint8Array([137, 80, 78, 71])], 'shot.png', { type: 'image/png' });
+  fireEvent.paste(input, { clipboardData: { files: [file], types: ['Files'] } });
+  await waitFor(() => expect(screen.getAllByTestId('att-thumb')).toHaveLength(1));
+  expect(ipc.saveAttachment).toHaveBeenCalledWith(new Uint8Array([137, 80, 78, 71]));
+  expect(add.disabled).toBe(false); // an image alone is a task
+  fireEvent.click(add);
+  await waitFor(() => expect(within(column('To Do')).getAllByTestId('att-thumb')).toHaveLength(1));
+  expect(ipc.addTodo).toHaveBeenCalledWith('w1', '', [img]);
+  expect(screen.getAllByTestId('att-thumb')).toHaveLength(1); // the form let go of it
+  ipc.startSession.mockResolvedValue(sess('s9', 'b1', { kind: 'starting' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+  await waitFor(() => expect(ipc.startSession).toHaveBeenCalledWith('w1', 'b1', '', [img]));
 });

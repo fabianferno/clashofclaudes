@@ -1,5 +1,6 @@
 //! SessionManager: owns every session's PTY, scrollback and status.
-use crate::adapters::{terminal_launch, terminal_policy, AdapterRegistry, AgentAdapter, LaunchRequest, ScreenPrompt};
+use crate::adapters::{task_with_images, terminal_launch, terminal_policy, AdapterRegistry, AgentAdapter, LaunchRequest, ScreenPrompt};
+use crate::attachments;
 use crate::git::{self, GitBaseline, Review};
 use crate::hooks::HookServer;
 use crate::osc::Osc7501;
@@ -305,7 +306,9 @@ impl SessionManager {
         let _ = self.tx.send(ManagerEvent::Updated(e.info.clone()));
     }
 
-    pub fn start_agent(&self, ws: &Workspace, builder: &Builder, task: Option<&str>) -> Result<SessionInfo> {
+    /// `images`: attachment names (see `attachments`); they are copied into the session's dir and
+    /// the originals removed once the session started.
+    pub fn start_agent(&self, ws: &Workspace, builder: &Builder, task: Option<&str>, images: &[String]) -> Result<SessionInfo> {
         ensure_present(ws)?;
         let adapter = self
             .registry
@@ -317,20 +320,28 @@ impl SessionManager {
         self.ensure_builder_free(&self.lock(), &builder.id)?;
         let id = Uuid::new_v4().to_string();
         let hook_url = self.hooks.register(&id);
-        let req = LaunchRequest {
-            session_id: &id,
-            cwd: &ws.path,
-            model: builder.model.as_deref(),
-            effort: builder.effort.as_deref(),
-            task,
-            hook_url: &hook_url,
-            data_dir: &self.data_dir,
-            custom_command: builder.custom_command.as_deref(),
-        };
-        let res = adapter.launch(&req).and_then(|spec| self.spawn_agent(ws, builder, task, id.clone(), spec, adapter));
-        if res.is_err() {
-            self.hooks.unregister(&id);
-            self.remove_session_dir(&id);
+        let res = attachments::copy_into(&self.data_dir, images, &self.data_dir.join("sessions").join(&id).join("images")).and_then(|paths| {
+            let prompt = task_with_images(task, &paths);
+            let req = LaunchRequest {
+                session_id: &id,
+                cwd: &ws.path,
+                model: builder.model.as_deref(),
+                effort: builder.effort.as_deref(),
+                task: prompt.as_deref(),
+                hook_url: &hook_url,
+                data_dir: &self.data_dir,
+                custom_command: builder.custom_command.as_deref(),
+                images: &paths,
+            };
+            // the session shows the owner's text, not the image paths
+            adapter.launch(&req).and_then(|spec| self.spawn_agent(ws, builder, task, id.clone(), spec, adapter))
+        });
+        match &res {
+            Ok(_) => attachments::remove(&self.data_dir, images),
+            Err(_) => {
+                self.hooks.unregister(&id);
+                self.remove_session_dir(&id);
+            }
         }
         res
     }
@@ -1098,7 +1109,7 @@ mod tests {
     #[test]
     fn start_custom_session_runs_and_updates() {
         let fx = fixture();
-        let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "printf ok; sleep 0.2"), None).unwrap();
+        let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "printf ok; sleep 0.2"), None, &[]).unwrap();
         assert_eq!(s.state, SessionState::Starting);
         assert!(uuid::Uuid::parse_str(&s.id).is_ok());
         assert!(wait_until(|| fx.events.lock().unwrap().iter().any(
@@ -1107,9 +1118,29 @@ mod tests {
     }
 
     #[test]
+    fn attached_images_are_moved_into_the_session_and_named_in_the_task() {
+        let fx = fixture();
+        let img = attachments::save(&fx.data_dir, b"\x89PNG\r\n\x1a\n..").unwrap();
+        let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "printf '[%s]' \"$1\"; sleep 5"), Some("fix the header"), &[img.clone()]).unwrap();
+        assert_eq!(s.task.as_deref(), Some("fix the header"), "the session shows the owner's text");
+        let copy = fx.data_dir.join("sessions").join(&s.id).join("images/image-1.png");
+        assert!(copy.is_file());
+        assert!(!attachments::dir(&fx.data_dir).join(&img).exists(), "the original is removed");
+        assert!(wait_until(|| screen_text(scrollback(&fx, &s.id).as_bytes()).contains("Imageattachedtothistask")));
+        assert!(wait_until(|| scrollback(&fx, &s.id).replace(['\r', '\n'], "").contains("image-1.png]")));
+        fx.mgr.close(&s.id).unwrap();
+        assert!(!copy.exists());
+
+        // a missing image fails the start and leaves nothing behind
+        let gone = format!("{}.png", uuid::Uuid::new_v4());
+        assert!(fx.mgr.start_agent(&fx.ws, &custom("b1", "true"), None, &[gone]).is_err());
+        assert!(std::fs::read_dir(fx.data_dir.join("sessions")).unwrap().next().is_none());
+    }
+
+    #[test]
     fn immediate_nonzero_exit_goes_stuck() {
         let fx = fixture();
-        let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "printf boom; exit 7"), None).unwrap();
+        let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "printf boom; exit 7"), None, &[]).unwrap();
         assert!(wait_until(|| state(&fx, &s.id) == SessionState::Stuck { reason: "exited with code 7".into() }));
         assert!(String::from_utf8_lossy(&fx.mgr.attach(&s.id).unwrap().0).contains("boom"));
         assert!(fx.mgr.write(&s.id, b"x").is_err(), "no process to write to");
@@ -1122,7 +1153,7 @@ mod tests {
         let fx = fixture();
         let mut ws = fx.ws.clone();
         ws.missing = true;
-        assert!(fx.mgr.start_agent(&ws, &custom("b1", "true"), None).is_err());
+        assert!(fx.mgr.start_agent(&ws, &custom("b1", "true"), None, &[]).is_err());
         assert!(fx.mgr.start_terminal(&ws).is_err());
         assert!(fx.mgr.list().is_empty());
     }
@@ -1134,7 +1165,7 @@ mod tests {
         std::fs::create_dir(&dir).unwrap();
         let ws = Workspace { path: dir.clone(), ..fx.ws.clone() };
         std::fs::remove_dir(&dir).unwrap(); // deleted while the app runs; `missing` is stale
-        let err = fx.mgr.start_agent(&ws, &custom("b1", "true"), None).unwrap_err();
+        let err = fx.mgr.start_agent(&ws, &custom("b1", "true"), None, &[]).unwrap_err();
         assert!(err.downcast_ref::<WorkspaceMissing>().is_some(), "{err:#}");
         assert_eq!(err.to_string(), format!("Workspace folder not found: {}", dir.display()));
         let err = fx.mgr.start_terminal(&ws).unwrap_err();
@@ -1146,7 +1177,7 @@ mod tests {
     fn write_returns_fast_when_child_ignores_stdin() {
         let fx = fixture();
         // Raw mode, like any TUI: unread input fills the pty queue.
-        let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "stty raw -echo; printf ready; sleep 5"), None).unwrap();
+        let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "stty raw -echo; printf ready; sleep 5"), None, &[]).unwrap();
         assert!(wait_until(|| scrollback(&fx, &s.id).contains("ready")));
         let t = Instant::now();
         fx.mgr.write(&s.id, &[b'x'; 128 * 1024]).unwrap();
@@ -1158,8 +1189,8 @@ mod tests {
     #[test]
     fn quit_guard_counts_only_running_processes() {
         let fx = fixture();
-        let a = fx.mgr.start_agent(&fx.ws, &custom("b1", "exit 4"), None).unwrap();
-        fx.mgr.start_agent(&fx.ws, &custom("b2", "sleep 5"), None).unwrap();
+        let a = fx.mgr.start_agent(&fx.ws, &custom("b1", "exit 4"), None, &[]).unwrap();
+        fx.mgr.start_agent(&fx.ws, &custom("b2", "sleep 5"), None, &[]).unwrap();
         assert!(wait_until(|| matches!(state(&fx, &a.id), SessionState::Stuck { .. })));
         assert_eq!(fx.mgr.live_count(), 2, "a crashed session is still listed as live");
         assert_eq!(fx.mgr.running_process_count(), 1, "but quitting would only kill one process");
@@ -1192,14 +1223,14 @@ mod tests {
     #[test]
     fn one_session_per_builder() {
         let fx = fixture();
-        let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "sleep 5"), None).unwrap();
-        assert!(fx.mgr.start_agent(&fx.ws, &custom("b1", "sleep 5"), None).is_err());
+        let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "sleep 5"), None, &[]).unwrap();
+        assert!(fx.mgr.start_agent(&fx.ws, &custom("b1", "sleep 5"), None, &[]).is_err());
         assert_eq!(fx.mgr.live_count(), 1);
         // Once stopped (Ended), the builder is free again.
         fx.mgr.stop(&s.id).unwrap();
         assert!(wait_until(|| matches!(state(&fx, &s.id), SessionState::Ended { .. })));
         assert_eq!(fx.mgr.live_count(), 0);
-        assert!(fx.mgr.start_agent(&fx.ws, &custom("b1", "sleep 5"), None).is_ok());
+        assert!(fx.mgr.start_agent(&fx.ws, &custom("b1", "sleep 5"), None, &[]).is_ok());
     }
 
     #[test]
@@ -1332,7 +1363,7 @@ mod tests {
     #[test]
     fn output_is_batched() {
         let fx = fixture();
-        let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "yes | head -c 2000000"), None).unwrap();
+        let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "yes | head -c 2000000"), None, &[]).unwrap();
         fx.mgr.attach(&s.id).unwrap();
         std::thread::sleep(Duration::from_secs(1));
         let n = fx.events.lock().unwrap().iter().filter(|e| matches!(e, ManagerEvent::Output { id, .. } if *id == s.id)).count();
@@ -1343,7 +1374,7 @@ mod tests {
     #[test]
     fn slow_emit_bounds_queued_output() {
         let fx = fixture_with(Duration::from_millis(50), true);
-        let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "yes | head -c 20000000"), None).unwrap();
+        let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "yes | head -c 20000000"), None, &[]).unwrap();
         fx.mgr.attach(&s.id).unwrap();
         let mut peak = 0;
         let end = Instant::now() + Duration::from_secs(60);
@@ -1359,7 +1390,7 @@ mod tests {
     #[test]
     fn output_offsets_are_contiguous() {
         let fx = fixture();
-        let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "printf aaaa; sleep 0.1; printf bbbb; sleep 0.1; printf cccc; sleep 0.4; printf dddd; sleep 5"), None).unwrap();
+        let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "printf aaaa; sleep 0.1; printf bbbb; sleep 0.1; printf cccc; sleep 0.4; printf dddd; sleep 5"), None, &[]).unwrap();
         let (snap, start) = fx.mgr.attach(&s.id).unwrap();
         assert!(wait_until(|| (String::from_utf8_lossy(&snap).into_owned() + &output(&fx, &s.id)).ends_with("dddd")));
         // Frames continue exactly where the snapshot ends, with no gaps.
@@ -1379,7 +1410,7 @@ mod tests {
     #[test]
     fn detached_session_emits_no_frames() {
         let fx = fixture();
-        let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "printf hello; sleep 5"), None).unwrap();
+        let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "printf hello; sleep 5"), None, &[]).unwrap();
         assert!(wait_until(|| scrollback(&fx, &s.id).contains("hello")));
         std::thread::sleep(FLUSH_EVERY * 4);
         assert!(frames(&fx, &s.id).is_empty(), "output only goes to scrollback");
@@ -1389,7 +1420,7 @@ mod tests {
     #[test]
     fn unacked_frame_holds_back_output_until_ack() {
         let fx = fixture_with(Duration::ZERO, false);
-        let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "printf start; sleep 0.3; yes | head -c 8000000; printf END; sleep 5"), None).unwrap();
+        let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "printf start; sleep 0.3; yes | head -c 8000000; printf END; sleep 5"), None, &[]).unwrap();
         fx.mgr.attach(&s.id).unwrap();
         assert!(wait_until(|| !frames(&fx, &s.id).is_empty()));
         let mut peak = 0;
@@ -1419,7 +1450,7 @@ mod tests {
     #[test]
     fn detach_clears_the_outstanding_frame() {
         let fx = fixture_with(Duration::ZERO, false);
-        let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "printf one; sleep 0.3; printf two; sleep 5"), None).unwrap();
+        let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "printf one; sleep 0.3; printf two; sleep 5"), None, &[]).unwrap();
         fx.mgr.attach(&s.id).unwrap();
         assert!(wait_until(|| scrollback(&fx, &s.id).contains("two")));
         std::thread::sleep(FLUSH_EVERY * 4);
@@ -1436,7 +1467,7 @@ mod tests {
     #[test]
     fn silence_tick_finishes_plain_agent() {
         let fx = fixture();
-        let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "printf hi; sleep 30"), None).unwrap();
+        let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "printf hi; sleep 30"), None, &[]).unwrap();
         assert!(wait_until(|| scrollback(&fx, &s.id).contains("hi") && state(&fx, &s.id) == SessionState::Working));
         fx.mgr.tick(now_ms() + 21_000);
         assert_eq!(state(&fx, &s.id), SessionState::Finished);
@@ -1663,7 +1694,7 @@ mod tests {
     #[test]
     fn quit_returns_early_when_everything_exits_on_sighup() {
         let fx = fixture();
-        fx.mgr.start_agent(&fx.ws, &custom("b1", "sleep 30"), None).unwrap();
+        fx.mgr.start_agent(&fx.ws, &custom("b1", "sleep 30"), None, &[]).unwrap();
         fx.mgr.start_terminal(&fx.ws).unwrap();
         std::thread::sleep(Duration::from_millis(200));
         let started = Instant::now();
@@ -1679,7 +1710,7 @@ mod tests {
         std::thread::sleep(Duration::from_millis(300));
         assert_eq!(fx.mgr.flush_loop_iterations(), a, "the loop ran with no sessions");
         // The next start wakes it.
-        let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "printf hi; sleep 0.3"), None).unwrap();
+        let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "printf hi; sleep 0.3"), None, &[]).unwrap();
         assert!(wait_until(|| fx.mgr.flush_loop_iterations() > a + 5), "the loop woke for the session");
         // Once the only process has exited it parks again, even though the session is still listed.
         assert!(wait_until(|| fx.mgr.running_process_count() == 0));
@@ -1698,7 +1729,7 @@ mod tests {
     fn parked_loop_still_flushes_output_after_wake() {
         let fx = fixture();
         std::thread::sleep(Duration::from_millis(100));
-        let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "printf one; sleep 0.2; printf two; sleep 5"), None).unwrap();
+        let s = fx.mgr.start_agent(&fx.ws, &custom("b1", "printf one; sleep 0.2; printf two; sleep 5"), None, &[]).unwrap();
         let (snap, _) = fx.mgr.attach(&s.id).unwrap();
         let snap = String::from_utf8_lossy(&snap).into_owned();
         assert!(wait_until(|| snap.clone() + &output(&fx, &s.id) == "onetwo"), "got {:?}", snap + &output(&fx, &s.id));

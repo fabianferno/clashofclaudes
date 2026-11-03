@@ -144,6 +144,10 @@ impl AgentAdapter for ClaudeAdapter {
         if let Some(e) = req.effort {
             args.extend(["--effort".into(), e.into()]);
         }
+        if let Some(d) = super::images_dir(req.images) {
+            // reading the attached images needs no permission prompt
+            args.push(format!("--add-dir={}", d.to_string_lossy()));
+        }
         if let Some(t) = req.task {
             args.extend(["--".into(), t.into()]); // a task like `--help` is not an option
         }
@@ -211,6 +215,7 @@ mod tests {
             hook_url: "http://127.0.0.1:4242/hook/tok/sid",
             data_dir: dir,
             custom_command: None,
+            images: &[],
         }
     }
 

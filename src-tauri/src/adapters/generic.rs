@@ -68,6 +68,7 @@ mod tests {
             hook_url: "http://127.0.0.1:1/x",
             data_dir: Path::new("/tmp"),
             custom_command: cmd,
+            images: &[],
         }
     }
 

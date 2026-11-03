@@ -82,7 +82,10 @@ export interface SessionInfo {
 export interface Todo {
   id: string;
   workspaceId: string;
+  /** May be empty when the task is only images. */
   text: string;
+  /** Attachment names, handed to the session that starts it. */
+  images?: string[];
   createdAt: number;
 }
 

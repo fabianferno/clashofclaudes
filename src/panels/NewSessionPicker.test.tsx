@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { AgentInfo, Builder, SessionInfo } from '../api/types';
 
-vi.mock('../api/ipc', () => ({ ipc: { createBuilder: vi.fn(), startSession: vi.fn() } }));
+vi.mock('../api/ipc', () => ({ ipc: { createBuilder: vi.fn(), startSession: vi.fn(), saveAttachment: vi.fn(), discardAttachments: vi.fn() } }));
 import { ipc } from '../api/ipc';
 import { useApp } from '../state/store';
 import NewSessionPicker, { commandPreview, RECRUIT_NAMES } from './NewSessionPicker';
@@ -35,6 +35,11 @@ test('commandPreview for claude', () => {
 });
 const opencode: AgentInfo = { ...claude, kind: 'opencode', label: 'OpenCode', models: [], canApprove: false };
 const antigravity: AgentInfo = { ...claude, kind: 'antigravity', label: 'Antigravity CLI', models: ['gemini-3.8-flash-medium'], efforts: [], canApprove: false };
+test('commandPreview shows attached images', () => {
+  expect(commandPreview(claude, undefined, undefined, 'fix it', undefined, 2)).toBe('claude … --add-dir=… -- "fix it [2 images]"');
+  expect(commandPreview(codex, undefined, undefined, undefined, undefined, 1)).toBe('codex … --image=… -- "[1 image]"');
+  expect(commandPreview(antigravity, undefined, undefined, 'x', undefined, 1)).toBe('agy --add-dir=… --prompt-interactive="x [1 image]"');
+});
 test('commandPreview mirrors the Codex adapter', () => {
   expect(commandPreview(codex, 'gpt-6', 'high', 'fix it')).toBe('codex -m gpt-6 -c model_reasoning_effort="high" … -- "fix it"');
   expect(commandPreview(codex)).toBe('codex …');
@@ -140,7 +145,7 @@ test('start: startSession, upsert, ensureSpot, select; empty task allowed', asyn
   render(<NewSessionPicker workspaceId="w" />);
   fireEvent.click(screen.getByText('Start'));
   await vi.waitFor(() => expect(useApp.getState().selection).toEqual({ kind: 'session', id: 's9' }));
-  expect(ipc.startSession).toHaveBeenCalledWith('w', 'b1', '');
+  expect(ipc.startSession).toHaveBeenCalledWith('w', 'b1', '', []);
   expect(ensureSpot).toHaveBeenCalledWith('s9');
   expect(useApp.getState().sessions.s9).toBeTruthy();
 });
@@ -157,7 +162,7 @@ test('recruit adds builder to store; a failed start keeps it, shows the error, a
   fireEvent.click(screen.getByText('Start'));
   await vi.waitFor(() => expect(useApp.getState().selection).toEqual({ kind: 'session', id: 's' }));
   expect(ipc.createBuilder).toHaveBeenCalledTimes(1);
-  expect(ipc.startSession).toHaveBeenLastCalledWith('w', 'b1', '');
+  expect(ipc.startSession).toHaveBeenLastCalledWith('w', 'b1', '', []);
 });
 
 test('the preview timer stops on unmount', () => {
@@ -218,4 +223,25 @@ test('a builder dropped on the workspace starts out picked', async () => {
   render(<NewSessionPicker workspaceId="w" builderId="b2" />);
   expect(screen.getByRole('button', { name: /Bo/ }).className).toContain('picked');
   expect(screen.getByRole('button', { name: /Ada/ }).className).not.toContain('picked');
+});
+
+test('pasted images show as thumbnails, can be taken off, and go to the session', async () => {
+  setup({ builders: [bld('b1', 'Ada')] });
+  URL.createObjectURL = vi.fn(() => 'blob:img');
+  vi.mocked(ipc.saveAttachment).mockResolvedValueOnce('a.png').mockResolvedValueOnce('b.png');
+  vi.mocked(ipc.discardAttachments).mockResolvedValue(undefined);
+  vi.mocked(ipc.startSession).mockResolvedValue(sess('s9', 'b1', { kind: 'working' }));
+  render(<NewSessionPicker workspaceId="w" />);
+  const task = screen.getByRole('textbox', { name: /Task/ });
+  const png = (n: string) => new File([new Uint8Array([1])], n, { type: 'image/png' });
+  fireEvent.paste(task, { clipboardData: { files: [png('1.png'), png('2.png')], types: ['Files'] } });
+  await vi.waitFor(() => expect(screen.getAllByTestId('att-thumb')).toHaveLength(2));
+  expect(screen.getByText(/\[2 images\]/)).toBeTruthy();
+  fireEvent.click(screen.getAllByRole('button', { name: 'Remove image' })[0]);
+  expect(ipc.discardAttachments).toHaveBeenCalledWith(['a.png']);
+  fireEvent.paste(task, { clipboardData: { files: [], types: ['text/plain'] } }); // plain text: nothing to save
+  expect(ipc.saveAttachment).toHaveBeenCalledTimes(2);
+  fireEvent.click(screen.getByText('Start'));
+  await vi.waitFor(() => expect(ipc.startSession).toHaveBeenCalledWith('w', 'b1', '', ['b.png']));
+  expect(screen.queryAllByTestId('att-thumb')).toHaveLength(0);
 });

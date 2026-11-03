@@ -3,6 +3,7 @@ import { ipc } from '../api/ipc';
 import { idleBuilders, useApp } from '../state/store';
 import type { AgentInfo, AgentKind, Builder } from '../api/types';
 import { CLASS_NAMES, classOf } from '../village/look';
+import BuilderAvatar from '../hud/BuilderAvatar';
 import BuilderPreview from './BuilderPreview';
 import { modelPlaceholder } from './BuilderPanel';
 import { EffortSlider, ModelSlider } from './Choosers';
@@ -140,6 +141,7 @@ export default function NewSessionPicker({ workspaceId, builderId }: { workspace
         <div className="picker-list" data-testid="idle-list">
           {idle.map((b) => (
             <button key={b.id} type="button" className={`sp-row${choice === b.id ? ' picked' : ''}`} onClick={() => setPicked(b.id)}>
+              <span className="hud-av sp-row-av"><BuilderAvatar agent={b.agent} model={b.model} effort={b.effort} size={38} /></span>
               <span className="sp-rowtext">
                 <span className="sp-t">{b.name}</span>
                 <span className="sp-d">{CLASS_NAMES[classOf(b.agent, b.model)]} · {b.agent}</span>
@@ -147,6 +149,7 @@ export default function NewSessionPicker({ workspaceId, builderId }: { workspace
             </button>
           ))}
           <button type="button" className={`sp-row${recruiting ? ' picked' : ''}`} onClick={() => setPicked(RECRUIT)}>
+            <span className="hud-av sp-row-av sp-row-new" aria-hidden="true">+</span>
             <span className="sp-t">Recruit new</span>
           </button>
         </div>
@@ -176,7 +179,8 @@ export default function NewSessionPicker({ workspaceId, builderId }: { workspace
           )}
         </>
       )}
-      {agent && (
+      {/* existing builders show their portrait in the list; a recruit's follows the choices above */}
+      {agent && recruiting && (
         <div className="picker-preview">
           <BuilderPreview agent={agent.kind} model={pModel} effort={pEffort} />
           <span className="sp-d">{tier}</span>

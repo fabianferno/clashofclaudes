@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import '@xterm/xterm/css/xterm.css';
 import { ipc, trimSeen } from '../api/ipc';
 import type { Frame } from '../api/types';
@@ -44,7 +45,12 @@ export default function TerminalView({ sessionId, readOnly = false }: { sessionI
     // 2000 lines: what a full buffer costs (about 1.9 MB). xterm keeps the last 2000 lines; the
     // backend keeps the last 2 MiB of raw output and replays it on attach, so older output beyond
     // those limits is not shown.
-    const term = new Terminal({ fontFamily: 'Menlo, monospace', fontSize: 13, scrollback: 2000, cursorBlink: true });
+    // OSC 8 links (Claude Code prints these): xterm's default handler asks with confirm() and then
+    // calls window.open, which the Tauri webview ignores, so hand them to the system browser.
+    const term = new Terminal({
+      fontFamily: 'Menlo, monospace', fontSize: 13, scrollback: 2000, cursorBlink: true,
+      linkHandler: { activate: (_e, uri) => { openUrl(uri).catch(fail(sessionRef.current)); } },
+    });
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(el);

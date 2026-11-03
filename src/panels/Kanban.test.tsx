@@ -84,9 +84,16 @@ test('a task is written down, then handed to an idle builder and becomes a sessi
   fireEvent.click(screen.getByRole('button', { name: 'Add' }));
   await waitFor(() => expect(within(column('To Do')).getByText('Fix login')).toBeTruthy());
   expect(ipc.addTodo).toHaveBeenCalledWith('w1', 'Fix login');
-  const picker = screen.getByRole('combobox', { name: 'Builder' }) as HTMLSelectElement;
-  expect([...picker.options].map((o) => o.text)).toEqual(['Bo', 'Cy']);
-  fireEvent.change(picker, { target: { value: 'b3' } });
+  const picker = screen.getByRole('combobox', { name: 'Builder' });
+  expect(picker.textContent).toContain('Bo');
+  expect(picker.querySelector('.hud-av canvas')).toBeTruthy(); // the builder's portrait, as on the bottom cards
+  fireEvent.click(picker);
+  const options = screen.getAllByRole('option');
+  expect(options.map((o) => o.querySelector('.kb-pick-name')!.firstChild!.textContent!.trim())).toEqual(['Bo', 'Cy']);
+  expect(options.every((o) => o.querySelector('.hud-av canvas'))).toBe(true);
+  fireEvent.click(options[1]);
+  expect(screen.queryByRole('listbox')).toBeNull();
+  expect(picker.textContent).toContain('Cy');
   ipc.startSession.mockResolvedValue(sess('s9', 'b3', { kind: 'starting' }, { task: 'Fix login' }));
   ipc.setCompound.mockImplementation(async (_id, c) => ({ ...ws, compound: c }));
   ipc.setSessionSpot.mockImplementation(async (id, spot) => ({ ...useApp.getState().sessions[id], spot }));
@@ -95,6 +102,29 @@ test('a task is written down, then handed to an idle builder and becomes a sessi
   expect(ipc.startSession).toHaveBeenCalledWith('w1', 'b3', 'Fix login');
   expect(ipc.removeTodo).toHaveBeenCalledWith('t1');
   expect(within(column('To Do')).queryByText('Fix login')).toBeNull();
+});
+
+test('esc closes an open builder list before the board', () => {
+  act(() => useApp.setState({ todos: [{ id: 't1', workspaceId: 'w1', text: 'Fix login', createdAt: 1 }] }));
+  render(<Kanban />);
+  const picker = screen.getByRole('combobox', { name: 'Builder' });
+  picker.focus();
+  fireEvent.click(picker);
+  expect(screen.getByRole('listbox')).toBeTruthy();
+  fireEvent.keyDown(window, { key: 'Escape' });
+  expect(screen.queryByRole('listbox')).toBeNull();
+  expect(useApp.getState().kanban).toBe('w1');
+});
+
+test('the builder list is walked with the arrow keys', () => {
+  act(() => useApp.setState({ todos: [{ id: 't1', workspaceId: 'w1', text: 'Fix login', createdAt: 1 }] }));
+  render(<Kanban />);
+  const picker = screen.getByRole('combobox', { name: 'Builder' });
+  fireEvent.keyDown(picker, { key: 'ArrowDown' });
+  fireEvent.keyDown(picker, { key: 'ArrowDown' });
+  fireEvent.keyDown(picker, { key: 'Enter' });
+  expect(picker.textContent).toContain('Bo');
+  expect(screen.queryByRole('listbox')).toBeNull();
 });
 
 test('esc closes the board', () => {

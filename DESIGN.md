@@ -201,8 +201,9 @@ The owner asked for: the domain clashofclaudes.crevn.xyz, no "white patches" in 
 screenshots, more effects, "Built by crevn.xyz" and an X contact, and proper SEO and AEO.
 
 - **Domain:** `site.url` and `astro.config.mjs` now use https://clashofclaudes.crevn.xyz (canonical,
-  OG, sitemap, robots, JSON-LD). The vercel.app alias still serves the site. Redirect it to the new
-  domain only after the Cloudflare DNS record is live.
+  OG, sitemap, robots, JSON-LD). DNS is an A record in Cloudflare (`clashofclaudes` → 76.76.21.21, DNS
+  only). clashofclaudes.vercel.app 308-redirects to it, set on the Vercel project's domain
+  settings (a vercel.json host redirect is ignored for this static build).
 - **White patches:** the sprites themselves had no halos, checked on meadow green in Chromium and
   WebKit. What read as white patches were the bare pale foundation tarps: two in the hero, a big
   one on the stage, one on the beta page. They are now `RisingTent.astro`, the finished tent

@@ -6,7 +6,7 @@ import { CLASS_NAMES, classOf } from '../village/look';
 import BuilderAvatar from '../hud/BuilderAvatar';
 import BuilderPreview from './BuilderPreview';
 import { modelPlaceholder } from './BuilderPanel';
-import { EffortSlider, ModelSlider } from './Choosers';
+import { EffortSlider, ModelSlider, effortsFor, modelNames } from './Choosers';
 import AgentPicker from './AgentPicker';
 import { AttachmentStrip, useAttachments } from './Attachments';
 import { DEMO_TASK, createDemoBuilder, isDemoId } from '../onboarding/demo';
@@ -173,13 +173,14 @@ export default function NewSessionPicker({ workspaceId, builderId }: { workspace
           ) : (
             <>
               {(agent?.models.length ?? 0) > 0
-                ? <ModelSlider label="Model" options={agent!.models} value={model} onChange={setModel} />
+                ? <ModelSlider label="Model" options={agent!.models} names={modelNames(agent)} value={model}
+                    onChange={(m) => { setModel(m); if (effort && !effortsFor(agent, m).includes(effort)) setEffort(DEFAULT); }} />
                 : (
                   <label className="sp-field">Model (optional)
                     <input value={model} placeholder={modelPlaceholder(kind)} onChange={(e) => setModel(e.target.value)} />
                   </label>
                 )}
-              {(agent?.efforts.length ?? 0) > 0 && <EffortSlider label="Effort" options={agent!.efforts} value={effort} onChange={setEffort} />}
+              {effortsFor(agent, model).length > 0 && <EffortSlider label="Effort" options={effortsFor(agent, model)} value={effort} onChange={setEffort} />}
             </>
           )}
         </>

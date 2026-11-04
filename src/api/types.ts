@@ -137,12 +137,21 @@ export interface AgentQuota {
   source: string;
 }
 
+/** A model as the picker offers it: the id passed to the agent, its name, and the efforts it takes (empty: the agent's). */
+export interface ModelChoice {
+  id: string;
+  name: string;
+  efforts: string[];
+}
+
 export interface AgentInfo {
   kind: AgentKind;
   label: string;
   installed: boolean;
   version: string | null;
   models: string[];
+  /** The models with display names and their own efforts (Codex reads them from its live catalog). */
+  modelChoices?: ModelChoice[];
   efforts: string[];
   canApprove: boolean;
 }

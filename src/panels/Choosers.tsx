@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react';
+import type { AgentInfo } from '../api/types';
 
 /** The list plus `value` when it is not in it (a saved choice the agent no longer lists). */
 const withCurrent = (options: string[], value: string) => (value && !options.includes(value) ? [...options, value] : options);
@@ -34,9 +35,21 @@ function StepSlider({ label, options, value, onChange, disabled, name }: {
   );
 }
 
-/** The model as a slider: Default, then the agent's models from fastest to most capable. */
-export function ModelSlider(p: { label: string; options: string[]; value: string; onChange: (v: string) => void; disabled?: boolean }) {
-  return <StepSlider {...p} disabled={p.disabled ?? false} name={(m) => m} />;
+/** The model as a slider: Default, then the agent's models from fastest to most capable; `names` labels the ids. */
+export function ModelSlider(p: { label: string; options: string[]; value: string; onChange: (v: string) => void; disabled?: boolean; names?: Record<string, string> }) {
+  const { names, ...rest } = p;
+  return <StepSlider {...rest} disabled={p.disabled ?? false} name={(m) => names?.[m] ?? m} />;
+}
+
+/** Display names of the agent's models, by id. */
+export function modelNames(agent: AgentInfo | undefined): Record<string, string> {
+  return Object.fromEntries((agent?.modelChoices ?? []).map((m) => [m.id, m.name]));
+}
+
+/** The efforts on offer with `model` chosen: the model's own when the agent lists them, else the agent's. */
+export function effortsFor(agent: AgentInfo | undefined, model: string | null | undefined): string[] {
+  const own = model ? agent?.modelChoices?.find((m) => m.id === model)?.efforts : undefined;
+  return own?.length ? own : agent?.efforts ?? [];
 }
 
 /** Effort as a slider: Default, then each of the agent's efforts from lowest to highest. */

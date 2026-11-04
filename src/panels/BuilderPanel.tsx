@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { EffortSlider, ModelSlider } from './Choosers';
+import { EffortSlider, ModelSlider, effortsFor, modelNames } from './Choosers';
 import AgentPicker from './AgentPicker';
 import { ipc } from '../api/ipc';
 import type { AgentInfo, AgentKind, Builder } from '../api/types';
@@ -75,8 +75,13 @@ export default function BuilderPanel({ builderId }: { builderId: string }) {
       <AgentPicker agents={agentChoices} value={b.agent} disabled={busy}
         onChange={(k) => { if (k !== b.agent) changeAgent(k); }} />
       {(info?.models.length ?? 0) > 0 && (
-        <ModelSlider label="Model" options={info!.models} value={b.model ?? ''} disabled={busy}
-          onChange={(m) => { if (m !== (b.model ?? '')) void save({ ...b, model: m || null }); }} />
+        <ModelSlider label="Model" options={info!.models} names={modelNames(info)} value={b.model ?? ''} disabled={busy}
+          onChange={(m) => {
+            if (m === (b.model ?? '')) return;
+            // an effort the new model does not take goes back to the default
+            const effort = b.effort && effortsFor(info, m || null).includes(b.effort) ? b.effort : null;
+            void save({ ...b, model: m || null, effort });
+          }} />
       )}
       {info && info.models.length === 0 && b.agent !== 'custom' && (
         <label className="sp-field">Model
@@ -85,8 +90,8 @@ export default function BuilderPanel({ builderId }: { builderId: string }) {
             onKeyDown={(e) => { if (e.key === 'Enter') saveModelText(); }} />
         </label>
       )}
-      {(info?.efforts.length ?? 0) > 0 && (
-        <EffortSlider label="Effort" options={info!.efforts} value={b.effort ?? ''} disabled={busy}
+      {effortsFor(info, b.model).length > 0 && (
+        <EffortSlider label="Effort" options={effortsFor(info, b.model)} value={b.effort ?? ''} disabled={busy}
           onChange={(e) => { if (e !== (b.effort ?? '')) void save({ ...b, effort: e || null }); }} />
       )}
       <div className="sp-sec">Danger zone</div>

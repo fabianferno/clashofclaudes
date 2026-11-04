@@ -8,11 +8,14 @@
 //! Nothing is written to disk: the `notify` command and the developer instructions travel as
 //! `-c` overrides, so `~/.codex`, `<repo>/.codex` and `CODEX_HOME` are never touched.
 use super::claude::SHARED_FOLDER_NOTE;
-use super::{AgentAdapter, Detection, DetectionCache, LaunchRequest, ScreenPrompt, DETECTION_TTL};
+use super::{AgentAdapter, Detection, DetectionCache, LaunchRequest, ModelChoice, ScreenPrompt, DETECTION_TTL};
 use crate::model::AgentKind;
+use crate::platform::{output_within, RunOutcome};
 use crate::pty::LaunchSpec;
 use crate::status::{StatusEvent, StatusPolicy};
-use std::time::Instant;
+use std::path::Path;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 pub struct CodexAdapter;
 
@@ -76,6 +79,83 @@ fn probe() -> Detection {
 /// One `codex --version` per minute at most.
 pub static DETECTION: DetectionCache = DetectionCache::new(DETECTION_TTL);
 
+/// Efforts when Codex can't list its models (an older Codex, or the catalog could not be read).
+const FALLBACK_EFFORTS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
+/// Every effort Codex names, lowest first: the order the effort slider shows them in.
+const EFFORT_ORDER: [&str; 8] = ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
+/// How long a read catalog is reused; one that came back empty is retried after DETECTION_TTL.
+const CATALOG_TTL: Duration = Duration::from_secs(10 * 60);
+/// Longest `codex debug models` may take (it may refresh the list from OpenAI first).
+const CATALOG_TIMEOUT: Duration = Duration::from_secs(8);
+
+static CATALOG: Mutex<Option<(Instant, Vec<ModelChoice>)>> = Mutex::new(None);
+
+/// The models a `codex debug models` catalog lists for the picker: the ones Codex itself shows
+/// (`visibility: "list"`), from the least to the most preferred (its `priority`, lower is
+/// preferred), so Codex's top pick is the last step of the slider, as Claude's most capable is.
+pub(super) fn parse_catalog(json: &[u8]) -> Vec<ModelChoice> {
+    let Ok(v) = serde_json::from_slice::<serde_json::Value>(json) else { return vec![] };
+    let Some(models) = v.get("models").and_then(|m| m.as_array()) else { return vec![] };
+    let mut listed: Vec<(i64, ModelChoice)> = models
+        .iter()
+        .filter(|m| m.get("visibility").and_then(|x| x.as_str()).unwrap_or("list") == "list")
+        .filter_map(|m| {
+            let id = m.get("slug").and_then(|x| x.as_str()).map(str::trim).filter(|s| !s.is_empty())?.to_string();
+            let name = m.get("display_name").and_then(|x| x.as_str()).map(str::trim).filter(|s| !s.is_empty()).unwrap_or(&id).to_string();
+            let mut efforts: Vec<String> = m
+                .get("supported_reasoning_levels")
+                .and_then(|x| x.as_array())
+                .map(|ls| ls.iter().filter_map(|l| l.get("effort").and_then(|e| e.as_str()).map(String::from)).collect())
+                .unwrap_or_default();
+            efforts.sort_by_key(|e| EFFORT_ORDER.iter().position(|o| o == e).unwrap_or(EFFORT_ORDER.len()));
+            efforts.dedup();
+            let priority = m.get("priority").and_then(|x| x.as_i64()).unwrap_or(i64::MAX);
+            Some((priority, ModelChoice { id, name, efforts }))
+        })
+        .collect();
+    listed.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.id.cmp(&b.1.id)));
+    listed.dedup_by(|a, b| a.1.id == b.1.id);
+    listed.into_iter().map(|(_, m)| m).collect()
+}
+
+/// The catalog from the Codex at `path`: its live list (`debug models`), else the one built into
+/// it (`debug models --bundled`); empty when neither can be read (a Codex without `debug models`).
+pub(super) fn catalog_from(path: &Path, timeout: Duration) -> Vec<ModelChoice> {
+    let run = |bundled: bool| {
+        let mut cmd = std::process::Command::new(path);
+        cmd.args(["debug", "models"]);
+        if bundled {
+            cmd.arg("--bundled");
+        }
+        match output_within(cmd, timeout) {
+            RunOutcome::Exited { success: true, stdout } => parse_catalog(&stdout),
+            _ => vec![],
+        }
+    };
+    let live = run(false);
+    if live.is_empty() { run(true) } else { live }
+}
+
+/// Codex's models, read at most every CATALOG_TTL (Re-check reads it again).
+fn catalog() -> Vec<ModelChoice> {
+    let mut cached = CATALOG.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((at, models)) = cached.as_ref() {
+        let ttl = if models.is_empty() { DETECTION_TTL } else { CATALOG_TTL };
+        if at.elapsed() < ttl {
+            return models.clone();
+        }
+    }
+    let models = CodexAdapter.detect().path.map(|p| catalog_from(&p, CATALOG_TIMEOUT)).unwrap_or_default();
+    *cached = Some((Instant::now(), models.clone()));
+    models
+}
+
+/// Efforts every listed model takes (the slider before a model is chosen), in EFFORT_ORDER.
+pub(super) fn common_efforts(models: &[ModelChoice]) -> Vec<String> {
+    let Some(first) = models.first() else { return FALLBACK_EFFORTS.map(String::from).to_vec() };
+    first.efforts.iter().filter(|e| models.iter().all(|m| m.efforts.contains(e))).cloned().collect()
+}
+
 impl AgentAdapter for CodexAdapter {
     fn kind(&self) -> AgentKind {
         AgentKind::Codex
@@ -88,12 +168,16 @@ impl AgentAdapter for CodexAdapter {
     }
     fn invalidate_detection(&self) {
         DETECTION.invalidate();
+        *CATALOG.lock().unwrap_or_else(|e| e.into_inner()) = None;
     }
     fn models(&self) -> Vec<String> {
-        vec![]
+        catalog().into_iter().map(|m| m.id).collect()
+    }
+    fn model_choices(&self) -> Vec<ModelChoice> {
+        catalog()
     }
     fn efforts(&self) -> Vec<String> {
-        ["low", "medium", "high", "xhigh", "max"].map(String::from).to_vec()
+        common_efforts(&catalog())
     }
     fn launch(&self, req: &LaunchRequest) -> anyhow::Result<LaunchSpec> {
         // The URL is app-generated; it is single-quoted inside the notify script.
@@ -380,9 +464,57 @@ mod tests {
     }
 
     #[test]
-    fn codex_efforts_and_models() {
-        assert!(CodexAdapter.models().is_empty());
-        assert_eq!(CodexAdapter.efforts(), vec!["low", "medium", "high", "xhigh", "max"]);
+    fn codex_label() {
         assert_eq!(CodexAdapter.label(), "Codex");
+    }
+
+    const CATALOG_JSON: &str = r#"{"models":[
+        {"slug":"gpt-reserve","display_name":"GPT-Reserve","visibility":"hide","priority":4,
+         "supported_reasoning_levels":[{"effort":"low"},{"effort":"medium"}]},
+        {"slug":"gpt-6-luna","display_name":"GPT-6-Luna","visibility":"list","priority":5,
+         "supported_reasoning_levels":[{"effort":"max"},{"effort":"low"},{"effort":"medium"},{"effort":"high"},{"effort":"xhigh"}]},
+        {"slug":"gpt-5.6-terra","display_name":"GPT-5.6-Terra","visibility":"list","priority":8,
+         "supported_reasoning_levels":[{"effort":"low"},{"effort":"medium"},{"effort":"high"},{"effort":"xhigh"},{"effort":"max"},{"effort":"ultra"}]},
+        {"slug":"gpt-5.6-luna","visibility":"list","priority":9,"supported_reasoning_levels":[{"effort":"low"},{"effort":"medium"},{"effort":"high"}]},
+        {"slug":"codex-auto-review","display_name":"Codex Auto Review","visibility":"hide","priority":43}
+    ]}"#;
+
+    #[test]
+    fn catalog_lists_only_shown_models_with_codexs_top_pick_last() {
+        let ms = parse_catalog(CATALOG_JSON.as_bytes());
+        let ids: Vec<_> = ms.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(ids, ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-6-luna"]);
+        assert_eq!(ms[0].name, "gpt-5.6-luna", "no display name: the id");
+        assert_eq!(ms[2].name, "GPT-6-Luna");
+        assert_eq!(ms[2].efforts, ["low", "medium", "high", "xhigh", "max"], "lowest effort first");
+        assert_eq!(ms[1].efforts.last().map(String::as_str), Some("ultra"));
+        assert_eq!(common_efforts(&ms), ["low", "medium", "high"], "what every listed model takes");
+    }
+
+    #[test]
+    fn unreadable_catalogs_list_nothing_and_efforts_fall_back() {
+        assert!(parse_catalog(b"not json").is_empty());
+        assert!(parse_catalog(br#"{"models":"x"}"#).is_empty());
+        assert!(parse_catalog(br#"{"models":[{"display_name":"no slug"}]}"#).is_empty());
+        assert_eq!(common_efforts(&[]), FALLBACK_EFFORTS);
+    }
+
+    #[test]
+    fn catalog_from_reads_the_live_list_else_the_bundled_one() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tempfile::tempdir().unwrap();
+        let script = |name: &str, body: &str| {
+            let p = d.path().join(name);
+            std::fs::write(&p, format!("#!/bin/sh\n{body}\n")).unwrap();
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+            p
+        };
+        let one = r#"{"models":[{"slug":"m1","visibility":"list"}]}"#;
+        let live = script("live", &format!("[ \"$1 $2\" = 'debug models' ] && [ -z \"$3\" ] && echo '{one}'"));
+        assert_eq!(catalog_from(&live, Duration::from_secs(5)).iter().map(|m| m.id.as_str()).collect::<Vec<_>>(), ["m1"]);
+        let bundled = script("bundled", &format!("[ \"$3\" = '--bundled' ] && echo '{one}' || exit 1"));
+        assert_eq!(catalog_from(&bundled, Duration::from_secs(5)).len(), 1, "offline: the list built into Codex");
+        let old = script("old", "echo 'error: unrecognized subcommand' >&2; exit 2");
+        assert!(catalog_from(&old, Duration::from_secs(5)).is_empty(), "an older Codex: the picker falls back to typing");
     }
 }

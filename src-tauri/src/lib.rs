@@ -116,8 +116,14 @@ const QUIT_MENU_ID: &str = "app-quit";
 const SETTINGS_MENU_ID: &str = "app-settings";
 const BUG_MENU_ID: &str = "app-report-bug";
 const FEATURE_MENU_ID: &str = "app-request-feature";
+const WEBSITE_MENU_ID: &str = "app-website";
+const NOTES_MENU_ID: &str = "app-release-notes";
+/// Opened in the browser from the Help menu.
+const WEBSITE_URL: &str = "https://clashofclaudes.vercel.app";
+const RELEASES_URL: &str = "https://github.com/fabianferno/clashofclaudes-releases/releases";
 
-/// The default menu, plus Settings… (Cmd+,) after About and Report a Bug… / Request a Feature… in Help, except Quit: the predefined item
+/// The default menu, plus Settings… (Cmd+,) after About and, in Help, Report a Bug… / Request a Feature…,
+/// Release Notes and the website, except Quit: the predefined item
 /// terminates the process directly (macOS `terminate:`) and never raises ExitRequested, so it is
 /// swapped for one that calls `app.exit`, which goes through the exit guard in `run`.
 fn app_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
@@ -132,6 +138,9 @@ fn app_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         {
             sub.append(&MenuItem::with_id(app, BUG_MENU_ID, "Report a Bug…", true, None::<&str>)?)?;
             sub.append(&MenuItem::with_id(app, FEATURE_MENU_ID, "Request a Feature…", true, None::<&str>)?)?;
+            sub.append(&PredefinedMenuItem::separator(app)?)?;
+            sub.append(&MenuItem::with_id(app, NOTES_MENU_ID, "Release Notes", true, None::<&str>)?)?;
+            sub.append(&MenuItem::with_id(app, WEBSITE_MENU_ID, "Clash of Claudes Website", true, None::<&str>)?)?;
         }
     }
     for top in menu.items()? {
@@ -204,6 +213,10 @@ pub fn run() {
                 let _ = app.emit("open-bug-report", "bug");
             } else if event.id() == FEATURE_MENU_ID {
                 let _ = app.emit("open-bug-report", "feature");
+            } else if event.id() == WEBSITE_MENU_ID || event.id() == NOTES_MENU_ID {
+                use tauri_plugin_opener::OpenerExt;
+                let url = if event.id() == WEBSITE_MENU_ID { WEBSITE_URL } else { RELEASES_URL };
+                let _ = app.opener().open_url(url, None::<&str>);
             }
         })
         .setup(|app| {

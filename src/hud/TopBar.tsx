@@ -72,6 +72,9 @@ export default function TopBar() {
       <div id="resources" className="hud-res" style={{ right: panelInset(panelOpen) + RES_MARGIN }}>
         <div className="hud-res-col">
           <ElixirBars />
+        </div>
+      </div>
+      <div id="stats" className="hud-stats" style={{ right: panelInset(panelOpen) }}>
           <div className="hud-elixir hud-stat">
             <span className="hud-elixir-trough">
               <span className="hud-elixir-sub">Builders busy</span>
@@ -88,7 +91,6 @@ export default function TopBar() {
             </span>
             <img className="hud-drop hud-stat-ico" src="/assets/village/ui/ribbon.png" alt="" aria-hidden="true" />
           </div>
-        </div>
       </div>
       <button className="hud-btn grey hud-gear" aria-label="Settings" title="Settings (⌘,)" data-testid="settings-button"
         onClick={() => useApp.getState().setSettingsOpen(true)}>

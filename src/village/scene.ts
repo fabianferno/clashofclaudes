@@ -1,4 +1,4 @@
-import { Application, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
+import { Application, Container, Graphics, Sprite, Text, Texture, TilingSprite } from 'pixi.js';
 import type { AgentKind, AgentQuota, Builder, CloseOutcome, Compound, SessionInfo, SessionState, Tile, Workspace } from '../api/types';
 import { iso, toGrid } from './iso';
 import { HALL, HOUSE, STRUCT, gateOutside, gateSide, gateTile, villageRect, wallRect, type Rect } from './layout';
@@ -435,8 +435,36 @@ export function rendererOptions(dpr: number) {
     autoDensity: true,
     antialias: false,
     preference: 'webgl' as const,
-    background: '#3f7d22',
+    background: '#5aa832',
   };
+}
+
+/** A seamless 512px grass tile (drawn at 2x density, shown at half size) for the ground beyond the baked village. */
+function grassTile(): HTMLCanvasElement {
+  const N = 512, c = document.createElement('canvas');
+  c.width = c.height = N;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#5aa832'; g.fillRect(0, 0, N, N);
+  let s = 7;
+  const rnd = () => (s = (s * 9301 + 49297) % 233280) / 233280;
+  const wrap = (x: number, y: number, f: (x: number, y: number) => void) => {
+    for (const dx of [-N, 0, N]) for (const dy of [-N, 0, N]) f(x + dx, y + dy);
+  };
+  for (let i = 0; i < 40; i++) {
+    const x = rnd() * N, y = rnd() * N, rx = 40 + rnd() * 80, ry = rx / 2, rgb = rnd() < 0.5 ? '120,196,64' : '62,130,34';
+    wrap(x, y, (px, py) => {
+      const gr = g.createRadialGradient(px, py, 0, px, py, rx);
+      gr.addColorStop(0, `rgba(${rgb},.5)`); gr.addColorStop(1, `rgba(${rgb},0)`);
+      g.fillStyle = gr; g.beginPath(); g.ellipse(px, py, rx, ry, 0, 0, Math.PI * 2); g.fill();
+    });
+  }
+  g.strokeStyle = 'rgba(40,100,20,.5)'; g.lineWidth = 2;
+  for (let i = 0; i < 120; i++) {
+    wrap(rnd() * N, rnd() * N, (x, y) => {
+      g.beginPath(); g.moveTo(x - 4, y); g.lineTo(x - 1, y - 7); g.moveTo(x, y); g.lineTo(x + 1, y - 8); g.moveTo(x + 4, y); g.lineTo(x + 5, y - 6); g.stroke();
+    });
+  }
+  return c;
 }
 
 export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = {}): Promise<Scene> {
@@ -451,7 +479,9 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
   const world = new Container({ sortableChildren: true });
   const overlay = new Container({ sortableChildren: true });
   view.addChild(groundLayer, world, overlay);
-  app.stage.addChild(view);
+  // endless grass behind the baked ground: it follows the camera so zooming out never shows a bare edge
+  const meadow = new TilingSprite({ texture: Texture.from(grassTile()), width: 1, height: 1 });
+  app.stage.addChild(meadow, view);
 
   const ground = new Sprite(Texture.EMPTY);
   groundLayer.addChild(ground);
@@ -610,6 +640,10 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
   const applyCam = () => {
     view.scale.set(cam.zoom);
     view.position.set(cam.x, cam.y);
+    meadow.position.set(0, 0);
+    meadow.width = app.screen.width; meadow.height = app.screen.height;
+    meadow.tileScale.set(cam.zoom / 2);
+    meadow.tilePosition.set(cam.x, cam.y);
   };
   const panelW = () => opts.panelWidth?.() ?? 0;
   const villageCam = (): Cam | null =>

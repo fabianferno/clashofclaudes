@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { ipc } from '../api/ipc';
 import NewSessionPicker from './NewSessionPicker';
 import { boardItems, browserUrl, sessionsByWorkspace, useApp } from '../state/store';
-import { xpNeed } from '../village/look';
+import { HOUSE_SWATCHES, houseColors, xpNeed } from '../village/look';
 import { StateTag } from './tags';
 
 export default function WorkspacePanel({ workspaceId }: { workspaceId: string }) {
@@ -127,6 +127,8 @@ export default function WorkspacePanel({ workspaceId }: { workspaceId: string })
             title={b.browserId ? 'Close this browser' : 'Hide this board until the app stops'} onClick={() => st.removeBoard(b)}>✕</button>
         </div>
       ))}
+      <div className="sp-sec">House colour</div>
+      <HouseColor workspaceId={workspaceId} onError={setErr} />
       <div className="sp-sec">Danger zone</div>
       {confirm && (
         <div className="panel-warn">This only forgets the folder in Clash of Claudes. It never deletes any files on disk.</div>
@@ -146,5 +148,44 @@ export default function WorkspacePanel({ workspaceId }: { workspaceId: string })
           )}
       </div>
     </>
+  );
+}
+
+/** How long the custom colour must rest before the house is repainted and saved (the colour panel reports every drag step). */
+export const CUSTOM_COLOR_MS = 250;
+
+/** The house's roof colour: a swatch, any colour, or Auto (picked from the workspace id). */
+function HouseColor({ workspaceId, onError }: { workspaceId: string; onError: (e: string | null) => void }) {
+  const ws = useApp((s) => s.workspaces.find((w) => w.id === workspaceId));
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  if (!ws) return null;
+  const current = houseColors(ws).roof;
+  const custom = ws.color && !HOUSE_SWATCHES.some((c) => c.roof === ws.color) ? ws.color : null;
+  const choose = (color: string | null) => {
+    clearTimeout(timer.current);
+    const st = useApp.getState();
+    const before = st.workspaces.find((w) => w.id === workspaceId);
+    if (!before) return;
+    onError(null);
+    st.updateWorkspace({ ...before, color }); // the house repaints at once
+    ipc.setWorkspaceColor(workspaceId, color).then(
+      (w) => useApp.getState().updateWorkspace(w),
+      (e) => { useApp.getState().updateWorkspace(before); onError(String(e)); },
+    );
+  };
+  return (
+    <div className="sp-colors" role="radiogroup" aria-label="House colour">
+      <button type="button" role="radio" aria-checked={!ws.color} className="sp-color-auto" title="Picked for this workspace" onClick={() => choose(null)}>Auto</button>
+      {HOUSE_SWATCHES.map((c) => (
+        <button key={c.roof} type="button" role="radio" aria-checked={ws.color === c.roof} aria-label={c.label} title={c.label}
+          className={`sp-swatch${!ws.color && current === c.roof ? ' auto' : ''}`} style={{ background: c.roof }} onClick={() => choose(c.roof)} />
+      ))}
+      <label className={`sp-swatch sp-swatch-any${custom ? '' : ' empty'}`} title="Any colour" aria-checked={!!custom} role="radio"
+        style={custom ? { background: custom } : undefined}>
+        <input type="color" aria-label="Any colour" value={custom ?? current}
+          onChange={(e) => { const v = e.target.value; clearTimeout(timer.current); timer.current = setTimeout(() => choose(v), CUSTOM_COLOR_MS); }} />
+      </label>
+    </div>
   );
 }

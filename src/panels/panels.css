@@ -161,6 +161,17 @@
 .kb-add { display: flex; gap: 6px; }
 .kb-add input { flex: 1; min-width: 0; border: 2px solid #c8b083; border-radius: 8px; padding: 6px 8px; background: #fff8e8; font: 600 13px system-ui; color: #2b2018; }
 
+/* a house's roof colour (WorkspacePanel) */
+.sp-colors { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 2px 0 6px; }
+.sp-swatch { position: relative; width: 28px; height: 28px; padding: 0; border: 3px solid var(--hud-out); border-radius: 50%; cursor: pointer; box-shadow: inset 0 2px 0 rgba(255,255,255,.35), inset 0 -2px 0 rgba(0,0,0,.2); }
+.sp-swatch[aria-checked="true"]::before { content: ''; position: absolute; inset: -8px; border: 3px solid var(--hud-out); border-radius: 50%; pointer-events: none; }
+.sp-swatch.auto::after { content: ''; position: absolute; inset: 7px; border-radius: 50%; background: rgba(255,248,232,.85); }
+
+.sp-swatch-any.empty { background: conic-gradient(#e0568f, #e8c22a, #3fa34d, #2a9d8f, #3f7fd6, #8a4fd0, #e0568f); }
+.sp-swatch-any input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; padding: 0; }
+.sp-color-auto { height: 28px; padding: 0 10px; border: 3px solid var(--hud-out); border-radius: 99px; background: #fff8e8; color: #2b2018; font: 800 12px system-ui; cursor: pointer; }
+.sp-color-auto[aria-checked="true"] { background: #2b2018; color: #fff8e8; }
+
 /* Settings: app preferences, full page */
 .settings { position: fixed; inset: 0; z-index: 8; display: flex; flex-direction: column; background: #2b2018; color: #2b2018; font-family: system-ui, sans-serif; }
 .settings .popout-head { color: #fff; }

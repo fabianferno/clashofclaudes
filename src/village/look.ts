@@ -88,9 +88,26 @@ export const HOUSE_COLORS: ReadonlyArray<{ roof: string; wall: string }> = [
   { roof: '#c64a32', wall: '#f3e2c4' }, // coral, the painted houses' own colour
 ];
 
-export function houseColors(workspaceId: string): { roof: string; wall: string } {
+/** The colours offered for a house: the automatic ones first, then more to choose from. */
+export const HOUSE_SWATCHES: ReadonlyArray<{ roof: string; label: string }> = [
+  { roof: '#2a9d8f', label: 'Teal' },
+  { roof: '#f08a2e', label: 'Orange' },
+  { roof: '#3f7fd6', label: 'Blue' },
+  { roof: '#8a4fd0', label: 'Purple' },
+  { roof: '#c64a32', label: 'Coral' },
+  { roof: '#3fa34d', label: 'Green' },
+  { roof: '#e8c22a', label: 'Gold' },
+  { roof: '#e0568f', label: 'Pink' },
+  { roof: '#56657a', label: 'Slate' },
+  { roof: '#8a5a34', label: 'Brown' },
+];
+const CHOSEN_WALL = '#f0e2c2';
+
+/** A workspace's house colours: the one the owner chose, else one picked by id (stable across restarts). */
+export function houseColors(w: { id: string; color?: string | null }): { roof: string; wall: string } {
+  if (w.color) return { roof: w.color, wall: HOUSE_COLORS.find((c) => c.roof === w.color)?.wall ?? CHOSEN_WALL };
   let h = 0;
-  for (let i = 0; i < workspaceId.length; i++) h = (h * 31 + workspaceId.charCodeAt(i)) >>> 0;
+  for (let i = 0; i < w.id.length; i++) h = (h * 31 + w.id.charCodeAt(i)) >>> 0;
   return HOUSE_COLORS[h % HOUSE_COLORS.length];
 }
 

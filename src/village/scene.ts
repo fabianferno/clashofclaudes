@@ -181,7 +181,7 @@ export function buildEntities(input: VillageInput): Entity[] {
     const c = w.compound;
     if (!c) continue;
     compounds.set(w.id, c);
-    const { roof, wall } = houseColors(w.id);
+    const { roof, wall } = houseColors(w);
     const stage = houseStage(w.level);
     out.push(ent(`house:${w.id}`, 'house', c.house.x + HOUSE, c.house.y + HOUSE, `house:${stage}:${roof}:${wall}`));
     // the workspace's name on a plate over the roof (texture keys split on ':', so the name holds none)

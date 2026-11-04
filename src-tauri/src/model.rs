@@ -68,6 +68,9 @@ pub struct Workspace {
     pub xp: u32,
     #[serde(default)]
     pub compound: Option<Compound>,
+    /// The house's roof colour (`#rrggbb`) the owner chose; None picks one from the id.
+    #[serde(default)]
+    pub color: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

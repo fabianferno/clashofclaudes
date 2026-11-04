@@ -30,6 +30,8 @@ export interface Workspace {
   /** XP progress within the current level. */
   xp: number;
   compound: Compound | null;
+  /** The roof colour (#rrggbb) the owner chose; null picks one from the id. */
+  color?: string | null;
 }
 
 export interface Builder {

@@ -96,6 +96,7 @@ mod tests {
                 level: 1,
                 xp: 0,
                 compound: None,
+                color: Some("#3fa34d".into()),
             }],
             builders: vec![Builder {
                 id: "b1".into(),
@@ -148,7 +149,7 @@ mod tests {
     #[test]
     fn apply_missing_reports_only_changes_both_ways() {
         let mut data = AppData::default();
-        data.workspaces.push(Workspace { id: "w".into(), name: "w".into(), path: "/nope".into(), created_at: 0, missing: false, level: 1, xp: 0, compound: None });
+        data.workspaces.push(Workspace { id: "w".into(), name: "w".into(), path: "/nope".into(), created_at: 0, missing: false, level: 1, xp: 0, compound: None, color: None });
         let gone = apply_missing(&mut data, &[("w".into(), true), ("removed".into(), true)]);
         assert_eq!(gone.len(), 1);
         assert!(gone[0].missing && data.workspaces[0].missing);

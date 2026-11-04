@@ -229,8 +229,8 @@ describe('village', () => {
   });
 
   it('relocation keeps shifting past a failed mate and reports the failure once', async () => {
-    const c: Compound = { x0: 8, y0: -3, w: 7, h: 7, house: { x: 8, y: 1 } };
-    const other: Compound = { x0: 8 + 7 + 1 + GAP + 1, y0: -3, w: 7, h: 7, house: { x: 21, y: 1 } };
+    const c: Compound = { x0: 8, y0: -3, w: 10, h: 10, house: { x: 8, y: 4 } };
+    const other: Compound = { x0: 8 + 10 + 1 + GAP + 1, y0: -3, w: 7, h: 7, house: { x: 24, y: 1 } };
     const taken: Tile[] = [];
     for (let t = findSpot(c, taken); t; t = findSpot(c, taken)) taken.push(t);
     const pre = spotFor(c, [c, other], taken);

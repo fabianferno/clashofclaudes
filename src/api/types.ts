@@ -80,6 +80,15 @@ export interface SessionInfo {
   spot: Tile | null;
   /** Brought back after the app quit or restarted (state `ended`, no process); `resumeSession` starts it again. */
   paused?: boolean;
+  /** The agent's own subagents running right now, drawn as minions by its builder. */
+  subagents?: Subagent[];
+}
+
+/** A subagent a session's agent spawned (Claude's Agent tool), from its start until its stop. */
+export interface Subagent {
+  id: string;
+  /** The agent's name for its kind (`general-purpose`, `Explore`, ...). */
+  agentType: string | null;
 }
 
 /** A task written down for a workspace and not started yet (the Kanban's To Do). */

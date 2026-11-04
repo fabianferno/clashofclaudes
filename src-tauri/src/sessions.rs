@@ -4,7 +4,7 @@ use crate::attachments;
 use crate::git::{self, GitBaseline, Review};
 use crate::hooks::HookServer;
 use crate::osc::Osc7501;
-use crate::model::{Builder, SessionInfo, SessionKind, SessionState, Tile, Workspace, WorktreeInfo};
+use crate::model::{Builder, SessionInfo, SessionKind, SessionState, Subagent, Tile, Workspace, WorktreeInfo};
 use crate::pty::{LaunchSpec, PtyHandle, REAP_POLL};
 use crate::saved::{self, SavedSession};
 use crate::scrollback::{Scrollback, SCROLLBACK_CAP};
@@ -137,6 +137,23 @@ impl SessionEntry {
     /// Feeds one status event; returns true when `info` changed.
     fn apply(&mut self, ev: &StatusEvent, now: i64) -> bool {
         let mut changed = false;
+        let subs = &mut self.info.subagents;
+        match ev {
+            StatusEvent::SubagentStarted { id, agent_type } if !subs.iter().any(|s| &s.id == id) => {
+                subs.push(Subagent { id: id.clone(), agent_type: agent_type.clone() });
+                return true;
+            }
+            StatusEvent::SubagentStopped { id } => {
+                let n = subs.len();
+                subs.retain(|s| &s.id != id);
+                return subs.len() != n;
+            }
+            StatusEvent::SubagentsDone => return !std::mem::take(subs).is_empty(),
+            StatusEvent::SubagentStarted { .. } => return false,
+            // the agent is gone, and its subagents with it
+            StatusEvent::Exited { .. } => changed |= !std::mem::take(subs).is_empty(),
+            _ => {}
+        }
         if matches!(ev, StatusEvent::ToolUsed) && !matches!(self.info.state, SessionState::Ended { .. }) {
             self.info.steps += 1;
             changed = true;
@@ -459,6 +476,7 @@ impl SessionManager {
             rev: 0,
             spot: None,
             paused: false,
+            subagents: vec![],
         };
         let conversation = prior.and_then(|p| {
             info.task = p.task;
@@ -999,6 +1017,7 @@ impl SessionManager {
                     rev: s.rev,
                     spot: s.spot,
                     paused: true,
+                    subagents: vec![],
                 };
                 let mut e = SessionEntry::new(info, ws.path.clone(), None, terminal_policy(), None, now);
                 e.exited = true;
@@ -1482,6 +1501,27 @@ mod tests {
         fx.mgr.approve(&s.id).unwrap();
         // Hooks for unknown sessions are ignored.
         fx.mgr.on_hook("nope", fixture_json("stop.json"));
+    }
+
+    #[test]
+    fn subagents_come_and_go_with_their_hooks() {
+        let fx = fixture();
+        let s = fx.mgr.start_with_spec(&fx.ws, &claude("b1"), sleeper(&fx), Arc::new(ClaudeAdapter)).unwrap();
+        fx.mgr.on_hook(&s.id, fixture_json("post_tool_use.json"));
+        let started = |id: &str| serde_json::json!({"hook_event_name": "SubagentStart", "agent_id": id, "agent_type": "Explore"});
+        fx.mgr.on_hook(&s.id, started("a1"));
+        fx.mgr.on_hook(&s.id, started("a2"));
+        fx.mgr.on_hook(&s.id, started("a2")); // a repeat is one subagent
+        let ids = |fx: &Fx| info(fx, &s.id).subagents.into_iter().map(|a| a.id).collect::<Vec<_>>();
+        assert_eq!(ids(&fx), ["a1", "a2"]);
+        assert_eq!(info(&fx, &s.id).subagents[0].agent_type.as_deref(), Some("Explore"));
+        assert_eq!((state(&fx, &s.id), info(&fx, &s.id).steps), (SessionState::Working, 1), "state and steps untouched");
+        fx.mgr.on_hook(&s.id, serde_json::json!({"hook_event_name": "SubagentStop", "agent_id": "a1"}));
+        assert_eq!(ids(&fx), ["a2"]);
+        assert!(wait_until(|| last_update(&fx, &s.id).is_some_and(|i| i.subagents.len() == 1)), "the change is sent");
+        // a turn ending with no background tasks clears any minion whose stop hook went missing
+        fx.mgr.on_hook(&s.id, fixture_json("stop.json"));
+        assert!(ids(&fx).is_empty());
     }
 
     #[test]

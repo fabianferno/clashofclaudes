@@ -195,6 +195,7 @@ mod tests {
             rev: 1,
             spot: None,
             paused: false,
+            subagents: vec![],
         }
     }
     fn agent(id: &str, state: SessionState) -> SessionInfo {

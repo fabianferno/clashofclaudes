@@ -177,24 +177,29 @@ export function canPlace(c: Compound, taken: Tile[], at: Tile, size: number): bo
   return taken.every((t) => gapBetween(r, sq(t, STRUCT)) >= 0);
 }
 
-/** Free spot nearest the house centre; prefers a >=1 tile gap around all occupants. */
+/** Clear tiles a new structure keeps from the house and every other structure: room to stand and work. */
+export const STRUCT_PAD = 2;
+/** Clear tiles a new structure keeps from the compound's edge, so the wall never presses on it. */
+export const EDGE_PAD = 1;
+
+/**
+ * Free spot nearest the house centre, STRUCT_PAD clear of the house and every structure and EDGE_PAD
+ * in from the compound's edge; null when there is none (the compound then grows, see `spotFor`).
+ */
 export function findSpot(c: Compound, taken: Tile[]): Tile | null {
   const occ = [sq(c.house, HOUSE), ...taken.map((t) => sq(t, STRUCT))];
   const hx = c.house.x + HOUSE / 2;
   const hy = c.house.y + HOUSE / 2;
-  let bestGap: Tile | null = null, bestGapD = Infinity;
-  let bestAny: Tile | null = null, bestAnyD = Infinity;
-  for (let y = c.y0; y + STRUCT <= c.y0 + c.h; y++) {
-    for (let x = c.x0; x + STRUCT <= c.x0 + c.w; x++) {
+  let best: Tile | null = null, bestD = Infinity;
+  for (let y = c.y0 + EDGE_PAD; y + STRUCT + EDGE_PAD <= c.y0 + c.h; y++) {
+    for (let x = c.x0 + EDGE_PAD; x + STRUCT + EDGE_PAD <= c.x0 + c.w; x++) {
       const r = { x0: x, y0: y, w: STRUCT, h: STRUCT };
-      const min = Math.min(...occ.map((o) => gapBetween(r, o)));
-      if (min < 0) continue;
+      if (occ.some((o) => gapBetween(r, o) < STRUCT_PAD)) continue;
       const d = (x + STRUCT / 2 - hx) ** 2 + (y + STRUCT / 2 - hy) ** 2;
-      if (d < bestAnyD) { bestAnyD = d; bestAny = { x, y }; }
-      if (min >= 1 && d < bestGapD) { bestGapD = d; bestGap = { x, y }; }
+      if (d < bestD) { bestD = d; best = { x, y }; }
     }
   }
-  return bestGap ?? bestAny;
+  return best;
 }
 
 /**

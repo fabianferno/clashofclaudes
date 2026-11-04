@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Compound, Tile } from '../api/types';
 import {
-  GAP, GROW, HALL, HOUSE, START, STRUCT, Rect, assertNoCollisions, canPlace, expand,
+  EDGE_PAD, GAP, GROW, HALL, HOUSE, START, STRUCT, STRUCT_PAD, Rect, assertNoCollisions, canPlace, expand,
   findSpot, gapBetween, gateInside, gateOutside, gateSide, gateTile, placeCompound, roadPath, spotFor, wallRect,
 } from './layout';
 
@@ -46,27 +46,25 @@ describe('placeCompound', () => {
 });
 
 describe('findSpot', () => {
-  it('find_spot_prefers_gap_then_packs', () => {
+  it('keeps every structure padded from the house, the others and the wall, then reports full', () => {
     const c = placeCompound([]);
     const taken: Tile[] = [];
-    for (let i = 0; i < 2; i++) {
-      const s = findSpot(c, taken)!;
-      expect(s).not.toBeNull();
+    for (let s = findSpot(c, taken); s; s = findSpot(c, taken)) {
       for (const o of [...taken.map((t) => sq(t, STRUCT)), sq(c.house, HOUSE)])
-        expect(gapBetween(sq(s, STRUCT), o)).toBeGreaterThanOrEqual(1);
-      taken.push(s);
-    }
-    let n = 2;
-    for (;;) {
-      const s = findSpot(c, taken);
-      if (!s) break;
+        expect(gapBetween(sq(s, STRUCT), o)).toBeGreaterThanOrEqual(STRUCT_PAD);
+      expect(s.x - c.x0).toBeGreaterThanOrEqual(EDGE_PAD);
+      expect(s.y - c.y0).toBeGreaterThanOrEqual(EDGE_PAD);
+      expect(c.x0 + c.w - (s.x + STRUCT)).toBeGreaterThanOrEqual(EDGE_PAD);
+      expect(c.y0 + c.h - (s.y + STRUCT)).toBeGreaterThanOrEqual(EDGE_PAD);
       expect(canPlace(c, taken, s, STRUCT)).toBe(true);
       taken.push(s);
-      n++;
-      expect(n).toBeLessThan(50);
+      expect(taken.length).toBeLessThan(50);
     }
-    expect(n).toBeGreaterThan(2);
-    expect(findSpot(c, taken)).toBeNull();
+    expect(taken.length).toBeGreaterThanOrEqual(2); // a fresh compound holds a few before it grows
+    // a full compound grows instead of packing a structure against its neighbours
+    const r = spotFor(c, [c], taken);
+    expect(r.expanded).toBe(true);
+    for (const o of taken) expect(gapBetween(sq(r.spot, STRUCT), sq(o, STRUCT))).toBeGreaterThanOrEqual(STRUCT_PAD);
   });
 });
 

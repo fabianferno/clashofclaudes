@@ -21,6 +21,11 @@ pub enum StatusEvent {
     UserInput,
     Exited { code: Option<i32> },
     CwdChanged { cwd: std::path::PathBuf },
+    /// The agent started one of its own subagents. Leaves the state alone.
+    SubagentStarted { id: String, agent_type: Option<String> },
+    SubagentStopped { id: String },
+    /// The agent says none of its subagents is running any more (a turn ended with no background tasks).
+    SubagentsDone,
 }
 
 #[derive(Clone, Debug, PartialEq)]

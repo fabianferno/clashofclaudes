@@ -72,7 +72,8 @@ export function enclosure(c: Compound, spots: Tile[], level: number, seed: numbe
     for (let y = -r; y <= r; y++) for (let x = -r; x <= r; x++) if (x * x + y * y <= r * r + 1) add(ox + x, oy + y);
   }
 
-  // Fill notches: an outside tile mostly surrounded by ground joins it (twice, for 2-tile dents).
+  // Fill notches: an outside tile mostly surrounded by ground, or between ground on two opposite
+  // sides, joins it (twice, for 2-tile dents).
   for (let pass = 0; pass < 2; pass++) {
     const fill: [number, number][] = [];
     for (let y = c.y0; y < c.y0 + c.h; y++) {
@@ -80,7 +81,9 @@ export function enclosure(c: Compound, spots: Tile[], level: number, seed: numbe
         if (inside.has(key(x, y))) continue;
         let n = 0;
         for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if ((dx || dy) && inside.has(key(x + dx, y + dy))) n++;
-        if (n >= 6) fill.push([x, y]);
+        // or a one-tile slot between ground on opposite sides (its wall would be a dead end)
+        const slot = (inside.has(key(x, y - 1)) && inside.has(key(x, y + 1))) || (inside.has(key(x - 1, y)) && inside.has(key(x + 1, y)));
+        if (n >= 6 || slot) fill.push([x, y]);
       }
     }
     for (const [x, y] of fill) inside.add(key(x, y));

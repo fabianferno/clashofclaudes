@@ -251,6 +251,18 @@ pub struct SessionInfo {
     /// `resume_session` starts it again, on the agent's own conversation when it has one.
     #[serde(default)]
     pub paused: bool,
+    /// The agent's own subagents running right now (Claude's Agent tool): drawn as minions by its builder.
+    #[serde(default)]
+    pub subagents: Vec<Subagent>,
+}
+
+/// A subagent the session's agent spawned, from its start hook until its stop hook.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Subagent {
+    pub id: String,
+    /// The agent's own name for its kind (`general-purpose`, `Explore`, ...).
+    pub agent_type: Option<String>,
 }
 
 #[cfg(test)]

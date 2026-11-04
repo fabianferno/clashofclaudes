@@ -53,8 +53,8 @@ export function startSession() {
       ScrollTrigger.create({
         trigger: c,
         // On phones the sticky stage covers the top half, so a chapter counts once it is in the lower half.
-        start: isMobile() ? 'top 85%' : 'top 60%',
-        end: isMobile() ? 'bottom 85%' : 'bottom 60%',
+        start: isMobile() ? 'top 80%' : 'top 60%',
+        end: isMobile() ? 'bottom 80%' : 'bottom 60%',
         onToggle: (self) => { if (self.isActive) apply(c.dataset.chapter as State); },
       });
     });

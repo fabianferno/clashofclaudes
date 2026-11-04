@@ -186,3 +186,11 @@ No loader: a product page earns the craft, not the theatre.
   Content 8, all developer areas 7 to 8). Fixes applied in pass 2: doc page heroes rebuilt,
   TOC marks the current section, the HUD gets a solid bar once scrolled, the statement got its
   "tabs vs builder" figure, phone hero puts the village under the headline, mobile wraps fixed.
+- Critic passes 2 and 3 (fresh subagents each time): 7.1 weighted both times (Design 7,
+  Usability 7, Creativity 7, Content 8; developer areas 7 to 8). After pass 3: phone hero puts the
+  CTA right under the village, phone chapters align with the stage, bigger chapter titles,
+  tighter village section.
+- Version label: baked in at build time from the GitHub API, refreshed in the browser on the home
+  page only, cached for an hour in localStorage. During QA the test machine's IP hit GitHub's
+  unauthenticated rate limit (60/h), so the crawl logged 403s in the console; real visitors make
+  at most one call an hour. Decision: keep the refresh so the label is never stale after a release.

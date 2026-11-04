@@ -91,12 +91,39 @@ pub fn resolve_data_dir(default: std::path::PathBuf, override_dir: Option<&str>)
     default
 }
 
+/// The bundle identifier before 0.2.0; its data folder moves to the current one on first launch.
+const OLD_IDENTIFIER: &str = "dev.clashofclaudes.app";
+
+/// Moves the data folder of builds before the identifier change (`dev.clashofclaudes.app`) to `data_dir`,
+/// once, when `data_dir` doesn't exist yet. The old path is left as a link to the new one, so paths
+/// already handed to agents (session images, settings files) still resolve.
+pub fn migrate_old_data_dir(data_dir: &std::path::Path) {
+    let Some(old) = data_dir.parent().map(|p| p.join(OLD_IDENTIFIER)) else { return };
+    if old == data_dir || data_dir.exists() || !old.symlink_metadata().is_ok_and(|m| m.is_dir()) {
+        return;
+    }
+    match std::fs::rename(&old, data_dir) {
+        Ok(()) => {
+            if let Err(e) = std::os::unix::fs::symlink(data_dir, &old) {
+                eprintln!("data folder moved, but the link at the old path failed: {e}");
+            }
+        }
+        Err(e) => eprintln!("could not move the old data folder: {e}"),
+    }
+}
+
 const QUIT_MENU_ID: &str = "app-quit";
 const SETTINGS_MENU_ID: &str = "app-settings";
 const BUG_MENU_ID: &str = "app-report-bug";
 const FEATURE_MENU_ID: &str = "app-request-feature";
+const WEBSITE_MENU_ID: &str = "app-website";
+const NOTES_MENU_ID: &str = "app-release-notes";
+/// Opened in the browser from the Help menu.
+const WEBSITE_URL: &str = "https://clashofclaudes.vercel.app";
+const RELEASES_URL: &str = "https://github.com/fabianferno/clashofclaudes-releases/releases";
 
-/// The default menu, plus Settings… (Cmd+,) after About and Report a Bug… / Request a Feature… in Help, except Quit: the predefined item
+/// The default menu, plus Settings… (Cmd+,) after About and, in Help, Report a Bug… / Request a Feature…,
+/// Release Notes and the website, except Quit: the predefined item
 /// terminates the process directly (macOS `terminate:`) and never raises ExitRequested, so it is
 /// swapped for one that calls `app.exit`, which goes through the exit guard in `run`.
 fn app_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
@@ -111,6 +138,9 @@ fn app_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         {
             sub.append(&MenuItem::with_id(app, BUG_MENU_ID, "Report a Bug…", true, None::<&str>)?)?;
             sub.append(&MenuItem::with_id(app, FEATURE_MENU_ID, "Request a Feature…", true, None::<&str>)?)?;
+            sub.append(&PredefinedMenuItem::separator(app)?)?;
+            sub.append(&MenuItem::with_id(app, NOTES_MENU_ID, "Release Notes", true, None::<&str>)?)?;
+            sub.append(&MenuItem::with_id(app, WEBSITE_MENU_ID, "Clash of Claudes Website", true, None::<&str>)?)?;
         }
     }
     for top in menu.items()? {
@@ -183,10 +213,18 @@ pub fn run() {
                 let _ = app.emit("open-bug-report", "bug");
             } else if event.id() == FEATURE_MENU_ID {
                 let _ = app.emit("open-bug-report", "feature");
+            } else if event.id() == WEBSITE_MENU_ID || event.id() == NOTES_MENU_ID {
+                use tauri_plugin_opener::OpenerExt;
+                let url = if event.id() == WEBSITE_MENU_ID { WEBSITE_URL } else { RELEASES_URL };
+                let _ = app.opener().open_url(url, None::<&str>);
             }
         })
         .setup(|app| {
-            let data_dir = resolve_data_dir(app.path().app_data_dir()?, std::env::var("COC_DATA_DIR").ok().as_deref());
+            let default_dir = app.path().app_data_dir()?;
+            let data_dir = resolve_data_dir(default_dir.clone(), std::env::var("COC_DATA_DIR").ok().as_deref());
+            if data_dir == default_dir {
+                migrate_old_data_dir(&data_dir);
+            }
             std::fs::create_dir_all(&data_dir)?;
             let data_path = data_dir.join("state.json");
             let mut data = persist::load(&data_path);
@@ -440,6 +478,37 @@ mod data_dir_tests {
     #[test]
     fn release_ignores_override() {
         assert_eq!(resolve_data_dir(PathBuf::from("/default"), Some("/tmp/x")), PathBuf::from("/default"));
+    }
+
+    #[test]
+    fn the_old_data_folder_moves_once_and_leaves_a_link() {
+        use super::migrate_old_data_dir;
+        let support = tempfile::tempdir().unwrap();
+        let old = support.path().join("dev.clashofclaudes.app");
+        let new = support.path().join("dev.clashofclaudes.desktop");
+        std::fs::create_dir_all(old.join("sessions")).unwrap();
+        std::fs::write(old.join("state.json"), "{}").unwrap();
+        migrate_old_data_dir(&new);
+        assert_eq!(std::fs::read_to_string(new.join("state.json")).unwrap(), "{}");
+        assert!(new.join("sessions").is_dir());
+        assert!(old.symlink_metadata().unwrap().file_type().is_symlink());
+        assert_eq!(std::fs::read_to_string(old.join("state.json")).unwrap(), "{}", "old paths still resolve");
+        std::fs::write(new.join("state.json"), "{\"v\":2}").unwrap();
+        migrate_old_data_dir(&new); // second launch: nothing moves
+        assert_eq!(std::fs::read_to_string(new.join("state.json")).unwrap(), "{\"v\":2}");
+    }
+
+    #[test]
+    fn an_existing_new_folder_is_never_replaced() {
+        use super::migrate_old_data_dir;
+        let support = tempfile::tempdir().unwrap();
+        let old = support.path().join("dev.clashofclaudes.app");
+        let new = support.path().join("dev.clashofclaudes.desktop");
+        std::fs::create_dir_all(&old).unwrap();
+        std::fs::create_dir_all(&new).unwrap();
+        migrate_old_data_dir(&new);
+        assert!(!old.symlink_metadata().unwrap().file_type().is_symlink());
+        migrate_old_data_dir(&support.path().join("fresh")); // nothing old: nothing happens
     }
 }
 

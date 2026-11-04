@@ -102,7 +102,7 @@ export default function SettingsPage() {
     setCheck('checking');
     ipc.checkForUpdate().then(
       (s) => {
-        if (s?.available) useApp.getState().setUpdateAvailable(true);
+        if (s?.available) useApp.getState().setUpdateAvailable({ version: s.version ?? null, notes: s.notes ?? null });
         setCheck(s?.available ? 'found' : 'none');
       },
       (e) => setCheck(String(e).includes('disabled') ? 'off' : 'failed'),

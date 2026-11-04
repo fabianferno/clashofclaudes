@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Clash of Claudes",
-  "version": "0.1.0",
-  "identifier": "dev.clashofclaudes.app",
+  "version": "0.2.1",
+  "identifier": "dev.clashofclaudes.desktop",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
@@ -25,9 +25,9 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "REPLACE_WITH_UPDATER_PUBLIC_KEY",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDU5NjEyMDAwRkE1MTUzMDYKUldRR1UxSDZBQ0JoV2ZnOVNVY1d0MWRjSmRaWFUwOXdjR1V5SzRKR2RMTlhieklLRlZ4amxUUlkK",
       "endpoints": [
-        "https://github.com/OWNER/REPO/releases/latest/download/latest.json"
+        "https://github.com/fabianferno/clashofclaudes-releases/releases/latest/download/latest.json"
       ]
     }
   },

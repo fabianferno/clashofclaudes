@@ -2,7 +2,7 @@
   "name": "clash-of-claudes",
   "private": true,
   "license": "MIT",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -14,7 +14,8 @@
     "app": "bash scripts/dev.sh",
     "app:install": "bash scripts/install-local.sh",
     "release": "bash scripts/release.sh",
-    "release:dry": "bash scripts/release.sh --dry-run"
+    "release:dry": "bash scripts/release.sh --dry-run",
+    "ship": "bash scripts/publish.sh"
   },
   "dependencies": {
     "@fontsource/lilita-one": "^5.3.0",

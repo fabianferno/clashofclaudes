@@ -18,7 +18,7 @@ beforeEach(() => {
   ipc.getSettings.mockReset().mockResolvedValue({ updatesEnabled: false });
   ipc.setSettings.mockClear();
   ipc.checkForUpdate.mockReset();
-  act(() => useApp.setState({ settingsOpen: true, updateAvailable: false, covers: 0 }));
+  act(() => useApp.setState({ settingsOpen: true, updateAvailable: null, covers: 0 }));
 });
 afterEach(() => { cleanup(); act(() => useApp.setState({ settingsOpen: false })); });
 
@@ -61,7 +61,7 @@ test('Check now reports the result and hands a found update to the toast', async
   await act(async () => { fireEvent.click(now); });
   expect(screen.getByRole('status').textContent).toBe('You have the latest version.');
   await act(async () => { fireEvent.click(now); });
-  expect(useApp.getState().updateAvailable).toBe(true);
+  expect(useApp.getState().updateAvailable).toEqual({ version: '0.2.0', notes: null });
   await act(async () => { fireEvent.click(now); });
   expect(screen.getByRole('status').textContent).toBe('This build does not check for updates.');
 });

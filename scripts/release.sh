@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Universal macOS release build. Signs/notarizes only when credentials are present.
+# Notarization: APPLE_ID set, App Store Connect API key, or NOTARY_PROFILE (a `notarytool
+# store-credentials` keychain profile; the DMG is submitted and stapled after the build).
 # Usage: scripts/release.sh [--dry-run]
 set -euo pipefail
 { set +x; } 2>/dev/null   # never trace: secrets live in the environment
@@ -26,9 +28,10 @@ done
 SIGN=0; NOTARY="none"
 if have APPLE_ID && have APPLE_PASSWORD && have APPLE_TEAM_ID; then NOTARY="apple-id"; fi
 if have APPLE_API_ISSUER && have APPLE_API_KEY && have APPLE_API_KEY_PATH; then NOTARY="api-key"; fi
+if have NOTARY_PROFILE; then NOTARY="keychain-profile"; fi
 if have APPLE_SIGNING_IDENTITY && [[ "$NOTARY" != "none" ]]; then SIGN=1; fi
 if have APPLE_ID && have APPLE_PASSWORD && have APPLE_TEAM_ID && have APPLE_API_ISSUER && have APPLE_API_KEY && have APPLE_API_KEY_PATH; then
-  echo "WARNING: both notarization credential sets are present; using the API key (api-key) and ignoring the Apple ID set." >&2
+  [[ "$NOTARY" == "api-key" ]] && echo "WARNING: both notarization credential sets are present; using the API key (api-key) and ignoring the Apple ID set." >&2
 fi
 
 UPDATER=0; have TAURI_SIGNING_PRIVATE_KEY && UPDATER=1
@@ -80,6 +83,7 @@ if [[ $DRY == 1 ]]; then
   echo "3. lipo -archs on the built binary (must be: x86_64 arm64)"
   echo "4. print artifact paths + shasum -a 256"
   [[ $UPDATER == 1 ]] && echo "5. node scripts/make-latest-json.mjs -> latest.json (updater key is set)"
+  [[ "$NOTARY" == "keychain-profile" && $SIGN == 1 ]] && echo "6. xcrun notarytool submit <dmg> --keychain-profile <NOTARY_PROFILE> --wait; xcrun stapler staple <dmg>"
   exit 0
 fi
 
@@ -95,6 +99,10 @@ fi
 
 if [[ $SIGN == 1 && "$NOTARY" == "api-key" ]]; then
   unset APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID   # make the warning true: only the API key is used
+fi
+if [[ $SIGN == 1 && "$NOTARY" == "keychain-profile" ]]; then
+  # Tauri only signs; the DMG is notarized below with the keychain profile.
+  unset APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID APPLE_API_ISSUER APPLE_API_KEY APPLE_API_KEY_PATH
 fi
 
 pnpm "${ARGS[@]}"
@@ -112,6 +120,24 @@ if [[ -z "$BIN" ]]; then echo "ERROR: no binary found in $APP" >&2; exit 1; fi
 ARCHS="$(lipo -archs "$BIN")"
 echo "lipo -archs: $ARCHS"
 if [[ "$ARCHS" != "x86_64 arm64" ]]; then echo "ERROR: expected 'x86_64 arm64', got '$ARCHS'" >&2; exit 1; fi
+
+DMG="$(find "$OUT/dmg" -maxdepth 1 -name "*_$(node -p "require('./src-tauri/tauri.conf.json').version")_universal.dmg" -print -quit 2>/dev/null || true)"
+[[ -n "$DMG" ]] || { echo "ERROR: no universal DMG in $OUT/dmg" >&2; exit 1; }
+if [[ $SIGN == 1 && "$NOTARY" == "keychain-profile" ]]; then
+  echo "== Notarizing $(basename "$DMG") (profile $NOTARY_PROFILE) =="
+  xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait --output-format json > "$OUT/notary.json" || true
+  if ! grep -q '"status" *: *"Accepted"' "$OUT/notary.json"; then
+    cat "$OUT/notary.json" >&2
+    id="$(grep -o '"id" *: *"[^"]*"' "$OUT/notary.json" | head -1 | cut -d'"' -f4)"
+    [[ -n "$id" ]] && xcrun notarytool log "$id" --keychain-profile "$NOTARY_PROFILE" >&2
+    echo "ERROR: notarization failed" >&2; exit 1
+  fi
+  rm -f "$OUT/notary.json"
+  xcrun stapler staple "$DMG"
+fi
+# A copy under a name that never changes, for the "latest" download link.
+cp "$DMG" "$OUT/dmg/Clash-of-Claudes.dmg"
+echo "$OUT/dmg/Clash-of-Claudes.dmg"
 
 # Updater manifest (only when the updater key signed the tarball).
 if [[ $UPDATER == 1 ]]; then

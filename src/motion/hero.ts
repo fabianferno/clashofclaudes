@@ -1,5 +1,5 @@
 // Small life around the edges, all on the GSAP clock:
-// - the hero village tilts toward the pointer like a board on a table (desktop pointer only);
+// - the hero's floating village drifts against the pointer in three depth layers (desktop pointer only);
 // - the Kanban screenshot stands up from the table as it scrolls in;
 // - a click anywhere kicks up a puff of dust, the same puff a finished tent makes.
 import { gsap } from 'gsap';
@@ -10,8 +10,10 @@ export function startHero() {
     if (prefersReducedMotion()) return;
     const cleanups: (() => void)[] = [];
 
-    const scene = document.querySelector<HTMLElement>('[data-hero-scene]');
-    if (scene && !isTouch()) {
+    const field = document.querySelector<HTMLElement>('[data-hero-field]');
+    if (field && !isTouch()) {
+      // Each depth layer slides against the pointer by its depth, so the village has parallax.
+      const layers = [...field.querySelectorAll<HTMLElement>('[data-depth]')].map((el) => ({ el, depth: +el.dataset.depth! }));
       const tilt = { x: 0, y: 0 };
       const target = { x: 0, y: 0 };
       const move = (e: PointerEvent) => {
@@ -20,9 +22,9 @@ export function startHero() {
       };
       const tick = () => {
         if (window.scrollY > window.innerHeight) return;
-        tilt.x += (target.x - tilt.x) * 0.06;
-        tilt.y += (target.y - tilt.y) * 0.06;
-        gsap.set(scene, { rotateX: -tilt.y * 7, rotateY: tilt.x * 9, transformPerspective: 1400 });
+        tilt.x += (target.x - tilt.x) * 0.05;
+        tilt.y += (target.y - tilt.y) * 0.05;
+        for (const l of layers) gsap.set(l.el, { x: -tilt.x * l.depth * 34, y: -tilt.y * l.depth * 22 });
       };
       window.addEventListener('pointermove', move, { passive: true });
       gsap.ticker.add(tick);

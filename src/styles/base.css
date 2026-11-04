@@ -31,7 +31,7 @@ p { text-wrap: pretty; }
 :focus-visible { outline: 3px solid var(--gold); outline-offset: 3px; border-radius: 6px; box-shadow: 0 0 0 6px var(--ink); }
 #main:focus { outline: none; box-shadow: none; }
 .skip-link {
-  position: fixed; left: var(--gutter); top: var(--gutter); z-index: 200;
+  position: fixed; left: 1rem; top: 1rem; z-index: 200;
   padding: 0.7em 1.1em; background: var(--gold); color: var(--ink); font-weight: 700;
   border: var(--stroke) solid var(--ink); border-radius: var(--radius);
   translate: 0 -300%;

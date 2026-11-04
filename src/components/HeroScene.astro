@@ -1,64 +1,79 @@
 ---
-// The hero plot, drawn like the app draws a village today: the Town Hall at the crossroads and a
-// compound per workspace (its house, the agent's tent, its builder), each in a different state.
-// Positions are percentages of the scene box (anchor = the sprite's feet), so it scales as one.
+// The hero's background: the village's pieces floating around the centred headline, as the app
+// draws them today (a house per workspace, the agent's tent, its builder in a state).
+// Each piece is placed by its feet: x and y are percentages of the hero, s its width in a unit that
+// follows the smaller of the screen's width and height, so nothing grows into the text on a short
+// screen. Three depth layers drift against the pointer (src/motion/hero.ts); each piece bobs on its
+// own slow cycle. Phones show only the pieces that have an `m` placement, along the bottom.
 import Builder from './Builder.astro';
 import RisingTent from './RisingTent.astro';
-type Item = { x: number; y: number; w: number };
-const trees: (Item & { kind: string })[] = [
-  { kind: 'pine', x: 7, y: 33, w: 8 }, { kind: 'fir', x: 14, y: 25, w: 6 }, { kind: 'oak', x: 92, y: 30, w: 10 },
-  { kind: 'pine', x: 85, y: 21, w: 7 }, { kind: 'elm', x: 50, y: 15, w: 11 }, { kind: 'fir', x: 61, y: 14, w: 6 },
-  { kind: 'oak', x: 5, y: 68, w: 9 }, { kind: 'pine', x: 96, y: 66, w: 7 }, { kind: 'fir', x: 39, y: 14, w: 6 },
-  { kind: 'pine', x: 47, y: 101, w: 7 }, { kind: 'fir', x: 55, y: 102, w: 5 },
+
+type Spot = { x: number; y: number; s: number };
+type Piece = { at?: Spot; m?: Spot; img?: string; ratio?: number; kind?: 'tent' | 'unit'; delay: number };
+const img = (name: string) => `/img/${name}.webp`;
+// Placements go in --d* and --m* so the stylesheet can pick one per screen (an inline --x would win).
+const style = (p: Piece, i: number) =>
+  (p.at ? `--dx:${p.at.x}%;--dy:${p.at.y}%;--ds:${p.at.s};` : '') +
+  (p.m ? `--mx:${p.m.x}%;--my:${p.m.y}%;--ms:${p.m.s};` : '') +
+  `--fd:${(6 + (i % 4) * 1.3).toFixed(1)}s;--fdl:${(-i * 0.9).toFixed(1)}s;z-index:${Math.round((p.at ?? p.m)!.y)}`;
+const cls = (p: Piece, extra = '') => ['fl', extra, { 'fl--m': p.m, 'fl--phone': !p.at }];
+
+const far: Piece[] = [
+  { img: 'tree-pine', at: { x: 4, y: 36, s: 5 }, m: { x: 7, y: 19, s: 9 }, delay: 0.1 },
+  { img: 'tree-oak', at: { x: 95, y: 30, s: 7 }, m: { x: 93, y: 19, s: 11 }, delay: 0.14 },
+  { img: 'tree-fir', at: { x: 3.5, y: 80, s: 5 }, delay: 0.18 },
+  { img: 'tree-pine', at: { x: 97, y: 78, s: 5 }, delay: 0.22 },
+  { img: 'tree-elm', at: { x: 36, y: 106, s: 7 }, delay: 0.26 },
+  { img: 'tree-fir', at: { x: 73, y: 103, s: 5 }, delay: 0.3 },
 ];
-const z = (y: number) => Math.round(y * 10);
-const at = (x: number, y: number, w: number) => `--x:${x}%;--y:${y}%;--w:${w}%;z-index:${z(y)}`;
+const mid: Piece[] = [
+  { img: 'hall', m: { x: 50, y: 101, s: 36 }, delay: 0.2 },
+  { img: 'house-orange', at: { x: 11, y: 47, s: 12 }, m: { x: 17, y: 97, s: 25 }, delay: 0.3 },
+  { img: 'house-purple', at: { x: 89, y: 46, s: 12 }, m: { x: 84, y: 97, s: 25 }, delay: 0.34 },
+  { img: 'tent-claude', ratio: 330 / 360, at: { x: 7, y: 67, s: 9 }, delay: 0.42 },
+  { kind: 'tent', at: { x: 94, y: 67, s: 9 }, delay: 0.46 },
+  { img: 'house-blue', at: { x: 14, y: 95, s: 11 }, delay: 0.38 },
+  { img: 'house-teal', at: { x: 87, y: 96, s: 11 }, delay: 0.42 },
+  { img: 'tent-opencode', ratio: 330 / 360, at: { x: 77, y: 100, s: 7 }, delay: 0.5 },
+];
+// The builders, one per agent, each in a state the app shows.
+type Unit = Piece & { sheet: string; pose: 'idle' | 'hammer' | 'cheer' | 'walk'; over?: 'bubble' | 'ribbon'; plate?: [string, string] };
+const units: Unit[] = [
+  { sheet: 'master-claude', pose: 'cheer', over: 'ribbon', plate: ['done', 'Finished'], at: { x: 17, y: 69, s: 4.6 }, m: { x: 30, y: 99, s: 11 }, delay: 0.7 },
+  { sheet: 'craftsman-codex', pose: 'hammer', plate: ['work', 'Working'], at: { x: 85, y: 70, s: 4.6 }, m: { x: 70, y: 99, s: 11 }, delay: 0.78 },
+  { sheet: 'apprentice-antigravity', pose: 'idle', over: 'bubble', plate: ['needs', 'Needs you'], at: { x: 23, y: 97, s: 4.2 }, delay: 0.86 },
+  { sheet: 'craftsman-opencode', pose: 'walk', at: { x: 69, y: 99, s: 4.2 }, delay: 0.94 },
+];
 ---
-<div class="scene" aria-hidden="true" data-hero-scene>
-  <div class="scene__ground"></div>
-  <div class="scene__clouds"><span></span><span></span></div>
-  <div class="scene__paths"></div>
-  <span class="scene__plot" style="--x:28%;--y:44%"></span>
-  <span class="scene__plot" style="--x:72%;--y:44%"></span>
-  <span class="scene__plot" style="--x:28%;--y:82%"></span>
-  <span class="scene__plot" style="--x:72%;--y:82%"></span>
-  {trees.map((t, i) => (
-    <img class="scene__item" src={`/img/tree-${t.kind}.webp`} alt="" width="200" height="260" loading="eager" decoding="async"
-      style={at(t.x, t.y, t.w)} data-reveal="place" data-intro data-delay={(0.05 + i * 0.03).toFixed(2)} />
-  ))}
-  <img class="scene__item" src="/img/hall.webp" alt="" width="500" height="570" fetchpriority="high"
-    style={at(50, 63, 26)} data-reveal="place" data-intro data-delay="0.15" />
-
-  <!-- Claude Code workspace: shipped -->
-  <img class="scene__item" src="/img/house-orange.webp" alt="" width="440" height="500" style={at(21, 43, 17)} data-reveal="place" data-intro data-delay="0.26" />
-  <img class="scene__item" src="/img/tent-claude.webp" alt="" width="360" height="330" style={at(35, 50, 14)} data-reveal="place" data-intro data-delay="0.34" />
-  <div class="scene__unit" style={at(29, 53, 8.5)} data-reveal="place" data-intro data-delay="0.7">
-    <img class="scene__ribbon" src="/img/ribbon.webp" alt="" width="140" height="140" />
-    <Builder sheet="master-claude" pose="cheer" />
-    <span class="plate plate--done">Finished</span>
+<div class="field" aria-hidden="true" data-hero-field>
+  <div class="field__clouds"><span></span><span></span></div>
+  <div class="field__layer" data-depth="0.35">
+    {far.map((p, i) => (
+      <div class:list={cls(p)} style={style(p, i)} data-reveal="place" data-intro data-delay={p.delay}>
+        <div class="fl__bob"><img src={img(p.img!)} alt="" width="200" height="260" loading="eager" decoding="async" /></div>
+      </div>
+    ))}
   </div>
-
-  <!-- Codex workspace: working, the tent climbing as it hammers -->
-  <img class="scene__item" src="/img/house-purple.webp" alt="" width="440" height="500" style={at(79, 43, 17)} data-reveal="place" data-intro data-delay="0.3" />
-  <div class="scene__item" style={at(65, 50, 14)} data-reveal="place" data-intro data-delay="0.38"><RisingTent agent="codex" rise={0.4} building loading="eager" /></div>
-  <div class="scene__unit" style={at(72, 54, 8.5)} data-reveal="place" data-intro data-delay="0.78">
-    <Builder sheet="craftsman-codex" pose="hammer" />
-    <span class="plate plate--work">Working</span>
+  <div class="field__layer" data-depth="0.7">
+    {mid.map((p, i) => (
+      <div class:list={cls(p)} style={style(p, i + 6)} data-reveal="place" data-intro data-delay={p.delay}>
+        <div class="fl__bob">
+          {p.kind === 'tent'
+            ? <RisingTent agent="codex" rise={0.4} building loading="eager" />
+            : <img src={img(p.img!)} alt="" width="440" height={p.ratio ? 403 : 500} loading="eager" decoding="async" fetchpriority={p.img === 'hall' ? 'high' : undefined} />}
+        </div>
+      </div>
+    ))}
   </div>
-
-  <!-- Antigravity workspace: halfway up, waiting on a permission prompt -->
-  <img class="scene__item" src="/img/house-blue.webp" alt="" width="440" height="500" style={at(20, 80, 17)} data-reveal="place" data-intro data-delay="0.42" />
-  <div class="scene__item" style={at(35, 88, 14)} data-reveal="place" data-intro data-delay="0.46"><RisingTent agent="antigravity" rise={0.55} loading="eager" /></div>
-  <div class="scene__unit" style={at(27, 92, 8)} data-reveal="place" data-intro data-delay="0.86">
-    <img class="scene__bubble" src="/img/bubble-needs.webp" alt="" width="120" height="120" />
-    <Builder sheet="apprentice-antigravity" pose="idle" />
-    <span class="plate plate--needs">Needs you</span>
-  </div>
-
-  <!-- OpenCode workspace: finished earlier, its builder strolling back to the hall -->
-  <img class="scene__item" src="/img/house-teal.webp" alt="" width="440" height="500" style={at(80, 80, 17)} data-reveal="place" data-intro data-delay="0.5" />
-  <img class="scene__item" src="/img/tent-opencode.webp" alt="" width="360" height="330" style={at(66, 88, 14)} data-reveal="place" data-intro data-delay="0.54" />
-  <div class="scene__unit scene__walker" style={at(60, 77, 8)} data-reveal="place" data-intro data-delay="0.94">
-    <Builder sheet="craftsman-opencode" pose="walk" />
+  <div class="field__layer" data-depth="1.2">
+    {units.map((u, i) => (
+      <div class:list={cls(u, 'fl--unit')} style={style(u, i + 14)} data-reveal="place" data-intro data-delay={u.delay}>
+        <div class="fl__bob">
+          {u.over && <img class={`fl__over fl__over--${u.over}`} src={`/img/${u.over === 'bubble' ? 'bubble-needs' : 'ribbon'}.webp`} alt="" width="140" height="140" />}
+          <Builder sheet={u.sheet} pose={u.pose} />
+          {u.plate && <span class={`plate plate--${u.plate[0]}`}>{u.plate[1]}</span>}
+        </div>
+      </div>
+    ))}
   </div>
 </div>

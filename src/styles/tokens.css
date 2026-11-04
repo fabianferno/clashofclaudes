@@ -63,7 +63,9 @@
   --t-xs: 0.8125rem;
 
   --u: clamp(0.5rem, 0.35rem + 0.6vw, 1rem);
-  --gutter: clamp(1rem, 0.5rem + 2vw, 2.75rem);
+  /* Page margin: generous on every screen, and the content never runs wider than 1280px. */
+  --gutter: max(clamp(1.375rem, 0.4rem + 5.5vw, 7rem), calc((100vw - 1280px) / 2));
+  --col-gap: clamp(1rem, 0.5rem + 2vw, 2.5rem);
   --maxw: 1440px;
 
   /* Shape: the game UI rule. */

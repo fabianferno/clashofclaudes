@@ -261,3 +261,15 @@ below the HUD. Titles, the hero scene, card tiles, the Kanban shot and FAQ rows 
 so nothing overflows down to 1366x768; short sections (statement, privacy) scale up instead.
 Checked at 1280x800, 1366x768, 1440x900 and 1920x1080. The session stage stays a scroll story.
 Phones keep the natural flow: four agent cards and nine questions do not fit on one phone screen.
+
+## Centred hero and wider margins (2026-11-05, owner request)
+
+- **Hero:** the headline, lede and download sit centred. The village floats around them
+  (`HeroScene.astro`): trees, a house per workspace, tents and the four builders in their states,
+  in three depth layers that drift against the pointer (`src/motion/hero.ts`), each piece bobbing
+  on its own slow cycle with a soft drop shadow. Pieces are sized in `min(1vw, 1.7svh)` so they
+  never grow into the copy on a short screen. Phones show the Town Hall, two houses and two
+  builders along the bottom, below the copy.
+- **Margins:** `--gutter` (the page margin) is now `max(clamp(1.375rem, 5.5vw, 7rem), (100vw - 1280px) / 2)`,
+  so content keeps clear of the edges and never runs wider than 1280px. Column gaps are a separate,
+  tighter `--col-gap`.

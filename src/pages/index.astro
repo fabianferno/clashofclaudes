@@ -13,6 +13,7 @@ import { agents, faq, privacy, site, tour, villageNotes } from '../data/site';
     mainEntity: faq.map((f) => ({ '@type': 'Question', name: f.q, acceptedAnswer: { '@type': 'Answer', text: f.a } })),
   })} />
   <section class="hero" aria-labelledby="hero-title">
+    <HeroScene />
     <div class="hero__copy">
       <h1 class="title hero__title" id="hero-title" data-split="lines" data-intro>Run all your coding agents from one village.</h1>
       <p class="hero__lede">
@@ -24,9 +25,6 @@ import { agents, faq, privacy, site, tour, villageNotes } from '../data/site';
         <DownloadButton requirements />
         <p class="hero__more"><a class="ulink" href="/beta/">How the beta works</a></p>
       </div>
-    </div>
-    <div class="hero__scene">
-      <HeroScene />
     </div>
   </section>
 

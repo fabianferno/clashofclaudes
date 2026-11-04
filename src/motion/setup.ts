@@ -1,5 +1,6 @@
 // Global motion for this site: runs once on the client before the first page initializes.
 import { gsap } from 'gsap';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { ease, onPage, onScroll, setTransition } from '../engine';
 import { startSession } from './session';
 import { site } from '../data/site';
@@ -20,14 +21,34 @@ export function setupMotion() {
   // The HUD steps aside while reading down, and comes back on any scroll up.
   let last = 0;
   onScroll(({ y }) => {
+    document.documentElement.classList.toggle('hud-solid', y > 40);
     if (Math.abs(y - last) < 6) return;
     document.documentElement.classList.toggle('hud-away', y > 240 && y > last && !document.documentElement.classList.contains('menu-open'));
     last = y;
   });
 
   startSession();
+  toc();
   menu();
   version();
+}
+
+// "You are here" for the doc pages' table of contents.
+function toc() {
+  onPage(() => {
+    const links = [...document.querySelectorAll<HTMLAnchorElement>('.doc__toc a[href^="#"]')];
+    if (!links.length) return;
+    const mark = (id: string) => links.forEach((a) => {
+      const on = a.hash === `#${id}`;
+      a.classList.toggle('is-current', on);
+      if (on) a.setAttribute('aria-current', 'location'); else a.removeAttribute('aria-current');
+    });
+    links.forEach((a) => {
+      const section = document.getElementById(a.hash.slice(1));
+      if (!section) return;
+      ScrollTrigger.create({ trigger: section, start: 'top 45%', end: 'bottom 45%', onToggle: (self) => { if (self.isActive) mark(section.id); } });
+    });
+  });
 }
 
 function menu() {

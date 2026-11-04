@@ -35,8 +35,8 @@ import Builder from '../../components/Builder.astro';
       <section id="config" aria-labelledby="config-h">
         <h2 id="config-h">Your agent configuration</h2>
         <p>The app never edits your agents’ own configuration: nothing under <code>~/.claude</code>, <code>~/.codex</code>, <code>~/.gemini</code> or <code>~/.config/opencode</code>, and nothing in a project’s <code>.claude</code>, <code>.codex</code>, <code>.gemini</code> or <code>.opencode</code> folder.</p>
-        <p>To receive status events it hands each session a private settings file kept in the app’s own data folder, <code>~/Library/Application Support/dev.clashofclaudes.app/sessions/</code>, and deletes it when the session closes.</p>
-        <p>To resume an Antigravity session the app reads, and never writes, <code>~/.gemini/antigravity-cli/history.jsonl</code>.</p>
+        <p>To receive status events it hands each session a private settings file kept in the app’s own data folder, <code class="path">~/Library/<wbr />Application&nbsp;Support/<wbr />dev.clashofclaudes.app/<wbr />sessions/</code>, and deletes it when the session closes.</p>
+        <p>To resume an Antigravity session the app reads, and never writes, <code class="path">~/.gemini/<wbr />antigravity-cli/<wbr />history.jsonl</code>.</p>
       </section>
       <section id="status" aria-labelledby="status-h">
         <h2 id="status-h">How status works</h2>

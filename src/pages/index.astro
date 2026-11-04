@@ -16,7 +16,7 @@ import { agents, privacy, site, villageNotes } from '../data/site';
         isometric town on your Mac. See who is working, who needs you and who shipped, without
         clicking through terminal tabs.
       </p>
-      <div data-reveal="up" data-intro data-delay="0.4">
+      <div class="hero__cta" data-reveal="up" data-intro data-delay="0.4">
         <DownloadButton requirements />
         <p class="hero__more"><a class="ulink" href="/beta/">How the beta works</a></p>
       </div>
@@ -28,6 +28,15 @@ import { agents, privacy, site, villageNotes } from '../data/site';
 
   <section class="statement" aria-labelledby="why-title">
     <h2 class="statement__title" id="why-title" data-split="lines">Four agents in four repos look exactly like twelve terminal tabs.</h2>
+    <div class="statement__art" aria-hidden="true" data-reveal="place">
+      <div class="tabs">
+        <span class="tab">~/api  claude</span>
+        <span class="tab">~/web  codex</span>
+        <span class="tab is-waiting">~/docs  agy</span>
+        <span class="tab">~/cli  opencode</span>
+      </div>
+      <div class="unit"><img src="/img/bubble-needs.webp" alt="" width="120" height="120" loading="lazy" /><span class="builder" style="--sheet:url(/img/builder-apprentice-antigravity.webp)"></span></div>
+    </div>
     <div class="statement__body" data-reveal="up">
       <p>One is stuck on a permission prompt. One finished ten minutes ago. One is still thinking. You find out by clicking through all of them.</p>
       <p>In the village the answer is on screen: a builder hammering away is working, a red “!” is waiting for you, a medal means it shipped. The real terminal is always one click away.</p>

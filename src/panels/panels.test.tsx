@@ -48,8 +48,25 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+const openColors = () => fireEvent.click(screen.getByRole('button', { name: 'House colour' }));
+
+test('the house colour opens in a dialog; Esc closes it and leaves the panel open', () => {
+  act(() => useApp.getState().setSelection({ kind: 'workspace', id: 'w1' }));
+  render(<SidePanel />);
+  expect(screen.queryByRole('dialog', { name: 'House colour' })).toBeNull();
+  openColors();
+  expect(screen.getByRole('dialog', { name: 'House colour' })).toBeTruthy();
+  act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); });
+  expect(screen.queryByRole('dialog', { name: 'House colour' })).toBeNull();
+  expect(useApp.getState().selection).not.toBeNull();
+  openColors();
+  fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+  expect(screen.queryByRole('dialog', { name: 'House colour' })).toBeNull();
+});
+
 test('a swatch paints the house at once and saves; Auto goes back', async () => {
   render(<WorkspacePanel workspaceId="w1" />);
+  openColors();
   expect(screen.getByRole('radio', { name: 'Auto' }).getAttribute('aria-checked')).toBe('true');
   await act(async () => { fireEvent.click(screen.getByRole('radio', { name: 'Green' })); });
   expect(ipc.setWorkspaceColor).toHaveBeenCalledWith('w1', '#3fa34d');
@@ -64,6 +81,7 @@ test('a failed colour save puts the old one back and says why', async () => {
   act(() => useApp.setState({ workspaces: [ws({ color: '#8a4fd0' })] }));
   ipc.setWorkspaceColor.mockRejectedValueOnce('disk full');
   render(<WorkspacePanel workspaceId="w1" />);
+  openColors();
   await act(async () => { fireEvent.click(screen.getByRole('radio', { name: 'Gold' })); });
   expect(useApp.getState().workspaces[0].color).toBe('#8a4fd0');
   expect(screen.getByText('disk full')).toBeTruthy();
@@ -73,6 +91,7 @@ test('any colour waits for the colour panel to rest before saving', async () => 
   vi.useFakeTimers();
   try {
     render(<WorkspacePanel workspaceId="w1" />);
+    openColors();
     const any = screen.getByLabelText('Any colour');
     fireEvent.change(any, { target: { value: '#112233' } });
     fireEvent.change(any, { target: { value: '#123456' } });

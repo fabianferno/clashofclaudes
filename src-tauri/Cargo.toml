@@ -35,6 +35,10 @@ tauri-plugin-notification = "2.8.0"
 tauri-plugin-updater = "2"
 
 base64 = "0.22"
+# Bug reports (`bugreport.rs`): the same reqwest and rustls the updater already builds. Named apart
+# so tests keep their own plain-HTTP reqwest (dev-dependencies).
+http_client = { package = "reqwest", version = "0.13", default-features = false, features = ["multipart", "rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 
 # App board snapshots: WKWebView's own snapshot of a hidden window (see `snapshot.rs`).
 [target.'cfg(target_os = "macos")'.dependencies]

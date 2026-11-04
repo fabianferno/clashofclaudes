@@ -202,3 +202,18 @@ export interface Frame {
   /** Skip marker: display-only bytes outside the stream; written as-is, never acked. */
   marker?: boolean;
 }
+
+/** What the backend adds to every bug report, and whether this build can send one. */
+export interface BugReportInfo {
+  enabled: boolean;
+  system: Array<[string, string]>;
+}
+
+export interface BugReport {
+  text: string;
+  contact: string | null;
+  /** Shown to the owner before sending. */
+  details: Array<[string, string]>;
+  /** Base64 JPEG of the window. */
+  screenshot: string | null;
+}

@@ -3,6 +3,7 @@ import type { AgentKind, AgentQuota, Builder, CloseOutcome, Compound, SessionInf
 import { iso, toGrid } from './iso';
 import { HALL, HOUSE, STRUCT, gateOutside, gateSide, gateTile, villageRect, wallRect, type Rect } from './layout';
 import { enclosure, seedOf } from './enclosure';
+import { setVillageSnapshot } from '../screenshot';
 import { classOf, gearOf, houseColors, houseStage, scaffoldHeight, type ClassTier, type Gear } from './look';
 import { blockedBy, dropOf, onGround, retarget, routeHome, routeToSite, standTile, step, walkable, type Blocked, type BuilderDrop, type Walker } from './walkers';
 import {
@@ -407,6 +408,7 @@ const GROUND_SEED = 7;
 interface DriverHooks { snapshot: () => Promise<string>; debug: () => SceneDebug }
 const liveScenes: DriverHooks[] = [];
 function publishToDriver(): void {
+  setVillageSnapshot(liveScenes[liveScenes.length - 1]?.snapshot ?? null); // for bug report screenshots
   if (!import.meta.env.DEV) return;
   void import('../driver').then((d) => {
     const top = liveScenes[liveScenes.length - 1];

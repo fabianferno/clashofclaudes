@@ -2,32 +2,36 @@
 
 Universal (arm64 + x86_64) macOS 13+ DMG. Signed and notarized when credentials are present; otherwise the build succeeds unsigned and prints `UNSIGNED BUILD — not for distribution`.
 
-## One-time setup (owner)
+## Shipping a beta: `pnpm ship <version>`
 
-1. **Apple Developer account** (paid program). In Certificates, create a **Developer ID Application** certificate, install it in your login keychain, and find the identity:
-   `security find-identity -v -p codesigning` -> `Developer ID Application: Name (TEAMID)`.
-   Export `APPLE_SIGNING_IDENTITY="Developer ID Application: Name (TEAMID)"`.
-   (CI: `APPLE_CERTIFICATE` = base64 .p12 and `APPLE_CERTIFICATE_PASSWORD`.)
-2. **Notarization credentials** — either:
-   - Apple ID: `APPLE_ID`, `APPLE_PASSWORD` (app-specific password from appleid.apple.com), `APPLE_TEAM_ID`; or
-   - App Store Connect API key: `APPLE_API_ISSUER`, `APPLE_API_KEY` (key ID), `APPLE_API_KEY_PATH` (.p8 path).
-3. **Updater key** (kept outside the repo, never committed):
-   `pnpm tauri signer generate -w ~/.tauri/clashofclaudes.key`
-   Then edit `src-tauri/tauri.conf.json` under `plugins.updater`:
-   - `pubkey`: replace `REPLACE_WITH_UPDATER_PUBLIC_KEY` with the **public key contents** (not a path).
-   - `endpoints[0]`: replace `OWNER` and `REPO` in `https://github.com/OWNER/REPO/releases/latest/download/latest.json`.
-   Export `TAURI_SIGNING_PRIVATE_KEY` (path or content) and, if set, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. `.env` files are not read. Without the key the release script skips updater artifacts: the `.app.tar.gz` and `.sig` files exist **only** when the key is set, and the build still succeeds (a signed build without the key prints "this build will never auto-update"). With the key set, the script refuses to build (even `--dry-run`) while `pubkey` is the placeholder or the endpoint still names `OWNER/REPO`.
-4. **GitHub repo for releases**: create it, push, and use GitHub Releases to host the DMG, `.app.tar.gz`, `.sig` and `latest.json`.
+`scripts/publish.sh` does the whole release from a clean, up-to-date `main`:
 
-## Per-release procedure
+1. Finds the credentials on this Mac (each can be overridden by its env var):
+   - `APPLE_SIGNING_IDENTITY`: the first **Developer ID Application** certificate in the keychain (the team's).
+   - `NOTARY_PROFILE`: a `notarytool store-credentials` keychain profile; tries `clashofclaudes`, then the team's `typewiser`.
+   - `TAURI_SIGNING_PRIVATE_KEY`: the updater key, from `~/.tauri/clashofclaudes.key`, else the login keychain item "Clash of Claudes updater key" (a backup of the same key). **Losing this key means installed apps can never update again**; keep a copy in a password manager.
+   - the bug webhook (`COC_BUG_WEBHOOK` or `src-tauri/bug-webhook.txt`); it refuses to ship a build that can't send feedback.
+2. Bumps `version` in `tauri.conf.json`, `package.json`, `Cargo.toml` (+ `Cargo.lock`).
+3. Runs `scripts/release.sh`: universal build, signed; DMG notarized and stapled; updater tarball + `latest.json`; a copy of the DMG named `Clash-of-Claudes.dmg`.
+4. Verifies `codesign`, `stapler validate` and `spctl`; if anything fails the version bump is undone.
+5. Commits `Release v<version>`, tags `v<version>`, pushes to the private repo.
+6. Creates the GitHub Release `v<version>` on the **public** releases repo, [fabianferno/clashofclaudes-releases](https://github.com/fabianferno/clashofclaudes-releases), with the versioned DMG, `Clash-of-Claudes.dmg`, the `.app.tar.gz` and `latest.json`. Notes are the commit subjects since the last tag, or `--notes <file>`.
 
-1. Bump `version` in `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, `package.json`; commit.
-2. Export the env vars above, then `scripts/release.sh --dry-run` (prints the plan and which credentials were detected; never prints secret values). Only `--dry-run` is accepted; any other argument aborts.
-3. `scripts/release.sh` (or `pnpm release`). It runs `pnpm tauri build --target universal-apple-darwin`, then automatically runs `lipo -archs` on the built binary (fails unless it prints `x86_64 arm64`) and prints artifact paths and SHA-256s. Notes: unsigned builds unset `APPLE_CERTIFICATE*` and all other Apple variables; if both notarization credential sets are present it warns and uses the API key.
-4. Outputs are in `src-tauri/target/universal-apple-darwin/release/bundle/` (`dmg/`, `macos/`).
-5. When `TAURI_SIGNING_PRIVATE_KEY` is set the script also writes `bundle/latest.json` via `scripts/make-latest-json.mjs` (`version` from `tauri.conf.json`, `notes` from `$RELEASE_NOTES`, default `Release v<version>`). The tarball URL is `https://github.com/OWNER/REPO/releases/download/v<version>/<tarball>` (OWNER/REPO taken from `plugins.updater.endpoints[0]`; spaces in the file name become dots, as GitHub renames uploaded assets; override the whole URL with `$RELEASE_DOWNLOAD_URL`). Both `darwin-aarch64` and `darwin-x86_64` point at the one universal tarball.
-6. Verify: `codesign -dv --verbose=2 <app>`; `spctl -a -vv <app>`; `xcrun stapler validate <dmg>`.
-7. Create the GitHub Release `v<version>` and upload the DMG, the `.app.tar.gz` and `latest.json` (`.sig` is already embedded in `latest.json`; uploading it is optional). Because the endpoint is `releases/latest/download/latest.json`, only the newest non-prerelease release is served.
+`pnpm ship <version> --dry-run` shows the plan and the notes without changing anything.
+
+The source repo is private, so release files live in the separate public repo: GitHub serves private-repo assets only to signed-in collaborators, which would break both the download link and the updater.
+
+**Download link** (always the newest release, used by the landing page): `https://github.com/fabianferno/clashofclaudes-releases/releases/latest/download/Clash-of-Claudes.dmg`.
+
+## How installed apps update
+
+The updater reads `https://github.com/fabianferno/clashofclaudes-releases/releases/latest/download/latest.json` (`plugins.updater.endpoints`), and verifies the tarball against `plugins.updater.pubkey`. Only the newest non-prerelease release is served, so never mark a beta as a prerelease if testers should get it.
+
+In the app: a check 10 s after launch and every 6 h; when a newer version exists a toast offers **Update**, shows download progress, then **Restart to update** (with running sessions it asks first; cancelling keeps the update for the next launch). **Settings › Check now** checks at once, and the automatic check can be turned off there.
+
+## Lower-level: `scripts/release.sh`
+
+Builds without publishing. Credentials come only from the environment: `APPLE_SIGNING_IDENTITY` plus one notarization method (`NOTARY_PROFILE`, or `APPLE_ID`/`APPLE_PASSWORD`/`APPLE_TEAM_ID`, or `APPLE_API_ISSUER`/`APPLE_API_KEY`/`APPLE_API_KEY_PATH`), and `TAURI_SIGNING_PRIVATE_KEY` for updater files. Without them it builds unsigned and prints `UNSIGNED BUILD — not for distribution`. `--dry-run` prints the plan. Outputs land in `src-tauri/target/universal-apple-darwin/release/bundle/`.
 
 The app sandbox stays OFF (it spawns CLIs in PTYs). Hardened runtime is ON (`bundle.macOS.hardenedRuntime`; Tauri applies it when signing). `Entitlements.plist` is empty by design; add `com.apple.security.cs.allow-jit` only if the notarization log asks.
 
@@ -39,10 +43,8 @@ It never runs when any of these hold (decided in Rust before any request): a deb
 
 Until you replace the placeholders the shipped app is fully functional and updates itself never.
 
-## Public-name / rename checklist
+## Identifier
 
-- `identifier` in `src-tauri/tauri.conf.json` is `dev.clashofclaudes.app`. Tauri warns because it ends with `.app` (conflicts with the macOS bundle extension). Changing it moves the app data directory (existing `state.json` and sessions are orphaned), so change it deliberately and migrate/copy the old data dir.
-- `productName` ("Clash of Claudes") — also the `.app`/DMG name and window titles (`app.windows[].title`).
-- Icons in `src-tauri/icons/` (regenerate with `pnpm tauri icon <source.png>`).
-- `package.json` `name`, `Cargo.toml` package name/authors/description, updater endpoint URL, DMG window layout if names change.
-- Art/trademark: no Supercell names or assets; verify the public name does not imply affiliation.
+The bundle identifier is `dev.clashofclaudes.desktop` (until 0.2.0 it was `dev.clashofclaudes.app`, which Tauri warned about). On first launch a new build moves `~/Library/Application Support/dev.clashofclaudes.app` to `.../dev.clashofclaudes.desktop` and leaves a link at the old path (`migrate_old_data_dir` in `lib.rs`). Changing it again would need the same kind of migration. `pnpm app` keeps its own data in `dev.clashofclaudes.app.dev` regardless.
+
+Art/trademark: no Supercell names or assets; the public name must not imply affiliation.

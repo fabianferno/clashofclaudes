@@ -1,4 +1,7 @@
 import { create } from 'zustand';
+
+/** A newer version the updater found, with its release notes when it has them. */
+export interface FoundUpdate { version: string | null; notes: string | null }
 import { ipc } from '../api/ipc';
 import type { AgentInfo, AgentKind, AgentQuota, AppPreview, Todo, Builder, CloseOutcome, Compound, ListState, SessionInfo, SessionState, Settings, Stats, Tile, Workspace, ReportKind } from '../api/types';
 import { HOUSE, STRUCT, canPlace, compoundFits, gapBetween, placeCompound, shiftCompound, spotFor, wallRect } from '../village/layout';
@@ -217,8 +220,8 @@ export interface AppState {
   bugReport: { screenshot: string | null; kind: ReportKind } | null;
   setBugReport: (r: { screenshot: string | null; kind: ReportKind } | null) => void;
   /** An update was found (by the scheduled check or Settings' Check now); the toast offers it. */
-  updateAvailable: boolean;
-  setUpdateAvailable: (available: boolean) => void;
+  updateAvailable: FoundUpdate | null;
+  setUpdateAvailable: (update: FoundUpdate | null) => void;
   /** Browsers the owner opened, each standing as a board in its workspace. */
   browsers: Browser[];
   openBrowser: (workspaceId: string, url: string) => Browser;
@@ -255,7 +258,7 @@ export const useApp = create<AppState>((set, get) => ({
   settingsOpen: false,
   settings: null,
   bugReport: null,
-  updateAvailable: false,
+  updateAvailable: null,
   browsers: [],
   selectedSessionId: null,
   selection: null,

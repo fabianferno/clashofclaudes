@@ -49,12 +49,14 @@ export function startSession() {
     };
 
     apply('working');
-    chapters.forEach((c) => {
+    // Phones have no room to pin the stage beside the text, so it plays the session on its own
+    // clock while on screen (see the tick below) and the chapter list follows it.
+    const auto = isMobile();
+    if (!auto) chapters.forEach((c) => {
       ScrollTrigger.create({
         trigger: c,
-        // On phones the sticky stage covers the top half, so a chapter counts once it is in the lower half.
-        start: isMobile() ? 'top 80%' : 'top 60%',
-        end: isMobile() ? 'bottom 80%' : 'bottom 60%',
+        start: 'top 60%',
+        end: 'bottom 60%',
         onToggle: (self) => { if (self.isActive) apply(c.dataset.chapter as State); },
       });
     });
@@ -64,7 +66,13 @@ export function startSession() {
     const io = new IntersectionObserver(([e]) => { visible = e.isIntersecting; });
     io.observe(stage);
     let acc = 0;
+    let held = 0;
+    const order: State[] = ['working', 'needs', 'allowed', 'finished'];
     const tick = (_t: number, dt: number) => {
+      if (auto && visible && !reduced) {
+        held += dt;
+        if (held > (state === 'finished' ? 4200 : 3000)) { held = 0; apply(order[(order.indexOf(state!) + 1) % order.length]); }
+      }
       if (!visible || reduced || (state !== 'working' && state !== 'allowed')) return;
       acc += dt;
       if (acc > 1400) {

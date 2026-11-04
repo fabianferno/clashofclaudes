@@ -1,6 +1,6 @@
 import { useId } from 'react';
 import type { AgentKind } from '../api/types';
-import { MARK_GRADIENT, MARK_PATHS, PROMPT_GLYPH, TILES } from '../agentMarks';
+import { MARK_FILL_RULE, MARK_GRADIENT, MARK_PATHS, PROMPT_GLYPH, TILES } from '../agentMarks';
 
 /**
  * The agent as an app icon: its mark on a rounded, shaded tile, `size` px square. Decorative (the
@@ -29,7 +29,7 @@ export default function AgentLogo({ kind, size = 56, framed = false }: { kind: A
       <rect x="2" y="2" width="60" height="60" rx="14" fill={`url(#${uid}-bg)`} />
       <g transform="translate(16 16) scale(1.333)">
         {path
-          ? <path d={path} fill={fg} />
+          ? <path d={path} fill={fg} fillRule={MARK_FILL_RULE[kind]} />
           : (
             <>
               <path d={PROMPT_GLYPH[0]} fill="none" stroke={fg} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />

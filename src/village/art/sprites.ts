@@ -1,5 +1,5 @@
 import type { AgentKind } from '../../api/types';
-import { MARK_GRADIENT, MARK_PATHS, PROMPT_GLYPH, TILES } from '../../agentMarks';
+import { MARK_FILL_RULE, MARK_GRADIENT, MARK_PATHS, PROMPT_GLYPH, TILES } from '../../agentMarks';
 import { RESOURCE, HOUSE_COLORS, type ClassTier, type Gear } from '../look';
 import { outlinedText, withContext, type Art } from './draw';
 
@@ -258,7 +258,7 @@ function capBadge(g: CanvasRenderingContext2D, agent: AgentKind, x: number, y: n
   }
   const path = MARK_PATHS[agent];
   if (typeof Path2D !== 'undefined') {
-    if (path) g.fill(new Path2D(path));
+    if (path) g.fill(new Path2D(path), MARK_FILL_RULE[agent] ?? 'nonzero');
     else {
       g.lineWidth = 3; g.lineCap = 'round'; g.lineJoin = 'round';
       for (const d of PROMPT_GLYPH) g.stroke(new Path2D(d));

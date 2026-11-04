@@ -10,7 +10,7 @@ export const DEFAULT_SETTINGS: Settings = { updatesEnabled: true, notifyNeedsYou
 
 export const SHORTCUTS: Array<[keys: string, what: string]> = [
   ['⌘ ,', 'Open Settings'],
-  ['Help menu', 'Report a bug'],
+  ['Help menu', 'Report a bug or request a feature'],
   ['⌘ =', 'Zoom in'],
   ['⌘ −', 'Zoom out'],
   ['⌘ 0', 'Fit the whole village'],
@@ -98,7 +98,11 @@ export default function SettingsPage() {
             <div className="set-body">
               <div className="set-line">
                 <span className="set-note">Something broken or odd? Tell the developers; it goes straight to their Discord.</span>
-                <button className="hud-btn blue sm" onClick={() => void openBugReport()}>Report a bug</button>
+                <button className="hud-btn blue sm" onClick={() => void openBugReport('bug')}>Report a bug</button>
+              </div>
+              <div className="set-line">
+                <span className="set-note">Missing something? Ask for it the same way.</span>
+                <button className="hud-btn blue sm" onClick={() => void openBugReport('feature')}>Request a feature</button>
               </div>
             </div>
           </section>

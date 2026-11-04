@@ -47,43 +47,43 @@ test('details name versions and counts, never tasks or names', () => {
 test('opening closes Settings, takes a picture, and opens without one when it fails or hangs', async () => {
   vi.useFakeTimers();
   act(() => useApp.setState({ settingsOpen: true }));
-  const p = openBugReport(async () => 'JPEG');
+  const p = openBugReport('bug', async () => 'JPEG');
   expect(useApp.getState().settingsOpen).toBe(false);
   await act(async () => { await vi.advanceTimersByTimeAsync(100); await p; });
-  expect(useApp.getState().bugReport).toEqual({ screenshot: 'JPEG' });
+  expect(useApp.getState().bugReport).toEqual({ screenshot: 'JPEG', kind: 'bug' });
 
   act(() => useApp.setState({ bugReport: null }));
-  const hang = openBugReport(() => new Promise(() => {}));
+  const hang = openBugReport('bug', () => new Promise(() => {}));
   await act(async () => { await vi.advanceTimersByTimeAsync(CAPTURE_MS + 100); await hang; });
-  expect(useApp.getState().bugReport).toEqual({ screenshot: null });
+  expect(useApp.getState().bugReport).toEqual({ screenshot: null, kind: 'bug' });
 
   act(() => useApp.setState({ bugReport: null }));
-  const broken = openBugReport(() => Promise.reject(new Error('no')));
+  const broken = openBugReport('feature', () => Promise.reject(new Error('no')));
   await act(async () => { await vi.advanceTimersByTimeAsync(100); await broken; });
-  expect(useApp.getState().bugReport).toEqual({ screenshot: null });
+  expect(useApp.getState().bugReport).toEqual({ screenshot: null, kind: 'feature' });
 });
 
 test('sends the text, contact and details; the screenshot only when ticked', async () => {
-  act(() => useApp.setState({ bugReport: { screenshot: 'JPEG' } }));
+  act(() => useApp.setState({ bugReport: { screenshot: 'JPEG', kind: 'bug' } }));
   render(<BugReportDialog />);
-  const send = await screen.findByRole('button', { name: 'Send report' });
+  const send = await screen.findByRole('button', { name: 'Send' });
   expect((send as HTMLButtonElement).disabled).toBe(true); // nothing written yet
   fireEvent.change(screen.getByPlaceholderText(/What you did/), { target: { value: 'The house vanished' } });
   fireEvent.change(screen.getByPlaceholderText('Discord name or email'), { target: { value: '  ada  ' } });
   expect(screen.getByText('App')).toBeTruthy(); // the backend's details are shown too
   await act(async () => { fireEvent.click(send); });
-  expect(ipc.sendBugReport).toHaveBeenCalledWith(expect.objectContaining({ text: 'The house vanished', contact: 'ada', screenshot: null }));
+  expect(ipc.sendBugReport).toHaveBeenCalledWith(expect.objectContaining({ kind: 'bug', text: 'The house vanished', contact: 'ada', screenshot: null }));
   expect(ipc.sendBugReport.mock.calls[0][0].details.map((d: [string, string]) => d[0])).toContain('Agents');
   expect(screen.getByText('Sent. Thank you!')).toBeTruthy();
 });
 
 test('a ticked screenshot goes along; a failure keeps the report and says why', async () => {
   ipc.sendBugReport.mockRejectedValueOnce('Could not send the report: timed out');
-  act(() => useApp.setState({ bugReport: { screenshot: 'JPEG' } }));
+  act(() => useApp.setState({ bugReport: { screenshot: 'JPEG', kind: 'bug' } }));
   render(<BugReportDialog />);
   fireEvent.change(await screen.findByPlaceholderText(/What you did/), { target: { value: 'It froze' } });
   fireEvent.click(screen.getByRole('checkbox'));
-  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Send report' })); });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Send' })); });
   expect(ipc.sendBugReport.mock.calls[0][0].screenshot).toBe('JPEG');
   expect(screen.getByText('Could not send the report: timed out')).toBeTruthy();
   expect((screen.getByPlaceholderText(/What you did/) as HTMLTextAreaElement).value).toBe('It froze');
@@ -91,12 +91,29 @@ test('a ticked screenshot goes along; a failure keeps the report and says why', 
 
 test('a build without a webhook says so and cannot send; Esc closes', async () => {
   ipc.bugReportInfo.mockResolvedValue({ enabled: false, system: [] });
-  act(() => useApp.setState({ bugReport: { screenshot: null } }));
+  act(() => useApp.setState({ bugReport: { screenshot: null, kind: 'bug' } }));
   render(<BugReportDialog />);
-  expect(await screen.findByText("This build can't send bug reports.")).toBeTruthy();
+  expect(await screen.findByText("This build can't send reports.")).toBeTruthy();
   fireEvent.change(screen.getByPlaceholderText(/What you did/), { target: { value: 'x' } });
-  expect((screen.getByRole('button', { name: 'Send report' }) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole('button', { name: 'Send' }) as HTMLButtonElement).disabled).toBe(true);
   expect(screen.queryByRole('checkbox')).toBeNull(); // no picture, no tick box
   act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); });
   expect(useApp.getState().bugReport).toBeNull();
+});
+
+test('a feature request asks for what is wanted and sends as one; the kind can be switched', async () => {
+  act(() => useApp.setState({ bugReport: { screenshot: null, kind: 'feature' } }));
+  render(<BugReportDialog />);
+  expect(await screen.findByRole('heading', { name: 'Request a feature' })).toBeTruthy();
+  expect(screen.getByRole('radio', { name: 'Feature request' }).getAttribute('aria-checked')).toBe('true');
+  fireEvent.change(screen.getByPlaceholderText(/What you want/), { target: { value: 'Dark mode' } });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Send' })); });
+  expect(ipc.sendBugReport).toHaveBeenCalledWith(expect.objectContaining({ kind: 'feature', text: 'Dark mode' }));
+
+  cleanup();
+  act(() => useApp.setState({ bugReport: { screenshot: null, kind: 'feature' } }));
+  render(<BugReportDialog />);
+  fireEvent.click(await screen.findByRole('radio', { name: 'Bug' }));
+  expect(screen.getByRole('heading', { name: 'Report a bug' })).toBeTruthy();
+  expect(screen.getByPlaceholderText(/What you did/)).toBeTruthy();
 });

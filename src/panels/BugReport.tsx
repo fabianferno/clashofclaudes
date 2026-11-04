@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ipc } from '../api/ipc';
-import type { BugReportInfo } from '../api/types';
+import type { BugReportInfo, ReportKind } from '../api/types';
 import { useApp, type AppState } from '../state/store';
 import { captureWindow } from '../screenshot';
 import { spritesReady } from '../village/art/sprites';
@@ -11,10 +11,10 @@ export const CAPTURE_MS = 4000;
 const capture = () => captureWindow(undefined, { maxWidth: 1600, type: 'image/jpeg', quality: 0.82 });
 
 /**
- * Opens the bug report dialog with a picture of the window as it is (Settings closed first, so
- * the picture shows what the owner was looking at). Without a picture after CAPTURE_MS it opens anyway.
+ * Opens the report dialog, on a bug or a feature request, with a picture of the window as it is (Settings
+ * closed first, so the picture shows what the owner was looking at). Without a picture after CAPTURE_MS it opens anyway.
  */
-export async function openBugReport(shoot: () => Promise<string> = capture): Promise<void> {
+export async function openBugReport(kind: ReportKind = 'bug', shoot: () => Promise<string> = capture): Promise<void> {
   const st = useApp.getState();
   if (st.bugReport) return;
   st.setSettingsOpen(false);
@@ -28,8 +28,14 @@ export async function openBugReport(shoot: () => Promise<string> = capture): Pro
   } finally {
     document.body.style.cursor = '';
   }
-  useApp.getState().setBugReport({ screenshot });
+  useApp.getState().setBugReport({ screenshot, kind });
 }
+
+/** What the dialog says for each kind. */
+const COPY: Record<ReportKind, { title: string; ask: string; placeholder: string }> = {
+  bug: { title: 'Report a bug', ask: 'What happened?', placeholder: 'What you did, what you expected, and what happened instead.' },
+  feature: { title: 'Request a feature', ask: 'What would you like?', placeholder: 'What you want to do, and how it would help you.' },
+};
 
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
 
@@ -52,9 +58,10 @@ export function reportDetails(st: Pick<AppState, 'agents' | 'workspaces' | 'buil
   return out;
 }
 
-/** Help › Report a Bug… or Settings: what went wrong, sent to the developers' Discord. Esc or Cancel closes it. */
+/** Help menu or Settings: what went wrong or what's wanted, sent to the developers' Discord. Esc or Cancel closes it. */
 export default function BugReportDialog() {
   const open = useApp((s) => s.bugReport);
+  const [kind, setKind] = useState<ReportKind>('bug');
   const [text, setText] = useState('');
   const [contact, setContact] = useState('');
   const [attach, setAttach] = useState(false);
@@ -67,7 +74,7 @@ export default function BugReportDialog() {
   useEffect(() => {
     if (!open) return;
     let live = true;
-    setText(''); setContact(''); setAttach(false); setSent(false); setErr(null); setSending(false);
+    setKind(open.kind); setText(''); setContact(''); setAttach(false); setSent(false); setErr(null); setSending(false);
     ipc.bugReportInfo().then((i) => live && setInfo(i)).catch(() => live && setInfo({ enabled: false, system: [] }));
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
@@ -90,7 +97,7 @@ export default function BugReportDialog() {
     setSending(true);
     setErr(null);
     try {
-      await ipc.sendBugReport({ text, contact: contact.trim() || null, details, screenshot: attach ? shot : null });
+      await ipc.sendBugReport({ kind, text, contact: contact.trim() || null, details, screenshot: attach ? shot : null });
       setSent(true);
     } catch (e) {
       setErr(String(e));
@@ -104,8 +111,8 @@ export default function BugReportDialog() {
       <div className="agent-dialog bug-dialog" role="dialog" aria-modal="true" aria-labelledby="bug-title" onClick={(e) => e.stopPropagation()}>
         <header className="agent-dialog-head">
           <div>
-            <h3 id="bug-title" className="ol">Report a bug</h3>
-            <span className="sp-d">Thanks for trying the beta. Reports go to the developers' Discord.</span>
+            <h3 id="bug-title" className="ol">{COPY[kind].title}</h3>
+            <span className="sp-d">Thanks for trying the beta. It goes to the developers' Discord.</span>
           </div>
           <button type="button" className="agent-dialog-x" aria-label="Close" onClick={close}>×</button>
         </header>
@@ -119,11 +126,18 @@ export default function BugReportDialog() {
         ) : (
           <form onSubmit={(e) => { e.preventDefault(); void send(); }}
             onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void send(); } }}>
-            {info && !info.enabled && <div className="panel-warn">This build can't send bug reports.</div>}
+            {info && !info.enabled && <div className="panel-warn">This build can't send reports.</div>}
+            <div className="bug-kind" role="radiogroup" aria-label="Kind of report">
+              {(['bug', 'feature'] as const).map((k) => (
+                <button key={k} type="button" role="radio" aria-checked={kind === k} onClick={() => setKind(k)}>
+                  {k === 'bug' ? 'Bug' : 'Feature request'}
+                </button>
+              ))}
+            </div>
             <label className="bug-field">
-              <span className="sp-sec">What happened? <b className="bug-req">required</b></span>
+              <span className="sp-sec">{COPY[kind].ask} <b className="bug-req">required</b></span>
               <textarea autoFocus rows={5} value={text} onChange={(e) => setText(e.target.value)}
-                placeholder="What you did, what you expected, and what happened instead." />
+                placeholder={COPY[kind].placeholder} />
             </label>
             <label className="bug-field">
               <span className="sp-sec">How can we reach you? <i className="bug-opt">optional</i></span>
@@ -149,7 +163,7 @@ export default function BugReportDialog() {
             <div className="sp-btns bug-btns">
               <button type="button" className="hud-btn grey sm" onClick={close}>Cancel</button>
               <span className="sp-d bug-hint">⌘↵ to send</span>
-              <button type="submit" className="hud-btn blue sm" disabled={!text.trim() || sending || !info?.enabled}>{sending ? 'Sending…' : 'Send report'}</button>
+              <button type="submit" className="hud-btn blue sm" disabled={!text.trim() || sending || !info?.enabled}>{sending ? 'Sending…' : 'Send'}</button>
             </div>
           </form>
         )}

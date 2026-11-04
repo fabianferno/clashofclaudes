@@ -1,4 +1,4 @@
-//! Bug reports: what the owner wrote, plus the details shown to them before sending, posted to the
+//! Bug reports and feature requests: what the owner wrote, plus the details shown to them before sending, posted to the
 //! project's Discord webhook. Sent only when the owner presses Send; the webhook is set at build
 //! time (see `build.rs`) and never reaches the frontend.
 use base64::Engine;
@@ -13,13 +13,38 @@ pub const MIN_GAP_S: i64 = 30;
 const TEXT_MAX: usize = 3800;
 /// Discord's limit on an embed's title, description and fields together.
 const EMBED_MAX: usize = 6000;
-const TITLE: &str = "Bug report";
 const SCREENSHOT_MAX: usize = 8 * 1024 * 1024;
 static LAST_SENT: AtomicI64 = AtomicI64::new(i64::MIN);
+
+/// Something broken, or something wanted.
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum ReportKind {
+    #[default]
+    Bug,
+    Feature,
+}
+
+impl ReportKind {
+    fn title(self) -> &'static str {
+        match self {
+            ReportKind::Bug => "Bug report",
+            ReportKind::Feature => "Feature request",
+        }
+    }
+    fn color(self) -> u32 {
+        match self {
+            ReportKind::Bug => 0xff4b3e,
+            ReportKind::Feature => 0x4ab0f0,
+        }
+    }
+}
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BugReport {
+    #[serde(default)]
+    pub kind: ReportKind,
     pub text: String,
     /// How to reach the owner, if they gave it.
     #[serde(default)]
@@ -77,7 +102,8 @@ pub fn system(app: &AppHandle) -> Vec<(String, String)> {
 /// (fields that don't fit are dropped). Mentions are off, so a report can't ping the server.
 pub fn payload(r: &BugReport, system: &[(String, String)], with_image: bool) -> serde_json::Value {
     let description = clip(r.text.trim(), TEXT_MAX);
-    let mut left = EMBED_MAX - TITLE.len() - description.chars().count();
+    let title = r.kind.title();
+    let mut left = EMBED_MAX - title.len() - description.chars().count();
     let contact = r.contact.as_deref().map(str::trim).filter(|c| !c.is_empty()).map(|c| ("Contact".to_string(), clip(c, 200)));
     let mut fields: Vec<serde_json::Value> = Vec::new();
     for (name, value) in contact.iter().chain(system.iter()).chain(r.details.iter()).take(24) {
@@ -92,9 +118,9 @@ pub fn payload(r: &BugReport, system: &[(String, String)], with_image: bool) -> 
         fields.push(serde_json::json!({ "name": name, "value": value, "inline": name != "Contact" }));
     }
     let mut embed = serde_json::json!({
-        "title": TITLE,
+        "title": title,
         "description": description,
-        "color": 0xff4b3e,
+        "color": r.kind.color(),
         "fields": fields,
     });
     if with_image {
@@ -166,7 +192,7 @@ mod tests {
     use super::*;
 
     fn report() -> BugReport {
-        BugReport { text: "  The house vanished @everyone  ".into(), contact: Some("ada#1".into()), details: vec![("Agents".into(), "Claude Code 2.1".into())], screenshot: None }
+        BugReport { kind: ReportKind::Bug, text: "  The house vanished @everyone  ".into(), contact: Some("ada#1".into()), details: vec![("Agents".into(), "Claude Code 2.1".into())], screenshot: None }
     }
 
     #[test]
@@ -174,6 +200,7 @@ mod tests {
         let sys = vec![("App".to_string(), "0.1.0".to_string()), ("macOS".to_string(), "".to_string())];
         let v = payload(&report(), &sys, false);
         let e = &v["embeds"][0];
+        assert_eq!(e["title"], "Bug report");
         assert_eq!(e["description"], "The house vanished @everyone");
         let names: Vec<_> = e["fields"].as_array().unwrap().iter().map(|f| f["name"].as_str().unwrap().to_string()).collect();
         assert_eq!(names, ["Contact", "App", "macOS", "Agents"]);
@@ -199,6 +226,18 @@ mod tests {
         let total = chars(&e["title"]) + chars(&e["description"]) + fields.iter().map(|f| chars(&f["name"]) + chars(&f["value"])).sum::<usize>();
         assert!(total <= EMBED_MAX, "{total}");
         assert!(fields.iter().all(|f| chars(&f["value"]) <= 900));
+    }
+
+    #[test]
+    fn feature_requests_are_titled_and_coloured_apart_and_old_reports_are_bugs() {
+        let r = BugReport { kind: ReportKind::Feature, ..report() };
+        let e = &payload(&r, &[], false)["embeds"][0];
+        assert_eq!(e["title"], "Feature request");
+        assert_ne!(e["color"], payload(&report(), &[], false)["embeds"][0]["color"]);
+        let old: BugReport = serde_json::from_str(r#"{"text":"x"}"#).unwrap();
+        assert_eq!(old.kind, ReportKind::Bug);
+        let new: BugReport = serde_json::from_str(r#"{"kind":"feature","text":"x"}"#).unwrap();
+        assert_eq!(new.kind, ReportKind::Feature);
     }
 
     #[test]

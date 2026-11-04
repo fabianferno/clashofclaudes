@@ -177,6 +177,11 @@
 
 /* bug reports (BugReport.tsx) */
 .bug-dialog { width: min(520px, calc(100vw - 32px)); }
+.bug-kind { display: flex; gap: 4px; margin-top: 4px; padding: 3px; width: fit-content; background: #ead7ae; border: 2px solid #c8b083; border-radius: 10px; }
+.bug-kind button { border: 0; border-radius: 7px; padding: 5px 12px; background: transparent; font: 800 12px system-ui; color: #6d5838; cursor: pointer; }
+.bug-kind button:hover { color: #2b2018; }
+.bug-kind button[aria-checked="true"] { background: #fff8e8; color: #2b2018; box-shadow: 0 2px 0 #c8b083; }
+.bug-kind button:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(74,176,240,.35); }
 .bug-field { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
 .bug-field .sp-sec { margin: 0; }
 .bug-field textarea, .bug-field input { width: 100%; box-sizing: border-box; border: 2px solid #c8b083; border-radius: 8px; padding: 7px 9px; background: #fff8e8; font: 600 13px system-ui; color: #2b2018; resize: vertical; }

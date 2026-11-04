@@ -1,6 +1,6 @@
 import { invoke, Channel } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type { Todo, AppPreview, AgentInfo, AgentKind, AgentQuota, Builder, CloseOutcome, Compound, ConfirmQuit, Frame, ListState, Review, SessionInfo, Settings, Stats, Tile, UpdateStatus, Workspace, BugReport, BugReportInfo } from './types';
+import type { Todo, AppPreview, AgentInfo, AgentKind, AgentQuota, Builder, CloseOutcome, Compound, ConfirmQuit, Frame, ListState, Review, SessionInfo, Settings, Stats, Tile, UpdateStatus, Workspace, BugReport, BugReportInfo, ReportKind } from './types';
 
 const SKIP_FLAG = 1n << 63n;
 
@@ -126,7 +126,7 @@ export const ipc = {
   /** Settings… (Cmd+,) was chosen in the app menu. */
   onOpenSettings: (cb: () => void): Promise<UnlistenFn> =>
     listen('open-settings', () => cb()),
-  /** Help › Report a Bug… was chosen in the app menu. */
-  onOpenBugReport: (cb: () => void): Promise<UnlistenFn> =>
-    listen('open-bug-report', () => cb()),
+  /** Help › Report a Bug… or Request a Feature… was chosen in the app menu. */
+  onOpenBugReport: (cb: (kind: ReportKind) => void): Promise<UnlistenFn> =>
+    listen<ReportKind>('open-bug-report', (e) => cb(e.payload === 'feature' ? 'feature' : 'bug')),
 };

@@ -209,7 +209,11 @@ export interface BugReportInfo {
   system: Array<[string, string]>;
 }
 
+/** A report is about something broken or something wanted. */
+export type ReportKind = 'bug' | 'feature';
+
 export interface BugReport {
+  kind: ReportKind;
   text: string;
   contact: string | null;
   /** Shown to the owner before sending. */

@@ -4,10 +4,11 @@ import { iso, toGrid } from './iso';
 import { HALL, HOUSE, STRUCT, gateOutside, gateSide, gateTile, villageRect, wallRect, type Rect } from './layout';
 import { enclosure, seedOf } from './enclosure';
 import { setVillageSnapshot } from '../screenshot';
+import { indexTrees, underTree, type TreeIndex } from './clearance';
 import { classOf, gearOf, houseColors, houseStage, scaffoldHeight, type ClassTier, type Gear } from './look';
-import { blockedBy, dropOf, onGround, retarget, routeHome, routeToSite, standTile, step, walkable, type Blocked, type BuilderDrop, type Walker } from './walkers';
+import { blockedBy, dropOf, onGround, plazaPoint, retarget, routeHome, routeToSite, standTile, step, takenBy, walkable, type Blocked, type BuilderDrop, type Walker } from './walkers';
 import {
-  GROUND_SCALE, drawPathTile, pathLinks, pathTiles, treesOverPaths, drawGroundTree, drawBuilderShadow, drawBoard, drawBubble, drawBuilder, drawCollector, drawGate, drawGround, drawHall, drawHouse, drawPuff, drawRing, drawStatusBar, drawStructure,
+  GROUND_SCALE, drawPathTile, groundTrees, pathLinks, pathTiles, treesOverPaths, drawGroundTree, drawBuilderShadow, drawBoard, drawBubble, drawBuilder, drawCollector, drawGate, drawGround, drawHall, drawHouse, drawPuff, drawRing, drawStatusBar, drawStructure,
   drawWallSeg, drawRuneStone, groundOrigin,
   hammerPose, type Art, type GroundTree, type Pose,
 } from './art/entities';
@@ -89,8 +90,12 @@ const HOUSE_LIFT = [146, 160, 160, 186, 186];
 /** How much higher than the name plate a house's drag hint floats (the plate is ~20 px tall). */
 const PLATE_CLEAR = 12;
 
-/** How far builders keep off the hall, the collectors (their painted plinths reach past the 2x2) and the walls, in tiles. */
-const KEEP_OFF = { hall: 0.3, collector: 0.5, wall: 0.3 };
+/**
+ * How far builders keep off the hall, the collectors and the walls, in tiles. A collector's painted
+ * plinth and corner posts reach about a tile past its 2x2 (collector-base.png is 200 px wide at
+ * half size; the 2x2 is 128), and a builder is half a tile wide on screen.
+ */
+const KEEP_OFF = { hall: 0.3, collector: 1.5, wall: 0.3 };
 
 const grow = (r: Rect, d: number): Rect => ({ x0: r.x0 - d, y0: r.y0 - d, w: r.w + 2 * d, h: r.h + 2 * d });
 
@@ -655,6 +660,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     const old = ground.texture;
     const tiles = pathTiles(compounds);
     const lifted = treesOverPaths(b, compounds, GROUND_SEED, clearings, tiles);
+    trees = indexTrees(groundTrees(b, compounds, GROUND_SEED, clearings));
     const liftedAt = new Set(lifted.map((t) => `${t.x},${t.y}`));
     // half density (see GROUND_SCALE), shown at 2x; the trees over a path stand over it instead
     const canvas = drawGround(b, compounds, GROUND_SEED, clearings, (t) => liftedAt.has(`${t.x},${t.y}`));
@@ -726,17 +732,21 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
 
   /** Ground the builders keep off outside the compounds (see `Blocked`); set by `syncBuilders`. */
   let blocked: Blocked = () => false;
+  /** The ground's trees, for keeping builders out from under them; set by `syncGround`. */
+  let trees: TreeIndex = new Map();
 
   /** Bring the walkers in line with the store. The walk is cosmetic: nothing here waits on it. */
   const syncBuilders = (state: VillageInput) => {
     const compounds = new Map<string, Compound>();
     for (const w of state.workspaces) if (w.compound) compounds.set(w.id, w.compound);
     const tanks = Object.values(collectorTiles(shownCollectors(state.quotas, state.installed), state.collectorSpots, [...compounds.values()]));
-    blocked = blockedBy([
+    const offLimits = blockedBy([
       grow(HALL, KEEP_OFF.hall),
       ...tanks.map((t) => grow({ x0: t.x, y0: t.y, w: STRUCT, h: STRUCT }, KEEP_OFF.collector)),
       ...[...compounds.values()].map((c) => grow(wallRect(c), KEEP_OFF.wall)),
     ]);
+    // and never in a trunk or under a canopy in front (the trees are drawn under the builders)
+    blocked = (p) => offLimits(p) || underTree(trees, p);
     // Walkable ground per compound, built only for the compounds a walker is routed through.
     const walks = new Map<string, Set<string>>();
     const walkOf = (wsId: string, c: Compound) => {
@@ -756,7 +766,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
         world.addChild(sprite);
         const shadow = makeSprite(shadows, 'shadow');
         v = {
-          walker: { id: b.id, x: 0.5 + Math.cos(a) * 5.1, y: 0.5 + Math.sin(a) * 5.1, path: [], mode: 'idle', face: 1, wait: 0.5 },
+          walker: { id: b.id, ...plazaPoint({ x: 0.5 + Math.cos(a), y: 0.5 + Math.sin(a) }, blocked), path: [], mode: 'idle', face: 1, wait: 0.5 },
           agent: b.agent, cls: classOf(b.agent, b.model), gear: gearOf(b.effort), site: null,
           pose: 'idle', sprite, shadow, bubble: null, ring: null, puffs: [], leaving: null, held: null, siteZ: 0,
         };
@@ -808,7 +818,9 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     for (const v of views.values()) {
       const before = v.walker.mode;
       // a held builder hangs over the pointer instead of walking
-      v.walker = v.held ? { ...v.walker, x: v.held.x, y: v.held.y } : step(v.walker, dt, Math.random, blocked);
+      // idle builders stop clear of where the others stand or are heading (asked only when picking a spot)
+      const taken: Blocked = (p) => takenBy([...views.values()].flatMap((o) => (o === v ? [] : [o.walker, o.walker.path[o.walker.path.length - 1] ?? o.walker])))(p);
+      v.walker = v.held ? { ...v.walker, x: v.held.x, y: v.held.y } : step(v.walker, dt, Math.random, blocked, taken);
       const w = v.walker;
       if (before !== 'atSite' && w.mode === 'atSite') w.face = -1; // look at the structure
       v.pose = v.held ? 'cheer' : poseOf(w, v.site, time);

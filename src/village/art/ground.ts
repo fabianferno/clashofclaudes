@@ -3,6 +3,7 @@ import { iso, TW, TH } from '../iso';
 import { GAP, HALL, HOUSE, wallRect, gateInside, roadRects, type Rect } from '../layout';
 import { bake, ctx, type Art, type Pt } from './draw';
 import { paintTree, TREE_K, TREE_REACH } from './scenery';
+import { keepClearOfTrees, treeOver } from '../clearance';
 
 const PAD_TOP = 90;
 const PAD = 40;
@@ -101,11 +102,16 @@ function groundPlan(b: Rect, seed: number) {
   return { forest, blobs, tufts };
 }
 
-/** The forest that stands, back to front: sparse near the village, dense further out; never inside a wall rect + GAP, the hall, a road or a clearing. */
+/**
+ * The forest that stands, back to front: sparse near the village, dense further out; never inside a
+ * wall rect + GAP, the hall, a road or a clearing, nor reaching over the hall, a collector or the
+ * idle builders' ring from in front (see `keepClearOfTrees`: the ground is drawn under them).
+ */
 function standing(forest: GroundTree[], compounds: Compound[], clearings: readonly Rect[]): GroundTree[] {
   const cx = HALL.x0 + HALL.w / 2, cy = HALL.y0 + HALL.h / 2;
   const walls = compounds.map(wallRect);
   const roads = compounds.flatMap(roadRects);
+  const keep = keepClearOfTrees(clearings);
   return forest
     .filter((t) => {
       const d = Math.max(Math.abs(t.x - cx), Math.abs(t.y - cy));
@@ -113,9 +119,15 @@ function standing(forest: GroundTree[], compounds: Compound[], clearings: readon
       if (walls.some((r) => inRect(t.x, t.y, r, GAP))) return false;
       if (clearings.some((r) => inRect(t.x, t.y, r, CLEARING_PAD))) return false;
       if (roads.some((r) => inRect(t.x, t.y, r, 1))) return false;
-      return t.r < Math.max(0.06, Math.min(0.95, (d - 8) / 6));
+      if (t.r >= Math.max(0.06, Math.min(0.95, (d - 8) / 6))) return false;
+      return !treeOver(t, keep);
     })
     .sort((a, c) => a.x + a.y - (c.x + c.y));
+}
+
+/** The trees the ground shows (`drawGround`'s forest), back to front. */
+export function groundTrees(b: Rect, compounds: Compound[], seed: number, clearings: readonly Rect[]): GroundTree[] {
+  return standing(groundPlan(b, seed).forest, compounds, clearings);
 }
 
 /**

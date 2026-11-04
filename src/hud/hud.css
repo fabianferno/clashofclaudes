@@ -69,6 +69,12 @@
 .hud-elixir-sub { position: relative; margin-right: auto; font: 800 11px system-ui; color: #fff; -webkit-text-stroke: 3px var(--hud-out); paint-order: stroke fill; white-space: nowrap; }
 .hud-elixir b { position: relative; font-weight: 400; font-size: 20px; }
 .hud-drop { position: relative; width: 40px; height: 48px; flex: none; filter: drop-shadow(0 3px 0 var(--hud-out)); }
+.hud-stat { cursor: default; }
+.hud-stat-ico { object-fit: contain; }
+img.hud-stat-ico { width: 48px; height: 48px; margin: 0 -4px; filter: none; }
+.hud-stat-builder { width: 40px; height: 40px; display: grid; place-items: center; overflow: hidden; border-radius: 50%; border: 3px solid var(--hud-out);
+  background: radial-gradient(circle at 50% 40%, #fffdf7 0%, #e5cda4 100%); box-shadow: inset 0 3px 0 rgba(255,255,255,.35), 0 3px 0 var(--hud-out); filter: none; box-sizing: border-box; }
+.hud-stat:hover .hud-elixir-trough { border-color: var(--hud-out); }
 .hud-elixir:hover .hud-elixir-trough { border-color: #000; }
 .hud-elixir:focus-visible { outline: 2px solid #fff; outline-offset: 2px; border-radius: 12px; }
 .hud-gear { position: fixed; left: 12px; bottom: 14px; z-index: 3; width: 40px; height: 40px; padding: 0; display: grid; place-items: center; border-radius: 12px; }
@@ -102,6 +108,7 @@
 
 /* shared glossy style for the zoom buttons (position unchanged) */
 .zoom-controls button { font-family: 'Lilita One', sans-serif; color: #fff; -webkit-text-stroke: 3px var(--hud-out); paint-order: stroke fill; border: 3px solid var(--hud-out); border-radius: 12px; cursor: pointer; background: linear-gradient(#f1ece2 0%, #d9d1c1 48%, #c4baa6 52%, #b8ad97 100%); box-shadow: inset 0 3px 0 rgba(255,255,255,.55), inset 0 -3px 0 rgba(0,0,0,.18), 0 4px 0 var(--hud-out); }
+.zoom-controls .zoom-ico { display: grid; place-items: center; height: 40px; min-width: 0; padding: 0; }
 .zoom-controls button:active { transform: translateY(3px); box-shadow: inset 0 3px 0 rgba(255,255,255,.55), 0 1px 0 var(--hud-out); }
 
 /* Update toast: small, non-blocking, bottom-left. */

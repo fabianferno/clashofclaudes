@@ -1,9 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { classOf, gearOf, stars, houseStage, scaffoldHeight, xpNeed } from './look';
+import { HOUSE_COLORS, HOUSE_SWATCHES, classOf, gearOf, houseColors, stars, houseStage, scaffoldHeight, xpNeed } from './look';
 
 describe('look', () => {
+  it('a chosen house colour wins; without one the id picks a stable automatic one', () => {
+    const auto = houseColors({ id: 'w-123' });
+    expect(HOUSE_COLORS).toContain(auto);
+    expect(houseColors({ id: 'w-123', color: null })).toEqual(auto);
+    expect(houseColors({ id: 'w-123', color: '#3fa34d' }).roof).toBe('#3fa34d');
+    // an automatic colour chosen by hand keeps its own wall
+    expect(houseColors({ id: 'x', color: HOUSE_COLORS[2].roof })).toEqual(HOUSE_COLORS[2]);
+    // the automatic colours lead the swatches
+    expect(HOUSE_SWATCHES.slice(0, HOUSE_COLORS.length).map((s) => s.roof)).toEqual(HOUSE_COLORS.map((c) => c.roof));
+  });
+
   it('xp_need_curve', () => {
     expect([1, 2, 3, 4, 5].map(xpNeed)).toEqual([100, 140, 196, 274, 384]);
   });

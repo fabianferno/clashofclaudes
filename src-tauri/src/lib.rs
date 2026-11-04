@@ -355,6 +355,7 @@ pub fn run() {
             commands::resume_session,
             commands::close_session,
             commands::set_compound,
+            commands::set_workspace_color,
             commands::set_collector_spot,
             commands::move_compound,
             commands::set_session_spot,

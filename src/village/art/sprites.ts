@@ -75,6 +75,8 @@ function paths(): string[] {
   for (const c of CLASSES) for (const a of AGENTS) out.push(`sheets/builder-${c}-${a}.png`);
   const tints = new Set(HOUSE_COLORS.map((h) => houseTint(h.roof)));
   for (let s = 0; s < 5; s++) for (const t of tints) out.push(`buildings/house-stage-${s}${t}.png`);
+  // a white-roofed house and its roof-and-flag shading, tinted to any other colour (`paintedHouse`)
+  for (let s = 0; s < 5; s++) out.push(`buildings/house-stage-${s}-base.png`, `buildings/house-stage-${s}-mask.png`);
   return out;
 }
 
@@ -141,14 +143,36 @@ const HOUSE_POLE = [null, 295, 313, 313, 313];
 /** Where the poles end, and how far down to run them so they reach behind the ridge. */
 const POLE_END = 237, POLE_FOOT = 256;
 
+/** `mask` (grey shading) multiplied by `color`, keeping the mask's alpha. */
+function tinted(mask: Pic, color: string): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = mask.width;
+  c.height = mask.height;
+  const g = c.getContext('2d')!;
+  g.drawImage(mask, 0, 0);
+  g.globalCompositeOperation = 'multiply';
+  g.fillStyle = color;
+  g.fillRect(0, 0, c.width, c.height);
+  g.globalCompositeOperation = 'destination-in';
+  g.drawImage(mask, 0, 0);
+  return c;
+}
+
+/**
+ * A house with a `roof`-coloured roof and flag. The automatic colours use the kit's hand-tinted
+ * houses; any other colour tints the white-roofed one through its mask.
+ */
 export function paintedHouse(stage: number, roof: string): Art | null {
-  const img = get(`buildings/house-stage-${stage}${houseTint(roof)}.png`);
-  if (!img) return null;
+  const own = HOUSE_COLORS.some((h) => h.roof === roof);
+  const img = get(own ? `buildings/house-stage-${stage}${houseTint(roof)}.png` : `buildings/house-stage-${stage}-base.png`);
+  const mask = own ? null : get(`buildings/house-stage-${stage}-mask.png`);
+  if (!img || (!own && !mask)) return null;
   return canvasArt(img.width, img.height, 300, 600, (g) => {
     const x = HOUSE_POLE[stage];
     // the pole carried on down behind the roof, from its own lowest pixels
     if (x != null) g.drawImage(img, x, POLE_END - 6, 5, 6, x, POLE_END - 1, 5, POLE_FOOT - POLE_END + 1);
     g.drawImage(img, 0, 0);
+    if (mask) g.drawImage(tinted(mask, roof), 0, 0);
   });
 }
 export const paintedBubble = (kind: 'needs' | 'stuck') => whole(`ui/bubble-${kind}.png`, 60, 112);

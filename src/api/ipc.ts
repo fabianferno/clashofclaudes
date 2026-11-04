@@ -68,6 +68,9 @@ export const ipc = {
   closeSession: (id: string) => invoke<CloseOutcome>('close_session', { id }),
   setCompound: (workspaceId: string, compound: Compound) =>
     invoke<Workspace>('set_compound', { workspaceId, compound }),
+  /** null goes back to the automatic colour. */
+  setWorkspaceColor: (workspaceId: string, color: string | null) =>
+    invoke<Workspace>('set_workspace_color', { workspaceId, color }),
   setSessionSpot: (id: string, spot: Tile) => invoke<SessionInfo>('set_session_spot', { id, spot }),
   moveCompound: (workspaceId: string, dx: number, dy: number) =>
     invoke<{ workspace: Workspace; sessions: SessionInfo[] }>('move_compound', { workspaceId, dx, dy }),

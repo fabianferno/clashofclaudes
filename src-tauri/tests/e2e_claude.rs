@@ -47,7 +47,7 @@ async fn rig() -> Rig {
     std::fs::write(path.join("README.md"), "seed\n").unwrap();
     g(&["add", "-A"]);
     g(&["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "seed"]);
-    let ws = Workspace { id: "w1".into(), name: "e2e".into(), path, created_at: 0, missing: false, level: 1, xp: 0, compound: None };
+    let ws = Workspace { id: "w1".into(), name: "e2e".into(), path, created_at: 0, missing: false, level: 1, xp: 0, compound: None, color: None };
     Rig { mgr, events, data, _repo: repo, ws }
 }
 

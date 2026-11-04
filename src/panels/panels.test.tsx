@@ -11,6 +11,7 @@ const ipc = vi.hoisted(() => ({
   openInFinder: vi.fn().mockResolvedValue(undefined),
   getSettings: vi.fn().mockResolvedValue({ updatesEnabled: true }),
   setSettings: vi.fn(async (s: unknown) => s),
+  setWorkspaceColor: vi.fn(async (id: string, color: string | null) => ({ ...ws(), id, color })),
 }));
 vi.mock('../api/ipc', () => ({ ipc }));
 const sessionPanel = vi.hoisted(() => ({ mounts: 0 }));
@@ -21,7 +22,7 @@ vi.mock('./SessionPanel', async () => {
 vi.mock('./NewSessionPicker', () => ({ default: () => null }));
 import { useApp } from '../state/store';
 import SidePanel from './SidePanel';
-import WorkspacePanel from './WorkspacePanel';
+import WorkspacePanel, { CUSTOM_COLOR_MS } from './WorkspacePanel';
 import TownHallPanel from './TownHallPanel';
 import BuilderPanel from './BuilderPanel';
 
@@ -46,6 +47,43 @@ beforeEach(() => {
   act(() => useApp.setState({ workspaces: [ws()], builders: [builder()], sessions: {}, agents, selection: null, panelOpen: false, apps: [], browsers: [], appPopout: null, hiddenApps: [] }));
 });
 afterEach(cleanup);
+
+test('a swatch paints the house at once and saves; Auto goes back', async () => {
+  render(<WorkspacePanel workspaceId="w1" />);
+  expect(screen.getByRole('radio', { name: 'Auto' }).getAttribute('aria-checked')).toBe('true');
+  await act(async () => { fireEvent.click(screen.getByRole('radio', { name: 'Green' })); });
+  expect(ipc.setWorkspaceColor).toHaveBeenCalledWith('w1', '#3fa34d');
+  expect(useApp.getState().workspaces[0].color).toBe('#3fa34d');
+  expect(screen.getByRole('radio', { name: 'Green' }).getAttribute('aria-checked')).toBe('true');
+  await act(async () => { fireEvent.click(screen.getByRole('radio', { name: 'Auto' })); });
+  expect(ipc.setWorkspaceColor).toHaveBeenLastCalledWith('w1', null);
+  expect(useApp.getState().workspaces[0].color).toBeNull();
+});
+
+test('a failed colour save puts the old one back and says why', async () => {
+  act(() => useApp.setState({ workspaces: [ws({ color: '#8a4fd0' })] }));
+  ipc.setWorkspaceColor.mockRejectedValueOnce('disk full');
+  render(<WorkspacePanel workspaceId="w1" />);
+  await act(async () => { fireEvent.click(screen.getByRole('radio', { name: 'Gold' })); });
+  expect(useApp.getState().workspaces[0].color).toBe('#8a4fd0');
+  expect(screen.getByText('disk full')).toBeTruthy();
+});
+
+test('any colour waits for the colour panel to rest before saving', async () => {
+  vi.useFakeTimers();
+  try {
+    render(<WorkspacePanel workspaceId="w1" />);
+    const any = screen.getByLabelText('Any colour');
+    fireEvent.change(any, { target: { value: '#112233' } });
+    fireEvent.change(any, { target: { value: '#123456' } });
+    expect(ipc.setWorkspaceColor).not.toHaveBeenCalled();
+    await act(async () => { vi.advanceTimersByTime(CUSTOM_COLOR_MS); });
+    expect(ipc.setWorkspaceColor).toHaveBeenCalledTimes(1);
+    expect(ipc.setWorkspaceColor).toHaveBeenCalledWith('w1', '#123456');
+  } finally {
+    vi.useRealTimers();
+  }
+});
 
 test('missing_workspace_buttons_explain', () => {
   act(() => useApp.setState({ workspaces: [ws({ missing: true })] }));

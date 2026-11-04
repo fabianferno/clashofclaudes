@@ -24,7 +24,7 @@ export default function TownHallPanel() {
       {workspaces.length === 0 && <div className="sp-note">No workspaces yet. Open a folder or start a new one.</div>}
       {workspaces.map((w) => (
         <button key={w.id} className="sp-row" data-testid={`hall-ws-${w.id}`} onClick={() => setSelection({ kind: 'workspace', id: w.id })}>
-          <span className="sp-av" style={{ background: houseColors(w.id).roof }}><span className="ol">{w.level}</span></span>
+          <span className="sp-av" style={{ background: houseColors(w).roof }}><span className="ol">{w.level}</span></span>
           <span className="sp-rowtext">
             <span className="sp-t">{w.name}</span>
             <span className="sp-d" title={w.path}>{count(w.id)} {count(w.id) === 1 ? 'session' : 'sessions'} · {w.path}</span>

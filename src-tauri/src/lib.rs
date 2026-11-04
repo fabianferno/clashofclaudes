@@ -7,6 +7,7 @@ pub mod driver;
 pub mod git;
 pub mod hooks;
 pub mod model;
+pub mod bugreport;
 pub mod notify;
 pub mod osc;
 pub mod persist;
@@ -92,8 +93,9 @@ pub fn resolve_data_dir(default: std::path::PathBuf, override_dir: Option<&str>)
 
 const QUIT_MENU_ID: &str = "app-quit";
 const SETTINGS_MENU_ID: &str = "app-settings";
+const BUG_MENU_ID: &str = "app-report-bug";
 
-/// The default menu, plus Settings… (Cmd+,) after About, except Quit: the predefined item
+/// The default menu, plus Settings… (Cmd+,) after About and Report a Bug… in Help, except Quit: the predefined item
 /// terminates the process directly (macOS `terminate:`) and never raises ExitRequested, so it is
 /// swapped for one that calls `app.exit`, which goes through the exit guard in `run`.
 fn app_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
@@ -101,6 +103,13 @@ fn app_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     if let Some(first) = menu.items()?.first().and_then(|t| t.as_submenu().cloned()) {
         first.insert(&PredefinedMenuItem::separator(app)?, 1)?;
         first.insert(&MenuItem::with_id(app, SETTINGS_MENU_ID, "Settings…", true, Some("CmdOrCtrl+,"))?, 2)?;
+    }
+    for top in menu.items()? {
+        if let Some(sub) = top.as_submenu()
+            && sub.text()? == "Help"
+        {
+            sub.append(&MenuItem::with_id(app, BUG_MENU_ID, "Report a Bug…", true, None::<&str>)?)?;
+        }
     }
     for top in menu.items()? {
         let Some(sub) = top.as_submenu() else { continue };
@@ -168,6 +177,8 @@ pub fn run() {
                 app.exit(0);
             } else if event.id() == SETTINGS_MENU_ID {
                 let _ = app.emit("open-settings", ());
+            } else if event.id() == BUG_MENU_ID {
+                let _ = app.emit("open-bug-report", ());
             }
         })
         .setup(|app| {
@@ -379,6 +390,8 @@ pub fn run() {
             commands::get_settings,
             commands::set_settings,
             commands::data_folder,
+            bugreport::bug_report_info,
+            bugreport::send_bug_report,
             commands::show_data_folder,
             commands::check_for_update,
             commands::install_update,

@@ -5,3 +5,4 @@ dist/
 .superpowers/
 .gstack/
 .art-unused/
+src-tauri/bug-webhook.txt

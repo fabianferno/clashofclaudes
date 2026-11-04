@@ -4,11 +4,13 @@ import { ipc } from '../api/ipc';
 import type { Settings } from '../api/types';
 import { useApp } from '../state/store';
 import AgentsStatus from './AgentsStatus';
+import { openBugReport } from './BugReport';
 
 export const DEFAULT_SETTINGS: Settings = { updatesEnabled: true, notifyNeedsYou: true, notifyFinished: true, dockBadge: true };
 
 export const SHORTCUTS: Array<[keys: string, what: string]> = [
   ['⌘ ,', 'Open Settings'],
+  ['Help menu', 'Report a bug'],
   ['⌘ =', 'Zoom in'],
   ['⌘ −', 'Zoom out'],
   ['⌘ 0', 'Fit the whole village'],
@@ -91,6 +93,16 @@ export default function SettingsPage() {
       </header>
       <div className="set-scroll">
         <div className="set-col">
+          <section className="set-card" aria-label="Beta feedback">
+            <h3 className="kb-head ol" style={{ background: '#2f95db' }}>Beta feedback</h3>
+            <div className="set-body">
+              <div className="set-line">
+                <span className="set-note">Something broken or odd? Tell the developers; it goes straight to their Discord.</span>
+                <button className="hud-btn blue sm" onClick={() => void openBugReport()}>Report a bug</button>
+              </div>
+            </div>
+          </section>
+
           <section className="set-card" aria-label="Notifications">
             <h3 className="kb-head ol" style={{ background: 'var(--hud-needs)' }}>Notifications</h3>
             <div className="set-body">
@@ -113,7 +125,7 @@ export default function SettingsPage() {
             <h3 className="kb-head ol" style={{ background: 'var(--hud-finished)' }}>Updates</h3>
             <div className="set-body">
               <Toggle label="Check for updates automatically"
-                hint="The only time the app uses the network: it checks GitHub for signed updates, and installs one only if its signature matches."
+                hint="It checks GitHub for signed updates, and installs one only if its signature matches. Apart from bug reports you send, this is the only time the app uses the network."
                 checked={settings.updatesEnabled} onChange={(on) => change({ updatesEnabled: on })} />
               <div className="set-line">
                 <span className="set-label">Version {version ?? '…'}</span>

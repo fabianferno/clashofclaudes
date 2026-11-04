@@ -12,6 +12,7 @@ import SidePanel from './panels/SidePanel';
 import PopOutApp from './panels/PopOutApp';
 import Kanban from './panels/Kanban';
 import SettingsPage from './panels/SettingsPage';
+import BugReportDialog, { openBugReport } from './panels/BugReport';
 import { preloadTerminal } from './components/LazyTerminalView';
 import './App.css';
 
@@ -38,6 +39,7 @@ function App() {
     }));
     keep(ipc.onConfirmQuit((q) => setQuit({ live: q.live, restart: !!q.restart })));
     keep(ipc.onOpenSettings(() => useApp.getState().setSettingsOpen(true)));
+    keep(ipc.onOpenBugReport(() => void openBugReport()));
     let stopLayout: (() => void) | null = null;
     ipc.listState()
       .then((s) => {
@@ -72,6 +74,7 @@ function App() {
     <Kanban />
     <PopOutApp />
     <SettingsPage />
+    <BugReportDialog />
     <UpdateToast />
     <div className="toasts">
       {error && <div className="error" onClick={() => setError(null)}>{error}</div>}

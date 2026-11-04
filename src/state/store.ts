@@ -210,6 +210,9 @@ export interface AppState {
   /** The Settings page is open full-page. */
   settingsOpen: boolean;
   setSettingsOpen: (open: boolean) => void;
+  /** The bug report dialog, with the window as it looked when it opened (base64 JPEG), if captured. */
+  bugReport: { screenshot: string | null } | null;
+  setBugReport: (r: { screenshot: string | null } | null) => void;
   /** An update was found (by the scheduled check or Settings' Check now); the toast offers it. */
   updateAvailable: boolean;
   setUpdateAvailable: (available: boolean) => void;
@@ -247,6 +250,7 @@ export const useApp = create<AppState>((set, get) => ({
   todos: [],
   kanban: null,
   settingsOpen: false,
+  bugReport: null,
   updateAvailable: false,
   browsers: [],
   selectedSessionId: null,
@@ -365,6 +369,7 @@ export const useApp = create<AppState>((set, get) => ({
   removeTodo: (id) => set((st) => ({ todos: st.todos.filter((x) => x.id !== id) })),
   setKanban: (kanban) => set({ kanban }),
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
+  setBugReport: (bugReport) => set({ bugReport }),
   setUpdateAvailable: (updateAvailable) => set({ updateAvailable }),
   setBrowserUrl: (id, url) => set((st) => ({ browsers: st.browsers.map((b) => (b.id === id ? { ...b, url } : b)) })),
   setBoardSpots: (boardSpots) => set({ boardSpots }),

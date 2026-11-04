@@ -61,7 +61,7 @@ When the app is in the background, it shows a macOS notification when a session 
 
 ## Privacy
 
-- The app makes **no network connections** except one optional check for updates, which you can turn off in Settings (the gear at the top right, or ⌘,). Builds whose update key or GitHub repository is not configured (the source ships placeholders for both) never check at all.
+- The app makes **no network connections** except one optional check for updates, which you can turn off in Settings (the gear at the top right, or ⌘,), and the bug reports you choose to send (Help › Report a Bug…). A report holds what you type, app and system details (app, macOS and agent versions, counts of workspaces and sessions, and the last error the app showed, if any; never workspace names or tasks) and, only if you tick it, a screenshot. You see all of it before sending. Builds whose update key or GitHub repository is not configured (the source ships placeholders for both) never check at all.
 - Agent output, prompts, file names and folders never leave your machine.
 - The app **never edits your agent configuration**: nothing under `~/.claude`, `~/.codex`, `~/.gemini`, `~/.config/opencode`, or a project's `.claude`, `.codex`, `.gemini` or `.opencode`. To get status events it hands each agent a private per-session settings file stored in the app's own data folder (`~/Library/Application Support/dev.clashofclaudes.app/sessions/`), and deletes it when the session closes.
 - Status events arrive on a localhost-only server protected by a random per-session token.

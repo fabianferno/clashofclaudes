@@ -19,6 +19,7 @@ export default function WorkspacePanel({ workspaceId }: { workspaceId: string })
   // a builder dropped on this workspace opens the form with them picked
   const preset = useApp((s) => (s.selection?.kind === 'workspace' && s.selection.id === workspaceId ? s.selection.builder : undefined));
   const [confirm, setConfirm] = useState(false);
+  const [coloring, setColoring] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   if (!ws) return null;
 
@@ -97,7 +98,11 @@ export default function WorkspacePanel({ workspaceId }: { workspaceId: string })
         <button className="hud-btn grey sm" disabled={ws.missing} title={why} onClick={() => guard(() => ipc.openInEditor(ws.path))}>Open in editor</button>
         <button className="hud-btn grey sm" disabled={ws.missing} title={why} onClick={() => guard(() => ipc.openInFinder(ws.path))}>Open in Finder</button>
         <button className="hud-btn blue sm" disabled={ws.missing || !ws.compound} title={why} onClick={() => useApp.getState().requestZoom(workspaceId)}>Focus</button>
+        <button className="hud-btn grey sm sp-color-btn" onClick={() => setColoring(true)}>
+          <i className="sp-color-dot" style={{ background: houseColors(ws).roof }} aria-hidden="true" />House colour
+        </button>
       </div>
+      {coloring && <HouseColorDialog workspaceId={workspaceId} onError={setErr} onClose={() => setColoring(false)} />}
       {addr !== null && (
         <form className="sp-browser-form" onSubmit={(e) => { e.preventDefault(); openBrowser(); }}>
           <input aria-label="Web address" autoFocus value={addr} spellCheck={false}
@@ -127,8 +132,6 @@ export default function WorkspacePanel({ workspaceId }: { workspaceId: string })
             title={b.browserId ? 'Close this browser' : 'Hide this board until the app stops'} onClick={() => st.removeBoard(b)}>✕</button>
         </div>
       ))}
-      <div className="sp-sec">House colour</div>
-      <HouseColor workspaceId={workspaceId} onError={setErr} />
       <div className="sp-sec">Danger zone</div>
       {confirm && (
         <div className="panel-warn">This only forgets the folder in Clash of Claudes. It never deletes any files on disk.</div>
@@ -154,11 +157,21 @@ export default function WorkspacePanel({ workspaceId }: { workspaceId: string })
 /** How long the custom colour must rest before the house is repainted and saved (the colour panel reports every drag step). */
 export const CUSTOM_COLOR_MS = 250;
 
-/** The house's roof colour: a swatch, any colour, or Auto (picked from the workspace id). */
-function HouseColor({ workspaceId, onError }: { workspaceId: string; onError: (e: string | null) => void }) {
+/** The house's roof colour, in a dialog: a swatch, any colour, or Auto (picked from the workspace id). Esc or Done closes it. */
+function HouseColorDialog({ workspaceId, onError, onClose }: { workspaceId: string; onError: (e: string | null) => void; onClose: () => void }) {
   const ws = useApp((s) => s.workspaces.find((w) => w.id === workspaceId));
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopPropagation(); // not the side panel's
+      onClose();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [onClose]);
   if (!ws) return null;
   const current = houseColors(ws).roof;
   const custom = ws.color && !HOUSE_SWATCHES.some((c) => c.roof === ws.color) ? ws.color : null;
@@ -175,17 +188,31 @@ function HouseColor({ workspaceId, onError }: { workspaceId: string; onError: (e
     );
   };
   return (
-    <div className="sp-colors" role="radiogroup" aria-label="House colour">
-      <button type="button" role="radio" aria-checked={!ws.color} className="sp-color-auto" title="Picked for this workspace" onClick={() => choose(null)}>Auto</button>
-      {HOUSE_SWATCHES.map((c) => (
-        <button key={c.roof} type="button" role="radio" aria-checked={ws.color === c.roof} aria-label={c.label} title={c.label}
-          className={`sp-swatch${!ws.color && current === c.roof ? ' auto' : ''}`} style={{ background: c.roof }} onClick={() => choose(c.roof)} />
-      ))}
-      <label className={`sp-swatch sp-swatch-any${custom ? '' : ' empty'}`} title="Any colour" aria-checked={!!custom} role="radio"
-        style={custom ? { background: custom } : undefined}>
-        <input type="color" aria-label="Any colour" value={custom ?? current}
-          onChange={(e) => { const v = e.target.value; clearTimeout(timer.current); timer.current = setTimeout(() => choose(v), CUSTOM_COLOR_MS); }} />
-      </label>
+    <div className="modal-bg" onClick={onClose}>
+      <div className="agent-dialog" role="dialog" aria-modal="true" aria-labelledby="house-color-title" onClick={(e) => e.stopPropagation()}>
+        <header className="agent-dialog-head">
+          <div>
+            <h3 id="house-color-title" className="ol">House colour</h3>
+            <span className="sp-d">{ws.name}: the roof and flag of its house.</span>
+          </div>
+          <button type="button" className="agent-dialog-x" aria-label="Close" onClick={onClose}>×</button>
+        </header>
+        <div className="sp-colors" role="radiogroup" aria-label="House colour">
+          <button type="button" role="radio" aria-checked={!ws.color} className="sp-color-auto" title="Picked for this workspace" onClick={() => choose(null)}>Auto</button>
+          {HOUSE_SWATCHES.map((c) => (
+            <button key={c.roof} type="button" role="radio" aria-checked={ws.color === c.roof} aria-label={c.label} title={c.label}
+              className={`sp-swatch${!ws.color && current === c.roof ? ' auto' : ''}`} style={{ background: c.roof }} onClick={() => choose(c.roof)} />
+          ))}
+          <label className={`sp-swatch sp-swatch-any${custom ? '' : ' empty'}`} title="Any colour" aria-checked={!!custom} role="radio"
+            style={custom ? { background: custom } : undefined}>
+            <input type="color" aria-label="Any colour" value={custom ?? current}
+              onChange={(e) => { const v = e.target.value; clearTimeout(timer.current); timer.current = setTimeout(() => choose(v), CUSTOM_COLOR_MS); }} />
+          </label>
+        </div>
+        <div className="sp-btns sp-color-done">
+          <button type="button" className="hud-btn blue sm" onClick={onClose}>Done</button>
+        </div>
+      </div>
     </div>
   );
 }

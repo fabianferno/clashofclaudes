@@ -24,6 +24,7 @@ vi.mock('./api/ipc', () => ({
     }),
     onConfirmQuit: vi.fn().mockResolvedValue(() => {}),
     onOpenSettings: vi.fn().mockResolvedValue(() => {}),
+    onOpenBugReport: vi.fn().mockResolvedValue(() => {}),
     onUpdateProgress: vi.fn().mockResolvedValue(() => {}),
     onSelectSession: vi.fn(async (cb: (id: string) => void) => { onSelectSession = cb; return () => {}; }),
   },

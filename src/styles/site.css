@@ -686,3 +686,100 @@ html.motion .drop-in { animation: drop-in 0.9s cubic-bezier(0.34, 1.56, 0.64, 1)
     padding-inline: max(var(--gutter), calc((100vw - 1600px) / 2));
   }
 }
+
+/* ---------- One screen per section (desktop and landscape tablets) ----------
+   Each section fills the viewport and its content is sized to fit inside it, centred below the
+   HUD. The session stage and the tour pin are scroll stories and keep their own heights.
+   Sizes that would overflow a short screen are tied to the viewport height (svh). */
+@media (min-width: 861px) and (min-height: 600px) {
+  :root {
+    --fit-top: clamp(5.25rem, 10svh, 6.5rem);   /* clears the HUD */
+    --fit-bottom: clamp(1.75rem, 5svh, 3.5rem);
+    --t-fit: min(var(--t-xl), 8.5svh);           /* section titles */
+  }
+  .hero, .statement, .board, .privacy, .faq, .beta {
+    min-height: 100svh; align-content: center;
+    padding-top: var(--fit-top); padding-bottom: var(--fit-bottom);
+  }
+
+  /* Hero: the four-line title scales with the screen height. */
+  .hero { align-items: center; }
+  .hero__copy { gap: clamp(1rem, 2.6svh, 2rem); max-width: 42rem; }
+  .hero__title { font-size: min(var(--t-mega), 10.5svh); }
+  .hero__lede { max-width: 36rem; font-size: min(var(--t-m), 2.6svh); }
+  .hero__more { margin-top: 0.4rem; }
+  .hero__scene { max-width: calc((100svh - var(--fit-top) - var(--fit-bottom)) / 0.86); justify-self: center; width: 100%; }
+
+  .statement { row-gap: clamp(1.5rem, 5svh, 3.5rem); }
+  .statement__title, .privacy__title, .faq__title { font-size: var(--t-fit); }
+
+  /* Agents: one-line title beside the lede, shorter tiles. */
+  .roster { min-height: 100svh; display: grid; align-content: center; padding-bottom: var(--fit-bottom); }
+  .roster__inner { padding-top: var(--fit-top); }
+  .roster__head { margin-bottom: clamp(1.5rem, 4svh, 2.75rem); align-items: end; }
+  .roster__head .title { font-size: min(var(--t-l), 6svh); }
+  .roster__lede { font-size: var(--t-s); }
+  .card { gap: 0.45rem; }
+  .card__tile { height: clamp(5.5rem, 13svh, 8rem); padding-bottom: 0.9rem; }
+  .card__builder { width: clamp(3.6rem, 9svh, 5rem); }
+  .card__name { font-size: 1.4rem; }
+  .card__facts { gap: 0.55rem; }
+  .card__facts div + div { padding-top: 0.55rem; }
+  .roster__custom { margin-top: clamp(1.25rem, 3.5svh, 2.25rem); font-size: var(--t-s); }
+
+  /* Kanban: smaller title, the shot capped by what height is left. */
+  .board { row-gap: clamp(1.5rem, 4svh, 3rem); }
+  .board__title { font-size: min(var(--t-l), 6.5svh); }
+  .board__lede { font-size: var(--t-body); }
+  .board__shot { justify-self: center; width: min(100%, (100svh - 26rem) * 4.43); }
+
+  .privacy { align-items: center; }
+  .facts { row-gap: clamp(1.5rem, 4svh, 2.5rem); }
+
+  /* FAQ: tighter rows so all nine questions and the open answer share one screen. */
+  .faq { align-items: center; }
+  .faq__head { position: static; align-self: center; }
+  .faq__item summary { padding: clamp(0.6rem, 1.6svh, 1rem) 0; }
+  .faq__item summary h3 { font-size: min(var(--t-m), 2.4svh); }
+  .faq__item p { padding-bottom: 1rem; font-size: var(--t-s); line-height: 1.6; }
+
+  .beta { align-items: center; }
+  .beta__main { gap: clamp(1rem, 3svh, 1.75rem); }
+  .beta__main .title { font-size: var(--t-fit); }
+  .beta__lede { font-size: min(var(--t-m), 2.6svh); }
+  .steps li { padding-block: clamp(0.5rem, 1.4svh, 0.85rem); }
+  .beta__panel { gap: 0.6rem; }
+  .beta__panel h3:not(:first-child) { margin-top: 0.6rem; padding-top: 0.9rem; }
+
+  /* Footer: the finale fills the last screen, the small print sits at the bottom. */
+  .foot__inner { min-height: 100svh; grid-template-rows: 1fr auto auto; align-content: stretch; padding-top: var(--fit-top); padding-bottom: var(--fit-bottom); gap: clamp(1.5rem, 5svh, 4rem); }
+  .foot__finale { align-self: center; }
+  .foot__big { font-size: min(var(--t-mega), 12svh); }
+}
+@media (min-width: 861px) and (min-height: 600px) {
+  .tour__pin { min-height: calc(100svh - var(--stroke)); padding-top: var(--fit-top); padding-bottom: var(--fit-bottom); }
+  .tour__title { font-size: min(var(--t-l), 6svh); }
+  .tour__stops { gap: clamp(0.5rem, 1.6svh, 1.1rem); }
+  .tour__frame { width: min(100%, (100svh - var(--fit-top) - var(--fit-bottom) - 5rem) * 1.6); justify-self: center; }
+}
+@media (min-width: 861px) and (min-height: 600px) {
+  .board__notes { grid-row: 2; }
+  /* The footer's tree line stands over the bottom of this section. */
+  .beta { padding-bottom: calc(var(--fit-bottom) + clamp(56px, 7vw, 120px)); }
+}
+/* The nav wrapper is the grid item here, not the list inside it. */
+.foot__cols > nav { grid-column: 1 / span 3; }
+.foot__links a { white-space: nowrap; }
+@media (max-width: 860px) { .foot__cols > nav { grid-column: 1 / -1; } }
+@media (min-width: 861px) and (min-height: 600px) {
+  /* Short sections scale their content up to own the screen, not float in it. */
+  .statement__title { font-size: min(var(--t-mega), 10svh); line-height: 0.98; }
+  .statement__body { font-size: min(1.6rem, 3svh); }
+  .statement__art { width: min(calc(100% - 6rem), 21rem); }
+  .statement__art .tabs { gap: 0.5rem; }
+  .statement__art .tab { height: 2.6rem; font-size: 0.9rem; padding-inline: 0.85rem; }
+  .statement__art .unit { right: -6.4rem; width: 5.6rem; }
+  .privacy__title { font-size: min(var(--t-mega), 11svh); line-height: 0.98; }
+  .facts h3 { font-size: min(var(--t-m), 2.6svh); }
+  .facts p { font-size: var(--t-body); }
+}

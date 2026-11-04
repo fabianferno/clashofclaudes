@@ -252,3 +252,12 @@ The owner said the page read as "vibecoded". What caused it, and what changed:
 - **Lists, not cards:** FAQ is a ruled list on the forest; install steps are a ruled sequence;
   the footer contact is a plain line (no dashed box); footer links underline on hover only.
 - **Phone hero:** the lede now comes before the download button.
+
+## One screen per section (2026-11-05, owner request)
+
+On desktop and landscape tablets (wider than 860px, taller than 600px), the hero, statement,
+agents, tour, Kanban, privacy, FAQ, beta and footer each fill exactly one viewport, content centred
+below the HUD. Titles, the hero scene, card tiles, the Kanban shot and FAQ rows are capped in `svh`
+so nothing overflows down to 1366x768; short sections (statement, privacy) scale up instead.
+Checked at 1280x800, 1366x768, 1440x900 and 1920x1080. The session stage stays a scroll story.
+Phones keep the natural flow: four agent cards and nine questions do not fit on one phone screen.

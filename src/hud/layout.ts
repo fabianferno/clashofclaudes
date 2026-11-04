@@ -4,8 +4,8 @@ import { PANEL_W } from '../village/camera';
 export const BUILD_MARGIN = 14;
 /** Width reserved for the Build/Open group (buttons ~180 px wide, with headroom). */
 export const BUILD_W = 190;
-/** Right-edge offset of the top-right resources (clear of the zoom column). */
-export const RES_MARGIN = 64;
+/** Right-edge offset of the top-right resources: the zoom column's margin (it stays below them). */
+export const RES_MARGIN = 12;
 
 /** Distance the HUD must stay clear of at the right edge: the open panel, if any. */
 export const panelInset = (panelOpen: boolean) => (panelOpen ? PANEL_W : 0);

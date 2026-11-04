@@ -61,7 +61,7 @@
 .hud-res-col { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; pointer-events: none; }
 
 /* the agents' limits as Clash-style resource bars (ElixirBars.tsx) */
-.hud-elixir { position: relative; display: flex; align-items: center; padding: 0 0 0 0; margin: 0 2px 0 0; border: 0; background: none; cursor: pointer; }
+.hud-elixir { position: relative; display: flex; align-items: center; padding: 0; margin: 0 -4px 0 0; border: 0; background: none; cursor: pointer; }
 .hud-elixir-trough { position: relative; display: flex; align-items: center; justify-content: flex-end; gap: 8px; width: 236px; height: 34px; margin-right: -22px; padding: 0 30px 0 12px; box-sizing: border-box; overflow: hidden;
   background: #26180e; border: 3px solid var(--hud-out); border-radius: 10px; box-shadow: inset 0 2px 4px rgba(0,0,0,.55), 0 3px 0 var(--hud-out); }
 .hud-elixir-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 6px 0 0 6px; transition: width .4s; box-shadow: inset 0 -3px 0 rgba(0,0,0,.18); }

@@ -1,6 +1,7 @@
 import { Sprite, Texture, type Container } from 'pixi.js';
 import '@fontsource/lilita-one/400.css';
 import type { Art } from './art/draw';
+import { loadSprites } from './art/sprites';
 
 const MAX = 256;
 
@@ -18,10 +19,10 @@ const holders = new Set<() => Iterable<Texture>>();
 
 const defaultToTexture = (canvas: HTMLCanvasElement): Texture => Texture.from(canvas);
 
-/** Awaited once before the first bake so canvas text uses Lilita One, not the fallback. */
+/** Awaited once before the first bake: canvas text uses Lilita One, not the fallback, and the painted sprites are decoded. */
 export async function prepareArt(): Promise<void> {
   const fonts = typeof document !== 'undefined' ? document.fonts : undefined;
-  if (fonts?.load) await fonts.load('400 16px "Lilita One"');
+  await Promise.all([fonts?.load ? fonts.load('400 16px "Lilita One"') : null, loadSprites()]);
 }
 
 /**

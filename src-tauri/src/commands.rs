@@ -411,6 +411,18 @@ pub fn stop_session(id: String, state: State<'_, AppState>) -> Result<(), String
     state.manager.stop(&id).map_err(fmt_err)
 }
 
+/// Starts a paused session (one listed when the app last quit) again, on its agent's conversation.
+#[tauri::command]
+pub async fn resume_session(id: String, app: AppHandle, state: State<'_, AppState>) -> Result<SessionInfo, String> {
+    let s = state.manager.list().into_iter().find(|s| s.id == id).ok_or("unknown session")?;
+    let ws = find_workspace(&state, &s.workspace_id)?;
+    let builder = match &s.kind {
+        SessionKind::Agent { builder_id } => Some(state.data().builders.iter().find(|b| &b.id == builder_id).cloned().ok_or("this session's builder was deleted")?),
+        SessionKind::Terminal => None,
+    };
+    state.manager.resume(&ws, builder.as_ref(), &id).map_err(|e| start_err(&app, &state, &s.workspace_id, e))
+}
+
 #[tauri::command]
 pub async fn close_session(id: String, app: AppHandle, state: State<'_, AppState>) -> Result<CloseOutcome, String> {
     state.channels.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
@@ -655,6 +667,12 @@ pub fn open_in_editor(path: String, app: AppHandle) -> Result<(), String> {
     app.opener().open_path(path, None::<&str>).map_err(|e| e.to_string())
 }
 
+/// Opens the folder `path` in Finder (the system file manager elsewhere).
+#[tauri::command]
+pub fn open_in_finder(path: String, app: AppHandle) -> Result<(), String> {
+    app.opener().open_path(path, None::<&str>).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn review_session(id: String, state: State<'_, AppState>) -> Result<Review, String> {
     state.manager.review(&id).map_err(fmt_err)
@@ -721,7 +739,7 @@ pub fn detach_session(id: String, state: State<'_, AppState>) {
     let _ = state.manager.detach(&id);
 }
 
-/// Kills every session, then exits (or restarts into the new version when `restart`): SIGHUP, up
+/// Kills every session (each stays saved and comes back paused), then exits (or restarts into the new version when `restart`): SIGHUP, up
 /// to `KILL_GRACE` for the process groups to exit, SIGKILL for the survivors. The wait runs on a
 /// blocking worker, never on the UI thread, so the window keeps responding until the app exits.
 async fn shutdown_and_exit(app: &AppHandle, state: &AppState, restart: bool) {

@@ -1,0 +1,1099 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Clash of Claudes — v7 Whimsical 3D Fantasy × Toy-like Diorama Mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@600;700;800;900&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --wood-900: #1d130b;
+    --wood-800: #2f1f14;
+    --wood-700: #4a2f1d;
+    --wood-600: #6b442a;
+    --wood-500: #8c5a38;
+    --parch-100: #fff9ec;
+    --parch-200: #f7ebd2;
+    --parch-300: #ead5b0;
+    --parch-400: #d4b88c;
+    --gold-500: #ffca28;
+    --gold-600: #e59400;
+    --claude: #d97757;
+    --codex: #f4f4f4;
+    --antigravity: #4f7cf0;
+    --opencode: #33a889;
+    --custom: #9b968e;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: radial-gradient(circle at 50% 35%, #2b3a22 0%, #172112 70%, #0e140b 100%);
+    font-family: 'Nunito', system-ui, sans-serif;
+    color: var(--wood-900);
+  }
+
+  #stage {
+    position: fixed; inset: 0;
+    width: 100vw; height: 100vh;
+    cursor: grab;
+  }
+  #stage:active { cursor: grabbing; }
+
+  /* ---------- Upgraded Toy-Diorama Parchment HUD ---------- */
+  .hud-top {
+    position: fixed; top: 14px; left: 16px; right: 16px;
+    display: flex; align-items: center; justify-content: space-between;
+    pointer-events: none; z-index: 20;
+  }
+  .hud-top > * { pointer-events: auto; }
+
+  .toy-card {
+    background: linear-gradient(180deg, var(--parch-100) 0%, var(--parch-200) 68%, var(--parch-300) 100%);
+    border: 3.5px solid var(--wood-900);
+    border-radius: 18px;
+    box-shadow:
+      0 6px 0 var(--wood-900),
+      0 10px 24px rgba(14, 9, 5, 0.45),
+      inset 0 2px 0 rgba(255, 255, 255, 0.85),
+      inset 0 -3px 0 rgba(166, 124, 82, 0.35);
+    padding: 8px 16px;
+    display: flex; align-items: center; gap: 12px;
+  }
+
+  .brand-pill {
+    background: linear-gradient(180deg, #4f3320 0%, #2e1c10 100%);
+    color: #fff6e0;
+    border: 3.5px solid var(--wood-900);
+    border-radius: 18px;
+    box-shadow:
+      0 6px 0 var(--wood-900),
+      0 10px 24px rgba(0, 0, 0, 0.45),
+      inset 0 2px 0 rgba(255, 220, 170, 0.28);
+    padding: 8px 16px;
+    display: flex; align-items: center; gap: 12px;
+  }
+
+  .brand-title {
+    font-family: 'Lilita One', cursive;
+    font-size: 20px;
+    letter-spacing: 0.5px;
+    color: #ffd86b;
+    text-shadow: 0 2px 0 #1d130b;
+  }
+  .brand-sub {
+    font-size: 11px; font-weight: 800;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    color: #e6cfa8;
+  }
+
+  .mode-tabs {
+    display: flex; gap: 6px;
+    background: #23160d;
+    padding: 4px;
+    border-radius: 14px;
+    border: 2.5px solid var(--wood-900);
+  }
+  .mode-tab {
+    font-family: 'Lilita One', cursive;
+    font-size: 14px;
+    padding: 7px 14px;
+    border-radius: 10px;
+    border: none;
+    cursor: pointer;
+    color: #d7c09d;
+    background: transparent;
+    transition: all 0.12s ease;
+  }
+  .mode-tab.active {
+    background: linear-gradient(180deg, #ffd859 0%, #f09d18 100%);
+    color: var(--wood-900);
+    box-shadow: 0 3px 0 var(--wood-900), inset 0 1.5px 0 rgba(255,255,255,0.7);
+  }
+
+  /* Elixir Resource Meters */
+  .meters { display: flex; gap: 10px; }
+  .meter {
+    display: flex; align-items: center; gap: 8px;
+    background: #26180e;
+    border: 2.5px solid var(--wood-900);
+    border-radius: 999px;
+    padding: 4px 12px 4px 6px;
+    color: #fff5e1;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.55);
+  }
+  .meter-orb {
+    width: 22px; height: 22px; border-radius: 50%;
+    border: 2px solid var(--wood-900);
+    box-shadow: inset 0 2px 2px rgba(255,255,255,0.6);
+  }
+  .meter-label { font-size: 11px; font-weight: 800; color: #ccb38f; }
+  .meter-val { font-family: 'Lilita One', cursive; font-size: 15px; color: #fff; }
+
+  /* Bottom Roster Dock */
+  .hud-bottom {
+    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 10px;
+    z-index: 20;
+  }
+  .roster-slot {
+    width: 64px; height: 74px;
+    background: linear-gradient(180deg, var(--parch-100) 0%, var(--parch-300) 100%);
+    border: 3px solid var(--wood-900);
+    border-radius: 16px;
+    box-shadow: 0 5px 0 var(--wood-900), inset 0 2px 0 rgba(255,255,255,0.85);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 4px; cursor: pointer; position: relative;
+    transition: transform 0.12s ease;
+  }
+  .roster-slot:hover { transform: translateY(-3px); }
+  .roster-slot.active {
+    border-color: #ffca28;
+    box-shadow: 0 0 0 2px var(--wood-900), 0 5px 0 var(--wood-900);
+  }
+  .roster-slot canvas {
+    width: 44px; height: 44px;
+    border-radius: 10px;
+    background: radial-gradient(circle at 50% 40%, #fffdf7 0%, #e5cda4 100%);
+    border: 2px solid var(--wood-900);
+  }
+  .roster-name {
+    font-family: 'Lilita One', cursive;
+    font-size: 10px; margin-top: 3px;
+    color: var(--wood-900);
+  }
+  .roster-dot {
+    position: absolute; top: -4px; right: -4px;
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid var(--wood-900);
+  }
+
+  /* Controls Side Panel */
+  .side-panel {
+    position: fixed; top: 82px; right: 16px; width: 310px;
+    z-index: 20; display: flex; flex-direction: column; gap: 10px;
+  }
+  .panel-title {
+    font-family: 'Lilita One', cursive;
+    font-size: 16px; color: var(--wood-900);
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 2px dashed rgba(47, 31, 20, 0.22);
+    padding-bottom: 6px; width: 100%;
+  }
+  .ctrl-row {
+    width: 100%; display: flex; align-items: center; justify-content: space-between;
+    font-size: 12px; font-weight: 800; color: var(--wood-800);
+    margin-top: 4px;
+  }
+  .ctrl-btn {
+    font-family: 'Lilita One', cursive;
+    font-size: 12px;
+    padding: 5px 10px;
+    border-radius: 9px;
+    border: 2px solid var(--wood-900);
+    background: linear-gradient(180deg, #fff6df 0%, #e8cfa6 100%);
+    box-shadow: 0 2.5px 0 var(--wood-900);
+    cursor: pointer; color: var(--wood-900);
+  }
+  .ctrl-btn:active { transform: translateY(2px); box-shadow: 0 0.5px 0 var(--wood-900); }
+  .ctrl-btn.on {
+    background: linear-gradient(180deg, #ffe066 0%, #f59f00 100%);
+  }
+
+  /* ---------- Tab 2: Sprite & Anchor Catalog Overlay ---------- */
+  #catalog-view {
+    position: fixed; inset: 78px 16px 16px 16px;
+    background: linear-gradient(180deg, var(--parch-100) 0%, var(--parch-200) 100%);
+    border: 4px solid var(--wood-900);
+    border-radius: 22px;
+    box-shadow: 0 10px 0 var(--wood-900), 0 20px 50px rgba(0,0,0,0.65);
+    z-index: 30;
+    overflow-y: auto;
+    padding: 22px;
+    display: none;
+  }
+  #catalog-view.open { display: block; }
+  .cat-section { margin-bottom: 28px; }
+  .cat-h2 {
+    font-family: 'Lilita One', cursive;
+    font-size: 22px; color: var(--wood-900);
+    margin-bottom: 6px;
+  }
+  .cat-desc {
+    font-size: 13px; font-weight: 700; color: var(--wood-600);
+    margin-bottom: 14px;
+  }
+  .cat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 14px;
+  }
+  .cat-card {
+    background: #fffdf7;
+    border: 2.5px solid var(--wood-900);
+    border-radius: 14px;
+    box-shadow: 0 4px 0 var(--wood-900);
+    padding: 10px;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  .checker {
+    width: 100%; height: 170px;
+    border-radius: 10px;
+    border: 2px solid #d8c39e;
+    background-image:
+      linear-gradient(45deg, #efe4ce 25%, transparent 25%),
+      linear-gradient(-45deg, #efe4ce 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #efe4ce 75%),
+      linear-gradient(-45deg, transparent 75%, #efe4ce 75%);
+    background-size: 16px 16px;
+    background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+    background-color: #faf3e3;
+    display: flex; align-items: center; justify-content: center;
+    position: relative; overflow: hidden;
+  }
+  .checker canvas { max-width: 96%; max-height: 96%; object-fit: contain; }
+  .cat-meta {
+    width: 100%; margin-top: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; color: var(--wood-800);
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .cat-meta strong { font-family: 'Lilita One', cursive; font-size: 14px; color: var(--wood-900); }
+</style>
+</head>
+<body>
+
+<canvas id="stage"></canvas>
+
+<!-- Top Toy-Diorama HUD -->
+<div class="hud-top">
+  <div class="brand-pill">
+    <div>
+      <div class="brand-title">CLASH OF CLAUDES</div>
+      <div class="brand-sub">v7 Whimsical 3D Toy-Diorama Visual System</div>
+    </div>
+    <div class="mode-tabs">
+      <button class="mode-tab active" id="tab-village">Live Diorama Village</button>
+      <button class="mode-tab" id="tab-catalog">Sprite &amp; Anchor Inspector</button>
+    </div>
+  </div>
+
+  <div class="toy-card meters">
+    <div class="meter">
+      <div class="meter-orb" style="background: radial-gradient(circle at 35% 30%, #ffbe7a, #e87848 60%, #9e3818);"></div>
+      <div>
+        <div class="meter-label">CLAUDE</div>
+        <div class="meter-val">84%</div>
+      </div>
+    </div>
+    <div class="meter">
+      <div class="meter-orb" style="background: radial-gradient(circle at 35% 30%, #e8ffff, #62d2c8 60%, #1f7470);"></div>
+      <div>
+        <div class="meter-label">CODEX</div>
+        <div class="meter-val">68%</div>
+      </div>
+    </div>
+    <div class="meter">
+      <div class="meter-orb" style="background: radial-gradient(circle at 35% 30%, #d8b4ff, #8c5af0 60%, #421e98);"></div>
+      <div>
+        <div class="meter-label">ANTIGRAVITY</div>
+        <div class="meter-val">92%</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Right Inspector Controls -->
+<div class="side-panel toy-card" id="village-controls" style="flex-direction: column; align-items: stretch;">
+  <div class="panel-title">
+    <span>DIORAMA INSPECTOR</span>
+    <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#6b442a;">SCALE=2 (128×64)</span>
+  </div>
+  <div class="ctrl-row">
+    <span>Footprints &amp; Anchors (ax, ay)</span>
+    <button class="ctrl-btn" id="btn-debug">Show Grid</button>
+  </div>
+  <div class="ctrl-row">
+    <span>Workspace House Stage</span>
+    <div style="display:flex;gap:4px;">
+      <button class="ctrl-btn" data-stage="all">Mix</button>
+      <button class="ctrl-btn" data-stage="0">0</button>
+      <button class="ctrl-btn" data-stage="1">1</button>
+      <button class="ctrl-btn" data-stage="2">2</button>
+      <button class="ctrl-btn" data-stage="3">3</button>
+      <button class="ctrl-btn" data-stage="4">4</button>
+    </div>
+  </div>
+  <div class="ctrl-row">
+    <span>Elixir Collector Fill</span>
+    <input type="range" id="rng-fill" min="0" max="100" value="78" style="width:120px;accent-color:#d97757;" />
+  </div>
+  <div class="ctrl-row">
+    <span>Scaffold Progress</span>
+    <input type="range" id="rng-prog" min="0" max="100" value="62" style="width:120px;accent-color:#4f7cf0;" />
+  </div>
+  <div class="ctrl-row">
+    <span>Camera View</span>
+    <button class="ctrl-btn" id="btn-reset-cam">Center Village</button>
+  </div>
+</div>
+
+<!-- Bottom Builder Avatar Dock (verifies BuilderAvatar.tsx crop) -->
+<div class="hud-bottom" id="roster-dock"></div>
+
+<!-- Tab 2: Full Sprite & Anchor Catalog -->
+<div id="catalog-view">
+  <div class="cat-section">
+    <div class="cat-h2">1. Visual North Star &amp; Sprite Sheets (`public/assets/village/sheets/`)</div>
+    <div class="cat-desc">Packed 2× sprite strips and atlases ready for single-fetch startup loading in <code>prepareArt()</code>.</div>
+    <div class="cat-grid" id="cat-sheets" style="grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));"></div>
+  </div>
+  <div class="cat-section">
+    <div class="cat-h2">2. Buildings, Structures &amp; Collectors (with Footprint Diamonds &amp; <code>(ax, ay)</code> Crosshairs)</div>
+    <div class="cat-desc">Red crosshair = exact <code>(ax, ay)</code> anchor returned by <code>entities.ts</code>. Gold diamond = isometric tile footprint from <code>layout.ts</code>.</div>
+    <div class="cat-grid" id="cat-buildings"></div>
+  </div>
+  <div class="cat-section">
+    <div class="cat-h2">3. AI Builders — 3 Classes × 5 Agents × 7 Poses &amp; <code>BuilderAvatar</code> Portrait Crop</div>
+    <div class="cat-desc">Each builder frame is 220×260 px (anchor 110, 200). Blue box shows the exact <code>BuilderAvatar.tsx</code> portrait crop.</div>
+    <div class="cat-grid" id="cat-builders"></div>
+  </div>
+</div>
+
+<script type="module">
+const ASSET_BASE = '../../public/assets/village/';
+
+const TW = 64, TH = 32, SCALE = 2;
+const iso = (col, row) => ({ x: (col - row) * (TW / 2), y: (col + row) * (TH / 2) });
+
+const loadImg = (relPath) => new Promise((resolve, reject) => {
+  const img = new Image();
+  img.onload = () => resolve(img);
+  img.onerror = () => reject(new Error('Failed to load ' + relPath));
+  img.src = ASSET_BASE + relPath;
+});
+
+const state = {
+  showDebug: false,
+  forceStage: 'all',
+  collectorFill: 0.78,
+  scaffoldProgress: 0.62,
+  camX: 0,
+  camY: -410,
+  zoom: 0.95,
+  dragging: false,
+  dragStartX: 0,
+  dragStartY: 0,
+};
+
+// Preload key sprites for the interactive village + catalog
+const ASSETS = {};
+async function preloadAll() {
+  const list = [
+    ['northStar', 'north-star.png'],
+    ['hall', 'buildings/hall.png'],
+    ['tree0', 'scenery/tree-0.png'],
+    ['tree1', 'scenery/tree-1.png'],
+    ['tree2', 'scenery/tree-2.png'],
+    ['tree3', 'scenery/tree-3.png'],
+    ['gateNS', 'scenery/gate-ns.png'],
+    ['gateEW', 'scenery/gate-ew.png'],
+    ['wallsSheet', 'sheets/walls-sheet.png'],
+    ['treesSheet', 'sheets/trees-sheet.png'],
+    ['housesSheet', 'sheets/houses-stages-sheet.png'],
+    ['structuresSheet', 'sheets/structures-sheet.png'],
+    ['uiPropsSheet', 'sheets/ui-props-sheet.png'],
+    ['hammersSheet', 'sheets/hammers-sheet.png'],
+    ['house0Coral', 'buildings/house-stage-0.png'],
+    ['house1Teal', 'buildings/house-stage-1-teal.png'],
+    ['house2Orange', 'buildings/house-stage-2-orange.png'],
+    ['house3Blue', 'buildings/house-stage-3-blue.png'],
+    ['house3Purple', 'buildings/house-stage-3-purple.png'],
+    ['house4Gold', 'buildings/house-stage-4.png'],
+    ['house0Teal', 'buildings/house-stage-0-teal.png'],
+    ['house1Orange', 'buildings/house-stage-1-orange.png'],
+    ['house2Blue', 'buildings/house-stage-2-blue.png'],
+    ['structFound', 'structures/structure-foundation.png'],
+    ['structClaude', 'structures/structure-claude.png'],
+    ['structCodex', 'structures/structure-codex.png'],
+    ['structAnti', 'structures/structure-antigravity.png'],
+    ['structOpen', 'structures/structure-opencode.png'],
+    ['collectorBase', 'structures/collector-base.png'],
+    ['collectorMask', 'structures/collector-glass-mask.png'],
+    ['runeDark', 'structures/runestone-dark.png'],
+    ['runeLit', 'structures/runestone-lit.png'],
+    ['boardFrame', 'structures/board-frame.png'],
+    ['bubbleNeeds', 'ui/bubble-needs.png'],
+    ['bubbleStuck', 'ui/bubble-stuck.png'],
+    ['ribbon', 'ui/ribbon.png'],
+    ['bAppClaude', 'sheets/builder-apprentice-claude.png'],
+    ['bAppCodex', 'sheets/builder-apprentice-codex.png'],
+    ['bAppOpen', 'sheets/builder-apprentice-opencode.png'],
+    ['bCraftClaude', 'sheets/builder-craftsman-claude.png'],
+    ['bCraftAnti', 'sheets/builder-craftsman-antigravity.png'],
+    ['bCraftOpen', 'sheets/builder-craftsman-opencode.png'],
+    ['bMastClaude', 'sheets/builder-master-claude.png'],
+    ['bMastAnti', 'sheets/builder-master-antigravity.png'],
+    ['bMastCodex', 'sheets/builder-master-codex.png'],
+  ];
+  await Promise.all(list.map(async ([k, p]) => {
+    ASSETS[k] = await loadImg(p);
+  }));
+}
+
+// Bake static floating-island grass + cobble plaza ground canvas
+let groundCanvas = null;
+const GND_W = 2200, GND_H = 1280, GND_OX = 1100, GND_OY = 180;
+function buildGround() {
+  const c = document.createElement('canvas');
+  c.width = GND_W; c.height = GND_H;
+  const g = c.getContext('2d');
+  g.translate(GND_OX, GND_OY);
+
+  const GR = 26;
+  const top = iso(0, 0), right = iso(GR, 0), bot = iso(GR, GR), left = iso(0, GR);
+
+  // Floating island cliff rim under the diamond
+  g.beginPath();
+  g.moveTo(left.x, left.y);
+  g.lineTo(bot.x, bot.y);
+  g.lineTo(right.x, right.y);
+  g.lineTo(right.x, right.y + 46);
+  g.lineTo(bot.x, bot.y + 64);
+  g.lineTo(left.x, left.y + 46);
+  g.closePath();
+  const cliffGrad = g.createLinearGradient(0, left.y, 0, bot.y + 64);
+  cliffGrad.addColorStop(0, '#6e4c30');
+  cliffGrad.addColorStop(0.5, '#4e331e');
+  cliffGrad.addColorStop(1, '#2b1a0e');
+  g.fillStyle = cliffGrad;
+  g.fill();
+  g.lineWidth = 4;
+  g.strokeStyle = '#1d130b';
+  g.stroke();
+
+  // Base meadow diamond
+  g.beginPath();
+  g.moveTo(top.x, top.y);
+  g.lineTo(right.x, right.y);
+  g.lineTo(bot.x, bot.y);
+  g.lineTo(left.x, left.y);
+  g.closePath();
+  const grassGrad = g.createRadialGradient(0, bot.y * 0.5, 60, 0, bot.y * 0.5, 920);
+  grassGrad.addColorStop(0, '#9be058');
+  grassGrad.addColorStop(0.65, '#78c240');
+  grassGrad.addColorStop(1, '#589e2c');
+  g.fillStyle = grassGrad;
+  g.fill();
+  g.lineWidth = 3.5;
+  g.strokeStyle = '#1d130b';
+  g.stroke();
+
+  // Subtle checkerboard turf tiles
+  for (let col = 0; col < GR; col++) {
+    for (let row = 0; row < GR; row++) {
+      const a = iso(col, row), b = iso(col + 1, row), d = iso(col + 1, row + 1), e = iso(col, row + 1);
+      g.beginPath();
+      g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.lineTo(d.x, d.y); g.lineTo(e.x, e.y);
+      g.closePath();
+      if ((col + row) % 2 === 0) {
+        g.fillStyle = 'rgba(255, 255, 210, 0.06)';
+        g.fill();
+      }
+      // Cobble plaza around Town Hall (10..16, 10..16) and Compound (7..14, 15..22)
+      const inPlaza = col >= 10 && col <= 15 && row >= 10 && row <= 15;
+      const inCompound = col >= 6 && col <= 13 && row >= 15 && row <= 22;
+      if (inPlaza || inCompound) {
+        g.fillStyle = inPlaza ? 'rgba(222, 198, 156, 0.72)' : 'rgba(206, 180, 138, 0.52)';
+        g.fill();
+        g.strokeStyle = 'rgba(92, 66, 40, 0.25)';
+        g.lineWidth = 1;
+        g.stroke();
+      }
+    }
+  }
+  groundCanvas = c;
+}
+
+// Helper for live Collector Elixir liquid rendering
+const ELIXIR_COLORS = {
+  claude: { top: '#ffbe7a', mid: '#e87848', bot: '#9e3818', glow: 'rgba(255,156,90,0.45)' },
+  codex: { top: '#e8ffff', mid: '#62d2c8', bot: '#1f7470', glow: 'rgba(110,235,220,0.45)' },
+  antigravity: { top: '#d8b4ff', mid: '#8c5af0', bot: '#421e98', glow: 'rgba(170,120,255,0.45)' },
+};
+
+function drawLiveCollector(ctx, sx, sy, agent, fill, timeSec) {
+  const base = ASSETS.collectorBase;
+  const ax = 200, ay = 380;
+  const dx = sx - ax / SCALE, dy = sy - ay / SCALE;
+  ctx.drawImage(base, dx, dy, base.width / SCALE, base.height / SCALE);
+
+  if (fill > 0.02) {
+    const col = ELIXIR_COLORS[agent];
+    const tankBotY = sy - (380 - 314) / SCALE;
+    const maxH = 72;
+    const h = Math.max(6, fill * maxH);
+    const rx = 26, ry = 12;
+
+    ctx.save();
+    // Soft outer glow
+    ctx.fillStyle = col.glow;
+    ctx.beginPath();
+    ctx.ellipse(sx, tankBotY - h * 0.5, rx + 8, h * 0.55 + 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Liquid cylinder clipped inside the glass chamber
+    ctx.beginPath();
+    ctx.ellipse(sx, tankBotY, rx, ry, 0, 0, Math.PI);
+    ctx.lineTo(sx - rx, tankBotY - h);
+    ctx.ellipse(sx, tankBotY - h, rx, ry * 0.85, 0, Math.PI, 0, true);
+    ctx.closePath();
+    const grad = ctx.createLinearGradient(sx, tankBotY - h - 8, sx, tankBotY + 8);
+    grad.addColorStop(0, col.top);
+    grad.addColorStop(0.45, col.mid);
+    grad.addColorStop(1, col.bot);
+    ctx.fillStyle = grad;
+    ctx.globalAlpha = 0.88;
+    ctx.fill();
+
+    // Liquid meniscus top ellipse
+    ctx.globalAlpha = 0.95;
+    ctx.fillStyle = col.top;
+    ctx.beginPath();
+    ctx.ellipse(sx, tankBotY - h, rx * 0.94, ry * 0.78, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Animated rising bubbles
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    for (let i = 0; i < 4; i++) {
+      const p = ((timeSec * 0.6 + i * 0.27) % 1);
+      const bx = sx + Math.sin(i * 2.1 + timeSec * 2) * 14;
+      const by = tankBotY - 4 - p * Math.max(8, h - 8);
+      ctx.beginPath();
+      ctx.arc(bx, by, 2.2 + (i % 2), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
+// Helper for live Structure Scaffold progress
+function drawLiveScaffold(ctx, sx, sy, agent, progress) {
+  const found = ASSETS.structFound;
+  const comp = ASSETS[agent === 'codex' ? 'structCodex' : agent === 'antigravity' ? 'structAnti' : agent === 'opencode' ? 'structOpen' : 'structClaude'];
+  const ax = 220, ay = 400;
+  const dx = sx - ax / SCALE, dy = sy - ay / SCALE;
+
+  // 1. Foundation base
+  ctx.drawImage(found, dx, dy, found.width / SCALE, found.height / SCALE);
+
+  // 2. Partial rising tent clipped from bottom up
+  const tentBotY = sy - (400 - 348) / SCALE;
+  const maxH = 95;
+  const revealH = progress * maxH;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(dx, tentBotY - revealH, comp.width / SCALE, revealH + 24);
+  ctx.clip();
+  ctx.drawImage(comp, dx, dy, comp.width / SCALE, comp.height / SCALE);
+  ctx.restore();
+
+  // 3. Isometric timber scaffold poles & crossbars around the rising tent
+  const postH = Math.max(22, revealH + 10);
+  const corners = [
+    { x: sx, y: sy - 58 },
+    { x: sx + 42, y: sy - 36 },
+    { x: sx, y: sy - 14 },
+    { x: sx - 42, y: sy - 36 },
+  ];
+  ctx.save();
+  ctx.strokeStyle = '#1d130b';
+  ctx.lineWidth = 4.5;
+  ctx.lineCap = 'round';
+  for (const pt of corners) {
+    ctx.beginPath(); ctx.moveTo(pt.x, pt.y); ctx.lineTo(pt.x, pt.y - postH); ctx.stroke();
+  }
+  ctx.strokeStyle = '#c88c4b';
+  ctx.lineWidth = 2.5;
+  for (const pt of corners) {
+    ctx.beginPath(); ctx.moveTo(pt.x, pt.y); ctx.lineTo(pt.x, pt.y - postH); ctx.stroke();
+  }
+  // Horizontal scaffold plank ring at top of progress
+  ctx.strokeStyle = '#1d130b';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(corners[0].x, corners[0].y - postH + 4);
+  ctx.lineTo(corners[1].x, corners[1].y - postH + 4);
+  ctx.lineTo(corners[2].x, corners[2].y - postH + 4);
+  ctx.lineTo(corners[3].x, corners[3].y - postH + 4);
+  ctx.closePath();
+  ctx.stroke();
+  ctx.strokeStyle = '#e0a965';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.restore();
+}
+
+// Helper for live Board preview screen cut-in
+function drawLiveBoard(ctx, sx, sy, timeSec) {
+  const img = ASSETS.boardFrame;
+  const ax = 200, ay = 380;
+  ctx.drawImage(img, sx - ax / SCALE, sy - ay / SCALE, img.width / SCALE, img.height / SCALE);
+
+  // Live isometric screen quad at BOARD coordinates: x0=-31..31, topY=-91..-60, botY=-49..-18 relative to footprint center (sx, sy - 32)
+  const cx = sx, cy = sy - 32;
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(cx - 31, cy - 91);
+  ctx.lineTo(cx + 31, cy - 60);
+  ctx.lineTo(cx + 31, cy - 18);
+  ctx.lineTo(cx - 31, cy - 49);
+  ctx.closePath();
+  ctx.clip();
+
+  // Simulated live localhost page preview inside the isometric board screen
+  const g = ctx.createLinearGradient(cx - 31, cy - 91, cx + 31, cy - 18);
+  g.addColorStop(0, '#162436');
+  g.addColorStop(1, '#0e1724');
+  ctx.fillStyle = g;
+  ctx.fillRect(cx - 35, cy - 95, 70, 80);
+
+  // Animated code/UI bars on the preview board
+  const pulse = 0.6 + 0.4 * Math.sin(timeSec * 3);
+  ctx.strokeStyle = `rgba(104, 214, 156, ${pulse})`;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(cx - 22, cy - 74); ctx.lineTo(cx + 12, cy - 57);
+  ctx.moveTo(cx - 22, cy - 63); ctx.lineTo(cx + 22, cy - 41);
+  ctx.moveTo(cx - 22, cy - 52); ctx.lineTo(cx + 4, cy - 39);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// Sample Village Entities matching layout.ts
+const VILLAGE_HOUSES = [
+  { col: 4, row: 5, stage: 0, key: 'house0Coral', label: 'api-gateway' },
+  { col: 9, row: 4, stage: 1, key: 'house1Teal', label: 'auth-service' },
+  { col: 15, row: 5, stage: 2, key: 'house2Orange', label: 'billing-worker' },
+  { col: 19, row: 9, stage: 3, key: 'house3Purple', label: 'clashofclaudes' },
+  { col: 18, row: 15, stage: 4, key: 'house4Gold', label: 'core-engine' },
+  { col: 4, row: 11, stage: 2, key: 'house2Blue', label: 'design-system' },
+];
+
+const BUILDERS = [
+  { name: 'Opus 4.6', cls: 2, agent: 'claude', strip: 'bMastClaude', col: 9.5, row: 17.2, mode: 'hammer', bubble: null },
+  { name: 'Sonnet 4.6', cls: 1, agent: 'antigravity', strip: 'bCraftAnti', col: 11.4, row: 19.3, mode: 'walk', bubble: null },
+  { name: 'Codex o3', cls: 2, agent: 'codex', strip: 'bMastCodex', col: 13.5, row: 13.5, mode: 'cheer', bubble: 'ribbon' },
+  { name: 'Haiku 4.5', cls: 0, agent: 'opencode', strip: 'bAppOpen', col: 7.4, row: 12.8, mode: 'idle', bubble: 'bubbleNeeds' },
+  { name: 'Gemini Pro', cls: 1, agent: 'claude', strip: 'bCraftClaude', col: 16.5, row: 12.2, mode: 'walk', bubble: null },
+];
+
+// Populate Bottom Roster Dock with live BuilderAvatar.tsx crop (`sx = ax - size*0.64, sy = ay - size*1.58, sw = size*1.28`)
+function buildRosterDock() {
+  const dock = document.getElementById('roster-dock');
+  dock.innerHTML = '';
+  const colors = { claude: '#d97757', codex: '#f4f4f4', antigravity: '#4f7cf0', opencode: '#33a889' };
+  BUILDERS.forEach((b, idx) => {
+    const slot = document.createElement('div');
+    slot.className = 'roster-slot' + (idx === 0 ? ' active' : '');
+    const c = document.createElement('canvas');
+    const size = 44;
+    c.width = size * 2; c.height = size * 2;
+    const ctx = c.getContext('2d');
+    const strip = ASSETS[b.strip];
+    // Frame 0 (idle) is 220x260 with ax=110, ay=200
+    const ax = 110, ay = 200;
+    const sw = size * 1.28 * 2;
+    const sx = ax - size * 0.64 * 2;
+    const sy = ay - size * 1.58 * 2;
+    ctx.drawImage(strip, sx, sy, sw, sw, 0, 0, size * 2, size * 2);
+
+    const dot = document.createElement('div');
+    dot.className = 'roster-dot';
+    dot.style.background = colors[b.agent];
+
+    const name = document.createElement('div');
+    name.className = 'roster-name';
+    name.textContent = b.name;
+
+    slot.appendChild(dot);
+    slot.appendChild(c);
+    slot.appendChild(name);
+    dock.appendChild(slot);
+  });
+}
+
+function drawFootprintDiamond(ctx, col, row, wTiles, hTiles, ax, ay, sx, sy) {
+  const a = iso(col, row), b = iso(col + wTiles, row), c = iso(col + wTiles, row + hTiles), d = iso(col, row + hTiles);
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.lineTo(c.x, c.y); ctx.lineTo(d.x, d.y);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(255, 212, 59, 0.22)';
+  ctx.fill();
+  ctx.strokeStyle = '#ffd43b';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Anchor crosshair at (sx, sy) = iso(col + wTiles, row + hTiles)
+  ctx.strokeStyle = '#ff2b2b';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(sx - 8, sy); ctx.lineTo(sx + 8, sy);
+  ctx.moveTo(sx, sy - 8); ctx.lineTo(sx, sy + 8);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function renderVillage(nowMs) {
+  const timeSec = nowMs * 0.001;
+  const canvas = document.getElementById('stage');
+  if (canvas.width !== window.innerWidth * devicePixelRatio || canvas.height !== window.innerHeight * devicePixelRatio) {
+    canvas.width = window.innerWidth * devicePixelRatio;
+    canvas.height = window.innerHeight * devicePixelRatio;
+  }
+  const ctx = canvas.getContext('2d');
+  ctx.save();
+  ctx.scale(devicePixelRatio, devicePixelRatio);
+  ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+
+  ctx.translate(window.innerWidth / 2 + state.camX, window.innerHeight / 2 + state.camY);
+  ctx.scale(state.zoom, state.zoom);
+
+  // 1. Ground island
+  ctx.drawImage(groundCanvas, -GND_OX, -GND_OY);
+
+  // Build depth-sorted draw list (by col + row depth)
+  const items = [];
+  const pushSprite = (col, row, wT, hT, img, ax, ay, label = null, customFn = null) => {
+    const p = iso(col + wT, row + hT);
+    items.push({
+      depth: col + row + wT + hT,
+      col, row, wT, hT,
+      sx: p.x, sy: p.y,
+      img, ax, ay, label, customFn
+    });
+  };
+
+  // Perimeter forest trees
+  const treeKeys = ['tree0', 'tree1', 'tree2', 'tree3'];
+  for (let i = 1; i < 25; i += 2) {
+    pushSprite(i, 1, 0, 0, ASSETS[treeKeys[i % 4]], 100, 224);
+    pushSprite(1, i, 0, 0, ASSETS[treeKeys[(i + 1) % 4]], 100, 224);
+    pushSprite(i, 24, 0, 0, ASSETS[treeKeys[(i + 2) % 4]], 100, 224);
+    pushSprite(24, i, 0, 0, ASSETS[treeKeys[(i + 3) % 4]], 100, 224);
+  }
+
+  // Town Hall (5x5 at 10, 10)
+  pushSprite(10, 10, 5, 5, ASSETS.hall, 380, 580, 'AI Town Hall');
+
+  // Workspace Houses (3x3)
+  const stageMap = ['house0Coral', 'house1Teal', 'house2Orange', 'house3Purple', 'house4Gold'];
+  for (const h of VILLAGE_HOUSES) {
+    const imgKey = state.forceStage === 'all' ? h.key : stageMap[Number(state.forceStage)];
+    pushSprite(h.col, h.row, 3, 3, ASSETS[imgKey], 300, 600, h.label);
+  }
+
+  // Compound Walls & Gates around (6..13, 15..22)
+  for (let c = 6; c <= 13; c++) {
+    for (let r = 15; r <= 22; r++) {
+      const onEdge = c === 6 || c === 13 || r === 15 || r === 22;
+      if (!onEdge) continue;
+      if (c === 9 && r === 15) {
+        pushSprite(c, r, 1, 1, ASSETS.gateNS, 120, 184);
+        continue;
+      }
+      if (c === 13 && r === 18) {
+        pushSprite(c, r, 1, 1, ASSETS.gateEW, 120, 184);
+        continue;
+      }
+      // Compute wall neighbor mask (N=1, E=2, S=4, W=8)
+      let mask = 0;
+      if (r > 15 && (c === 6 || c === 13)) mask |= 1;
+      if (r < 22 && (c === 6 || c === 13)) mask |= 4;
+      if (c > 6 && (r === 15 || r === 22)) mask |= 8;
+      if (c < 13 && (r === 15 || r === 22)) mask |= 2;
+      const p = iso(c + 1, r + 1);
+      items.push({
+        depth: c + r + 1.8,
+        col: c, row: r, wT: 1, hT: 1,
+        sx: p.x, sy: p.y,
+        ax: 110, ay: 144,
+        customFn: (g, sx, sy) => {
+          const colIdx = mask % 4, rowIdx = (mask / 4) | 0;
+          g.drawImage(ASSETS.wallsSheet, colIdx * 220, rowIdx * 180, 220, 180, sx - 110 / SCALE, sy - 144 / SCALE, 220 / SCALE, 180 / SCALE);
+        }
+      });
+    }
+  }
+
+  // Inside Compound: 1 Foundation, 1 Live Scaffold, 2 Complete Structures, 1 Preview Board, 1 Lit Rune Stone
+  pushSprite(7, 16, 2, 2, ASSETS.structFound, 220, 400, 'Foundation');
+  const scafPos = iso(10 + 2, 16 + 2);
+  items.push({
+    depth: 10 + 16 + 4,
+    col: 10, row: 16, wT: 2, hT: 2,
+    sx: scafPos.x, sy: scafPos.y, ax: 220, ay: 400,
+    label: 'Building (Scaffold)',
+    customFn: (g, sx, sy) => drawLiveScaffold(g, sx, sy, 'claude', state.scaffoldProgress)
+  });
+  pushSprite(7, 19, 2, 2, ASSETS.structAnti, 220, 400, 'Antigravity Tent');
+  pushSprite(10, 19, 2, 2, ASSETS.structCodex, 220, 400, 'Codex Tent');
+
+  // Preview Board & Rune Stones
+  const brdPos = iso(15 + 2, 18 + 2);
+  items.push({
+    depth: 15 + 18 + 4,
+    col: 15, row: 18, wT: 2, hT: 2,
+    sx: brdPos.x, sy: brdPos.y, ax: 200, ay: 380,
+    label: 'Preview Board',
+    customFn: (g, sx, sy) => drawLiveBoard(g, sx, sy, timeSec)
+  });
+  pushSprite(15, 21, 2, 2, ASSETS.runeLit, 200, 380, 'Rune Stone (Lit)');
+  pushSprite(18, 21, 2, 2, ASSETS.runeDark, 200, 380, 'Rune Stone');
+
+  // 3 Live Elixir Collectors
+  const cols = [
+    { col: 7, row: 8, agent: 'claude', fill: state.collectorFill },
+    { col: 16, row: 8, agent: 'codex', fill: Math.max(0.15, state.collectorFill * 0.82) },
+    { col: 13, row: 7, agent: 'antigravity', fill: Math.min(1, state.collectorFill * 1.1) },
+  ];
+  for (const cl of cols) {
+    const p = iso(cl.col + 2, cl.row + 2);
+    items.push({
+      depth: cl.col + cl.row + 4,
+      col: cl.col, row: cl.row, wT: 2, hT: 2,
+      sx: p.x, sy: p.y, ax: 200, ay: 380,
+      customFn: (g, sx, sy) => drawLiveCollector(g, sx, sy, cl.agent, cl.fill, timeSec)
+    });
+  }
+
+  // Animated Builders
+  BUILDERS.forEach((b, idx) => {
+    const walkOffset = b.mode === 'walk' ? Math.sin(timeSec * 2.2 + idx) * 0.65 : 0;
+    const c = b.col + walkOffset;
+    const r = b.row - walkOffset * 0.5;
+    const p = iso(c, r);
+    let poseIdx = 0;
+    if (b.mode === 'walk') poseIdx = (Math.floor(timeSec * 5 + idx) % 2) + 1;
+    else if (b.mode === 'hammer') poseIdx = (Math.floor(timeSec * 4 + idx) % 2) + 3;
+    else if (b.mode === 'cheer') poseIdx = 5;
+
+    items.push({
+      depth: c + r + 0.1,
+      col: c, row: r, wT: 0, hT: 0,
+      sx: p.x, sy: p.y, ax: 110, ay: 200,
+      customFn: (g, sx, sy) => {
+        const strip = ASSETS[b.strip];
+        g.drawImage(strip, poseIdx * 220, 0, 220, 260, sx - 110 / SCALE, sy - 200 / SCALE, 220 / SCALE, 260 / SCALE);
+        if (b.bubble && ASSETS[b.bubble]) {
+          const bImg = ASSETS[b.bubble];
+          const bob = Math.sin(timeSec * 4 + idx) * 3;
+          g.drawImage(bImg, sx - bImg.width / 4, sy - 92 + bob, bImg.width / 2, bImg.height / 2);
+        }
+      }
+    });
+  });
+
+  items.sort((a, b) => a.depth - b.depth);
+
+  for (const it of items) {
+    if (state.showDebug && it.wT > 0) {
+      drawFootprintDiamond(ctx, it.col, it.row, it.wT, it.hT, it.ax, it.ay, it.sx, it.sy);
+    }
+    if (it.customFn) {
+      it.customFn(ctx, it.sx, it.sy);
+    } else if (it.img) {
+      ctx.drawImage(it.img, it.sx - it.ax / SCALE, it.sy - it.ay / SCALE, it.img.width / SCALE, it.img.height / SCALE);
+    }
+    if (state.showDebug) {
+      ctx.fillStyle = '#ff2b2b';
+      ctx.beginPath();
+      ctx.arc(it.sx, it.sy, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  ctx.restore();
+  requestAnimationFrame(renderVillage);
+}
+
+// Build Tab 2: Sprite & Anchor Catalog
+function buildCatalog() {
+  const sheetsGrid = document.getElementById('cat-sheets');
+  const sheetEntries = [
+    { title: 'Visual North Star Concept', key: 'northStar', path: 'north-star.png', desc: '1376×768 Diorama North Star' },
+    { title: 'Trees Sheet (Oak & Pine)', key: 'treesSheet', path: 'sheets/trees-sheet.png', desc: '800×260 (4 × 200×260, ax=100, ay=224)' },
+    { title: 'Workspace Houses Stages 0–4', key: 'housesSheet', path: 'sheets/houses-stages-sheet.png', desc: '3000×660 (5 × 600×660, ax=300, ay=600)' },
+    { title: 'Agent Structures Sheet', key: 'structuresSheet', path: 'sheets/structures-sheet.png', desc: '2640×500 (6 × 440×500, ax=220, ay=400)' },
+    { title: '16-Bitmask Palisade Walls Atlas', key: 'wallsSheet', path: 'sheets/walls-sheet.png', desc: '880×720 (4×4 of 220×180, ax=110, ay=144)' },
+    { title: 'UI Bubbles, Ribbon & Puff', key: 'uiPropsSheet', path: 'sheets/ui-props-sheet.png', desc: '460×140 (needs, stuck, ribbon, puff)' },
+    { title: '5 Effort Gear Hammers', key: 'hammersSheet', path: 'sheets/hammers-sheet.png', desc: '600×140 (wood, iron, gold, diamond, mythic)' },
+  ];
+  for (const s of sheetEntries) {
+    const card = document.createElement('div');
+    card.className = 'cat-card';
+    const chk = document.createElement('div');
+    chk.className = 'checker';
+    const img = ASSETS[s.key].cloneNode();
+    img.style.maxWidth = '95%';
+    img.style.maxHeight = '95%';
+    chk.appendChild(img);
+    card.appendChild(chk);
+    card.innerHTML += `<div class="cat-meta"><strong>${s.title}</strong><span>${s.path}</span><span>${s.desc}</span></div>`;
+    sheetsGrid.appendChild(card);
+  }
+
+  // Buildings with Anchor Crosshair & Footprint Diamond drawn onto preview canvas
+  const bGrid = document.getElementById('cat-buildings');
+  const bEntries = [
+    { title: 'Town Hall (5×5)', key: 'hall', ax: 380, ay: 580, tiles: 5, path: 'buildings/hall.png' },
+    { title: 'House Stage 0 (Coral)', key: 'house0Coral', ax: 300, ay: 600, tiles: 3, path: 'buildings/house-stage-0.png' },
+    { title: 'House Stage 1 (Teal)', key: 'house1Teal', ax: 300, ay: 600, tiles: 3, path: 'buildings/house-stage-1-teal.png' },
+    { title: 'House Stage 2 (Orange)', key: 'house2Orange', ax: 300, ay: 600, tiles: 3, path: 'buildings/house-stage-2-orange.png' },
+    { title: 'House Stage 3 (Purple)', key: 'house3Purple', ax: 300, ay: 600, tiles: 3, path: 'buildings/house-stage-3-purple.png' },
+    { title: 'House Stage 4 (Gold)', key: 'house4Gold', ax: 300, ay: 600, tiles: 3, path: 'buildings/house-stage-4.png' },
+    { title: 'Structure Foundation (2×2)', key: 'structFound', ax: 220, ay: 400, tiles: 2, path: 'structures/structure-foundation.png' },
+    { title: 'Structure Complete (Claude)', key: 'structClaude', ax: 220, ay: 400, tiles: 2, path: 'structures/structure-claude.png' },
+    { title: 'Structure Complete (Antigravity)', key: 'structAnti', ax: 220, ay: 400, tiles: 2, path: 'structures/structure-antigravity.png' },
+    { title: 'Elixir Collector Base (2×2)', key: 'collectorBase', ax: 200, ay: 380, tiles: 2, path: 'structures/collector-base.png' },
+    { title: 'Rune Stone Lit (2×2)', key: 'runeLit', ax: 200, ay: 380, tiles: 2, path: 'structures/runestone-lit.png' },
+    { title: 'Preview Board Frame (2×2)', key: 'boardFrame', ax: 200, ay: 380, tiles: 2, path: 'structures/board-frame.png' },
+  ];
+  for (const b of bEntries) {
+    const src = ASSETS[b.key];
+    const c = document.createElement('canvas');
+    c.width = src.width; c.height = src.height;
+    const g = c.getContext('2d');
+    // Footprint diamond in 2x canvas coords
+    const N = b.tiles;
+    g.strokeStyle = 'rgba(255, 190, 0, 0.9)';
+    g.lineWidth = 4;
+    g.beginPath();
+    g.moveTo(b.ax, b.ay - N * 64);
+    g.lineTo(b.ax + N * 64, b.ay - N * 32);
+    g.lineTo(b.ax, b.ay);
+    g.lineTo(b.ax - N * 64, b.ay - N * 32);
+    g.closePath();
+    g.stroke();
+
+    g.drawImage(src, 0, 0);
+
+    // Anchor crosshair at (ax, ay)
+    g.strokeStyle = '#ff2222';
+    g.lineWidth = 4;
+    g.beginPath();
+    g.moveTo(b.ax - 18, b.ay); g.lineTo(b.ax + 18, b.ay);
+    g.moveTo(b.ax, b.ay - 18); g.lineTo(b.ax, b.ay + 18);
+    g.stroke();
+
+    const card = document.createElement('div');
+    card.className = 'cat-card';
+    const chk = document.createElement('div');
+    chk.className = 'checker';
+    chk.appendChild(c);
+    card.appendChild(chk);
+    card.innerHTML += `<div class="cat-meta"><strong>${b.title}</strong><span>${b.path}</span><span>${src.width}×${src.height}px | ax=${b.ax}, ay=${b.ay}</span></div>`;
+    bGrid.appendChild(card);
+  }
+
+  // Builders strips
+  const bldGrid = document.getElementById('cat-builders');
+  const bldEntries = [
+    { title: 'Master Builder — Claude (7 Poses)', key: 'bMastClaude', path: 'sheets/builder-master-claude.png' },
+    { title: 'Master Builder — Antigravity (7 Poses)', key: 'bMastAnti', path: 'sheets/builder-master-antigravity.png' },
+    { title: 'Craftsman Builder — OpenCode (7 Poses)', key: 'bCraftOpen', path: 'sheets/builder-craftsman-opencode.png' },
+    { title: 'Apprentice Builder — Codex (7 Poses)', key: 'bAppCodex', path: 'sheets/builder-apprentice-codex.png' },
+  ];
+  for (const b of bldEntries) {
+    const src = ASSETS[b.key];
+    const c = document.createElement('canvas');
+    c.width = src.width; c.height = src.height;
+    const g = c.getContext('2d');
+    g.drawImage(src, 0, 0);
+    for (let i = 0; i < 7; i++) {
+      const ax = i * 220 + 110, ay = 200;
+      g.strokeStyle = '#ff2222'; g.lineWidth = 3;
+      g.beginPath(); g.moveTo(ax - 10, ay); g.lineTo(ax + 10, ay); g.moveTo(ax, ay - 10); g.lineTo(ax, ay + 10); g.stroke();
+      if (i === 0) {
+        // Draw BuilderAvatar crop box on frame 0
+        const size = 44;
+        const sw = size * 1.28 * 2;
+        const sx = ax - size * 0.64 * 2;
+        const sy = ay - size * 1.58 * 2;
+        g.strokeStyle = '#2563eb'; g.lineWidth = 3;
+        g.strokeRect(sx, sy, sw, sw);
+      }
+    }
+    const card = document.createElement('div');
+    card.className = 'cat-card';
+    card.style.gridColumn = 'span 2';
+    const chk = document.createElement('div');
+    chk.className = 'checker';
+    chk.appendChild(c);
+    card.appendChild(chk);
+    card.innerHTML += `<div class="cat-meta"><strong>${b.title}</strong><span>${b.path}</span><span>1540×260px (7 × 220×260, ax=110, ay=200) | Blue box = BuilderAvatar crop</span></div>`;
+    bldGrid.appendChild(card);
+  }
+}
+
+// UI Event Listeners
+const stageEl = document.getElementById('stage');
+stageEl.addEventListener('pointerdown', (e) => {
+  state.dragging = true;
+  state.dragStartX = e.clientX - state.camX;
+  state.dragStartY = e.clientY - state.camY;
+});
+window.addEventListener('pointermove', (e) => {
+  if (!state.dragging) return;
+  state.camX = e.clientX - state.dragStartX;
+  state.camY = e.clientY - state.dragStartY;
+});
+window.addEventListener('pointerup', () => { state.dragging = false; });
+stageEl.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const factor = e.deltaY < 0 ? 1.08 : 0.92;
+  state.zoom = Math.max(0.45, Math.min(2.2, state.zoom * factor));
+}, { passive: false });
+
+document.getElementById('btn-debug').addEventListener('click', (e) => {
+  state.showDebug = !state.showDebug;
+  e.currentTarget.classList.toggle('on', state.showDebug);
+});
+document.querySelectorAll('[data-stage]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    state.forceStage = btn.dataset.stage;
+    document.querySelectorAll('[data-stage]').forEach(b => b.classList.toggle('on', b === btn));
+  });
+});
+document.getElementById('rng-fill').addEventListener('input', (e) => {
+  state.collectorFill = Number(e.target.value) / 100;
+});
+document.getElementById('rng-prog').addEventListener('input', (e) => {
+  state.scaffoldProgress = Number(e.target.value) / 100;
+});
+document.getElementById('btn-reset-cam').addEventListener('click', () => {
+  state.camX = 0; state.camY = -410; state.zoom = 0.95;
+});
+
+document.getElementById('tab-village').addEventListener('click', () => {
+  document.getElementById('tab-village').classList.add('active');
+  document.getElementById('tab-catalog').classList.remove('active');
+  document.getElementById('catalog-view').classList.remove('open');
+});
+document.getElementById('tab-catalog').addEventListener('click', () => {
+  document.getElementById('tab-catalog').classList.add('active');
+  document.getElementById('tab-village').classList.remove('active');
+  document.getElementById('catalog-view').classList.add('open');
+});
+
+await preloadAll();
+buildGround();
+buildRosterDock();
+buildCatalog();
+requestAnimationFrame(renderVillage);
+</script>
+</body>
+</html>

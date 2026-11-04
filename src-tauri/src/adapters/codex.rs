@@ -111,12 +111,17 @@ impl AgentAdapter for CodexAdapter {
             "-c".into(),
             format!("notify={}", notify_array(req.hook_url)),
         ]);
-        for p in req.images {
-            // attached to the first prompt as images, not only named in its text
-            args.push(format!("--image={}", p.to_string_lossy()));
-        }
-        if let Some(t) = req.task.filter(|t| !t.is_empty()) {
-            args.extend(["--".into(), t.into()]); // a task like `--help` is not an option
+        if let Some(c) = req.resume {
+            // the options above are the root command's; `resume` takes them on
+            args.extend(["resume".into(), c.into()]);
+        } else {
+            for p in req.images {
+                // attached to the first prompt as images, not only named in its text
+                args.push(format!("--image={}", p.to_string_lossy()));
+            }
+            if let Some(t) = req.task.filter(|t| !t.is_empty()) {
+                args.extend(["--".into(), t.into()]); // a task like `--help` is not an option
+            }
         }
         Ok(LaunchSpec { program: "codex".into(), args, env: vec![], cwd: req.cwd.to_path_buf() })
     }
@@ -137,6 +142,9 @@ impl AgentAdapter for CodexAdapter {
             Some("agent-turn-complete") => vec![StatusEvent::TurnFinished],
             _ => vec![],
         }
+    }
+    fn conversation_of(&self, body: &serde_json::Value) -> Option<String> {
+        body.get("thread-id").and_then(|v| v.as_str()).map(String::from)
     }
     fn screen_prompts(&self) -> Vec<ScreenPrompt> {
         // Empty keys: the user answers in the terminal (canApprove is false).
@@ -164,6 +172,7 @@ mod tests {
             data_dir: dir,
             custom_command: None,
             images: &[],
+            resume: None,
         }
     }
 
@@ -198,6 +207,26 @@ mod tests {
     }
 
     use std::path::PathBuf;
+
+    #[test]
+    fn codex_resume_takes_the_options_and_no_task() {
+        let d = tempfile::tempdir().unwrap();
+        let imgs = [PathBuf::from("/d/images/image-1.png")];
+        let mut r = req(d.path(), Some("gpt-6.1"), None, None);
+        r.images = &imgs;
+        r.resume = Some("thread-1");
+        let spec = CodexAdapter.launch(&r).unwrap();
+        assert_eq!(&spec.args[..2], &["-m", "gpt-6.1"]);
+        assert_eq!(&spec.args[spec.args.len() - 2..], &["resume", "thread-1"]);
+        assert!(!spec.args.iter().any(|a| a.starts_with("--image")), "images went with the first prompt");
+    }
+
+    #[test]
+    fn codex_conversation_is_the_thread_id() {
+        let body = json!({"type": "agent-turn-complete", "thread-id": "t-1"});
+        assert_eq!(CodexAdapter.conversation_of(&body).as_deref(), Some("t-1"));
+        assert_eq!(CodexAdapter.conversation_of(&json!({})), None);
+    }
 
     #[test]
     fn codex_optional_args_omitted() {

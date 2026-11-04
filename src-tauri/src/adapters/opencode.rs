@@ -133,7 +133,7 @@ mod tests {
     const URL: &str = "http://127.0.0.1:4242/hook/tok/sid";
 
     fn req<'a>(dir: &'a Path, model: Option<&'a str>, effort: Option<&'a str>, task: Option<&'a str>) -> LaunchRequest<'a> {
-        LaunchRequest { session_id: "sid", cwd: Path::new("/tmp"), model, effort, task, hook_url: URL, data_dir: dir, custom_command: None, images: &[] }
+        LaunchRequest { session_id: "sid", cwd: Path::new("/tmp"), model, effort, task, hook_url: URL, data_dir: dir, custom_command: None, images: &[], resume: None }
     }
 
     fn env_of<'a>(spec: &'a LaunchSpec, k: &str) -> Option<&'a str> {

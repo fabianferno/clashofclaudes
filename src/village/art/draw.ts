@@ -38,6 +38,13 @@ export function bake(w: number, h: number, ax: number, ay: number, fn: () => voi
   return { canvas, ax: ax * scale, ay: ay * scale };
 }
 
+/** Run draw primitives against `g` outside a bake (painted sprites with drawn text). */
+export function withContext(g: CanvasRenderingContext2D, fn: () => void): void {
+  const prev = cur;
+  cur = g;
+  try { fn(); } finally { cur = prev; }
+}
+
 export const lerp = (a: Pt, b: Pt, t: number): Pt => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
 export const up = (p: Pt, h: number): Pt => ({ x: p.x, y: p.y - h });
 

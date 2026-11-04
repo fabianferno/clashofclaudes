@@ -57,7 +57,7 @@ export default function WorkspacePanel({ workspaceId }: { workspaceId: string })
           <span className="sp-t">{terminal ? 'Terminal' : (s.task ?? 'Session')}</span>
           <span className="sp-d">{terminal ? 'plain shell' : `${b?.name ?? 'Builder'} · ${s.steps} steps`}</span>
         </span>
-        <StateTag state={s.state} />
+        <StateTag state={s.state} paused={s.paused} />
       </button>
     );
   };
@@ -95,6 +95,7 @@ export default function WorkspacePanel({ workspaceId }: { workspaceId: string })
           onClick={() => { setErr(null); setAddr((a) => (a === null ? 'http://localhost:3000' : null)); }}>+ Browser</button>
         <button className="hud-btn sm" onClick={() => st.setKanban(workspaceId)}>Kanban</button>
         <button className="hud-btn grey sm" disabled={ws.missing} title={why} onClick={() => guard(() => ipc.openInEditor(ws.path))}>Open in editor</button>
+        <button className="hud-btn grey sm" disabled={ws.missing} title={why} onClick={() => guard(() => ipc.openInFinder(ws.path))}>Open in Finder</button>
         <button className="hud-btn blue sm" disabled={ws.missing || !ws.compound} title={why} onClick={() => useApp.getState().requestZoom(workspaceId)}>Focus</button>
       </div>
       {addr !== null && (

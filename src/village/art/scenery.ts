@@ -1,6 +1,7 @@
 import { iso } from '../iso';
 import { ELIXIR } from '../look';
 import { OUT, bake, ctx, dot, flag, line, outlinedText, poly, roundRect, shadow, up, type Art, type Pt } from './draw';
+import { paintTreeAt, paintedBubble, paintedGate, paintedPuff, paintedTree, paintedWall } from './sprites';
 
 const LOG = '#a0703c';
 const LOG_LIT = '#c8935a';
@@ -20,6 +21,8 @@ function log(p: Pt, h: number, r: number): void {
  * Anchor: the tile's front corner, grid point (tx+1, ty+1) for tile (tx, ty).
  */
 export function drawWallSeg(links: string): Art {
+  const p = paintedWall(links);
+  if (p) return p;
   return bake(110, 90, 55, 72, () => {
     // Half a run from the tile's centre toward each linked neighbour (n: y-1, e: x+1, s: y+1,
     // w: x-1). Back to front: the n and w halves sit behind the centre, e and s in front of it.
@@ -46,6 +49,8 @@ export function drawWallSeg(links: string): Art {
  * n/s gates run along x, e/w along y. Anchor: the tile's front corner, grid point (tx+1, ty+1) for tile (tx, ty).
  */
 export function drawGate(side: 'n' | 's' | 'e' | 'w'): Art {
+  const p = paintedGate(side);
+  if (p) return p;
   return bake(120, 110, 60, 92, () => {
     const alongX = side === 'n' || side === 's';
     const base = (a: number) => (alongX ? iso(a, 0.5) : iso(0.5, a));
@@ -60,9 +65,16 @@ export function drawGate(side: 'n' | 's' | 'e' | 'w'): Art {
   }, iso(1, 1));
 }
 
+/** Painted trees are drawn this much smaller than their sprite, times the tree's scale. */
+export const TREE_K = 0.8;
+/** How far a tree's canopy reaches from its trunk base at scale TREE_K: each side and up (world px). */
+export const TREE_REACH = { half: 42, up: 112 };
+
 /** Paint a tree with its trunk base at the current origin. */
 export function paintTree(pine: boolean, s: number): void {
   const g = ctx();
+  // painted: pines are frames 1 (tall) and 3, oaks 0 and 2 (big)
+  if (paintTreeAt(g, pine ? (s > 1.1 ? 1 : 3) : (s > 1.2 ? 2 : 0), s * TREE_K)) return;
   shadow({ x: 4, y: 2 }, 16 * s, 8 * s, 0.2);
   g.fillStyle = '#6b4423'; g.strokeStyle = OUT; g.lineWidth = 2;
   g.beginPath(); g.rect(-3 * s, -14 * s, 6 * s, 14 * s); g.fill(); g.stroke();
@@ -83,13 +95,42 @@ export function paintTree(pine: boolean, s: number): void {
 }
 
 /** Tree on a 1x1 tile; anchor is the trunk base, at the tree's world position iso(x, y). Variants: 0 oak, 1 pine, 2 big oak, 3 small pine. */
+/**
+ * A builder's contact shadow, in the painted kit's shadow colour (a warm near-black, soft edged),
+ * a little to the right as the kit's light falls from the left. Anchor: under the feet.
+ */
+export function drawBuilderShadow(): Art {
+  return bake(44, 20, 20, 10, () => {
+    const g = ctx();
+    g.save();
+    g.translate(2, 0);
+    g.scale(1, 0.42);
+    const gr = g.createRadialGradient(0, 0, 0, 0, 0, 17);
+    gr.addColorStop(0, 'rgba(36, 20, 16, 0.62)');
+    gr.addColorStop(0.55, 'rgba(36, 20, 16, 0.48)');
+    gr.addColorStop(1, 'rgba(36, 20, 16, 0)');
+    g.fillStyle = gr;
+    g.beginPath(); g.arc(0, 0, 17, 0, Math.PI * 2); g.fill();
+    g.restore();
+  });
+}
+
+/** One of the ground's trees (see `paintTree`), stood up as a sprite. Anchor: the trunk base. */
+export function drawGroundTree(pine: boolean, s: number): Art {
+  return bake(120, 150, 60, 128, () => paintTree(pine, s));
+}
+
 export function drawTree(variant: 0 | 1 | 2 | 3): Art {
+  const p = paintedTree(variant);
+  if (p) return p;
   const s = [1.05, 1.15, 1.35, 0.95][variant];
   return bake(100, 130, 50, 112, () => paintTree(variant === 1 || variant === 3, s));
 }
 
 /** Speech bubble over a builder's head: "!" (needs you) or "?!" (stuck). Anchor: the tail tip. */
 export function drawBubble(kind: 'needs' | 'stuck'): Art {
+  const p = paintedBubble(kind);
+  if (p) return p;
   return bake(60, 60, 30, 56, () => {
     const g = ctx();
     const col = kind === 'needs' ? '#ff4b3e' : '#8e8e8e';
@@ -114,6 +155,8 @@ export function drawRing(): Art {
 
 /** One smoke puff for a stuck structure. Anchor: its centre. */
 export function drawPuff(): Art {
+  const p = paintedPuff();
+  if (p) return p;
   return bake(40, 40, 20, 20, () => {
     dot(0, 0, 11, 'rgba(120,120,120,.75)', 'rgba(60,60,60,.5)', 1.5);
     dot(-3, -3, 5, 'rgba(190,190,190,.6)');
@@ -121,7 +164,7 @@ export function drawPuff(): Art {
 }
 
 const STATUS_FILL = {
-  working: '#f5a623', needs: '#ff4b3e', stuck: '#8e8e8e', app: '#2fbf71',
+  working: '#f5a623', needs: '#ff4b3e', stuck: '#8e8e8e', app: '#2fbf71', house: '#9a6634',
   'elixir-claude': ELIXIR.claude.label, 'elixir-codex': ELIXIR.codex.label, 'elixir-antigravity': ELIXIR.antigravity.label,
 } as const;
 

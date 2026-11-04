@@ -1,8 +1,8 @@
-import type { Compound } from '../../api/types';
+import type { Compound, Tile } from '../../api/types';
 import { iso, TW, TH } from '../iso';
-import { GAP, HALL, wallRect, gateTile, roadPath, roadRects, type Rect } from '../layout';
-import { bake, ctx, type Pt } from './draw';
-import { paintTree } from './scenery';
+import { GAP, HALL, HOUSE, wallRect, gateInside, roadRects, type Rect } from '../layout';
+import { bake, ctx, type Art, type Pt } from './draw';
+import { paintTree, TREE_K, TREE_REACH } from './scenery';
 
 const PAD_TOP = 90;
 const PAD = 40;
@@ -34,31 +34,18 @@ const inRect = (x: number, y: number, r: Rect, pad = 0) =>
   x > r.x0 - pad && x < r.x0 + r.w + pad && y > r.y0 - pad && y < r.y0 + r.h + pad;
 
 /**
- * Grass, dirt paths hall -> each gate, and forest cleared from every wall rect (+GAP), the hall, the roads and
+ * Grass and forest, cleared from every wall rect (+GAP), the hall, the roads (laid as `pathTiles`) and
  * the `clearings` (collector footprints, + CLEARING_PAD so no canopy is drawn over them).
  * Deterministic for a given seed. Returns a bare canvas at GROUND_SCALE density (no anchor, unlike Art),
  * sized by `groundBakeSize(bounds)`: place it at `groundOrigin(bounds)` in world px with scale 1 / GROUND_SCALE.
  */
-export function drawGround(b: Rect, compounds: Compound[], seed: number, clearings: readonly Rect[] = []): HTMLCanvasElement {
-  let s = (Math.abs(Math.floor(seed)) % 233280) || 5;
-  const rnd = () => (s = (s * 9301 + 49297) % 233280) / 233280;
+export function drawGround(
+  b: Rect, compounds: Compound[], seed: number, clearings: readonly Rect[] = [],
+  lifted: (t: GroundTree) => boolean = () => false,
+): HTMLCanvasElement {
+  const { forest, blobs, tufts } = groundPlan(b, seed);
   const o = groundOrigin(b);
   const { w, h } = groundBakeSize(b);
-  const area = b.w * b.h;
-  const cx = HALL.x0 + HALL.w / 2, cy = HALL.y0 + HALL.h / 2;
-  const walls = compounds.map(wallRect);
-  const roads = compounds.flatMap(roadRects);
-  const rx = () => b.x0 + rnd() * b.w;
-  const ry = () => b.y0 + rnd() * b.h;
-
-  // Generate every random draw up front so output depends only on (bounds, seed), not on filtering.
-  const forest = Array.from({ length: Math.min(6000, Math.round(area * 0.65)) }, () =>
-    ({ x: rx(), y: ry(), s: 0.9 + rnd() * 0.5, pine: rnd() < 0.45, r: rnd() }));
-  const blobs = Array.from({ length: Math.round(area * 0.18) }, () =>
-    ({ x: rx(), y: ry(), rx: 40 + rnd() * 90, ry: 20 + rnd() * 45, light: rnd() < 0.5 }));
-  const tufts = Array.from({ length: Math.round(area * 0.4) }, () =>
-    ({ x: rx(), y: ry(), r: rnd(), ci: Math.floor(rnd() * 4) }));
-
   return bake(w, h, 0, 0, () => {
     const g = ctx();
     g.fillStyle = '#5aa832';
@@ -71,19 +58,6 @@ export function drawGround(b: Rect, compounds: Compound[], seed: number, clearin
       g.fillStyle = gr; g.beginPath(); g.ellipse(p.x, p.y, t.rx, t.ry, 0, 0, Math.PI * 2); g.fill();
     }
 
-    // hall plaza, dirt roads hall -> each gate, house pads: drawn in tile space so the iso
-    // foreshortening is exact, with rounded ends, layered soft rims and scattered pebbles (no
-    // stamped diamonds, whose stepped edges read as pixels once the half-density bake is scaled up)
-    inTiles((t) => {
-      dirtPad(t, HALL.x0 - 0.3, HALL.y0 - 0.3, HALL.w + 0.6, HALL.h + 0.6, 0.7);
-      for (const c of compounds) {
-        const gt = gateTile(c);
-        dirtRoad(t, roadPath(c), gt.x * 31 + gt.y * 17);
-      }
-      // the plaza on top, so roads run out from under it
-      dirtPad(t, HALL.x0 - 0.3, HALL.y0 - 0.3, HALL.w + 0.6, HALL.h + 0.6, 0.7, false);
-      for (const c of compounds) dirtPad(t, c.house.x - 0.4, c.house.y - 0.4, 3.8, 3.8, 0.55);
-    });
     for (const t of tufts) {
       const p = iso(t.x, t.y);
       if (t.r < 0.2) {
@@ -98,93 +72,164 @@ export function drawGround(b: Rect, compounds: Compound[], seed: number, clearin
         g.stroke();
       }
     }
-    // forest: sparse near the village, dense further out; never inside a wall rect + GAP, the hall, a road or a clearing
-    forest
-      .filter((t) => {
-        const d = Math.max(Math.abs(t.x - cx), Math.abs(t.y - cy));
-        if (inRect(t.x, t.y, HALL, 1.5)) return false;
-        if (walls.some((r) => inRect(t.x, t.y, r, GAP))) return false;
-        if (clearings.some((r) => inRect(t.x, t.y, r, CLEARING_PAD))) return false;
-        if (roads.some((r) => inRect(t.x, t.y, r, 1))) return false;
-        return t.r < Math.max(0.06, Math.min(0.95, (d - 8) / 6));
-      })
-      .sort((a, c) => a.x + a.y - (c.x + c.y))
-      .forEach((t) => {
-        const p = iso(t.x, t.y);
-        g.save(); g.translate(p.x, p.y);
-        paintTree(t.pine, t.s);
-        g.restore();
-      });
+    for (const t of standing(forest, compounds, clearings)) {
+      if (lifted(t)) continue;
+      const p = iso(t.x, t.y);
+      g.save(); g.translate(p.x, p.y);
+      paintTree(t.pine, t.s);
+      g.restore();
+    }
   }, o, GROUND_SCALE).canvas;
 }
 
-const DIRT_EDGE = 'rgba(92, 66, 32, 0.28)';
-const DIRT_RIM = '#b08752';
-const DIRT = '#d8b679';
-const DIRT_WORN = 'rgba(240, 216, 164, 0.55)';
+/** A tree of the ground's forest: its trunk base (tile coords), scale and kind. */
+export interface GroundTree { x: number; y: number; s: number; pine: boolean; r: number }
 
-/** Runs `fn` with the canvas mapped to tile space (1 unit = 1 tile, iso-projected). */
-function inTiles(fn: (g: CanvasRenderingContext2D) => void): void {
-  const g = ctx();
-  g.save();
-  g.transform(TW / 2, TH / 2, -TW / 2, TH / 2, 0, 0);
-  try { fn(g); } finally { g.restore(); }
+/** Every random draw of the ground, up front, so the output depends only on (bounds, seed), not on filtering. */
+function groundPlan(b: Rect, seed: number) {
+  let s = (Math.abs(Math.floor(seed)) % 233280) || 5;
+  const rnd = () => (s = (s * 9301 + 49297) % 233280) / 233280;
+  const area = b.w * b.h;
+  const rx = () => b.x0 + rnd() * b.w;
+  const ry = () => b.y0 + rnd() * b.h;
+  const forest: GroundTree[] = Array.from({ length: Math.min(6000, Math.round(area * 0.65)) }, () =>
+    ({ x: rx(), y: ry(), s: 0.9 + rnd() * 0.5, pine: rnd() < 0.45, r: rnd() }));
+  const blobs = Array.from({ length: Math.round(area * 0.18) }, () =>
+    ({ x: rx(), y: ry(), rx: 40 + rnd() * 90, ry: 20 + rnd() * 45, light: rnd() < 0.5 }));
+  const tufts = Array.from({ length: Math.round(area * 0.4) }, () =>
+    ({ x: rx(), y: ry(), r: rnd(), ci: Math.floor(rnd() * 4) }));
+  return { forest, blobs, tufts };
 }
 
-/** A small deterministic generator for decoration that must not shift the scene's main sequence. */
-function seeded(seed: number): () => number {
-  let s = (Math.abs(Math.floor(seed)) % 233280) || 7;
-  return () => (s = (s * 9301 + 49297) % 233280) / 233280;
+/** The forest that stands, back to front: sparse near the village, dense further out; never inside a wall rect + GAP, the hall, a road or a clearing. */
+function standing(forest: GroundTree[], compounds: Compound[], clearings: readonly Rect[]): GroundTree[] {
+  const cx = HALL.x0 + HALL.w / 2, cy = HALL.y0 + HALL.h / 2;
+  const walls = compounds.map(wallRect);
+  const roads = compounds.flatMap(roadRects);
+  return forest
+    .filter((t) => {
+      const d = Math.max(Math.abs(t.x - cx), Math.abs(t.y - cy));
+      if (inRect(t.x, t.y, HALL, 1.5)) return false;
+      if (walls.some((r) => inRect(t.x, t.y, r, GAP))) return false;
+      if (clearings.some((r) => inRect(t.x, t.y, r, CLEARING_PAD))) return false;
+      if (roads.some((r) => inRect(t.x, t.y, r, 1))) return false;
+      return t.r < Math.max(0.06, Math.min(0.95, (d - 8) / 6));
+    })
+    .sort((a, c) => a.x + a.y - (c.x + c.y));
 }
 
-/** Pebbles and grass tufts scattered at `pts` (tile space), softening the rim. */
-function speckle(g: CanvasRenderingContext2D, pts: { x: number; y: number }[], rnd: () => number): void {
-  for (const p of pts) {
-    const pebble = rnd() < 0.7;
-    g.fillStyle = pebble ? (rnd() < 0.5 ? 'rgba(150, 112, 66, 0.75)' : 'rgba(246, 228, 186, 0.85)') : 'rgba(90, 168, 50, 0.95)';
-    g.beginPath();
-    g.arc(p.x, p.y, pebble ? 0.03 + rnd() * 0.04 : 0.06 + rnd() * 0.06, 0, Math.PI * 2);
-    g.fill();
-  }
+/**
+ * The ground's trees whose canopy reaches over a path tile from in front of it. The path tiles are
+ * sprites over the ground, so these are left out of the bake (`drawGround`'s `lifted`) and stood
+ * over the paths instead, back to front.
+ */
+export function treesOverPaths(b: Rect, compounds: Compound[], seed: number, clearings: readonly Rect[], tiles: Map<string, Tile>): GroundTree[] {
+  const centres = [...tiles.values()].map((t) => iso(t.x + 0.5, t.y + 0.5));
+  return standing(groundPlan(b, seed).forest, compounds, clearings).filter((t) => {
+    const p = iso(t.x, t.y), k = t.s * TREE_K;
+    const half = TREE_REACH.half * k + TW / 2, up = TREE_REACH.up * k;
+    return centres.some((c) => Math.abs(c.x - p.x) < half && c.y - TH / 2 < p.y && c.y + TH / 2 > p.y - up);
+  });
 }
 
-/** A dirt road along the points `pts` (tile coords): soft edge, rim, fill, a worn centre and pebbles. */
-function dirtRoad(g: CanvasRenderingContext2D, pts: { x: number; y: number }[], seed: number): void {
-  const trace = () => { g.beginPath(); pts.forEach((p, i) => (i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y))); };
-  g.lineCap = 'round';
-  g.lineJoin = 'round';
-  for (const [w, col] of [[1.42, DIRT_EDGE], [1.22, DIRT_RIM], [1.02, DIRT], [0.42, DIRT_WORN]] as [number, string][]) {
-    g.strokeStyle = col;
-    g.lineWidth = w;
-    trace();
-    g.stroke();
+// Packed earth in the painted kit's palette: warm fill, darker mottling, a shaded lip where the
+// grass overhangs it (scalloped, outlined like the kit), outlined two-tone stones and tufts.
+const DIRT = '#c4945a';
+const DIRT_WORN = 'rgba(232, 194, 132, 0.55)';
+const DIRT_MOTTLE = ['rgba(140, 92, 50, 0.22)', 'rgba(244, 212, 156, 0.28)'];
+const GRASS_LIP = '#5aa832', GRASS_LIT = '#78c445', GRASS_OUT = '#2f5a1a';
+
+const tkey = (x: number, y: number) => `${x},${y}`;
+
+/**
+ * The tiles laid as dirt path, by `x,y`: the hall's plaza, the road to each gate, each house's
+ * footprint and the way in from its gate. Laid on the grid as sprites (`drawPathTile`), crisp at
+ * the art's density, rather than painted into the half-density ground.
+ */
+export function pathTiles(compounds: Compound[]): Map<string, Tile> {
+  const out = new Map<string, Tile>();
+  const add = (x: number, y: number) => out.set(tkey(x, y), { x, y });
+  const rect = (r: Rect) => { for (let y = r.y0; y < r.y0 + r.h; y++) for (let x = r.x0; x < r.x0 + r.w; x++) add(x, y); };
+  rect(HALL);
+  for (const c of compounds) {
+    for (const r of roadRects(c)) rect(r);
+    rect({ x0: c.house.x, y0: c.house.y, w: HOUSE, h: HOUSE });
+    // from inside the gate to the house: along one axis, then the other
+    let { x, y } = gateInside(c);
+    const hx = (v: number) => Math.min(Math.max(v, c.house.x), c.house.x + HOUSE - 1);
+    const hy = (v: number) => Math.min(Math.max(v, c.house.y), c.house.y + HOUSE - 1);
+    add(x, y);
+    while (x !== hx(x)) { x += Math.sign(hx(x) - x); add(x, y); }
+    while (y !== hy(y)) { y += Math.sign(hy(y) - y); add(x, y); }
   }
-  const rnd = seeded(seed);
-  for (let i = 1; i < pts.length; i++) {
-    const a = pts[i - 1], b = pts[i];
-    const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
-    const nx = -(b.y - a.y) / len, ny = (b.x - a.x) / len;
-    speckle(g, Array.from({ length: Math.round(len * 9) }, () => {
-      const t = rnd(), edge = rnd() < 0.35;
-      // most specks inside the road; some grass sits on the rim to break its line
-      const off = edge ? (rnd() < 0.5 ? -1 : 1) * (0.5 + rnd() * 0.12) : (rnd() - 0.5) * 0.85;
-      return { x: a.x + (b.x - a.x) * t + nx * off, y: a.y + (b.y - a.y) * t + ny * off };
-    }), rnd);
-  }
+  return out;
 }
 
-/** A dirt pad over the tile rect (x, y, w, h) with rounded corners `r`; `rim` draws the soft edge. */
-function dirtPad(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number, rim = true): void {
-  const shape = (grow: number) => {
-    g.beginPath();
-    g.roundRect(x - grow, y - grow, w + grow * 2, h + grow * 2, Math.max(0, r + grow));
-  };
-  if (rim) {
-    g.fillStyle = DIRT_EDGE; shape(0.2); g.fill();
-    g.fillStyle = DIRT_RIM; shape(0.1); g.fill();
-  }
-  g.fillStyle = DIRT; shape(0); g.fill();
-  const rnd = seeded(x * 13 + y * 7 + w);
-  const pts = Array.from({ length: Math.round(w * h * 3) }, () => ({ x: x + 0.15 + rnd() * (w - 0.3), y: y + 0.15 + rnd() * (h - 0.3) }));
-  speckle(g, pts, rnd);
+/** Which of a path tile's neighbours (n: y-1, e: x+1, s: y+1, w: x-1) are path too, in `nesw` order. */
+export function pathLinks(tiles: Map<string, Tile>, t: Tile): string {
+  const dirs: [string, number, number][] = [['n', 0, -1], ['e', 1, 0], ['s', 0, 1], ['w', -1, 0]];
+  return dirs.filter(([, dx, dy]) => tiles.has(tkey(t.x + dx, t.y + dy))).map(([d]) => d).join('');
+}
+
+/**
+ * One tile of dirt path, its grass-facing edges (those not in `links`) under a scalloped grass lip
+ * with a shade on the dirt; `variant` (0-2) shuffles the stones and patches. Anchor: the tile's
+ * front corner, grid point (tx+1, ty+1) for tile (tx, ty).
+ */
+export function drawPathTile(links: string, variant: number): Art {
+  return bake(84, 56, 42, 46, () => {
+    const g = ctx();
+    let s = 17 + variant * 7919 + [...links].reduce((a, ch) => a * 31 + ch.charCodeAt(0), 0);
+    const rnd = () => (s = (s * 9301 + 49297) % 233280) / 233280;
+    g.save();
+    g.transform(TW / 2, TH / 2, -TW / 2, TH / 2, 0, 0); // tile space: u along x, v along y
+    const has = (d: string) => links.includes(d);
+    // dirt, overlapping its path neighbours a little so no seam shows
+    const o = 0.03;
+    const u0 = has('w') ? -o : 0, u1 = has('e') ? 1 + o : 1, v0 = has('n') ? -o : 0, v1 = has('s') ? 1 + o : 1;
+    g.fillStyle = DIRT; g.fillRect(u0, v0, u1 - u0, v1 - v0);
+    for (let i = 0; i < 4; i++) {
+      g.fillStyle = DIRT_MOTTLE[rnd() < 0.6 ? 0 : 1];
+      g.beginPath(); g.ellipse(0.15 + rnd() * 0.7, 0.15 + rnd() * 0.7, 0.12 + rnd() * 0.16, 0.08 + rnd() * 0.1, rnd() * Math.PI, 0, Math.PI * 2); g.fill();
+    }
+    if (links.length >= 3) { g.fillStyle = DIRT_WORN; g.beginPath(); g.ellipse(0.5, 0.5, 0.34, 0.3, 0, 0, Math.PI * 2); g.fill(); }
+    // stones: outlined, a shadow side and a lit top
+    for (let i = 0, n = 2 + Math.floor(rnd() * 3); i < n; i++) {
+      const x = 0.18 + rnd() * 0.64, y = 0.18 + rnd() * 0.64, r = 0.035 + rnd() * 0.04;
+      g.fillStyle = rnd() < 0.5 ? '#b9a07a' : '#a8a39a';
+      g.beginPath(); g.ellipse(x, y, r, r * 0.85, 0, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = '#4a3220'; g.lineWidth = 0.014; g.stroke();
+      g.fillStyle = 'rgba(255, 246, 224, 0.65)';
+      g.beginPath(); g.ellipse(x - r * 0.3, y - r * 0.3, r * 0.4, r * 0.3, 0, 0, Math.PI * 2); g.fill();
+    }
+    // each grass-facing edge: the dirt shaded under the lip, then the lip, scalloped and outlined
+    const edges: [string, (t: number, d: number) => [number, number]][] = [
+      ['n', (t, d) => [t, d]], ['s', (t, d) => [t, 1 - d]], ['w', (t, d) => [d, t]], ['e', (t, d) => [1 - d, t]],
+    ];
+    for (const [dir, at] of edges) {
+      if (has(dir)) continue;
+      const [ax, ay] = at(0, 0), [bx, by] = at(0, 0.2);
+      const sh = g.createLinearGradient(ax, ay, bx, by);
+      sh.addColorStop(0, 'rgba(70, 45, 22, 0.5)'); sh.addColorStop(1, 'rgba(70, 45, 22, 0)');
+      g.fillStyle = sh;
+      g.beginPath();
+      for (const [t, d] of [[0, 0], [1, 0], [1, 0.2], [0, 0.2]]) { const [x, y] = at(t, d); g.lineTo(x, y); }
+      g.closePath(); g.fill();
+      // the lip: from just outside the edge to a scalloped line 0.06-0.1 in
+      g.beginPath();
+      { const [x, y] = at(-0.02, -0.06); g.moveTo(x, y); }
+      { const [x, y] = at(1.02, -0.06); g.lineTo(x, y); }
+      const k = 7;
+      for (let i = k; i >= 0; i--) {
+        const t = i / k, d = 0.05 + (i % 2 ? 0.05 : 0.015) + rnd() * 0.02;
+        const [x, y] = at(t, d); g.lineTo(x, y);
+      }
+      g.closePath();
+      g.fillStyle = GRASS_LIP; g.fill();
+      g.strokeStyle = GRASS_OUT; g.lineWidth = 0.02; g.lineJoin = 'round'; g.stroke();
+      g.fillStyle = GRASS_LIT;
+      for (let i = 0; i < 3; i++) { const [x, y] = at(0.15 + rnd() * 0.7, 0.03); g.beginPath(); g.ellipse(x, y, 0.05, 0.03, 0, 0, Math.PI * 2); g.fill(); }
+    }
+    g.restore();
+  }, iso(1, 1));
 }

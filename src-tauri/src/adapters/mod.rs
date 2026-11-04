@@ -108,6 +108,9 @@ pub struct LaunchRequest<'a> {
     /// Images attached to the task, already copied into the session's dir. `task` names them
     /// (see `task_with_images`); an adapter may also pass them the agent's own way.
     pub images: &'a [PathBuf],
+    /// The agent's own conversation to continue (see `conversation_of`); the task is then None.
+    /// Adapters that can't resume start a new conversation.
+    pub resume: Option<&'a str>,
 }
 
 /// The task as the agent gets it: the owner's text, then the attached images by path, so any
@@ -166,6 +169,15 @@ pub trait AgentAdapter: Send + Sync {
     /// The agent writes OSC 7501 status reports into its output (see `osc.rs`).
     fn reads_osc_status(&self) -> bool {
         false
+    }
+    /// The agent's conversation id named by a hook payload, once there is a conversation to resume.
+    fn conversation_of(&self, _body: &serde_json::Value) -> Option<String> {
+        None
+    }
+    /// For agents whose hooks don't name it: looks up (on disk, read only) the conversation of a
+    /// session in `cwd` started at `since_ms`. Runs off the sessions lock after each turn.
+    fn find_conversation(&self, _cwd: &Path, _since_ms: i64) -> Option<String> {
+        None
     }
 }
 
@@ -281,7 +293,7 @@ mod tests {
         let imgs = [PathBuf::from("/d/images/image-1.png"), PathBuf::from("/d/images/image-2.png")];
         let req = LaunchRequest {
             session_id: "sid", cwd: Path::new("/tmp"), model: None, effort: None, task: Some("t"),
-            hook_url: "http://127.0.0.1:1/hook/x/sid", data_dir: d.path(), custom_command: None, images: &imgs,
+            hook_url: "http://127.0.0.1:1/hook/x/sid", data_dir: d.path(), custom_command: None, images: &imgs, resume: None,
         };
         let claude = ClaudeAdapter.launch(&req).unwrap().args;
         assert_eq!(claude[claude.len() - 3..], ["--add-dir=/d/images", "--", "t"]);

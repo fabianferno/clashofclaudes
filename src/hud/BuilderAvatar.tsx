@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import type { AgentKind } from '../api/types';
 import { drawBuilder } from '../village/art/entities';
+import { loadSprites, onSprites, spritesReady } from '../village/art/sprites';
 import { classOf, gearOf } from '../village/look';
 
 const SIZE = 46;
@@ -26,6 +27,9 @@ export default function BuilderAvatar({ agent, model, effort, size = SIZE }: {
   agent: AgentKind; model: string | null; effort: string | null; size?: number;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
+  const painted = useSyncExternalStore(onSprites, spritesReady);
+
+  useEffect(() => { void loadSprites(); }, []);
 
   useEffect(() => {
     const canvas = ref.current;
@@ -43,7 +47,7 @@ export default function BuilderAvatar({ agent, model, effort, size = SIZE }: {
     const cx = (box.x0 + box.x1) / 2;
     g.setTransform(k, 0, 0, k, (size / 2) * dpr - cx * k, top * dpr - box.y0 * k);
     g.drawImage(a.canvas, 0, 0);
-  }, [agent, model, effort, size]);
+  }, [agent, model, effort, size, painted]);
 
   return <canvas ref={ref} className="hud-av-art" width={size} height={size} style={{ width: size, height: size }} aria-hidden="true" />;
 }

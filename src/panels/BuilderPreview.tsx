@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import type { AgentKind } from '../api/types';
 import { drawBuilder } from '../village/art/entities';
+import { loadSprites, onSprites, spritesReady } from '../village/art/sprites';
 import { classOf, gearOf } from '../village/look';
 
 const SIZE = 120;
@@ -10,6 +11,9 @@ const ZOOM = 1.2;
 /** A 120x120 canvas of the builder hammering. Animates only while mounted. */
 export default function BuilderPreview({ agent, model, effort }: { agent: AgentKind; model: string | null; effort: string | null }) {
   const ref = useRef<HTMLCanvasElement>(null);
+  const painted = useSyncExternalStore(onSprites, spritesReady);
+
+  useEffect(() => { void loadSprites(); }, []);
 
   useEffect(() => {
     const canvas = ref.current;
@@ -34,7 +38,7 @@ export default function BuilderPreview({ agent, model, effort }: { agent: AgentK
     draw();
     const timer = setInterval(draw, FRAME_MS);
     return () => clearInterval(timer);
-  }, [agent, model, effort]);
+  }, [agent, model, effort, painted]);
 
   return <canvas ref={ref} className="builder-preview" width={SIZE} height={SIZE} style={{ width: SIZE, height: SIZE }} aria-label="Builder preview" />;
 }

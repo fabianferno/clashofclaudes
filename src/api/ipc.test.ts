@@ -63,4 +63,12 @@ test('village commands use camelCase args', async () => {
   expect(invoke).toHaveBeenCalledWith('set_session_spot', { id: 's1', spot: { x: 1, y: 1 } });
   await ipc.openInEditor('/p');
   expect(invoke).toHaveBeenCalledWith('open_in_editor', { path: '/p' });
+  await ipc.openInFinder('/p');
+  expect(invoke).toHaveBeenCalledWith('open_in_finder', { path: '/p' });
+});
+
+test('resume_session takes the session id', async () => {
+  vi.mocked(invoke).mockResolvedValueOnce({ id: 's1' });
+  await ipc.resumeSession('s1');
+  expect(invoke).toHaveBeenCalledWith('resume_session', { id: 's1' });
 });

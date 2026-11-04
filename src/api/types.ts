@@ -74,8 +74,10 @@ export interface SessionInfo {
   busy: boolean;
   /** Strictly increasing per session; the store drops updates older than the one it holds. */
   rev: number;
-  /** Where the builder stands in the village; not persisted. */
+  /** Where the builder stands in the village. */
   spot: Tile | null;
+  /** Brought back after the app quit or restarted (state `ended`, no process); `resumeSession` starts it again. */
+  paused?: boolean;
 }
 
 /** A task written down for a workspace and not started yet (the Kanban's To Do). */

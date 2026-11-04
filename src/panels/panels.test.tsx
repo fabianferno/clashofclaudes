@@ -8,6 +8,7 @@ const ipc = vi.hoisted(() => ({
   startTerminal: vi.fn(),
   removeWorkspace: vi.fn().mockResolvedValue(undefined),
   openInEditor: vi.fn().mockResolvedValue(undefined),
+  openInFinder: vi.fn().mockResolvedValue(undefined),
   getSettings: vi.fn().mockResolvedValue({ updatesEnabled: true }),
   setSettings: vi.fn(async (s: unknown) => s),
 }));
@@ -49,7 +50,7 @@ afterEach(cleanup);
 test('missing_workspace_buttons_explain', () => {
   act(() => useApp.setState({ workspaces: [ws({ missing: true })] }));
   render(<WorkspacePanel workspaceId="w1" />);
-  for (const name of ['+ New session', '+ Terminal', '+ Browser', 'Open in editor', 'Focus']) {
+  for (const name of ['+ New session', '+ Terminal', '+ Browser', 'Open in editor', 'Open in Finder', 'Focus']) {
     const b = screen.getByRole('button', { name }) as HTMLButtonElement;
     expect(b.disabled).toBe(true);
     expect(b.title).toBe('Folder not found: /p/proj');
@@ -286,4 +287,10 @@ test('builder_agent_is_icon_buttons; switching resets model and effort to the ne
   expect(screen.getByTestId('agent-logo-codex')).toBeTruthy();
   await act(async () => { fireEvent.click(screen.getByRole('radio', { name: 'Codex' })); });
   expect(ipc.updateBuilder).toHaveBeenCalledWith({ ...builder(), agent: 'codex', model: null, effort: null });
+});
+
+test('open_in_finder_opens_the_workspace_folder', () => {
+  render(<WorkspacePanel workspaceId="w1" />);
+  fireEvent.click(screen.getByRole('button', { name: 'Open in Finder' }));
+  expect(ipc.openInFinder).toHaveBeenCalledWith('/p/proj');
 });

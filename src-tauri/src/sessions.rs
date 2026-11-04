@@ -6,6 +6,7 @@ use crate::hooks::HookServer;
 use crate::osc::Osc7501;
 use crate::model::{Builder, SessionInfo, SessionKind, SessionState, Tile, Workspace, WorktreeInfo};
 use crate::pty::{LaunchSpec, PtyHandle, REAP_POLL};
+use crate::saved::{self, SavedSession};
 use crate::scrollback::{Scrollback, SCROLLBACK_CAP};
 use crate::status::{is_terminal_report_only, next_state, screen_text, StatusEvent, StatusPolicy};
 use anyhow::{anyhow, bail, Result};
@@ -84,9 +85,55 @@ struct SessionEntry {
     prompt_seen: Option<&'static str>,
     /// OSC 7501 status-report scanner, for adapters whose agent writes them (`reads_osc_status`).
     osc: Option<Osc7501>,
+    /// The agent's own conversation id, saved so a paused session can resume it.
+    conversation: Option<String>,
 }
 
 impl SessionEntry {
+    fn new(info: SessionInfo, workspace_path: PathBuf, adapter: Option<Arc<dyn AgentAdapter>>, policy: StatusPolicy, baseline: Option<GitBaseline>, now: i64) -> Self {
+        SessionEntry {
+            info,
+            workspace_path,
+            pty: None,
+            exited: false,
+            stop_requested: false,
+            scrollback: Scrollback::new(SCROLLBACK_CAP),
+            policy,
+            baseline,
+            pending: VecDeque::new(),
+            out_total: 0,
+            attached: false,
+            in_flight: None,
+            skipped: false,
+            last_flush: Instant::now(),
+            quiet_since_ms: now,
+            checked_cwd: None,
+            prompts: adapter.as_ref().map(|a| a.screen_prompts()).unwrap_or_default(),
+            active_prompt: None,
+            prompt_seen: None,
+            osc: adapter.as_ref().filter(|a| a.reads_osc_status()).map(|_| Osc7501::default()),
+            adapter,
+            conversation: None,
+        }
+    }
+
+    fn saved(&self) -> SavedSession {
+        let i = &self.info;
+        SavedSession {
+            id: i.id.clone(),
+            workspace_id: i.workspace_id.clone(),
+            kind: i.kind.clone(),
+            task: i.task.clone(),
+            started_at: i.started_at,
+            steps: i.steps,
+            reached_finished: i.reached_finished,
+            spot: i.spot,
+            worktree: i.worktree.clone(),
+            conversation: self.conversation.clone(),
+            rev: i.rev,
+        }
+    }
+
     /// Feeds one status event; returns true when `info` changed.
     fn apply(&mut self, ev: &StatusEvent, now: i64) -> bool {
         let mut changed = false;
@@ -198,6 +245,11 @@ pub struct SessionManager {
     quitting: AtomicBool,
     /// Spawns between inserting their entry and recording their PTY; `shutdown` waits for them.
     spawning: AtomicUsize,
+    /// `<data>/sessions.json` (see `saved`); `save_lock` keeps writes in order.
+    saved_path: PathBuf,
+    save_lock: Mutex<()>,
+    /// An update was sent since the last save (steps, finished): the next tick saves.
+    unsaved: AtomicBool,
 }
 
 /// Counts a spawn in flight for as long as it lives.
@@ -267,13 +319,16 @@ impl SessionManager {
         let mgr = Arc::new_cyclic(|weak| SessionManager {
             registry,
             hooks,
-            data_dir,
             sessions: Mutex::new(HashMap::new()),
             tx,
             weak: weak.clone(),
             flusher: Arc::default(),
             quitting: AtomicBool::new(false),
             spawning: AtomicUsize::new(0),
+            saved_path: data_dir.join("sessions.json"),
+            save_lock: Mutex::new(()),
+            unsaved: AtomicBool::new(false),
+            data_dir,
         });
         // Output flushes every 16 ms and the 1 s silence tick, parked while no session has a
         // process or unsent output (see `park_if_idle`); ends once the manager is gone.
@@ -303,6 +358,7 @@ impl SessionManager {
     /// Stamps the next `rev` and queues the update; every emitted info goes through here.
     fn send_updated(&self, e: &mut SessionEntry) {
         e.info.rev += 1;
+        self.unsaved.store(true, AtomicOrdering::Relaxed);
         let _ = self.tx.send(ManagerEvent::Updated(e.info.clone()));
     }
 
@@ -332,6 +388,7 @@ impl SessionManager {
                 data_dir: &self.data_dir,
                 custom_command: builder.custom_command.as_deref(),
                 images: &paths,
+                resume: None,
             };
             // the session shows the owner's text, not the image paths
             adapter.launch(&req).and_then(|spec| self.spawn_agent(ws, builder, task, id.clone(), spec, adapter))
@@ -361,12 +418,12 @@ impl SessionManager {
     fn spawn_agent(&self, ws: &Workspace, builder: &Builder, task: Option<&str>, id: String, spec: LaunchSpec, adapter: Arc<dyn AgentAdapter>) -> Result<SessionInfo> {
         let kind = SessionKind::Agent { builder_id: builder.id.clone() };
         let policy = adapter.policy();
-        self.spawn(ws, kind, task, id, spec, Some(adapter), policy)
+        self.spawn(ws, kind, task, id, spec, Some(adapter), policy, None)
     }
 
     pub fn start_terminal(&self, ws: &Workspace) -> Result<SessionInfo> {
         let id = Uuid::new_v4().to_string();
-        self.spawn(ws, SessionKind::Terminal, None, id, terminal_launch(&ws.path), None, terminal_policy())
+        self.spawn(ws, SessionKind::Terminal, None, id, terminal_launch(&ws.path), None, terminal_policy(), None)
     }
 
     fn ensure_builder_free(&self, sessions: &Sessions, builder_id: &str) -> Result<()> {
@@ -379,12 +436,13 @@ impl SessionManager {
         Ok(())
     }
 
+    /// `prior`: a paused session being resumed; it keeps its task, place, progress and conversation.
     #[allow(clippy::too_many_arguments)]
-    fn spawn(&self, ws: &Workspace, kind: SessionKind, task: Option<&str>, id: String, spec: LaunchSpec, adapter: Option<Arc<dyn AgentAdapter>>, policy: StatusPolicy) -> Result<SessionInfo> {
+    fn spawn(&self, ws: &Workspace, kind: SessionKind, task: Option<&str>, id: String, spec: LaunchSpec, adapter: Option<Arc<dyn AgentAdapter>>, policy: StatusPolicy, prior: Option<SavedSession>) -> Result<SessionInfo> {
         ensure_present(ws)?;
         let baseline = git::baseline(&ws.path);
         let now = now_ms();
-        let info = SessionInfo {
+        let mut info = SessionInfo {
             id: id.clone(),
             workspace_id: ws.id.clone(),
             kind,
@@ -400,7 +458,18 @@ impl SessionManager {
             busy: false,
             rev: 0,
             spot: None,
+            paused: false,
         };
+        let conversation = prior.and_then(|p| {
+            info.task = p.task;
+            info.started_at = p.started_at;
+            info.steps = p.steps;
+            info.reached_finished = p.reached_finished;
+            info.worktree = p.worktree;
+            info.spot = p.spot;
+            info.rev = p.rev; // the frontend drops updates whose rev is not newer
+            p.conversation
+        });
         let _spawning = SpawnGuard::new(&self.spawning);
         {
             // Check and insert atomically so two starts can't share a builder.
@@ -411,29 +480,9 @@ impl SessionManager {
             if let SessionKind::Agent { builder_id } = &info.kind {
                 self.ensure_builder_free(&g, builder_id)?;
             }
-            g.insert(id.clone(), SessionEntry {
-                info,
-                workspace_path: ws.path.clone(),
-                pty: None,
-                exited: false,
-                stop_requested: false,
-                scrollback: Scrollback::new(SCROLLBACK_CAP),
-                policy,
-                baseline,
-                pending: VecDeque::new(),
-                out_total: 0,
-                attached: false,
-                in_flight: None,
-                skipped: false,
-                last_flush: Instant::now(),
-                quiet_since_ms: now,
-                checked_cwd: None,
-                prompts: adapter.as_ref().map(|a| a.screen_prompts()).unwrap_or_default(),
-                active_prompt: None,
-                prompt_seen: None,
-                osc: adapter.as_ref().filter(|a| a.reads_osc_status()).map(|_| Osc7501::default()),
-                adapter,
-            });
+            let mut e = SessionEntry::new(info, ws.path.clone(), adapter, policy, baseline, now);
+            e.conversation = conversation;
+            g.insert(id.clone(), e);
             self.flusher.wake(); // under the sessions lock, so `park_if_idle` can't miss it
         }
         // The entry exists before the child does, so early output and exit find it.
@@ -486,6 +535,7 @@ impl SessionManager {
         } else if stop_now {
             let _ = handle.kill();
         }
+        self.save_sessions();
         Ok(info)
     }
 
@@ -510,6 +560,9 @@ impl SessionManager {
         }
         if e.scan_prompts(now) || changed {
             self.send_updated(e);
+        }
+        if events.contains(&StatusEvent::TurnFinished) {
+            self.look_up_conversation(e);
         }
         e.out_total += data.len() as u64;
         if !e.attached {
@@ -551,6 +604,7 @@ impl SessionManager {
             e.pty.take()
         };
         drop(pty);
+        self.save_sessions();
     }
 
     fn flush_due(&self) {
@@ -588,6 +642,10 @@ impl SessionManager {
             let events = adapter.parse_hook(&body);
             if !events.is_empty() {
                 e.policy = e.policy.after_first_event();
+            }
+            if let Some(c) = adapter.conversation_of(&body).filter(|c| e.conversation.as_ref() != Some(c)) {
+                e.conversation = Some(c);
+                self.unsaved.store(true, AtomicOrdering::Relaxed);
             }
             for ev in events {
                 match ev {
@@ -737,7 +795,11 @@ impl SessionManager {
             let _ = p.kill();
         }
         self.hooks.unregister(id);
-        self.remove_session_dir(id);
+        // Quitting keeps the session saved (and its images) to come back paused.
+        if !self.quitting.load(AtomicOrdering::SeqCst) {
+            self.remove_session_dir(id);
+            self.save_sessions();
+        }
         drop(entry); // releases the PTY fds
         Ok(closed)
     }
@@ -748,7 +810,10 @@ impl SessionManager {
         let e = g.get_mut(id).ok_or_else(|| anyhow!("unknown session {id}"))?;
         e.info.spot = Some(spot);
         self.send_updated(e);
-        Ok(e.info.clone())
+        let info = e.info.clone();
+        drop(g);
+        self.save_sessions();
+        Ok(info)
     }
 
     /// Shifts the spot of every session in `workspace_id` by (dx, dy), as its compound moves; returns those sessions.
@@ -763,6 +828,10 @@ impl SessionManager {
             e.info.spot = Some(Tile { x: t.x + dx, y: t.y + dy });
             self.send_updated(e);
             out.push(e.info.clone());
+        }
+        drop(g);
+        if !out.is_empty() {
+            self.save_sessions();
         }
         out
     }
@@ -850,6 +919,10 @@ impl SessionManager {
                 self.send_updated(e);
             }
         }
+        drop(g);
+        if self.unsaved.load(AtomicOrdering::Relaxed) {
+            self.save_sessions();
+        }
     }
 
     pub fn list(&self) -> Vec<SessionInfo> {
@@ -876,6 +949,7 @@ impl SessionManager {
     /// everything exits on SIGHUP); keep it off the UI thread. No session starts afterwards, and
     /// one still starting is SIGKILLed as soon as its spawn returns (waited for, within `grace`).
     pub fn shutdown(&self, grace: Duration) {
+        self.save_sessions(); // the latest steps; nothing is saved once quitting
         let ptys: Vec<Arc<PtyHandle>> = {
             let g = self.lock();
             self.quitting.store(true, AtomicOrdering::SeqCst); // under the lock: no insert slips past
@@ -893,8 +967,159 @@ impl SessionManager {
         }
     }
 
-    /// Removes `<data>/sessions/<id>` dirs that no session owns: left behind by a crash or a
-    /// forced quit (sessions never outlive the app). Only real directories whose name is a
+    /// Lists the sessions saved when the app last ran, paused (state `Ended`, no process), so the
+    /// village looks as it did; `resume` starts one again. Sessions whose workspace or builder is
+    /// gone are dropped. Run at startup, before `sweep_stale_session_dirs` (which then keeps their
+    /// dirs). Returns how many came back.
+    pub fn restore(&self, workspaces: &[Workspace], builders: &[Builder]) -> usize {
+        let now = now_ms();
+        let n = {
+            let mut g = self.lock();
+            for s in saved::load(&self.saved_path) {
+                let Some(ws) = workspaces.iter().find(|w| w.id == s.workspace_id) else { continue };
+                if let SessionKind::Agent { builder_id } = &s.kind
+                    && !builders.iter().any(|b| &b.id == builder_id)
+                {
+                    continue;
+                }
+                let info = SessionInfo {
+                    id: s.id.clone(),
+                    workspace_id: s.workspace_id,
+                    kind: s.kind,
+                    task: s.task,
+                    state: SessionState::Ended { exit_code: None },
+                    steps: s.steps,
+                    started_at: s.started_at,
+                    last_output_at: s.started_at,
+                    reached_finished: s.reached_finished,
+                    worktree: s.worktree,
+                    command_preview: String::new(),
+                    awaiting_decision: false,
+                    busy: false,
+                    rev: s.rev,
+                    spot: s.spot,
+                    paused: true,
+                };
+                let mut e = SessionEntry::new(info, ws.path.clone(), None, terminal_policy(), None, now);
+                e.exited = true;
+                e.conversation = s.conversation;
+                g.insert(s.id, e);
+            }
+            g.len()
+        };
+        self.save_sessions(); // forgets the dropped ones
+        n
+    }
+
+    /// Starts a paused session again under its id, keeping its task, place and progress: an agent
+    /// continues its saved conversation (or starts a new one when it has none or can't resume), a
+    /// terminal opens a new shell. A failed start leaves it paused. `builder`: the agent session's.
+    pub fn resume(&self, ws: &Workspace, builder: Option<&Builder>, id: &str) -> Result<SessionInfo> {
+        ensure_present(ws)?;
+        let old = {
+            let mut g = self.lock();
+            let e = g.get(id).ok_or_else(|| anyhow!("unknown session {id}"))?;
+            if !e.info.paused {
+                bail!("this session is not paused");
+            }
+            if let SessionKind::Agent { builder_id } = &e.info.kind {
+                self.ensure_builder_free(&g, builder_id)?;
+            }
+            g.remove(id).expect("found above")
+        };
+        let res = match (&old.info.kind, builder) {
+            (SessionKind::Terminal, _) => {
+                self.spawn(ws, SessionKind::Terminal, None, id.to_string(), terminal_launch(&ws.path), None, terminal_policy(), Some(old.saved()))
+            }
+            (SessionKind::Agent { .. }, Some(b)) => self.resume_agent(ws, b, id, old.saved()),
+            (SessionKind::Agent { .. }, None) => Err(anyhow!("this session's builder was deleted")),
+        };
+        if res.is_err() {
+            self.lock().insert(id.to_string(), old);
+        }
+        res
+    }
+
+    fn resume_agent(&self, ws: &Workspace, builder: &Builder, id: &str, prior: SavedSession) -> Result<SessionInfo> {
+        let adapter = self
+            .registry
+            .get(builder.agent.clone())
+            .ok_or_else(|| anyhow!("no adapter for {:?}", builder.agent))?;
+        if !adapter.detect().installed {
+            bail!("{} is not installed", adapter.label());
+        }
+        let hook_url = self.hooks.register(id);
+        // the task's images stay readable (Claude and agy are allowed their folder)
+        let images = files_in(&self.data_dir.join("sessions").join(id).join("images"));
+        let conversation = prior.conversation.clone();
+        let req = LaunchRequest {
+            session_id: id,
+            cwd: &ws.path,
+            model: builder.model.as_deref(),
+            effort: builder.effort.as_deref(),
+            task: None,
+            hook_url: &hook_url,
+            data_dir: &self.data_dir,
+            custom_command: builder.custom_command.as_deref(),
+            images: &images,
+            resume: conversation.as_deref(),
+        };
+        let res = adapter.launch(&req).and_then(|spec| {
+            let kind = SessionKind::Agent { builder_id: builder.id.clone() };
+            let policy = adapter.policy();
+            self.spawn(ws, kind, None, id.to_string(), spec, Some(adapter.clone()), policy, Some(prior))
+        });
+        if res.is_err() {
+            self.hooks.unregister(id);
+        }
+        res
+    }
+
+    /// For agents whose hooks don't name their conversation: asks the adapter in a thread (it
+    /// reads the agent's files).
+    fn look_up_conversation(&self, e: &SessionEntry) {
+        let Some(adapter) = e.adapter.clone() else { return };
+        let (weak, id, cwd, since) = (self.weak.clone(), e.info.id.clone(), e.workspace_path.clone(), e.info.started_at);
+        std::thread::spawn(move || {
+            if let Some(c) = adapter.find_conversation(&cwd, since)
+                && let Some(m) = weak.upgrade()
+            {
+                m.set_conversation(&id, c);
+            }
+        });
+    }
+
+    /// Records the session's conversation, unless another session already has it (two sessions
+    /// of one agent in one folder look alike on disk).
+    fn set_conversation(&self, id: &str, c: String) {
+        {
+            let mut g = self.lock();
+            if g.values().any(|o| o.conversation.as_ref() == Some(&c)) {
+                return;
+            }
+            let Some(e) = g.get_mut(id) else { return };
+            e.conversation = Some(c);
+        }
+        self.save_sessions();
+    }
+
+    /// Writes every listed session to `sessions.json`. Skipped once quitting: what is saved then
+    /// comes back paused on the next launch.
+    fn save_sessions(&self) {
+        if self.quitting.load(AtomicOrdering::SeqCst) {
+            return;
+        }
+        let _order = self.save_lock.lock().unwrap_or_else(|e| e.into_inner());
+        self.unsaved.store(false, AtomicOrdering::Relaxed);
+        let mut list: Vec<SavedSession> = self.lock().values().map(SessionEntry::saved).collect();
+        list.sort_by(|a, b| a.started_at.cmp(&b.started_at).then_with(|| a.id.cmp(&b.id)));
+        if let Err(err) = saved::save(&self.saved_path, &list) {
+            eprintln!("could not save sessions: {err:#}");
+        }
+    }
+
+    /// Removes `<data>/sessions/<id>` dirs that no session owns (paused ones do): left behind by a
+    /// crash or a forced quit. Only real directories whose name is a
     /// session id (a lowercase hyphenated UUID) are touched; symlinks are never followed.
     /// Returns what was removed. Run at startup.
     pub fn sweep_stale_session_dirs(&self) -> Vec<PathBuf> {
@@ -979,6 +1204,13 @@ fn shell_quote(s: &str) -> String {
 
 fn command_preview(spec: &LaunchSpec) -> String {
     std::iter::once(&spec.program).chain(&spec.args).map(|s| shell_quote(s)).collect::<Vec<_>>().join(" ")
+}
+
+/// The files in `dir`, sorted; none when it doesn't exist.
+fn files_in(dir: &std::path::Path) -> Vec<PathBuf> {
+    let mut v: Vec<PathBuf> = std::fs::read_dir(dir).map(|r| r.flatten().map(|e| e.path()).collect()).unwrap_or_default();
+    v.sort();
+    v
 }
 
 fn now_ms() -> i64 {
@@ -1851,5 +2083,113 @@ printf '\033]7501;state=idle:app=antigravity\033\\'; sleep 5"#;
             cwd: PathBuf::from("/"),
         };
         assert_eq!(command_preview(&spec), r#"/bin/sh -lc 'echo "$@"' 'it'\''s'"#);
+    }
+
+    fn saved_ids(fx: &Fx) -> Vec<String> {
+        saved::load(&fx.data_dir.join("sessions.json")).into_iter().map(|s| s.id).collect()
+    }
+
+    /// A second manager on the same data dir: the app after a relaunch.
+    fn relaunch(fx: &Fx) -> Arc<SessionManager> {
+        SessionManager::new(AdapterRegistry::new(), fx.mgr.hooks.clone(), fx.data_dir.clone(), Arc::new(|_| {}))
+    }
+
+    #[test]
+    fn listed_sessions_are_saved_and_a_close_forgets_one() {
+        let fx = fixture();
+        let t = fx.mgr.start_terminal(&fx.ws).unwrap();
+        let a = fx.mgr.start_agent(&fx.ws, &custom("b1", "sleep 5"), Some("fix it"), &[]).unwrap();
+        assert_eq!(saved_ids(&fx).len(), 2);
+        fx.mgr.close(&t.id).unwrap();
+        assert_eq!(saved_ids(&fx), vec![a.id]);
+    }
+
+    #[test]
+    fn after_a_quit_sessions_come_back_paused_where_they_stood() {
+        let fx = fixture();
+        let b = custom("b1", "sleep 5");
+        let a = fx.mgr.start_agent(&fx.ws, &b, Some("fix it"), &[]).unwrap();
+        fx.mgr.set_spot(&a.id, Tile { x: 3, y: -1 }).unwrap();
+        let t = fx.mgr.start_terminal(&fx.ws).unwrap();
+        let gone = fx.mgr.start_agent(&fx.ws, &custom("b2", "sleep 5"), None, &[]).unwrap();
+        let rev = fx.mgr.list().into_iter().find(|s| s.id == a.id).unwrap().rev;
+        fx.mgr.shutdown(KILL_GRACE);
+        assert_eq!(saved_ids(&fx).len(), 3, "quitting keeps them");
+
+        let m = relaunch(&fx);
+        assert_eq!(m.restore(std::slice::from_ref(&fx.ws), &[b]), 2, "b2 was deleted: its session is dropped");
+        let list = m.list();
+        let p = list.iter().find(|s| s.id == a.id).unwrap();
+        assert!(p.paused);
+        assert_eq!(p.state, SessionState::Ended { exit_code: None });
+        assert_eq!((p.task.as_deref(), p.spot, p.rev), (Some("fix it"), Some(Tile { x: 3, y: -1 }), rev));
+        assert!(list.iter().any(|s| s.id == t.id && s.paused));
+        assert!(!list.iter().any(|s| s.id == gone.id));
+        assert_eq!(m.running_process_count(), 0, "nothing runs until resumed");
+        assert_eq!(saved::load(&fx.data_dir.join("sessions.json")).len(), 2);
+    }
+
+    #[test]
+    fn resume_starts_a_paused_session_under_its_id() {
+        let fx = fixture();
+        let b = custom("b1", "sleep 5");
+        let a = fx.mgr.start_agent(&fx.ws, &b, Some("fix it"), &[]).unwrap();
+        fx.mgr.set_spot(&a.id, Tile { x: 2, y: 2 }).unwrap();
+        let t = fx.mgr.start_terminal(&fx.ws).unwrap();
+        fx.mgr.shutdown(KILL_GRACE);
+        let m = relaunch(&fx);
+        m.restore(std::slice::from_ref(&fx.ws), std::slice::from_ref(&b));
+        let before = m.list().into_iter().find(|s| s.id == a.id).unwrap();
+
+        let r = m.resume(&fx.ws, Some(&b), &a.id).unwrap();
+        assert_eq!(r.id, a.id);
+        assert!(!r.paused && r.state != SessionState::Ended { exit_code: None });
+        assert_eq!((r.task.as_deref(), r.spot), (Some("fix it"), Some(Tile { x: 2, y: 2 })));
+        assert!(r.rev > before.rev, "updates after a resume are newer");
+        assert!(m.resume(&fx.ws, Some(&b), &a.id).is_err(), "only a paused session resumes");
+        assert!(m.resume(&fx.ws, None, &t.id).is_ok(), "a terminal opens a new shell");
+        assert_eq!(m.running_process_count(), 2);
+        m.shutdown(KILL_GRACE);
+    }
+
+    #[test]
+    fn a_failed_resume_leaves_the_session_paused() {
+        let fx = fixture();
+        let b = custom("b1", "sleep 5");
+        let a = fx.mgr.start_agent(&fx.ws, &b, None, &[]).unwrap();
+        fx.mgr.shutdown(KILL_GRACE);
+        let m = relaunch(&fx);
+        m.restore(std::slice::from_ref(&fx.ws), std::slice::from_ref(&b));
+        assert!(m.resume(&fx.ws, None, &a.id).is_err(), "no builder");
+        let gone = Workspace { missing: true, ..fx.ws.clone() };
+        assert!(m.resume(&gone, Some(&b), &a.id).is_err(), "no folder");
+        assert!(m.list().iter().any(|s| s.id == a.id && s.paused));
+    }
+
+    #[test]
+    fn hooks_name_the_conversation_to_resume() {
+        let fx = fixture();
+        let s = fx.mgr.start_with_spec(&fx.ws, &claude("b1"), sleeper(&fx), Arc::new(ClaudeAdapter)).unwrap();
+        let body = fixture_json("user_prompt_submit.json");
+        fx.mgr.on_hook(&s.id, body.clone());
+        assert_eq!(fx.mgr.lock().get(&s.id).unwrap().conversation.as_deref(), body["session_id"].as_str());
+        fx.mgr.tick(now_ms());
+        let saved = saved::load(&fx.data_dir.join("sessions.json"));
+        assert_eq!(saved[0].conversation.as_deref(), body["session_id"].as_str());
+    }
+
+    #[test]
+    fn paused_sessions_keep_their_dirs_through_the_sweep() {
+        let fx = fixture();
+        let b = custom("b1", "sleep 5");
+        let a = fx.mgr.start_agent(&fx.ws, &b, None, &[]).unwrap();
+        let dir = fx.data_dir.join("sessions").join(&a.id).join("images");
+        std::fs::create_dir_all(&dir).unwrap();
+        fx.mgr.shutdown(KILL_GRACE);
+        assert!(dir.is_dir(), "quitting keeps the dir");
+        let m = relaunch(&fx);
+        m.restore(std::slice::from_ref(&fx.ws), std::slice::from_ref(&b));
+        assert!(m.sweep_stale_session_dirs().is_empty());
+        assert!(dir.is_dir());
     }
 }

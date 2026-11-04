@@ -6,10 +6,12 @@ const approve = vi.fn();
 const reviewSession = vi.fn();
 const closeSession = vi.fn();
 const stopSession = vi.fn();
+const resumeSession = vi.fn();
 vi.mock('../api/ipc', () => ({
   ipc: {
     approve: (id: string) => approve(id), deny: vi.fn(), reviewSession: (id: string) => reviewSession(id),
     closeSession: (id: string) => closeSession(id), stopSession: (id: string) => stopSession(id),
+    resumeSession: (id: string) => resumeSession(id),
   },
 }));
 vi.mock('../components/TerminalView', () => ({ default: ({ sessionId }: { sessionId: string }) => <div className="terminal" tabIndex={0} data-sid={sessionId} /> }));
@@ -26,6 +28,7 @@ beforeEach(() => {
   reviewSession.mockReset();
   closeSession.mockReset();
   stopSession.mockReset();
+  resumeSession.mockReset();
   useApp.setState({
     error: null, selection: null, panelOpen: false,
     workspaces: [], sessions: {}, selectedSessionId: null,
@@ -221,4 +224,28 @@ test('a review clears once the session leaves Finished', async () => {
   expect(screen.queryByText('No changes since this session started')).toBeNull();
   act(() => useApp.getState().upsertSession({ ...sess({ kind: 'finished' }, false), rev: 3 }));
   expect(screen.queryByText('No changes since this session started')).toBeNull();
+});
+
+test('a paused session offers Resume instead of a terminal, and resuming shows it running', async () => {
+  useApp.getState().upsertSession({ ...sess({ kind: 'ended', exitCode: null }, false), paused: true });
+  const { container } = render(<SessionPanel sessionId="s1" />);
+  expect(screen.getByText('Paused')).toBeTruthy();
+  expect(screen.queryByText('Stop')).toBeNull();
+  expect(screen.queryByText('Pop out')).toBeNull();
+  expect(container.querySelector('.terminal')).toBeNull();
+  expect(screen.getByText(/pick Ada's conversation back up/)).toBeTruthy();
+  resumeSession.mockResolvedValue({ ...sess({ kind: 'starting' }, false), rev: 2 });
+  fireEvent.click(screen.getByText('Resume'));
+  await screen.findByText('Stop');
+  expect(resumeSession).toHaveBeenCalledWith('s1');
+  expect(container.querySelector('.terminal')).not.toBeNull();
+});
+
+test('a resume failure stays on the panel and the session stays paused', async () => {
+  useApp.getState().upsertSession({ ...sess({ kind: 'ended', exitCode: null }, false), paused: true });
+  render(<SessionPanel sessionId="s1" />);
+  resumeSession.mockRejectedValue('Claude Code is not installed');
+  fireEvent.click(screen.getByText('Resume'));
+  expect(await screen.findByText('Claude Code is not installed')).toBeTruthy();
+  expect(screen.getByText('Resume')).toBeTruthy();
 });

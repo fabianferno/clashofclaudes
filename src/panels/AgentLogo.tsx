@@ -4,9 +4,9 @@ import { MARK_GRADIENT, MARK_PATHS, PROMPT_GLYPH, TILES } from '../agentMarks';
 
 /**
  * The agent as an app icon: its mark on a rounded, shaded tile, `size` px square. Decorative (the
- * label beside it names the agent).
+ * label beside it names the agent). `framed`: a thick dark outline, like the HUD's buttons.
  */
-export default function AgentLogo({ kind, size = 56 }: { kind: AgentKind; size?: number }) {
+export default function AgentLogo({ kind, size = 56, framed = false }: { kind: AgentKind; size?: number; framed?: boolean }) {
   const uid = useId().replace(/:/g, '');
   const t = TILES[kind];
   const fg = t.fg === 'gradient' ? `url(#${uid}-mark)` : t.fg;
@@ -38,7 +38,9 @@ export default function AgentLogo({ kind, size = 56 }: { kind: AgentKind; size?:
           )}
       </g>
       <rect x="2" y="2" width="60" height="60" rx="14" fill={`url(#${uid}-gloss)`} />
-      <rect x="2.5" y="2.5" width="59" height="59" rx="13.5" fill="none" stroke="#000" strokeOpacity="0.18" />
+      {framed
+        ? <rect x="3.5" y="3.5" width="57" height="57" rx="12.5" fill="none" stroke="#1d130b" strokeWidth="4" />
+        : <rect x="2.5" y="2.5" width="59" height="59" rx="13.5" fill="none" stroke="#000" strokeOpacity="0.18" />}
     </svg>
   );
 }

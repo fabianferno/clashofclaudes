@@ -25,8 +25,10 @@ export default function AgentPicker({ agents, value, onChange, disabled = false,
               aria-label={ok ? a.label : `${a.label} — Not installed — see Town Hall`}
               title={ok ? a.label : `${a.label} is not installed: set it up in the Town Hall`}
               className={`agent-pick-btn${on ? ' on' : ''}`} onClick={() => onChange(a.kind)}>
-              <span className="agent-pick-icon"><AgentLogo kind={a.kind} size={40} /></span>
+              <span className="agent-pick-icon"><AgentLogo kind={a.kind} size={42} framed /></span>
               <span className="agent-pick-name">{shortAgentLabel(a)}</span>
+              {on && <span className="agent-pick-badge ok" aria-hidden="true">✓</span>}
+              {!ok && <span className="agent-pick-badge todo" aria-hidden="true">+</span>}
             </button>
           );
         })}

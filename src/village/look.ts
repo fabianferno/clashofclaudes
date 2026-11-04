@@ -45,7 +45,7 @@ export function classOf(agent: AgentKind, model: string | null): ClassTier {
   return hit ? map[hit] : 1;
 }
 
-const EFFORT_GEAR: Record<string, Gear> = { low: 0, medium: 1, high: 2, xhigh: 3, max: 4 };
+const EFFORT_GEAR: Record<string, Gear> = { low: 0, medium: 1, high: 2, xhigh: 3, max: 4, ultra: 4 };
 
 export function gearOf(effort: string | null): Gear {
   const k = effort?.toLowerCase();

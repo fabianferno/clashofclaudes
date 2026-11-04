@@ -245,3 +245,48 @@ test('pasted images show as thumbnails, can be taken off, and go to the session'
   await vi.waitFor(() => expect(ipc.startSession).toHaveBeenCalledWith('w', 'b1', '', ['b.png']));
   expect(screen.queryAllByTestId('att-thumb')).toHaveLength(0);
 });
+
+const codexListed: AgentInfo = {
+  ...codex, installed: true, canApprove: false,
+  models: ['gpt-5.6-luna', 'gpt-5.6-terra', 'gpt-6-luna'], efforts: ['low', 'medium', 'high'],
+  modelChoices: [
+    { id: 'gpt-5.6-luna', name: 'GPT-5.6-Luna', efforts: ['low', 'medium', 'high'] },
+    { id: 'gpt-5.6-terra', name: 'GPT-5.6-Terra', efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'] },
+    { id: 'gpt-6-luna', name: 'GPT-6-Luna', efforts: ['low', 'medium', 'high', 'xhigh', 'max'] },
+  ],
+};
+
+test('Codex models come from its catalog: a slider with their names, no typing', async () => {
+  setup({ agents: [codexListed, custom] });
+  render(<NewSessionPicker workspaceId="w" />);
+  const model = screen.getByRole('slider', { name: 'Model' }) as HTMLInputElement;
+  expect(screen.queryByPlaceholderText('model id')).toBeNull();
+  expect(screen.getByText('GPT-6-Luna')).toBeTruthy(); // a tick label, by display name
+  act(() => { fireEvent.change(model, { target: { value: '2' } }); });
+  expect(model.getAttribute('aria-valuetext')).toBe('GPT-5.6-Terra');
+  expect(screen.getByText(/codex -m gpt-5\.6-terra/)).toBeTruthy(); // the id goes to Codex
+});
+
+test('the effort slider follows the chosen model, and an effort it does not take goes back to Default', async () => {
+  setup({ agents: [codexListed, custom] });
+  render(<NewSessionPicker workspaceId="w" />);
+  const model = () => screen.getByRole('slider', { name: 'Model' }) as HTMLInputElement;
+  const effort = () => screen.getByRole('slider', { name: 'Effort' }) as HTMLInputElement;
+  expect(effort().max).toBe('3'); // Default + what every model takes
+  act(() => { fireEvent.change(model(), { target: { value: '2' } }); }); // Terra
+  expect(effort().max).toBe('6'); // ... + xhigh, max, ultra
+  act(() => { fireEvent.change(effort(), { target: { value: '6' } }); });
+  expect(effort().getAttribute('aria-valuetext')).toBe('Ultra');
+  act(() => { fireEvent.change(model(), { target: { value: '1' } }); }); // Luna 5.6: no ultra
+  expect(effort().getAttribute('aria-valuetext')).toBe('Default');
+});
+
+test('the chosen agent wears a check; one not installed a plus', () => {
+  setup({ agents: [claude, codex, custom] });
+  const { container } = render(<NewSessionPicker workspaceId="w" />);
+  const btn = (name: RegExp) => screen.getByRole('radio', { name }) as HTMLButtonElement;
+  expect(btn(/^Claude Code$/).querySelector('.agent-pick-badge.ok')).toBeTruthy();
+  expect(btn(/^Codex/).disabled).toBe(true);
+  expect(btn(/^Codex/).querySelector('.agent-pick-badge.todo')).toBeTruthy();
+  expect(container.querySelectorAll('.agent-pick-badge.ok')).toHaveLength(1);
+});

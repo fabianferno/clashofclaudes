@@ -20,6 +20,16 @@ pub use codex::CodexAdapter;
 pub use generic::CustomAdapter;
 pub use opencode::OpenCodeAdapter;
 
+/// A model as the picker offers it: the id passed to the agent, the name shown, and the efforts
+/// it takes (empty: the agent's `efforts`).
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelChoice {
+    pub id: String,
+    pub name: String,
+    pub efforts: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Detection {
     pub installed: bool,
@@ -152,6 +162,10 @@ pub trait AgentAdapter: Send + Sync {
     fn invalidate_detection(&self) {}
     fn models(&self) -> Vec<String>;
     fn efforts(&self) -> Vec<String>;
+    /// The models with display names and their own efforts; by default each id as its own name.
+    fn model_choices(&self) -> Vec<ModelChoice> {
+        self.models().into_iter().map(|m| ModelChoice { name: m.clone(), id: m, efforts: vec![] }).collect()
+    }
     fn launch(&self, req: &LaunchRequest) -> anyhow::Result<LaunchSpec>;
     fn policy(&self) -> StatusPolicy;
     fn parse_hook(&self, _body: &serde_json::Value) -> Vec<StatusEvent> {

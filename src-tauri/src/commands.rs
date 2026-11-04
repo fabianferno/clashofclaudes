@@ -111,6 +111,8 @@ pub struct AgentInfo {
     installed: bool,
     version: Option<String>,
     models: Vec<String>,
+    /// The models with display names and their own efforts (the picker's labels).
+    model_choices: Vec<crate::adapters::ModelChoice>,
     efforts: Vec<String>,
     can_approve: bool,
 }
@@ -164,6 +166,7 @@ fn detect_all(adapters: &[Arc<dyn AgentAdapter>], force: bool) -> Vec<AgentInfo>
                 installed: d.installed,
                 version: d.version,
                 models: a.models(),
+                model_choices: a.model_choices(),
                 efforts: a.efforts(),
                 can_approve: a.approve_keys().is_some() && a.deny_keys().is_some(),
             }

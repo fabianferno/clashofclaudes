@@ -1,6 +1,6 @@
 import { useId } from 'react';
 import type { AgentKind } from '../api/types';
-import { MARK_FILL_RULE, MARK_GRADIENT, MARK_PATHS, PROMPT_GLYPH, TILES } from '../agentMarks';
+import { ANTIGRAVITY_COLOR, MARK_FILL_RULE, MARK_GRADIENT, MARK_PATHS, PROMPT_GLYPH, TILES } from '../agentMarks';
 
 /**
  * The agent as an app icon: its mark on a rounded, shaded tile, `size` px square. Decorative (the
@@ -28,7 +28,27 @@ export default function AgentLogo({ kind, size = 56, framed = false }: { kind: A
       </defs>
       <rect x="2" y="2" width="60" height="60" rx="14" fill={`url(#${uid}-bg)`} />
       <g transform="translate(16 16) scale(1.333)">
-        {path
+        {kind === 'antigravity' && path
+          ? (
+            // its colour mark: blurred Google colours masked to the arch
+            <>
+              <defs>
+                <mask id={`${uid}-agy`} maskUnits="userSpaceOnUse" x="0" y="1" width="24" height="23">
+                  <path d={path} fill="#fff" fillRule="evenodd" />
+                </mask>
+                {ANTIGRAVITY_COLOR.map((b, i) => (
+                  <filter key={i} id={`${uid}-agy${i}`} filterUnits="userSpaceOnUse" colorInterpolationFilters="sRGB"
+                    x={b.box[0]} y={b.box[1]} width={b.box[2]} height={b.box[3]}>
+                    <feGaussianBlur stdDeviation={b.blur} />
+                  </filter>
+                ))}
+              </defs>
+              <g mask={`url(#${uid}-agy)`}>
+                {ANTIGRAVITY_COLOR.map((b, i) => <path key={i} d={b.d} fill={b.fill} filter={`url(#${uid}-agy${i})`} />)}
+              </g>
+            </>
+          )
+          : path
           ? <path d={path} fill={fg} fillRule={MARK_FILL_RULE[kind]} />
           : (
             <>

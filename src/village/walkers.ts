@@ -1,5 +1,5 @@
 import type { Compound, Tile } from '../api/types';
-import { HALL, HOUSE, STRUCT, gapBetween, gateInside, gateOutside, roadPath, villageRect, wallRect } from './layout';
+import { HALL, HOUSE, STRUCT, gapBetween, gateInside, gateOutside, roadPath, villageRect, wallRect, type Rect } from './layout';
 
 export interface Walker {
   id: string;
@@ -32,6 +32,22 @@ export const ANCHOR_HOP = 1.2;
 const centre = (t: Tile): Tile => ({ x: t.x + 0.5, y: t.y + 0.5 });
 const key = (x: number, y: number) => `${x},${y}`;
 const tileOf = (p: Tile) => key(Math.floor(p.x), Math.floor(p.y));
+
+/** Ground outside the compounds a builder keeps off (the hall, the collectors, the walls): true when `p` is on it. */
+export type Blocked = (p: Tile) => boolean;
+const open: Blocked = () => false;
+
+/** Blocked inside any of `rects`. */
+export function blockedBy(rects: readonly Rect[]): Blocked {
+  return (p) => rects.some((r) => p.x > r.x0 && p.x < r.x0 + r.w && p.y > r.y0 && p.y < r.y0 + r.h);
+}
+
+/** Whether the straight walk a->b stays off blocked ground (sampled every quarter tile). */
+function lineOpen(blocked: Blocked, a: Tile, b: Tile): boolean {
+  const n = Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) * 4);
+  for (let i = 1; i <= n; i++) if (blocked({ x: a.x + ((b.x - a.x) * i) / n, y: a.y + ((b.y - a.y) * i) / n })) return false;
+  return true;
+}
 
 /** Whether point `p` is on walkable ground (inside the compound's walls, clear of buildings). */
 export const onGround = (walk: Set<string>, p: Tile): boolean => walk.has(tileOf(p));
@@ -115,12 +131,18 @@ export function standTile(c: Compound, spot: Tile, house: Tile, walk?: Set<strin
   return sides.find(ok) ?? sides[0];
 }
 
-/** Point on the plaza ring in the direction of `p` from the hall. */
-function plazaPoint(p: Tile): Tile {
-  const dx = p.x - HALL_C.x, dy = p.y - HALL_C.y;
-  const d = Math.hypot(dx, dy) || 1;
+/** Point on the plaza ring in the direction of `p` from the hall, turned along the ring off blocked ground. */
+function plazaPoint(p: Tile, blocked: Blocked = open): Tile {
+  const a0 = Math.atan2(p.y - HALL_C.y, p.x - HALL_C.x);
   const r = (RING_MIN + RING_MAX) / 2;
-  return { x: HALL_C.x + (dx / d) * r, y: HALL_C.y + (dy / d) * r };
+  const at = (a: number): Tile => ({ x: HALL_C.x + Math.cos(a) * r, y: HALL_C.y + Math.sin(a) * r });
+  for (let i = 0; i <= 20; i++) {
+    for (const s of i ? [1, -1] : [1]) {
+      const q = at(a0 + s * i * 0.15);
+      if (!blocked(q)) return q;
+    }
+  }
+  return at(a0);
 }
 
 /** The road's bends between the plaza and the gate (`roadPath`), plaza side first; none when it runs straight. */
@@ -137,17 +159,20 @@ export function routeToSite(from: Tile, c: Compound, spot: Tile, walk?: Set<stri
   return [...road, out, gate, ...(walk ? interiorPath(walk, gate, stand) : [stand])];
 }
 
-/** Back out through the gate (inside, then outside) and along the road to the plaza, over `walk` when given. */
-export function routeHome(from: Tile, c: Compound, walk?: Set<string>): Tile[] {
+/**
+ * Back out through the gate (inside, then outside) and along the road to the plaza, over `walk` when
+ * given; the plaza point is kept off `blocked` ground.
+ */
+export function routeHome(from: Tile, c: Compound, walk?: Set<string>, blocked: Blocked = open): Tile[] {
   const gate = centre(gateInside(c)), out = centre(gateOutside(c)), b = bends(c);
-  return [...(walk ? interiorPath(walk, from, gate) : [gate]), out, ...b.slice().reverse(), plazaPoint(b[0] ?? out)];
+  return [...(walk ? interiorPath(walk, from, gate) : [gate]), out, ...b.slice().reverse(), plazaPoint(b[0] ?? out, blocked)];
 }
 
 /**
  * The compound's house moved (so the gate and stand tile may have too): re-aim a walker that is at
  * the site, walking to it, or walking home. `spot` is the site's structure (null when heading home).
  */
-export function retarget(w: Walker, c: Compound, spot: Tile | null, walk?: Set<string>): Walker {
+export function retarget(w: Walker, c: Compound, spot: Tile | null, walk?: Set<string>, blocked: Blocked = open): Walker {
   if (w.mode === 'atSite' && spot) {
     const st = standTile(c, spot, c.house, walk);
     return { ...w, x: st.x, y: st.y, path: [] };
@@ -160,7 +185,7 @@ export function retarget(w: Walker, c: Compound, spot: Tile | null, walk?: Set<s
     if (inside) return { ...w, path: interiorPath(walk!, w, standTile(c, spot, c.house, walk)) };
     return { ...w, path: walk ? routeToSite(w, c, spot, walk) : keep(routeToSite(w, c, spot)) };
   }
-  if (w.mode === 'home' && w.path.length) return { ...w, path: inside ? routeHome(w, c, walk) : keep(routeHome(w, c, walk)) };
+  if (w.mode === 'home' && w.path.length) return { ...w, path: inside ? routeHome(w, c, walk, blocked) : keep(routeHome(w, c, walk, blocked)) };
   return w;
 }
 
@@ -193,7 +218,12 @@ export function dropOf(
 }
 
 /** Advance `dt` seconds: walk the path; when idle with an empty path, rest then pick a new plaza target. */
-export function step(w: Walker, dt: number, rnd: () => number): Walker {
+/**
+ * Advance a walker by `dt` seconds. An idle builder wanders to points it can walk to in a straight
+ * line without crossing `blocked` ground; one standing on blocked ground (a collector set down over
+ * it) walks straight off.
+ */
+export function step(w: Walker, dt: number, rnd: () => number, blocked: Blocked = open): Walker {
   let { x, y, face, mode, wait } = w;
   const path = w.path.slice();
   let budget = SPEED * dt;
@@ -215,16 +245,22 @@ export function step(w: Walker, dt: number, rnd: () => number): Walker {
   } else if (!path.length && mode === 'idle') {
     wait -= dt;
     if (wait <= 0) {
-      const at = w.anchor;
-      if (at) {
-        const a = rnd() * Math.PI * 2, r = rnd() * ANCHOR_HOP;
-        path.push({ x: at.x + Math.cos(a) * r, y: at.y + Math.sin(a) * r });
-      } else {
+      const at = w.anchor, here = { x, y }, stuck = blocked(here);
+      const pick = (): Tile => {
+        if (at) {
+          const a = rnd() * Math.PI * 2, r = rnd() * ANCHOR_HOP;
+          return { x: at.x + Math.cos(a) * r, y: at.y + Math.sin(a) * r };
+        }
         const a = Math.atan2(y - HALL_C.y, x - HALL_C.x) + (rnd() < 0.5 ? -1 : 1) * (0.5 + rnd() * 0.7);
         const r = RING_MIN + rnd() * (RING_MAX - RING_MIN);
-        path.push({ x: HALL_C.x + Math.cos(a) * r, y: HALL_C.y + Math.sin(a) * r });
+        return { x: HALL_C.x + Math.cos(a) * r, y: HALL_C.y + Math.sin(a) * r };
+      };
+      // a few tries; when none is clear the builder waits and tries again
+      for (let i = 0; i < 8 && !path.length; i++) {
+        const t = pick();
+        if (!blocked(t) && (stuck || lineOpen(blocked, here, t))) path.push(t);
       }
-      wait = 1 + rnd() * 3;
+      wait = path.length ? 1 + rnd() * 3 : 0.5;
     }
   }
   return { ...w, x, y, path, face, mode, wait };

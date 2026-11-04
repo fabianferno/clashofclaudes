@@ -13,6 +13,7 @@ pub mod persist;
 pub mod platform;
 pub mod pty;
 pub mod quota;
+pub mod saved;
 pub mod scrollback;
 pub mod sessions;
 pub mod snapshot;
@@ -256,7 +257,9 @@ pub fn run() {
             let data_dir_for_driver = data_dir.clone();
             let manager = SessionManager::new(adapters::AdapterRegistry::new(), Arc::new(hooks), data_dir, emit);
             let _ = cell.set(Arc::downgrade(&manager));
-            // Session dirs left by a crash; none is live yet, so this only removes leftovers.
+            // The sessions listed when the app last ran come back paused; then the dirs no session
+            // owns (left by a crash) go.
+            manager.restore(&data.workspaces, &data.builders);
             manager.sweep_stale_session_dirs();
             // A launch in the background (`open -g`, or focus moved away while starting) is
             // unfocused from the start; a later focus event corrects either way.
@@ -341,6 +344,7 @@ pub fn run() {
             commands::approve,
             commands::deny,
             commands::stop_session,
+            commands::resume_session,
             commands::close_session,
             commands::set_compound,
             commands::set_collector_spot,
@@ -357,6 +361,7 @@ pub fn run() {
             commands::discard_attachments,
             commands::refresh_quotas,
             commands::open_in_editor,
+            commands::open_in_finder,
             commands::review_session,
             commands::attach_session,
             commands::detach_session,

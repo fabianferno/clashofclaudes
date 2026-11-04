@@ -6,6 +6,6 @@ const COLOR: Record<SessionState['kind'], string> = {
   finished: 'var(--hud-finished)', stuck: 'var(--hud-stuck)', ended: '#8e8e8e',
 };
 
-export function StateTag({ state }: { state: SessionState }) {
-  return <span className="sp-tag ol" style={{ background: COLOR[state.kind] }}>{stateLabel(state)}</span>;
+export function StateTag({ state, paused }: { state: SessionState; paused?: boolean }) {
+  return <span className="sp-tag ol" style={{ background: paused ? 'var(--hud-idle)' : COLOR[state.kind] }}>{stateLabel(state, paused)}</span>;
 }

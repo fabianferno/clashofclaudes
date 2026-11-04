@@ -130,14 +130,17 @@ impl AgentAdapter for ClaudeAdapter {
         let settings_path = dir.join("claude-settings.json");
         write_private(&settings_path, &serde_json::to_vec_pretty(&settings_json(req.hook_url, user_status_line(req.cwd).as_ref()))?)?;
 
-        let mut args: Vec<String> = vec![
-            "--session-id".into(),
-            req.session_id.into(),
+        // A new conversation takes the session's id; a resumed one keeps its own.
+        let mut args: Vec<String> = match req.resume {
+            Some(c) => vec!["--resume".into(), c.into()],
+            None => vec!["--session-id".into(), req.session_id.into()],
+        };
+        args.extend([
             "--settings".into(),
             settings_path.to_string_lossy().into_owned(),
             "--append-system-prompt".into(),
             SHARED_FOLDER_NOTE.into(),
-        ];
+        ]);
         if let Some(m) = req.model {
             args.extend(["--model".into(), m.into()]);
         }
@@ -178,6 +181,13 @@ impl AgentAdapter for ClaudeAdapter {
         }
         out
     }
+    fn conversation_of(&self, body: &serde_json::Value) -> Option<String> {
+        // a transcript exists once a prompt was sent (`/clear` starts a new one)
+        match body.get("hook_event_name").and_then(|v| v.as_str()) {
+            Some("UserPromptSubmit" | "PostToolUse" | "Stop") => body.get("session_id").and_then(|v| v.as_str()).map(String::from),
+            _ => None,
+        }
+    }
     fn approve_keys(&self) -> Option<&'static [u8]> {
         Some(b"1")
     }
@@ -216,6 +226,7 @@ mod tests {
             data_dir: dir,
             custom_command: None,
             images: &[],
+            resume: None,
         }
     }
 
@@ -239,6 +250,25 @@ mod tests {
         assert_eq!(&spec.args[4..6], &["--append-system-prompt", SHARED_FOLDER_NOTE]);
         assert_eq!(&spec.args[6..], &["--model", "opus", "--effort", "max", "--", "fix bug"]);
         assert_eq!(spec.cwd, PathBuf::from("/tmp"));
+    }
+
+    #[test]
+    fn resume_continues_its_own_conversation() {
+        let d = tempfile::tempdir().unwrap();
+        let mut r = req("sid-2", d.path(), Some("opus"), None, None);
+        r.resume = Some("conv-1");
+        let spec = ClaudeAdapter.launch(&r).unwrap();
+        assert_eq!(&spec.args[0..2], &["--resume", "conv-1"]);
+        assert!(!spec.args.iter().any(|a| a == "--session-id" || a == "--"));
+    }
+
+    #[test]
+    fn conversation_is_named_once_a_prompt_was_sent() {
+        let body = |ev: &str| json!({"hook_event_name": ev, "session_id": "c-9"});
+        assert_eq!(ClaudeAdapter.conversation_of(&body("UserPromptSubmit")).as_deref(), Some("c-9"));
+        assert_eq!(ClaudeAdapter.conversation_of(&body("Stop")).as_deref(), Some("c-9"));
+        assert_eq!(ClaudeAdapter.conversation_of(&body("SessionStart")), None);
+        assert_eq!(ClaudeAdapter.conversation_of(&json!({"hook_event_name": "Stop"})), None);
     }
 
     #[test]

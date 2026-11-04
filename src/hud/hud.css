@@ -1,6 +1,11 @@
 :root {
   --hud-out: #1d130b;
   --hud-working: #f5a623; --hud-needs: #ff4b3e; --hud-stuck: #8e8e8e; --hud-finished: #ffcf33; --hud-idle: #4ab0f0;
+  /* toy-diorama parchment and wood (docs/mockups/village-v7-diorama.html) */
+  --parch: linear-gradient(180deg, #fff9ec 0%, #f7ebd2 68%, #ead5b0 100%);
+  --wood: linear-gradient(180deg, #4f3320 0%, #2e1c10 100%);
+  --bevel: inset 0 2px 0 rgba(255,255,255,.85), inset 0 -3px 0 rgba(166,124,82,.35);
+  --lip: 0 5px 0 var(--hud-out), 0 10px 24px rgba(14,9,5,.45);
   --hud-stroke: -1.5px -1.5px 0 var(--hud-out), 1.5px -1.5px 0 var(--hud-out), -1.5px 1.5px 0 var(--hud-out), 1.5px 1.5px 0 var(--hud-out), 0 2.5px 0 var(--hud-out);
 }
 .ol, .ol-lg, .hud-btn, .hud-badge {
@@ -32,36 +37,42 @@
   background: linear-gradient(#8fd6ff, #3a8fd6); border: 3px solid var(--hud-out); border-radius: 12px 12px 28px 28px;
   box-shadow: inset 0 4px 0 rgba(255,255,255,.45), inset 0 -4px 0 rgba(0,0,0,.2), 0 3px 0 var(--hud-out);
 }
-.hud-pbar { margin-left: -14px; background: rgba(20,12,6,.65); border: 3px solid var(--hud-out); border-radius: 0 12px 12px 0; padding: 6px 16px 6px 22px; font-size: 18px; }
+.hud-pbar { margin-left: -14px; background: var(--wood); border: 3px solid var(--hud-out); border-radius: 0 12px 12px 0; padding: 6px 16px 6px 22px; font-size: 18px; box-shadow: inset 0 2px 0 rgba(255,220,170,.28), 0 4px 0 var(--hud-out); }
 .hud-pills { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .hud-pill {
   display: flex; align-items: center; gap: 8px; padding: 5px 14px 5px 6px; font-size: 16px; cursor: pointer;
-  background: rgba(20,12,6,.65); border: 3px solid var(--hud-out); border-radius: 99px; min-width: 150px; text-align: left;
+  background: #26180e; border: 3px solid var(--hud-out); border-radius: 99px; min-width: 150px; text-align: left;
+  box-shadow: inset 0 2px 4px rgba(0,0,0,.55), 0 3px 0 var(--hud-out);
 }
-.hud-dot { width: 22px; height: 22px; border-radius: 50%; border: 3px solid var(--hud-out); box-shadow: inset 0 3px 0 rgba(255,255,255,.4); flex: none; }
+/* a glass orb: the colour comes inline, the shine and shade sit over it */
+.hud-dot { position: relative; width: 22px; height: 22px; border-radius: 50%; border: 3px solid var(--hud-out); box-shadow: inset 0 2px 2px rgba(255,255,255,.6); flex: none; }
+.hud-dot::after {
+  content: ''; position: absolute; inset: 0; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, rgba(255,255,255,.9) 0 14%, rgba(255,255,255,0) 42%), radial-gradient(circle at 50% 115%, rgba(0,0,0,.4), rgba(0,0,0,0) 62%);
+}
 .hud-pill.pulse { animation: hud-nudge 1.4s ease-in-out infinite; }
 @keyframes hud-nudge { 0%,100% { transform: translateX(0) } 50% { transform: translateX(4px) } }
 
 /* top right; `right` is set inline (RES_MARGIN + panel width when the panel is open) */
 .hud-res { position: fixed; top: 14px; transition: right .2s; z-index: 3; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; pointer-events: none; }
-.hud-rbar { display: flex; align-items: center; gap: 14px; justify-content: space-between; min-width: 210px; padding: 5px 14px; font-size: 16px; background: rgba(20,12,6,.65); border: 3px solid var(--hud-out); border-radius: 12px; }
+.hud-rbar { display: flex; align-items: center; gap: 14px; justify-content: space-between; min-width: 210px; padding: 5px 14px; font-size: 16px; background: #26180e; border: 3px solid var(--hud-out); border-radius: 12px; box-shadow: inset 0 2px 4px rgba(0,0,0,.55), 0 3px 0 var(--hud-out); }
 .hud-rbar b { font-weight: 400; font-size: 20px; }
 
 /* bottom roster */
 .hud-roster-zone { position: fixed; left: 0; bottom: 10px; z-index: 3; display: flex; justify-content: center; pointer-events: none; transition: right .2s; padding: 0 12px; } /* right padding set inline (rosterReserve) */
 .hud-roster { display: flex; flex-direction: column; align-items: center; gap: 6px; max-width: 100%; pointer-events: auto; transition: transform .3s cubic-bezier(.2,.9,.3,1.2); }
 .hud-roster.collapsed { transform: translateY(calc(100% - 38px)); }
-.hud-cards { display: flex; gap: 8px; padding: 8px; max-width: 100%; overflow-x: auto; scrollbar-width: thin; background: rgba(20,12,6,.55); border: 3px solid var(--hud-out); border-radius: 16px; }
+.hud-cards { display: flex; gap: 8px; padding: 8px; max-width: 100%; overflow-x: auto; scrollbar-width: thin; background: var(--wood); border: 3px solid var(--hud-out); border-radius: 18px; box-shadow: inset 0 2px 0 rgba(255,220,170,.28), var(--lip); }
 .hud-card {
   flex: none; width: 84px; height: 120px; padding: 6px 4px 4px; border: 3px solid var(--hud-out); border-radius: 10px; cursor: pointer;
   display: flex; flex-direction: column; align-items: center; gap: 1px; position: relative; font: inherit;
-  background: linear-gradient(#f6ead0, #e0c995); box-shadow: inset 0 4px 0 rgba(255,255,255,.4), 0 3px 0 var(--hud-out); transition: transform .1s;
+  background: var(--parch); box-shadow: var(--bevel), 0 4px 0 var(--hud-out); transition: transform .1s;
 }
 .hud-card:hover { transform: translateY(-3px); }
-.hud-card.selected { outline: 3px solid #fff; }
+.hud-card.selected { border-color: #ffca28; box-shadow: var(--bevel), 0 0 0 2px var(--hud-out), 0 4px 0 var(--hud-out); }
 .hud-av {
   width: 46px; height: 46px; border-radius: 10px; border: 3px solid var(--hud-out); display: grid; place-items: center; overflow: hidden;
-  background: linear-gradient(#d8f0fb, #94cde9); box-shadow: inset 0 3px 0 rgba(255,255,255,.35);
+  background: radial-gradient(circle at 50% 40%, #fffdf7 0%, #e5cda4 100%); box-shadow: inset 0 3px 0 rgba(255,255,255,.35);
 }
 .hud-av-art { display: block; }
 .hud-cname { font-size: 13px; max-width: 76px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -71,7 +82,7 @@
 
 /* bottom right */
 .hud-build { position: fixed; bottom: 14px; z-index: 3; display: flex; gap: 10px; align-items: flex-end; transition: right .2s; }
-.hud-pop { position: absolute; bottom: calc(100% + 12px); right: 0; display: flex; gap: 6px; padding: 8px; background: #f3e7cc; border: 3px solid var(--hud-out); border-radius: 12px; box-shadow: 0 4px 0 var(--hud-out); }
+.hud-pop { position: absolute; bottom: calc(100% + 12px); right: 0; display: flex; gap: 6px; padding: 8px; background: var(--parch); border: 3px solid var(--hud-out); border-radius: 14px; box-shadow: var(--bevel), var(--lip); }
 .hud-pop input { width: 150px; border: 2px solid #c8b083; border-radius: 8px; padding: 4px 8px; font: 700 14px system-ui; }
 
 /* shared glossy style for the zoom buttons (position unchanged) */

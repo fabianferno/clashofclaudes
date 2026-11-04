@@ -86,13 +86,15 @@ export default function SessionPanel({ sessionId, onClosed }: { sessionId: strin
     ? `${builder.model ? `${builder.model} · ` : ''}${builder.effort ? `${builder.effort} ` : ''}→ ${CLASS_NAMES[classOf(builder.agent, builder.model)]} with ${GEAR_NAMES[gearOf(builder.effort)].toLowerCase()}`
     : null;
   const readOnly = st === 'ended';
+  const paused = !!session.paused;
+  const resume = () => run(ipc.resumeSession(sessionId).then((s) => useApp.getState().upsertSession(s)));
 
   return (
     <section className="panel session-panel">
       <header className="panel-head">
         <strong>{builder?.name ?? 'Terminal'}</strong>
         {builder && <span>{agent?.label ?? builder.agent}</span>}
-        <span className={`state state-${st}`}>{stateLabel(session.state)}</span>
+        <span className={`state state-${paused ? 'paused' : st}`}>{stateLabel(session.state, paused)}</span>
         {session.kind.kind === 'agent' && <span>{session.steps} steps</span>}
         <span>{elapsed(session.startedAt, now)}</span>
         {session.worktree?.branch && <span className="chip">{session.worktree.branch}</span>}
@@ -113,9 +115,10 @@ export default function SessionPanel({ sessionId, onClosed }: { sessionId: strin
         {st === 'finished' && (
           <button className="hud-btn sm" onClick={() => void showReview()}>Review</button>
         )}
-        <button className="hud-btn grey sm" onClick={() => run(ipc.stopSession(sessionId))}>Stop</button>
+        {paused && <button className="hud-btn sm" onClick={() => void resume()}>Resume</button>}
+        {!paused && <button className="hud-btn grey sm" onClick={() => run(ipc.stopSession(sessionId))}>Stop</button>}
         <button className="hud-btn grey sm" onClick={close}>Close</button>
-        <button className="hud-btn blue sm" onClick={() => setPopped(true)}>Pop out</button>
+        {!paused && <button className="hud-btn blue sm" onClick={() => setPopped(true)}>Pop out</button>}
       </div>
       {error && <div className="panel-warn">{error}</div>}
       {review && (
@@ -133,7 +136,13 @@ export default function SessionPanel({ sessionId, onClosed }: { sessionId: strin
           )}
         </div>
       )}
-      {popped ? (
+      {paused ? (
+        <div className="terminal-placeholder">
+          {builder
+            ? `Paused when the app closed. Resume to pick ${builder.name}'s conversation back up.`
+            : 'Paused when the app closed. Resume to open a new shell here.'}
+        </div>
+      ) : popped ? (
         <>
           <div className="terminal-placeholder">Terminal popped out — ✕ to return</div>
           <PopOutTerminal sessionId={sessionId} readOnly={readOnly} title={title} onClose={() => setPopped(false)} />

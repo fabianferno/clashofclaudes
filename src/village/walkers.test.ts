@@ -3,7 +3,7 @@ import type { Compound } from '../api/types';
 import type { Tile } from '../api/types';
 import { enclosure, seedOf } from './enclosure';
 import { gateInside, gateOutside, placeCompound, roadPath, spotFor } from './layout';
-import { ANCHOR_HOP, PLAZA, SPEED, dropOf, interiorPath, onGround, routeHome, retarget, routeToSite, standTile, step, walkable, type Walker } from './walkers';
+import { ANCHOR_HOP, PLAZA, SPEED, blockedBy, dropOf, interiorPath, onGround, routeHome, retarget, routeToSite, standTile, step, walkable, type Walker } from './walkers';
 
 const mk = (over: Partial<Walker> = {}): Walker =>
   ({ id: 'b', x: 0, y: 0, path: [], mode: 'idle', face: 1, wait: 0, ...over });
@@ -198,5 +198,39 @@ describe('walkers', () => {
       expect(home.path).toEqual(routeHome(at, c, walk));
       expect(home.path).toContainEqual(gO);
     }
+  });
+});
+
+describe('keeping off blocked ground', () => {
+  // a 2x2 collector on the plaza ring, east of the hall, grown by half a tile
+  const tank = blockedBy([{ x0: 4.5, y0: -0.5, w: 3, h: 3 }]);
+  const idle = (x: number, y: number): Walker => ({ id: 'b', x, y, path: [], mode: 'idle', face: 1, wait: 0 });
+
+  it('idle_builders_never_wander_onto_or_across_a_collector', () => {
+    const next = lcg(7);
+    for (let start = 0; start < 40; start++) {
+      const a = (start / 40) * Math.PI * 2;
+      const from = idle(0.5 + Math.cos(a) * 5.1, 0.5 + Math.sin(a) * 5.1);
+      if (tank(from)) continue; // standing on it: walks off (next test)
+      const w = step(from, 0.01, next, tank);
+      for (const t of w.path) {
+        expect(tank(t)).toBe(false);
+        for (let i = 1; i <= 20; i++) expect(tank({ x: w.x + ((t.x - w.x) * i) / 20, y: w.y + ((t.y - w.y) * i) / 20 })).toBe(false);
+      }
+    }
+  });
+
+  it('a_builder_standing_on_a_collector_walks_off_it', () => {
+    const w = step(idle(6, 1), 0.01, () => 0.3, tank);
+    expect(w.path).toHaveLength(1);
+    expect(tank(w.path[0])).toBe(false);
+  });
+
+  it('the_walk_home_ends_beside_a_collector_not_in_it', () => {
+    const c = placeCompound([]);
+    const home = routeHome(gateOutside(c), c), end = home[home.length - 1];
+    const block = blockedBy([{ x0: end.x - 1, y0: end.y - 1, w: 2, h: 2 }]);
+    const moved = routeHome(gateOutside(c), c, undefined, block);
+    expect(block(moved[moved.length - 1])).toBe(false);
   });
 });

@@ -14,9 +14,23 @@ use super::{AgentAdapter, Detection, DetectionCache, LaunchRequest, ScreenPrompt
 use crate::model::AgentKind;
 use crate::pty::LaunchSpec;
 use crate::status::StatusPolicy;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 pub struct AntigravityAdapter;
+
+/// agy's prompt history under HOME: one JSON line per prompt, naming its workspace and conversation.
+const HISTORY: &str = ".gemini/antigravity-cli/history.jsonl";
+
+/// The conversation of the newest prompt sent in `cwd` at or after `since_ms`.
+fn conversation_in_history(history: &[u8], cwd: &Path, since_ms: i64) -> Option<String> {
+    String::from_utf8_lossy(history).lines().rev().find_map(|l| {
+        let v: serde_json::Value = serde_json::from_str(l).ok()?;
+        let here = v.get("workspace")?.as_str().map(Path::new)? == cwd;
+        let recent = v.get("timestamp")?.as_i64()? >= since_ms;
+        (here && recent).then(|| v.get("conversationId")?.as_str().map(String::from)).flatten()
+    })
+}
 
 fn probe() -> Detection {
     super::probe_program("agy", parse_version)
@@ -65,12 +79,19 @@ impl AgentAdapter for AntigravityAdapter {
         if let Some(d) = super::images_dir(req.images) {
             args.push(format!("--add-dir={}", d.to_string_lossy()));
         }
+        if let Some(c) = req.resume {
+            args.push(format!("--conversation={c}"));
+        }
         if let Some(t) = req.task.filter(|t| !t.is_empty()) {
             // `=` form in one argument: a task starting with `-` can never be read as an option.
             args.push(format!("--prompt-interactive={SHARED_FOLDER_NOTE}\n\n{t}"));
         }
         let env = vec![("AGY_CLI_OSC7501".to_string(), "on".to_string())];
         Ok(LaunchSpec { program: "agy".into(), args, env, cwd: req.cwd.to_path_buf() })
+    }
+    fn find_conversation(&self, cwd: &Path, since_ms: i64) -> Option<String> {
+        let home = PathBuf::from(std::env::var_os("HOME")?);
+        conversation_in_history(&std::fs::read(home.join(HISTORY)).ok()?, cwd, since_ms)
     }
     fn policy(&self) -> StatusPolicy {
         // Before the first report (a sign-in or trust screen, or reports not arriving) silence
@@ -108,7 +129,7 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     fn req<'a>(model: Option<&'a str>, task: Option<&'a str>) -> LaunchRequest<'a> {
-        LaunchRequest { session_id: "sid", cwd: Path::new("/tmp"), model, effort: Some("high"), task, hook_url: "http://x", data_dir: Path::new("/nonexistent"), custom_command: None, images: &[] }
+        LaunchRequest { session_id: "sid", cwd: Path::new("/tmp"), model, effort: Some("high"), task, hook_url: "http://x", data_dir: Path::new("/nonexistent"), custom_command: None, images: &[], resume: None }
     }
 
     #[test]
@@ -122,6 +143,26 @@ mod tests {
         assert_eq!(spec.env, vec![("AGY_CLI_OSC7501".to_string(), "on".to_string())]);
         // data_dir does not exist: launching created nothing there (or anywhere).
         assert!(!Path::new("/nonexistent").exists());
+    }
+
+    #[test]
+    fn resume_continues_the_conversation_without_a_prompt() {
+        let mut r = req(Some("gemini-3.8-flash-medium"), None);
+        r.resume = Some("conv-1");
+        let spec = AntigravityAdapter.launch(&r).unwrap();
+        assert_eq!(spec.args, ["--model=gemini-3.8-flash-medium", "--conversation=conv-1"]);
+    }
+
+    #[test]
+    fn conversation_is_the_newest_prompt_in_the_folder_since_the_start() {
+        let h = br#"{"display":"a","timestamp":100,"workspace":"/w","conversationId":"old"}
+{"display":"b","timestamp":200,"workspace":"/other","conversationId":"elsewhere"}
+not json
+{"display":"c","timestamp":300,"workspace":"/w","conversationId":"mine"}
+{"display":"d","timestamp":400,"workspace":"/x","conversationId":"later"}"#;
+        assert_eq!(conversation_in_history(h, Path::new("/w"), 150).as_deref(), Some("mine"));
+        assert_eq!(conversation_in_history(h, Path::new("/w"), 350), None);
+        assert_eq!(conversation_in_history(b"", Path::new("/w"), 0), None);
     }
 
     #[test]

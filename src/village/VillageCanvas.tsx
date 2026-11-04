@@ -50,6 +50,17 @@ const inputOf = (s: AppState): VillageInput => ({
   boards: boardsOf(s),
 });
 
+/** Cmd (Ctrl elsewhere) with + / = zooms in, with - zooms out, with 0 fits the village; else null. */
+export function zoomKey(e: Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' | 'altKey'>): 'in' | 'out' | 'fit' | null {
+  if (!(e.metaKey || e.ctrlKey) || e.altKey) return null;
+  switch (e.key) {
+    case '=': case '+': return 'in';
+    case '-': case '_': return 'out';
+    case '0': return 'fit';
+    default: return null;
+  }
+}
+
 /** The Pixi village, full-window; syncs from the store on every change (also while hidden). */
 export default function VillageCanvas({ onError }: { onError?: (e: unknown) => void } = {}) {
   const host = useRef<HTMLDivElement>(null);
@@ -102,6 +113,20 @@ export default function VillageCanvas({ onError }: { onError?: (e: unknown) => v
       setScene(null);
     };
   }, []);
+
+  // Cmd +/- like the zoom buttons, unless a pop-out or the Kanban covers the village
+  useEffect(() => {
+    if (!scene) return;
+    const onKey = (e: KeyboardEvent) => {
+      const z = zoomKey(e);
+      if (!z || useApp.getState().covers > 0) return;
+      e.preventDefault();
+      if (z === 'fit') scene.fitVillage();
+      else scene.zoomBy(z === 'in' ? 1.25 : 1 / 1.25);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [scene]);
 
   return (
     <>

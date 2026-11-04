@@ -85,6 +85,7 @@ export const HOUSE_COLORS: ReadonlyArray<{ roof: string; wall: string }> = [
   { roof: '#f08a2e', wall: '#f4e4c1' },
   { roof: '#3f7fd6', wall: '#efe0bf' },
   { roof: '#8a4fd0', wall: '#f2e6c8' },
+  { roof: '#c64a32', wall: '#f3e2c4' }, // coral, the painted houses' own colour
 ];
 
 export function houseColors(workspaceId: string): { roof: string; wall: string } {

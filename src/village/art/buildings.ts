@@ -5,6 +5,7 @@ import {
   OUT, bake, ctx, dot, faceQuad, flag, isoBox, lerp, line, outlinedText, poly, roof, shadow, shade, spire, up,
   type Art, type Box, type Pt, type RoofPts,
 } from './draw';
+import { paintedBoard, paintedCollector, paintedHall, paintedHouse, paintedRuneStone, paintedStructure } from './sprites';
 
 const GOLD = '#ffcf33';
 
@@ -41,6 +42,8 @@ function houseBody(
 
 /** Town hall, 5x5 footprint. Anchor: the footprint's front corner, grid point (gx+5, gy+5), i.e. iso(gx+5, gy+5) in world px. */
 export function drawHall(): Art {
+  const p = paintedHall();
+  if (p) return p;
   return bake(380, 340, 190, 290, () => {
     const n = 5;
     shadow(iso(n / 2, n / 2), 62, 34, 0.22, 10, 6);
@@ -56,6 +59,8 @@ export function drawHall(): Art {
 
 /** Workspace house, 3x3 footprint. Anchor: the footprint's front corner, grid point (gx+3, gy+3).  Stages: 0 plain, 1 banner, 2 wing, 3 tower, 4 gold trim. */
 export function drawHouse(stage: 0 | 1 | 2 | 3 | 4, roofColor: string, wall: string): Art {
+  const p = paintedHouse(stage, roofColor);
+  if (p) return p;
   return bake(300, 330, 150, 300, () => {
     const gold = stage >= 4;
     shadow(iso(1.5, 1.5), 60, 30, 0.22, 10, 6);
@@ -83,6 +88,8 @@ type StructStage = 'foundation' | 'scaffold' | 'complete';
  * review ribbon once finished.
  */
 export function drawStructure(agent: AgentKind, stage: StructStage, height01: number): Art {
+  const painted = paintedStructure(agent, stage, height01);
+  if (painted) return painted;
   const P = PALETTE[agent];
   const gx = 0.2, gy = 0.2, w = 1.6, RH = 46; // footprint and ridge height (px)
   const canvasLit = shade(P.body, 0.18), canvasDark = shade(P.body, -0.12);
@@ -189,6 +196,8 @@ function ribbon(p: Pt): void {
  * tank with a "?"). Anchor: the footprint's front corner, grid point (gx+2, gy+2).
  */
 export function drawCollector(agent: keyof typeof ELIXIR, tenths: number | null): Art {
+  const p = paintedCollector(agent, tenths);
+  if (p) return p;
   const P = PALETTE[agent], E = ELIXIR[agent];
   return bake(200, 220, 100, 190, () => {
     const g = ctx();
@@ -268,6 +277,8 @@ export function drawCollector(agent: keyof typeof ELIXIR, tenths: number | null)
  * grooves once it has ended). Anchor: the footprint's front corner, grid point (gx+2, gy+2).
  */
 export function drawRuneStone(lit: boolean): Art {
+  const p = paintedRuneStone(lit);
+  if (p) return p;
   return bake(200, 220, 100, 190, () => {
     const g = ctx();
     shadow(iso(1, 1), 46, 23, 0.2, 5, 3);
@@ -357,6 +368,8 @@ export function setBoardImage(key: string, img: (CanvasImageSource & { width: nu
  */
 export function drawBoard(label: string, snapshot: string | null): Art {
   const img = snapshot ? boardImages.get(snapshot) : undefined;
+  const p = paintedBoard(label, img);
+  if (p) return p;
   return bake(200, 220, 100, 190, () => {
     const g = ctx();
     shadow(iso(1, 1.05), 50, 19, 0.2, 4, 3);

@@ -3,5 +3,5 @@
 export type { Art } from './draw';
 export { BOARD, boardFacePoint, drawBoard, drawCollector, setBoardImage, drawHall, drawHouse, drawStructure, drawRuneStone } from './buildings';
 export { drawBuilder, type Pose } from './builders';
-export { drawWallSeg, drawGate, drawTree, drawBubble, drawRing, drawPuff, drawStatusBar } from './scenery';
-export { GROUND_SCALE, drawGround, groundBakeSize, groundOrigin } from './ground';
+export { drawWallSeg, drawGate, drawTree, drawGroundTree, drawBuilderShadow, drawBubble, drawRing, drawPuff, drawStatusBar } from './scenery';
+export { GROUND_SCALE, drawGround, drawPathTile, groundBakeSize, groundOrigin, pathLinks, pathTiles, treesOverPaths, type GroundTree } from './ground';

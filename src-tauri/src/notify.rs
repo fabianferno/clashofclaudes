@@ -174,6 +174,7 @@ mod tests {
             busy: false,
             rev: 1,
             spot: None,
+            paused: false,
         }
     }
     fn agent(id: &str, state: SessionState) -> SessionInfo {

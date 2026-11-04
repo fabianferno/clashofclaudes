@@ -206,7 +206,7 @@ mod tests {
         save(&p, &d).unwrap();
         let text = std::fs::read_to_string(&p).unwrap();
         assert!(text.contains("\"house\""));
-        assert!(!text.contains("spot"), "session spots are not persisted");
+        assert!(!text.contains("spot"), "session spots are saved with the sessions (sessions.json)");
         assert_eq!(load(&p), d);
     }
 }

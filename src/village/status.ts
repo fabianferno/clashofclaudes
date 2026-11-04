@@ -3,7 +3,8 @@ import type { Entity } from './scene';
 
 /** The bar over a structure (spec 5.3.2): its colour and text. */
 /** `elixir-<agent>`: a collector with plenty left, in its agent's elixir colour. */
-export type StatusTone = 'working' | 'needs' | 'stuck' | 'app' | 'elixir-claude' | 'elixir-codex' | 'elixir-antigravity';
+/** `house`: a workspace's name plate over its house. */
+export type StatusTone = 'working' | 'needs' | 'stuck' | 'app' | 'house' | 'elixir-claude' | 'elixir-codex' | 'elixir-antigravity';
 
 /** Elapsed time at minute granularity, so a label (and its texture) changes at most once a minute. */
 export function elapsedLabel(ms: number): string {
@@ -47,7 +48,8 @@ export function statusSignature(entities: readonly Entity[]): string {
 
 /**
  * The same signature as the bars over the structures in `entities` would have at `now`, plus the
- * bars in `extra` (already built for `now`, e.g. the collectors' labels); a mismatch means re-sync.
+ * bars in `extra` (already built for `now`, e.g. the collectors' labels) and the houses' name plates
+ * (which change only with the state, itself a re-sync); a mismatch means re-sync.
  */
 export function statusesDue(entities: readonly Entity[], sessions: readonly SessionInfo[], now: number, extra: readonly Entity[] = []): string {
   const shown = new Set(entities.filter((e) => e.kind === 'structure').map((e) => e.id));
@@ -55,5 +57,6 @@ export function statusesDue(entities: readonly Entity[], sessions: readonly Sess
     .filter((s) => shown.has(`struct:${s.id}`))
     .flatMap((s) => { const k = statusKey(s, now); return k ? [`status:${s.id}=${k}`] : []; })
     .concat(extra.filter((e) => e.kind === 'status').map((e) => `${e.id}=${e.texKey}`))
+    .concat(entities.filter((e) => e.id.startsWith('status:house:')).map((e) => `${e.id}=${e.texKey}`))
     .sort().join('|');
 }

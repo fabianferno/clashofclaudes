@@ -192,9 +192,12 @@ pub struct SessionInfo {
     /// Strictly increasing per session across every emitted update (first is 1); lets the
     /// frontend drop an update that arrives after a newer one.
     pub rev: u64,
-    /// Where the session's builder stands in the village. Never persisted: sessions do not
-    /// outlive the app.
+    /// Where the session's builder stands in the village.
     pub spot: Option<Tile>,
+    /// Brought back after the app quit or restarted (state `Ended`, no process):
+    /// `resume_session` starts it again, on the agent's own conversation when it has one.
+    #[serde(default)]
+    pub paused: bool,
 }
 
 #[cfg(test)]

@@ -4,11 +4,11 @@ import { iso, toGrid } from './iso';
 import { HALL, HOUSE, STRUCT, gateOutside, gateSide, gateTile, villageRect, wallRect, type Rect } from './layout';
 import { enclosure, seedOf } from './enclosure';
 import { classOf, gearOf, houseColors, houseStage, scaffoldHeight, type ClassTier, type Gear } from './look';
-import { dropOf, onGround, retarget, routeHome, routeToSite, standTile, step, walkable, type BuilderDrop, type Walker } from './walkers';
+import { blockedBy, dropOf, onGround, retarget, routeHome, routeToSite, standTile, step, walkable, type Blocked, type BuilderDrop, type Walker } from './walkers';
 import {
-  GROUND_SCALE, drawBoard, drawBubble, drawBuilder, drawCollector, drawGate, drawGround, drawHall, drawHouse, drawPuff, drawRing, drawStatusBar, drawStructure,
+  GROUND_SCALE, drawPathTile, pathLinks, pathTiles, treesOverPaths, drawGroundTree, drawBuilderShadow, drawBoard, drawBubble, drawBuilder, drawCollector, drawGate, drawGround, drawHall, drawHouse, drawPuff, drawRing, drawStatusBar, drawStructure,
   drawWallSeg, drawRuneStone, groundOrigin,
-  type Art, type Pose,
+  type Art, type GroundTree, type Pose,
 } from './art/entities';
 import { getTexture, holdTextures, prepareArt, releaseRetired, spriteTextures } from './textures';
 import { STATUS_LIFT, statusKey, statusSignature, statusesDue, type StatusTone } from './status';
@@ -75,11 +75,23 @@ export interface Entity {
   y: number;
   depth: number;
   texKey: string;
+  /** A status bar's lift above its grid point, world px (default STATUS_LIFT). */
+  lift?: number;
 }
 
 const KIND_RANK: Record<EntityKind, number> = {
   tree: 0, wall: 1, gate: 2, hall: 3, house: 4, structure: 5, collector: 5, board: 5, builder: 6, status: 8,
 };
+
+/** World px from a house's centre up to its name plate: just over the roof (and flag) of each stage. */
+const HOUSE_LIFT = [146, 160, 160, 186, 186];
+/** How much higher than the name plate a house's drag hint floats (the plate is ~20 px tall). */
+const PLATE_CLEAR = 12;
+
+/** How far builders keep off the hall, the collectors (their painted plinths reach past the 2x2) and the walls, in tiles. */
+const KEEP_OFF = { hall: 0.3, collector: 0.5, wall: 0.3 };
+
+const grow = (r: Rect, d: number): Rect => ({ x0: r.x0 - d, y0: r.y0 - d, w: r.w + 2 * d, h: r.h + 2 * d });
 
 const ent = (id: string, kind: EntityKind, x: number, y: number, texKey: string): Entity =>
   ({ id, kind, x, y, depth: x + y + KIND_RANK[kind] * 0.001, texKey });
@@ -103,10 +115,22 @@ function wallEntities(wsId: string, c: Compound, spots: Tile[], level: number): 
   const out: Entity[] = [];
   for (const t of enclosure(c, spots, level, seedOf(wsId)).walls) {
     if (t.x === gate.x && t.y === gate.y) continue;
-    out.push(ent(`wall:${wsId}:${t.x}:${t.y}`, 'wall', t.x + 1, t.y + 1, `wall:${t.links}`));
+    out.push(inFrontOfHouse(c, t, ent(`wall:${wsId}:${t.x}:${t.y}`, 'wall', t.x + 1, t.y + 1, `wall:${t.links}`)));
   }
-  out.push(ent(`gate:${wsId}`, 'gate', gate.x + 1, gate.y + 1, `gate:${gateSide(c)}`));
+  out.push(inFrontOfHouse(c, gate, ent(`gate:${wsId}`, 'gate', gate.x + 1, gate.y + 1, `gate:${gateSide(c)}`)));
   return out;
+}
+
+/**
+ * A wall tile beside the house's front faces (east or south of it, alongside) stands in front of
+ * the house, though its front corner sums less than the house's: draw it just after the house.
+ */
+function inFrontOfHouse(c: Compound, t: Tile, e: Entity): Entity {
+  const { x: hx, y: hy } = c.house;
+  const alongY = t.y >= hy && t.y < hy + HOUSE, alongX = t.x >= hx && t.x < hx + HOUSE;
+  const front = (t.x >= hx + HOUSE && alongY) || (t.y >= hy + HOUSE && alongX);
+  const house = hx + hy + 2 * HOUSE + KIND_RANK.house * 0.001;
+  return front && e.depth <= house ? { ...e, depth: house + 0.0005 } : e;
 }
 
 /** Top-left tiles of the structures (agent and terminal sessions, app boards) standing in a workspace's compound. */
@@ -158,7 +182,10 @@ export function buildEntities(input: VillageInput): Entity[] {
     if (!c) continue;
     compounds.set(w.id, c);
     const { roof, wall } = houseColors(w.id);
-    out.push(ent(`house:${w.id}`, 'house', c.house.x + HOUSE, c.house.y + HOUSE, `house:${houseStage(w.level)}:${roof}:${wall}`));
+    const stage = houseStage(w.level);
+    out.push(ent(`house:${w.id}`, 'house', c.house.x + HOUSE, c.house.y + HOUSE, `house:${stage}:${roof}:${wall}`));
+    // the workspace's name on a plate over the roof (texture keys split on ':', so the name holds none)
+    out.push({ ...ent(`status:house:${w.id}`, 'status', c.house.x + HOUSE / 2, c.house.y + HOUSE / 2, `status:house:${w.name.replace(/:/g, ' ').slice(0, 24)}`), lift: HOUSE_LIFT[stage] });
     out.push(...wallEntities(w.id, c, spotsIn(input.sessions, w.id, input.boards), w.level));
   }
   for (const s of input.sessions) {
@@ -211,6 +238,9 @@ export function artFor(key: string): Art {
     case 'bubble': return drawBubble(a as 'needs' | 'stuck');
     case 'ring': return drawRing();
     case 'puff': return drawPuff();
+    case 'path': return drawPathTile(a ?? '', Number(b));
+    case 'gtree': return drawGroundTree(a === '1', Number(b));
+    case 'shadow': return drawBuilderShadow();
     case 'status': return drawStatusBar(a as StatusTone, b);
     default: throw new Error(`no art for ${key}`);
   }
@@ -227,6 +257,8 @@ interface Site {
   spot: Tile;
   state: SessionState['kind'];
   reachedFinished: boolean;
+  /** Back after a relaunch, not resumed yet: the builder waits by it. */
+  paused?: boolean;
 }
 
 interface BuilderView {
@@ -235,10 +267,14 @@ interface BuilderView {
   cls: ClassTier;
   gear: Gear;
   site: Site | null;
+  /** At its site, drawn over this depth: every structure in the compound and the house (see `siteDepth`). */
+  siteZ: number;
   pose: Pose;
   sprite: Sprite;
   bubble: Sprite | null;
   ring: Sprite | null;
+  /** Its contact shadow, on the ground. */
+  shadow: Sprite;
   puffs: Sprite[];
   /** The compound a builder is walking home from, to re-aim if its house (and gate) moves. */
   leaving: { wsId: string; c: Compound } | null;
@@ -246,11 +282,35 @@ interface BuilderView {
   held: Tile | null;
 }
 
-const HEAD_HEIGHT: Record<ClassTier, number> = { 0: 46, 1: 56, 2: 80 };
+const HEAD_HEIGHT: Record<ClassTier, number> = { 0: 56, 1: 64, 2: 80 };
+/** A builder's shadow by class, as the figures grow with it. */
+const SHADOW_SIZE: Record<ClassTier, number> = { 0: 0.9, 1: 1, 2: 1.15 };
+
+/** The depth a builder at work in compound `c` is drawn over: the house's and every structure's front corner. */
+export function siteDepth(c: Compound, spots: readonly Tile[]): number {
+  return Math.max(c.house.x + c.house.y + 2 * HOUSE, ...spots.map((s) => s.x + s.y + 2 * STRUCT)) + 0.002;
+}
 /** Px a picked-up builder hangs above the tile it would be set down on. */
 const HELD_LIFT = 18;
 const HAMMER_PERIOD = 0.18;
 const WALK_PERIOD = 0.25;
+/** A cheering builder hops in place: one hop every HOP_PERIOD s, HOP_PX world px high. */
+const HOP_PERIOD = 0.6;
+const HOP_PX = 9;
+
+/**
+ * A cheering builder's hop at `time` (seconds; `phase` 0-1 staggers builders): how high its feet are
+ * (world px) and its squash (1 = none) as it lands and pushes off.
+ */
+export function hopOf(time: number, phase: number): { lift: number; squash: number } {
+  const t = (((time / HOP_PERIOD + phase) % 1) + 1) % 1;
+  const AIR = 0.75; // of each hop in the air; the rest on the ground, squashed
+  if (t < AIR) {
+    const u = t / AIR;
+    return { lift: HOP_PX * 4 * u * (1 - u), squash: 1 };
+  }
+  return { lift: 0, squash: 1 - 0.1 * Math.sin(((t - AIR) / (1 - AIR)) * Math.PI) };
+}
 
 const hashOf = (id: string) => {
   let h = 0;
@@ -270,14 +330,14 @@ function siteOf(b: Builder, state: VillageInput, compounds: Map<string, Compound
   if (!best || !best.spot) return null;
   return {
     sessionId: best.id, workspaceId: best.workspaceId, compound: compounds.get(best.workspaceId)!,
-    spot: best.spot, state: best.state.kind, reachedFinished: best.reachedFinished,
+    spot: best.spot, state: best.state.kind, reachedFinished: best.reachedFinished, paused: best.paused,
   };
 }
 
 /** Pose from what the builder is doing and what its session is doing. */
 export function poseOf(w: Walker, site: Site | null, time: number): Pose {
   if (w.path.length) return Math.floor(time / WALK_PERIOD) % 2 ? 'walk1' : 'walk0';
-  if (w.mode !== 'atSite' || !site) return 'idle';
+  if (w.mode !== 'atSite' || !site || site.paused) return 'idle';
   switch (site.state) {
     case 'starting':
     case 'working': return Math.floor(time / HAMMER_PERIOD) % 2 ? 'hammer1' : 'hammer0';
@@ -389,6 +449,12 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
 
   const ground = new Sprite(Texture.EMPTY);
   groundLayer.addChild(ground);
+  const paths = new Container(); // the dirt path tiles, over the grass and under everything else
+  groundLayer.addChild(paths);
+  const pathTrees = new Container(); // the ground's trees in front of a path, whose canopies reach over it
+  groundLayer.addChild(pathTrees);
+  const shadows = new Container(); // the builders' contact shadows, on the ground under every building
+  groundLayer.addChild(shadows);
   const fx = new Graphics(); // footprint glow, tile grid, green/red footprint: redrawn only when it changes
   groundLayer.addChild(fx);
   const fxTop = new Graphics(); // the green/red drag footprint, above the sprites so a blocking building cannot hide it
@@ -586,7 +652,11 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     if (key === groundKey) return;
     groundKey = key;
     const old = ground.texture;
-    const canvas = drawGround(b, compounds, GROUND_SEED, clearings); // half density (see GROUND_SCALE), shown at 2x
+    const tiles = pathTiles(compounds);
+    const lifted = treesOverPaths(b, compounds, GROUND_SEED, clearings, tiles);
+    const liftedAt = new Set(lifted.map((t) => `${t.x},${t.y}`));
+    // half density (see GROUND_SCALE), shown at 2x; the trees over a path stand over it instead
+    const canvas = drawGround(b, compounds, GROUND_SEED, clearings, (t) => liftedAt.has(`${t.x},${t.y}`));
     const tex = Texture.from(canvas);
     ground.texture = tex;
     if (old !== Texture.EMPTY) old.destroy(true);
@@ -595,6 +665,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     ground.position.set(o.x, o.y);
     ground.scale.set(1 / GROUND_SCALE);
     groundBakes++;
+    syncPaths(tiles, lifted);
     const first = villageTiles === null;
     const next = villageRect(compounds);
     const changed = needsRefit(villageTiles, next);
@@ -605,6 +676,30 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     }
   };
 
+
+  /** Lay the path tiles afresh (only when the ground is re-baked: the compounds moved or changed). */
+  const syncPaths = (tiles: Map<string, Tile>, lifted: GroundTree[]) => {
+    for (const sp of paths.removeChildren()) sp.destroy();
+    for (const t of [...tiles.values()].sort((a, b) => a.x + a.y - (b.x + b.y))) {
+      const sp = new Sprite();
+      sp.scale.set(0.5);
+      setTex(sp, `path:${pathLinks(tiles, t)}:${(((t.x * 7 + t.y * 13) % 3) + 3) % 3}`);
+      const p = iso(t.x + 1, t.y + 1);
+      sp.position.set(p.x, p.y);
+      paths.addChild(sp);
+    }
+    // a few sizes of tree texture, each scaled to the tree's own
+    for (const sp of pathTrees.removeChildren()) sp.destroy();
+    for (const t of lifted) {
+      const q = Math.round(t.s * 10) / 10;
+      const sp = new Sprite();
+      setTex(sp, `gtree:${t.pine ? 1 : 0}:${q}`);
+      sp.scale.set((0.5 * t.s) / q);
+      const p = iso(t.x, t.y);
+      sp.position.set(p.x, p.y);
+      pathTrees.addChild(sp);
+    }
+  };
 
   const texOf = (key: string) => getTexture(key, () => artFor(key));
   const setTex = (sp: Sprite, key: string) => {
@@ -628,10 +723,19 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     return walkable(enclosure(c, spots, level, seedOf(wsId)).inside, c, spots);
   };
 
+  /** Ground the builders keep off outside the compounds (see `Blocked`); set by `syncBuilders`. */
+  let blocked: Blocked = () => false;
+
   /** Bring the walkers in line with the store. The walk is cosmetic: nothing here waits on it. */
   const syncBuilders = (state: VillageInput) => {
     const compounds = new Map<string, Compound>();
     for (const w of state.workspaces) if (w.compound) compounds.set(w.id, w.compound);
+    const tanks = Object.values(collectorTiles(shownCollectors(state.quotas, state.installed), state.collectorSpots, [...compounds.values()]));
+    blocked = blockedBy([
+      grow(HALL, KEEP_OFF.hall),
+      ...tanks.map((t) => grow({ x0: t.x, y0: t.y, w: STRUCT, h: STRUCT }, KEEP_OFF.collector)),
+      ...[...compounds.values()].map((c) => grow(wallRect(c), KEEP_OFF.wall)),
+    ]);
     // Walkable ground per compound, built only for the compounds a walker is routed through.
     const walks = new Map<string, Set<string>>();
     const walkOf = (wsId: string, c: Compound) => {
@@ -649,10 +753,11 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
         const sprite = new Sprite();
         sprite.scale.set(0.5);
         world.addChild(sprite);
+        const shadow = makeSprite(shadows, 'shadow');
         v = {
           walker: { id: b.id, x: 0.5 + Math.cos(a) * 5.1, y: 0.5 + Math.sin(a) * 5.1, path: [], mode: 'idle', face: 1, wait: 0.5 },
           agent: b.agent, cls: classOf(b.agent, b.model), gear: gearOf(b.effort), site: null,
-          pose: 'idle', sprite, bubble: null, ring: null, puffs: [], leaving: null, held: null,
+          pose: 'idle', sprite, shadow, bubble: null, ring: null, puffs: [], leaving: null, held: null, siteZ: 0,
         };
         views.set(b.id, v);
       }
@@ -673,7 +778,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
         else {
           v.leaving = { wsId: was.workspaceId, c };
           const walk = walkOf(was.workspaceId, c);
-          const route = routeHome(w, c, walk);
+          const route = routeHome(w, c, walk, blocked);
           // a builder still outside the walls turns around on the plaza side
           v.walker = { ...w, mode: 'home', path: w.mode === 'toSite' && !onGround(walk, w) ? route.slice(-1) : route };
         }
@@ -682,16 +787,17 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       else if (v.leaving) {
         const c = compounds.get(v.leaving.wsId);
         if (c && JSON.stringify(c) !== JSON.stringify(v.leaving.c)) {
-          if (v.walker.mode === 'home') v.walker = retarget(v.walker, c, null, walkOf(v.leaving.wsId, c));
+          if (v.walker.mode === 'home') v.walker = retarget(v.walker, c, null, walkOf(v.leaving.wsId, c), blocked);
           v.leaving = { wsId: v.leaving.wsId, c };
         }
         if (v.walker.mode !== 'home') v.leaving = null;
       }
       v.site = site;
+      if (site) v.siteZ = siteDepth(site.compound, spotsIn(state.sessions, site.workspaceId, state.boards));
     }
     for (const [id, v] of views) {
       if (live.has(id)) continue;
-      for (const sp of [v.sprite, v.bubble, v.ring, ...v.puffs]) sp?.destroy();
+      for (const sp of [v.sprite, v.shadow, v.bubble, v.ring, ...v.puffs]) sp?.destroy();
       views.delete(id);
     }
   };
@@ -701,20 +807,29 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     for (const v of views.values()) {
       const before = v.walker.mode;
       // a held builder hangs over the pointer instead of walking
-      v.walker = v.held ? { ...v.walker, x: v.held.x, y: v.held.y } : step(v.walker, dt, Math.random);
+      v.walker = v.held ? { ...v.walker, x: v.held.x, y: v.held.y } : step(v.walker, dt, Math.random, blocked);
       const w = v.walker;
       if (before !== 'atSite' && w.mode === 'atSite') w.face = -1; // look at the structure
       v.pose = v.held ? 'cheer' : poseOf(w, v.site, time);
       setTex(v.sprite, `builder:${v.agent}:${v.cls}:${v.gear}:${v.pose}:${w.face}`);
       const p = iso(w.x, w.y);
       const ro = relocOffset(v.site?.workspaceId);
-      v.sprite.position.set(p.x + (ro?.x ?? 0), p.y + (ro?.y ?? 0) - (v.held ? HELD_LIFT : 0));
+      const hop = v.pose === 'cheer' && !v.held ? hopOf(time, (hashOf(w.id) % 100) / 100) : { lift: 0, squash: 1 };
+      v.sprite.position.set(p.x + (ro?.x ?? 0), p.y + (ro?.y ?? 0) - (v.held ? HELD_LIFT : 0) - hop.lift);
+      v.sprite.scale.set(0.5 * (2 - hop.squash), 0.5 * hop.squash); // feet planted: the anchor is at the feet
       v.sprite.zIndex = v.held ? 20000 : w.x + w.y + KIND_RANK.builder * 0.001;
-      if (v.site && w.mode === 'atSite' && !v.held) {
-        // the stand tile sits behind the structure and often the house; hammering must stay visible
-        const c = v.site.compound, sp = v.site.spot;
-        v.sprite.zIndex = Math.max(sp.x + sp.y + STRUCT, c.house.x + c.house.y + 2 * HOUSE) + 0.002;
+      // the shadow stays on the ground, smaller and fainter while the builder is in the air
+      v.shadow.visible = !v.held;
+      if (!v.held) {
+        setTex(v.shadow, 'shadow');
+        const up = hop.lift / HOP_PX;
+        v.shadow.position.set(p.x + (ro?.x ?? 0), p.y + (ro?.y ?? 0));
+        v.shadow.scale.set(0.5 * SHADOW_SIZE[v.cls] * (1 - 0.25 * up));
+        v.shadow.alpha = 1 - 0.35 * up;
       }
+      // the stand tile sits beside the structure, often behind it, a neighbour or the house (whose
+      // painted sprites reach past their footprints); hammering must stay visible
+      if (v.site && w.mode === 'atSite' && !v.held) v.sprite.zIndex = v.siteZ;
 
       const st = v.site?.state;
       const needs = st === 'needsYou', stuck = st === 'stuck';
@@ -792,6 +907,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       rec.ws = e.id.startsWith('struct:') ? snap.structs.get(e.id)
         : e.kind === 'board' ? e.id.split(':')[1]
         : e.id.startsWith('status:board:') ? e.id.split(':')[2]
+        : e.id.startsWith('status:house:') ? e.id.split(':')[2]
         : e.kind === 'status' ? snap.structs.get(`struct:${e.id.slice('status:'.length)}`)
         : e.kind === 'house' || e.kind === 'gate' || e.kind === 'wall' ? e.id.split(':')[1] : undefined;
       if (sprite.texture !== t.texture) {
@@ -801,7 +917,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       rec.key = e.texKey;
       rec.entity = e;
       const p = iso(e.x, e.y);
-      if (e.kind === 'status') p.y -= STATUS_LIFT;
+      if (e.kind === 'status') p.y -= e.lift ?? STATUS_LIFT;
       rec.base = p;
       sprite.position.set(p.x, p.y);
       sprite.zIndex = e.depth;
@@ -894,11 +1010,12 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       const w = lastState.workspaces.find((x) => x.id === s.id);
       const c = w?.compound;
       if (!c) return null;
+      const height = HOUSE_LIFT[houseStage(w.level)] + PLATE_CLEAR; // over the name plate
       if (houseOnly)
-        return { target: { kind: 'workspace', id: s.id }, entityId: `house:${s.id}`, w: HOUSE, h: HOUSE, inset: 0, tile: c.house, compound: c, height: 130, chip: '' };
+        return { target: { kind: 'workspace', id: s.id }, entityId: `house:${s.id}`, w: HOUSE, h: HOUSE, inset: 0, tile: c.house, compound: c, height, chip: '' };
       return {
         target: { kind: 'compound', id: s.id }, entityId: `house:${s.id}`, w: c.w + 2, h: c.h + 2, inset: 1, tile: { x: c.x0, y: c.y0 },
-        compound: null, height: 130, group: s.id, chip: 'Drag to move \u00b7 \u2325 house only',
+        compound: null, height, group: s.id, chip: 'Drag to move \u00b7 \u2325 house only',
       };
     }
     if (s?.kind === 'session') {
@@ -1026,7 +1143,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     const bar = sprites.get(g.m.entityId.startsWith('struct:') ? g.m.entityId.replace(/^struct:/, 'status:') : `status:${g.m.entityId}`);
     if (bar && bar !== rec) {
       const q = iso(g.t.x + size / 2, g.t.y + size / 2);
-      bar.sprite.position.set(q.x, q.y - STATUS_LIFT);
+      bar.sprite.position.set(q.x, q.y - (bar.entity.lift ?? STATUS_LIFT));
     }
   };
   const endDragVisual = () => {

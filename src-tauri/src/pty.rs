@@ -16,6 +16,38 @@ pub struct LaunchSpec {
     pub cwd: PathBuf,
 }
 
+/// Set by Claude Code for the commands it runs. An app started from inside a Claude Code session
+/// (`pnpm app` run by an agent) inherits them, and its sessions must not: a Claude launched with
+/// them runs as that session's child, which saves no transcript (nothing to resume) and talks to
+/// the parent's socket.
+const PARENT_AGENT_ENV: [&str; 10] = [
+    "CLAUDECODE",
+    "CLAUDE_CODE_CHILD_SESSION",
+    "CLAUDE_CODE_ENTRYPOINT",
+    "CLAUDE_CODE_EXECPATH",
+    "CLAUDE_CODE_MESSAGING_SOCKET",
+    "CLAUDE_CODE_MESSAGING_TOKEN",
+    "CLAUDE_CODE_SESSION_ATTENDED",
+    "CLAUDE_CODE_SESSION_ID",
+    "CLAUDE_PID",
+    "CLAUDE_EFFORT",
+];
+
+/// The command for `spec`: the app's environment minus `PARENT_AGENT_ENV`, plus the spec's.
+fn command(spec: &LaunchSpec) -> CommandBuilder {
+    let mut cmd = CommandBuilder::new(&spec.program);
+    cmd.args(&spec.args);
+    cmd.cwd(&spec.cwd);
+    for k in PARENT_AGENT_ENV {
+        cmd.env_remove(k);
+    }
+    cmd.env("TERM", "xterm-256color");
+    for (k, v) in &spec.env {
+        cmd.env(k, v);
+    }
+    cmd
+}
+
 /// Grace between SIGHUP and the SIGKILL escalation in `kill()`.
 pub const KILL_GRACE: Duration = Duration::from_secs(2);
 pub const REAP_POLL: Duration = Duration::from_millis(20);
@@ -59,14 +91,7 @@ impl PtyHandle {
         // Acquire fallible resources before spawning so a failure can't leak a child.
         let mut reader = pair.master.try_clone_reader()?;
         let mut writer = pair.master.take_writer()?;
-        let mut cmd = CommandBuilder::new(&spec.program);
-        cmd.args(&spec.args);
-        cmd.cwd(&spec.cwd);
-        cmd.env("TERM", "xterm-256color");
-        for (k, v) in &spec.env {
-            cmd.env(k, v);
-        }
-        let child = pair.slave.spawn_command(cmd)?;
+        let child = pair.slave.spawn_command(command(spec))?;
         drop(pair.slave); // so the reader sees EOF once the child exits
         let pid = child.process_id();
         let shared = Arc::new(Shared { child: Mutex::new(Some(child)), exited: AtomicBool::new(false) });
@@ -251,6 +276,18 @@ mod tests {
     }
     fn spec(program: &str, args: &[&str], cwd: std::path::PathBuf) -> LaunchSpec {
         LaunchSpec { program: program.into(), args: args.iter().map(|s| s.to_string()).collect(), env: vec![], cwd }
+    }
+
+    #[test]
+    fn sessions_do_not_inherit_a_parent_claude_session() {
+        let mut s = spec("/bin/sh", &[], std::env::temp_dir());
+        s.env = vec![("AGY_CLI_OSC7501".into(), "on".into())];
+        let cmd = command(&s);
+        for k in PARENT_AGENT_ENV {
+            assert!(cmd.get_env(k).is_none(), "{k} is passed on");
+        }
+        assert_eq!(cmd.get_env("AGY_CLI_OSC7501").and_then(|v| v.to_str()), Some("on"));
+        assert!(cmd.get_env("PATH").is_some(), "the rest of the environment is kept");
     }
 
     #[test]

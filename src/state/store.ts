@@ -44,7 +44,7 @@ type MoveState = Pick<AppState, 'workspaces' | 'sessions'> & Partial<Pick<AppSta
 /** An app's board, by workspace and port (workspace ids hold no ':'). */
 export const boardKey = (a: Pick<AppPreview, 'workspaceId' | 'port'>): string => `${a.workspaceId}:${a.port}`;
 
-/** A browser the owner opened in a workspace (not persisted, like sessions). */
+/** A browser the owner opened in a workspace (not persisted). */
 export interface Browser { id: string; workspaceId: string; url: string }
 
 /** Everything that stands as a board: the owner's browsers, then the detected apps they do not already show. */
@@ -430,7 +430,9 @@ export function idleBuilders(state: Pick<AppState, 'builders' | 'sessions'>): Bu
   return state.builders.filter((b) => !busy.has(b.id));
 }
 
-export function stateLabel(s: SessionState): 'Starting' | 'Working' | 'Needs you' | 'Finished' | 'Stuck' | 'Ended' {
+/** `paused`: the session came back after a relaunch and has not been resumed. */
+export function stateLabel(s: SessionState, paused = false): 'Starting' | 'Working' | 'Needs you' | 'Finished' | 'Stuck' | 'Ended' | 'Paused' {
+  if (paused) return 'Paused';
   switch (s.kind) {
     case 'starting': return 'Starting';
     case 'working': return 'Working';

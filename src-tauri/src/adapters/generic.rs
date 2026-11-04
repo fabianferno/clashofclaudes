@@ -69,6 +69,7 @@ mod tests {
             data_dir: Path::new("/tmp"),
             custom_command: cmd,
             images: &[],
+            resume: None,
         }
     }
 

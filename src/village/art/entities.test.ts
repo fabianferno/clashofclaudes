@@ -5,6 +5,10 @@ import {
   GROUND_SCALE, drawBuilder, drawGate, drawGround, groundBakeSize, drawHall, drawHouse, drawStatusBar, drawStructure, drawTree, drawWallSeg,
 } from './entities';
 import { getTexture, clearTextures, textureCacheSize } from '../textures';
+import { setSpritesForTest } from './sprites';
+import { drawPathTile, pathLinks, pathTiles, treesOverPaths } from './ground';
+import { iso } from '../iso';
+import { HALL, gateInside, gateTile, placeCompound } from '../layout';
 import type { AgentKind, Compound } from '../../api/types';
 
 const AGENTS: AgentKind[] = ['claude', 'codex', 'antigravity', 'opencode', 'custom'];
@@ -83,6 +87,72 @@ describe('art', () => {
   });
 });
 
+describe('painted sprites', () => {
+  const img = (w: number, h: number) => Object.assign(document.createElement('img'), { width: w, height: h });
+  const drew = (a: { canvas: HTMLCanvasElement }) =>
+    a.canvas.getContext('2d')!.__getDrawCalls().filter((c: { type: string }) => c.type === 'drawImage').length;
+
+  it('draw_functions_use_loaded_sprites_and_fall_back_without_them', () => {
+    setSpritesForTest({
+      'buildings/hall.png': img(760, 680),
+      'buildings/house-stage-2-teal.png': img(600, 660),
+      'buildings/house-stage-0.png': img(600, 660), // coral: the untinted house
+      'sheets/trees-sheet.png': img(800, 260),
+      'sheets/builder-master-claude.png': img(1540, 260),
+      'structures/structure-foundation.png': img(440, 500),
+      'structures/structure-complete-codex.png': img(440, 500),
+      'ui/ribbon.png': img(140, 140),
+    });
+    try {
+      expect(drawHall()).toMatchObject({ ax: 380, ay: 600 });
+      expect(drawHall().canvas.width).toBe(760);
+      // a teal roof picks the teal house; a roof with no sprite loaded falls back to baked art
+      expect(drawHouse(2, '#2a9d8f', '#e6d7b8')).toMatchObject({ ax: 300, ay: 600 });
+      expect(drawHouse(1, '#2a9d8f', '#e6d7b8').canvas.width).toBe(600); // procedural: 300 x 2
+      expect(drew(drawHouse(0, '#c64a32', '#f3e2c4'))).toBe(1);
+      expect(drawTree(3)).toMatchObject({ ax: 100, ay: 224 });
+      const right = drawBuilder('claude', 2, 4, 'walk1', 1), left = drawBuilder('claude', 2, 4, 'walk1', -1);
+      expect(right).toMatchObject({ ax: 110, ay: 200 });
+      expect(drew(right)).toBe(1);
+      // mirrored about the feet (x = 110 of the 220 px frame)
+      expect(left.canvas.getContext('2d')!.__getDrawCalls()[0].transform.map((v: number) => v + 0)).toEqual([-1, 0, 0, 1, 220, 0]);
+      expect(drew(drawBuilder('codex', 2, 4, 'idle', 1))).toBe(0); // no strip loaded: baked figure
+      expect(drew(drawStructure('codex', 'foundation', 0))).toBe(1);
+      expect(drew(drawStructure('codex', 'scaffold', 0.5))).toBe(2); // cloth, then the canvas climbing the frame
+      expect(drew(drawStructure('codex', 'scaffold', 0))).toBe(1); // just the frame on the cloth
+      expect(drew(drawStructure('codex', 'complete', 1))).toBe(2); // tent and ribbon
+    } finally {
+      setSpritesForTest(null);
+    }
+    expect(drew(drawHall())).toBe(0);
+  });
+});
+
+describe('path tiles', () => {
+  it('paths_cover_the_plaza_roads_and_house_pads_and_join_up', () => {
+    const c = placeCompound([]);
+    const tiles = pathTiles([c]);
+    const has = (x: number, y: number) => tiles.has(`${x},${y}`);
+    for (let y = HALL.y0; y < HALL.y0 + HALL.h; y++) for (let x = HALL.x0; x < HALL.x0 + HALL.w; x++) expect(has(x, y)).toBe(true);
+    for (let y = 0; y < 3; y++) for (let x = 0; x < 3; x++) expect(has(c.house.x + x, c.house.y + y)).toBe(true);
+    const g = gateTile(c), gi = gateInside(c);
+    expect(has(g.x, g.y) && has(gi.x, gi.y)).toBe(true);
+    // one connected network: from the plaza every path tile is reachable
+    const seen = new Set([`${HALL.x0},${HALL.y0}`]), queue = [{ x: HALL.x0, y: HALL.y0 }];
+    while (queue.length) {
+      const t = queue.shift()!;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const k = `${t.x + dx},${t.y + dy}`;
+        if (tiles.has(k) && !seen.has(k)) { seen.add(k); queue.push({ x: t.x + dx, y: t.y + dy }); }
+      }
+    }
+    expect(seen.size).toBe(tiles.size);
+    const mid = { x: HALL.x0 + 2, y: HALL.y0 + 2 };
+    expect(pathLinks(tiles, mid)).toBe('nesw');
+    for (const l of ['', 'n', 'ns', 'nesw', 'esw']) ok(drawPathTile(l, 1));
+  });
+});
+
 describe('palette', () => {
   it('custom_palette_matches_constraints', () => {
     expect(PALETTE.custom).toMatchObject({
@@ -111,5 +181,21 @@ describe('textures', () => {
     expect(textureCacheSize()).toBeLessThanOrEqual(256);
     clearTextures();
     expect(textureCacheSize()).toBe(0);
+  });
+});
+
+describe('treesOverPaths', () => {
+  it('lifts_only_trees_standing_in_front_of_a_path_tile_and_near_it', () => {
+    const c = placeCompound([]);
+    const tiles = pathTiles([c]);
+    const b = { x0: -30, y0: -30, w: 60, h: 60 };
+    const lifted = treesOverPaths(b, [c], 7, [], tiles);
+    const tops = [...tiles.values()].map((t) => iso(t.x + 0.5, t.y + 0.5));
+    for (const t of lifted) {
+      const p = iso(t.x, t.y);
+      // the trunk stands below some tile's top edge and within a canopy's reach of it
+      expect(tops.some((q) => p.y > q.y - 16 && p.y - q.y < 140 && Math.abs(p.x - q.x) < 100)).toBe(true);
+    }
+    expect(treesOverPaths(b, [c], 7, [], tiles)).toEqual(lifted); // deterministic
   });
 });

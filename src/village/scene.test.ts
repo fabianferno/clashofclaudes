@@ -4,7 +4,7 @@ import { findSpot, gapBetween, placeCompound, wallRect } from './layout';
 import { COLLECTOR_SLOT } from './quota';
 import { enclosure, seedOf } from './enclosure';
 import { scaffoldHeight } from './look';
-import { buildEntities, needsRefit, rendererOptions, structureLook, type VillageInput } from './scene';
+import { buildEntities, hopOf, siteDepth, needsRefit, rendererOptions, structureLook, type VillageInput } from './scene';
 
 const ws = (id: string, compound: Compound | null, level = 1): Workspace => ({
   id, name: id, path: `/p/${id}`, createdAt: 0, missing: false, level, xp: 0, compound,
@@ -21,6 +21,20 @@ const bld = (id: string, agent: Builder['agent'] = 'claude'): Builder =>
   ({ id, name: id, agent, model: null, effort: null, customCommand: null });
 
 describe('buildEntities', () => {
+  it('walls_beside_the_house_front_draw_over_it', () => {
+    // the house in the interior's back-right corner: walls run along its east face
+    const c: Compound = { x0: -4, y0: 10, w: 7, h: 7, house: { x: 0, y: 10 } };
+    const es = buildEntities({ workspaces: [ws('w1', c, 2)], builders: [], sessions: [] });
+    const house = es.find((e) => e.kind === 'house')!;
+    const walls = es.filter((e) => e.kind === 'wall' || e.kind === 'gate');
+    const at = (x: number, y: number) => walls.find((e) => e.x === x + 1 && e.y === y + 1);
+    for (const y of [10, 11, 12]) if (at(3, y)) expect(at(3, y)!.depth).toBeGreaterThan(house.depth);
+    expect(at(3, 11)).toBeTruthy();
+    for (const x of [0, 1, 2]) if (at(x, 9)) expect(at(x, 9)!.depth).toBeLessThan(house.depth); // behind it
+    const order = buildEntities({ workspaces: [ws('w1', c, 2)], builders: [], sessions: [] }).map((e) => e.id);
+    expect(order.indexOf(at(3, 10)?.id ?? at(3, 11)!.id)).toBeGreaterThan(order.indexOf(house.id));
+  });
+
   it('status_bars_over_working_needs_and_stuck_structures_only', () => {
     const c1 = placeCompound([]);
     const spots: Tile[] = [];
@@ -35,8 +49,9 @@ describe('buildEntities', () => {
         sess('a4', 'w1', 'b4', spots[3], { kind: 'finished' }),
       ],
     };
-    expect(buildEntities(input).some((e) => e.kind === 'status')).toBe(false); // no clock, no bars
-    const bars = buildEntities({ ...input, now: 1000 + 12 * 60_000 }).filter((e) => e.kind === 'status');
+    const structBars = (es: ReturnType<typeof buildEntities>) => es.filter((e) => e.kind === 'status' && !e.id.startsWith('status:house:'));
+    expect(structBars(buildEntities(input))).toEqual([]); // no clock, no bars
+    const bars = structBars(buildEntities({ ...input, now: 1000 + 12 * 60_000 }));
     expect(Object.fromEntries(bars.map((e) => [e.id, e.texKey]))).toEqual({
       'status:a1': 'status:working:12m · 34 steps',
       'status:a2': 'status:needs:Waiting for you',
@@ -44,6 +59,14 @@ describe('buildEntities', () => {
     });
     const bar = bars.find((e) => e.id === 'status:a1')!;
     expect([bar.x, bar.y]).toEqual([spots[0].x + 1, spots[0].y + 1]); // over the structure's centre
+  });
+
+  it('each_house_carries_its_workspace_name_over_the_roof', () => {
+    const c1 = placeCompound([]);
+    const plate = buildEntities({ workspaces: [{ ...ws('w1', c1), name: 'my:app' }], builders: [], sessions: [] })
+      .find((e) => e.id === 'status:house:w1')!;
+    expect(plate).toMatchObject({ kind: 'status', texKey: 'status:house:my app', x: c1.house.x + 1.5, y: c1.house.y + 1.5 });
+    expect(plate.lift).toBeGreaterThan(140); // above the roof, not at a structure's height
   });
 
   it('entities_for_two_workspaces_and_three_sessions', () => {
@@ -235,3 +258,26 @@ describe('rendererOptions', () => {
     expect(o.preference).toBe('webgl');
   });
 });
+
+describe('hopOf', () => {
+  it('a_cheering_builder_hops_and_lands_with_a_squash', () => {
+    const lifts = Array.from({ length: 60 }, (_, i) => hopOf(i / 100, 0));
+    expect(Math.max(...lifts.map((h) => h.lift))).toBeGreaterThan(8); // up about 9 px
+    expect(lifts.some((h) => h.lift === 0 && h.squash < 1)).toBe(true); // squashed on the ground
+    expect(lifts.every((h) => h.lift >= 0 && h.squash <= 1 && h.squash > 0.85)).toBe(true);
+    expect(hopOf(0.3, 0)).not.toEqual(hopOf(0.3, 0.5)); // builders hop out of step
+  });
+});
+
+describe('siteDepth', () => {
+  it('a_builder_at_work_draws_over_its_own_and_its_neighbours_structures', () => {
+    const c = { x0: 0, y0: 0, w: 9, h: 9, house: { x: 1, y: 1 } };
+    const own = { x: 5, y: 1 }, neighbour = { x: 5, y: 4 };
+    const z = siteDepth(c, [own, neighbour]);
+    // structure sprites sort by their front corner (spot + 2, 2), the house by (house + 3, 3)
+    expect(z).toBeGreaterThan(own.x + own.y + 4);
+    expect(z).toBeGreaterThan(neighbour.x + neighbour.y + 4);
+    expect(z).toBeGreaterThan(c.house.x + c.house.y + 6);
+  });
+});
+

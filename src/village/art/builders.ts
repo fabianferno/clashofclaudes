@@ -1,6 +1,7 @@
 import type { AgentKind } from '../../api/types';
 import { PALETTE, type ClassTier, type Gear } from '../look';
 import { OUT, bake, ctx, dot, line, roundRect, shade, shadow, type Art } from './draw';
+import { paintedBuilder } from './sprites';
 
 export type Pose = 'idle' | 'walk0' | 'walk1' | 'hammer0' | 'hammer1' | 'cheer' | 'sad';
 
@@ -76,6 +77,8 @@ function figure(agent: AgentKind, cls: ClassTier, gear: Gear, pose: Pose, face: 
 
 /** Builder art. Anchor: the feet, at the builder's world position iso(x, y). Idle builders carry no hammer. */
 export function drawBuilder(agent: AgentKind, cls: ClassTier, gear: Gear, pose: Pose, face: 1 | -1): Art {
+  const p = paintedBuilder(agent, cls, gear, pose, face);
+  if (p) return p;
   const S = CLASS_SCALE[cls];
   return bake(110, 130, 55, 100, () => {
     shadow({ x: 0, y: 0 }, 8 * S, 4 * S, 0.25);

@@ -86,7 +86,7 @@ export default function Kanban() {
         </div>
         {reason && <div className="kb-reason">{reason}</div>}
         <div className="kb-foot">
-          <StateTag state={s.state} />
+          <StateTag state={s.state} paused={s.paused} />
           <span>{s.steps} steps · {elapsedLabel(now - s.startedAt)}</span>
         </div>
         {s.state.kind === 'needsYou' && agent?.canApprove && s.awaitingDecision && (

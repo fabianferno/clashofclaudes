@@ -175,3 +175,14 @@ No loader: a product page earns the craft, not the theatre.
 - No analytics, no cookies, nothing to consent to.
 - No newsletter or email capture: the brief is a download and in-app feedback.
 - Not-affiliated note in the footer, naming the agent makers.
+
+## QA record
+
+- Production builds checked with the awwwards `shoot.mjs --crawl --nav` and `audit.mjs`, plus
+  the gstack `browse` skill against the live URL (menu focus trap, Escape, download href).
+- Still at rest by decision: the privacy page's builder stands idle (the page is a reference
+  document; the hover and the transition carry the life there).
+- Critic pass 1 (separate subagent): 7.1 weighted (Design 7, Usability 7, Creativity 7,
+  Content 8, all developer areas 7 to 8). Fixes applied in pass 2: doc page heroes rebuilt,
+  TOC marks the current section, the HUD gets a solid bar once scrolled, the statement got its
+  "tabs vs builder" figure, phone hero puts the village under the headline, mobile wraps fixed.

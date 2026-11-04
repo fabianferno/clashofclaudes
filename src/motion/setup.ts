@@ -101,14 +101,22 @@ function version() {
       el.hidden = false;
     });
   };
+  const KEY = 'coc-latest';
+  const read = () => {
+    try { const c = JSON.parse(localStorage.getItem(KEY) || 'null'); return c && Date.now() - c.at < 36e5 ? c : null; } catch { return null; }
+  };
+  const save = (tag: string | null) => { try { localStorage.setItem(KEY, JSON.stringify({ tag, at: Date.now() })); } catch {} };
   onPage(() => {
     if (latest !== undefined) return paint();
+    const cached = read(); // one GitHub API call per visitor per hour at most (its limit is 60/h per IP)
+    if (cached) { latest = cached.tag; return paint(); }
     latest = null;
     fetch(site.latestApi, { headers: { Accept: 'application/vnd.github+json' } })
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => {
         const tag = j && typeof j.tag_name === 'string' ? j.tag_name.trim() : '';
         if (/^v?\d+(\.\d+){0,3}([-.+][\w.]+)?$/.test(tag)) { latest = tag.startsWith('v') ? tag : `v${tag}`; paint(); }
+        save(latest);
       })
       .catch(() => {});
   });

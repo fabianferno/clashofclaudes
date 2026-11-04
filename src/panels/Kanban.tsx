@@ -7,6 +7,7 @@ import AgentLogo from './AgentLogo';
 import { AttachmentStrip, useAttachments } from './Attachments';
 import BuilderPicker from './BuilderPicker';
 import { StateTag } from './tags';
+import { isDemoId } from '../onboarding/demo';
 
 export type KanbanColumn = 'active' | 'needs' | 'finished';
 
@@ -89,7 +90,7 @@ export default function Kanban() {
           <StateTag state={s.state} paused={s.paused} />
           <span>{s.steps} steps · {elapsedLabel(now - s.startedAt)}</span>
         </div>
-        {s.state.kind === 'needsYou' && agent?.canApprove && s.awaitingDecision && (
+        {s.state.kind === 'needsYou' && (agent?.canApprove || isDemoId(s.id)) && s.awaitingDecision && (
           <div className="kb-actions" onClick={(e) => e.stopPropagation()}>
             <button className="hud-btn sm" onClick={() => ipc.approve(s.id).catch((e) => useApp.getState().setError(String(e)))}>Allow</button>
             <button className="hud-btn red sm" onClick={() => ipc.deny(s.id).catch((e) => useApp.getState().setError(String(e)))}>Deny</button>

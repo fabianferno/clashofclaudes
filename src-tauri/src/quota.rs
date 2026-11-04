@@ -1,4 +1,4 @@
-//! Agent quota ("elixir"): what each provider says is left, in one shape.
+//! Agent quota ("resource"): what each provider says is left, in one shape.
 //!
 //! Sources (read only; see docs/superpowers/specs/2026-11-01-quota-collectors-design.md):
 //!   * Claude Code pipes JSON to the status-line command; app-launched sessions post it to the

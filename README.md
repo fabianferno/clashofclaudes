@@ -13,7 +13,7 @@ Claude Code, Codex, Antigravity CLI and OpenCode sessions as builders raising te
 
 ![The village: each project is a walled compound around the Town Hall, each agent session a builder at its tent](docs/brand/screenshot.jpg)
 
-A macOS desktop app for people who run several coding agents at once. Every project folder is a walled compound in an isometric village, and every running agent session is a builder raising a structure inside it. You see at a glance which agents are working, which need you, which are stuck and which have finished. The real terminal is always one click away.
+A macOS desktop app for people who run several coding agents at once. Every workspace is a walled compound in an isometric village, and every running agent session is a builder raising a structure inside it. You see at a glance which agents are working, which need you, which are stuck and which have finished. The real terminal is always one click away.
 
 v1 is Mac only (macOS 13 or later, Apple Silicon and Intel). Free and open source under the MIT license.
 
@@ -31,11 +31,12 @@ To build it yourself, see [docs/release.md](docs/release.md).
 
 ## First run
 
-- The window opens on an empty village with a welcome card. Click **Open folder** (or use the Town Hall) and pick a project folder. It becomes a compound.
+- The first launch opens a welcome that asks what to call you; the Town Hall's plate then reads "<name>'s Town Hall" (change it in **Settings › Your village**). It offers a two-minute tour on a sample compound that exists only in memory: you raise it, start a sample session, answer its permission prompt, review it and close it for XP, and see the terminal, Kanban, resources and roster, without any files changing or agents running. Skip it any time; **Replay the tour** in Settings brings it back.
+- The window opens on an empty village with a welcome card. Click **Open workspace** (or **Open** at the bottom right, or use the Town Hall) and pick your project. It becomes a compound. **New workspace** (or **Build**) starts an empty one.
 - Open the **Town Hall** to see which agent CLIs were found on your Mac, their versions, and a copyable install command for the ones that are missing. **Re-check** re-detects after you install one.
-- Click a compound to open its Workspace panel, then **+ New session**. Pick a builder, an agent, and optionally a model, effort and a first task. The agent starts in a real terminal in that folder.
+- Click a compound to open its Workspace panel, then **+ New session**. Pick a builder, an agent, and optionally a model, effort and a first task. The agent starts in a real terminal in that workspace.
 - Click any builder or structure to open its live terminal in the side panel. The terminal can be popped out to a larger view.
-- **+ Terminal** in the same panel opens a plain shell in the folder.
+- **+ Terminal** in the same panel opens a plain shell in the workspace.
 
 The app does not install agents, log in for you, or manage API keys. Each agent uses the login you already set up for it.
 

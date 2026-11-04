@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useApp, type Selection } from '../state/store';
 import { badgeOf, idleOf, liveAgentSessions, msToNextMidnight, startOfToday, type BadgeState } from './hudState';
 import { RES_MARGIN, panelInset } from './layout';
-import ElixirBars from './ElixirBars';
+import ResourceBars from './ResourceBars';
 import BuilderAvatar from './BuilderAvatar';
 import './hud.css';
 
@@ -15,7 +15,7 @@ const PILLS: PillDef[] = [
   { id: 'idle', badge: 'idle', label: 'idle' },
 ];
 
-/** Top-left village level + state pills; bottom-left Settings, top-right the agents' elixir and resources. */
+/** Top-left village level + state pills; bottom-left Settings, top-right the agents' resource and resources. */
 export default function TopBar() {
   const builders = useApp((s) => s.builders);
   const sessionMap = useApp((s) => s.sessions);
@@ -71,22 +71,22 @@ export default function TopBar() {
       </div>
       <div id="resources" className="hud-res" style={{ right: panelInset(panelOpen) + RES_MARGIN }}>
         <div className="hud-res-col">
-          <ElixirBars />
+          <ResourceBars />
         </div>
       </div>
       <div id="stats" className="hud-stats" style={{ right: panelInset(panelOpen) }}>
-          <div className="hud-elixir hud-stat">
-            <span className="hud-elixir-trough">
-              <span className="hud-elixir-sub">Builders busy</span>
+          <div className="hud-resource hud-stat">
+            <span className="hud-resource-trough">
+              <span className="hud-resource-sub">Builders busy</span>
               <b className="ol">{busy} / {builders.length}</b>
             </span>
             <span className="hud-drop hud-stat-ico hud-stat-builder" aria-hidden="true">
               <BuilderAvatar agent={builders[0]?.agent ?? 'claude'} model={builders[0]?.model ?? null} effort={builders[0]?.effort ?? null} size={34} />
             </span>
           </div>
-          <div className="hud-elixir hud-stat">
-            <span className="hud-elixir-trough">
-              <span className="hud-elixir-sub">Shipped today</span>
+          <div className="hud-resource hud-stat">
+            <span className="hud-resource-trough">
+              <span className="hud-resource-sub">Shipped today</span>
               <b className="ol" data-testid="shipped-today">{today}</b>
             </span>
             <img className="hud-drop hud-stat-ico" src="/assets/village/ui/ribbon.png" alt="" aria-hidden="true" />

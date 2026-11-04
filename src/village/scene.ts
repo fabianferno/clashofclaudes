@@ -4,11 +4,12 @@ import { iso, toGrid } from './iso';
 import { HALL, HOUSE, STRUCT, gateOutside, gateSide, gateTile, villageRect, wallRect, type Rect } from './layout';
 import { enclosure, seedOf } from './enclosure';
 import { setVillageSnapshot } from '../screenshot';
+import { townHallTitle } from '../state/names';
 import { indexTrees, underTree, type TreeIndex } from './clearance';
 import { classOf, gearOf, houseColors, houseStage, scaffoldHeight, type ClassTier, type Gear } from './look';
 import { blockedBy, dropOf, onGround, plazaPoint, retarget, routeHome, routeToSite, standTile, step, takenBy, walkable, type Blocked, type BuilderDrop, type Walker } from './walkers';
 import {
-  GROUND_SCALE, drawPathTile, groundTrees, pathLinks, pathTiles, treesOverPaths, drawGroundTree, drawBuilderShadow, drawBoard, drawBubble, drawBuilder, drawCollector, drawGate, drawGround, drawHall, drawHouse, drawPuff, drawRing, drawStatusBar, drawStructure,
+  GROUND_SCALE, drawPathTile, groundTrees, pathLinks, pathTiles, treesOverPaths, drawGroundTree, drawBuilderShadow, drawBoard, drawBubble, drawBuilder, drawCollector, drawGate, drawGround, drawHall, drawHouse, drawPuff, drawRing, drawStatusBar, drawHallPlate, drawStructure,
   drawWallSeg, drawRuneStone, groundOrigin,
   hammerPose, type Art, type GroundTree, type Pose,
 } from './art/entities';
@@ -33,7 +34,7 @@ export interface VillageInput {
   closed?: Record<string, CloseOutcome>;
   /** Wall-clock ms for the status bars over working structures; without it no bars are emitted. */
   now?: number;
-  /** Latest quota reading per agent: the elixir collectors by the hall. */
+  /** Latest quota reading per agent: the resource collectors by the hall. */
   quotas?: Partial<Record<AgentKind, AgentQuota>>;
   /** Installed agents: each rationed one gets a collector even before its first reading. */
   installed?: readonly AgentKind[];
@@ -41,6 +42,8 @@ export interface VillageInput {
   collectorSpots?: Partial<Record<AgentKind, Tile>>;
   /** App boards that have a spot: local web apps running in a workspace. */
   boards?: BoardInput[];
+  /** What the owner is called: the hall's plate reads "<name>'s Town Hall" (plain "Town Hall" without one). */
+  ownerName?: string | null;
 }
 
 /** A board: a local web app (see src-tauri/src/apps.rs) or a browser the owner opened; `key` as in the store's `boardItems`. */
@@ -87,6 +90,8 @@ const KIND_RANK: Record<EntityKind, number> = {
 
 /** World px from a house's centre up to its name plate: just over the roof (and flag) of each stage. */
 const HOUSE_LIFT = [146, 160, 160, 186, 186];
+/** World px from the hall's centre up to its name plate: just over the painted flag (hall.png's top edge). */
+export const HALL_LIFT = 226;
 /** How much higher than the name plate a house's drag hint floats (the plate is ~20 px tall). */
 const PLATE_CLEAR = 12;
 
@@ -159,7 +164,7 @@ export function boardEntities(input: Pick<VillageInput, 'boards' | 'workspaces'>
 }
 
 /**
- * The elixir collectors and their labels: one per rationed agent with a reading or installed.
+ * The resource collectors and their labels: one per rationed agent with a reading or installed.
  * The labels are `status` bars (minute-quantized, so the status clock re-syncs them).
  */
 export function collectorEntities(input: Pick<VillageInput, 'quotas' | 'installed' | 'collectorSpots' | 'workspaces'>, now: number): Entity[] {
@@ -181,6 +186,8 @@ export function collectorEntities(input: Pick<VillageInput, 'quotas' | 'installe
 /** Everything the village draws for this state, sorted back to front. Pure. */
 export function buildEntities(input: VillageInput): Entity[] {
   const out: Entity[] = [ent('hall', 'hall', HALL.x0 + HALL.w, HALL.y0 + HALL.h, 'hall')];
+  // the owner's name on a plate over the hall (texture keys split on ':', so the label holds none)
+  out.push({ ...ent('status:hall', 'status', HALL.x0 + HALL.w / 2, HALL.y0 + HALL.h / 2, `hallplate:${townHallTitle(input.ownerName).replace(/:/g, ' ')}`), lift: HALL_LIFT });
   const agentOf = new Map(input.builders.map((b) => [b.id, b.agent] as [string, AgentKind]));
   const compounds = new Map<string, Compound>();
   for (const w of input.workspaces) {
@@ -248,6 +255,7 @@ export function artFor(key: string): Art {
     case 'gtree': return drawGroundTree(a === '1', Number(b));
     case 'shadow': return drawBuilderShadow();
     case 'status': return drawStatusBar(a as StatusTone, b);
+    case 'hallplate': return drawHallPlate(key.slice('hallplate:'.length));
     default: throw new Error(`no art for ${key}`);
   }
 }
@@ -403,7 +411,12 @@ export interface Scene {
   select(sel: Selection | null): void;
   /** A full-window view covers the village: stop drawing it until uncovered. */
   setCovered(covered: boolean): void;
+  /** Where the selected thing is in the window (CSS px) and roughly how big, for pointing at it; null when not drawn. */
+  locate(sel: Selection): { x: number; y: number; r: number } | null;
 }
+
+/** Rough on-screen radius of each kind at zoom 1, world px (for pointing at one). */
+const LOCATE_R: Partial<Record<EntityKind, number>> = { hall: 150, house: 105, structure: 70, collector: 70, builder: 34 };
 
 const GROUND_SEED = 7;
 /**
@@ -1421,10 +1434,18 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     autoFit = false;
     camTarget = fitRect(pxRectOfCompound(ws.compound), app.screen.width, app.screen.height, PANEL_W, ZMAX);
   };
+  const entityIdOf = (sel: Selection) => (sel.kind === 'hall' ? 'hall' : sel.kind === 'workspace' ? `house:${sel.id}`
+    : sel.kind === 'session' ? `struct:${sel.id}` : sel.kind === 'quota' ? `collector:${sel.agent}` : `builder:${sel.id}`);
+  const locate = (sel: Selection) => {
+    const e = hitEntities().find((x) => x.id === entityIdOf(sel));
+    if (!e) return null;
+    const p = clickPoint(e);
+    const s = worldToScreen(cam, p.x, p.y), box = app.canvas.getBoundingClientRect();
+    return { x: box.left + s.x, y: box.top + s.y, r: (LOCATE_R[e.kind] ?? 60) * cam.zoom };
+  };
   const reveal = (sel: Selection | null) => {
     if (!sel) return;
-    const id = sel.kind === 'hall' ? 'hall' : sel.kind === 'workspace' ? `house:${sel.id}`
-      : sel.kind === 'session' ? `struct:${sel.id}` : sel.kind === 'quota' ? `collector:${sel.agent}` : `builder:${sel.id}`;
+    const id = entityIdOf(sel);
     const e = hitEntities().find((x) => x.id === id);
     if (!e) return;
     const p = clickPoint(e);
@@ -1464,5 +1485,5 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
 
   const select = (sel: Selection | null) => { selected = sel; redrawOverlay(); };
 
-  return { sync, destroy, world, debug, fitVillage, fitCompound, zoomBy, reveal, select, setCovered };
+  return { sync, destroy, world, debug, fitVillage, fitCompound, zoomBy, reveal, select, setCovered, locate };
 }

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { ipc } from '../api/ipc';
-import type { AgentInfo, AgentKind, AgentQuota, AppPreview, Todo, Builder, CloseOutcome, Compound, ListState, SessionInfo, SessionState, Stats, Tile, Workspace, ReportKind } from '../api/types';
+import type { AgentInfo, AgentKind, AgentQuota, AppPreview, Todo, Builder, CloseOutcome, Compound, ListState, SessionInfo, SessionState, Settings, Stats, Tile, Workspace, ReportKind } from '../api/types';
 import { HOUSE, STRUCT, canPlace, compoundFits, gapBetween, placeCompound, shiftCompound, spotFor, wallRect } from '../village/layout';
 import { collectorFits, collectorTiles, shownCollectors } from '../village/quota';
 
@@ -210,6 +210,9 @@ export interface AppState {
   /** The Settings page is open full-page. */
   settingsOpen: boolean;
   setSettingsOpen: (open: boolean) => void;
+  /** The saved settings, once read (see state/settings); null before. */
+  settings: Settings | null;
+  setSettings: (s: Settings) => void;
   /** The bug/feature report dialog, with the window as it looked when it opened (base64 JPEG), if captured. */
   bugReport: { screenshot: string | null; kind: ReportKind } | null;
   setBugReport: (r: { screenshot: string | null; kind: ReportKind } | null) => void;
@@ -250,6 +253,7 @@ export const useApp = create<AppState>((set, get) => ({
   todos: [],
   kanban: null,
   settingsOpen: false,
+  settings: null,
   bugReport: null,
   updateAvailable: false,
   browsers: [],
@@ -369,6 +373,7 @@ export const useApp = create<AppState>((set, get) => ({
   removeTodo: (id) => set((st) => ({ todos: st.todos.filter((x) => x.id !== id) })),
   setKanban: (kanban) => set({ kanban }),
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
+  setSettings: (settings) => set({ settings }),
   setBugReport: (bugReport) => set({ bugReport }),
   setUpdateAvailable: (updateAvailable) => set({ updateAvailable }),
   setBrowserUrl: (id, url) => set((st) => ({ browsers: st.browsers.map((b) => (b.id === id ? { ...b, url } : b)) })),

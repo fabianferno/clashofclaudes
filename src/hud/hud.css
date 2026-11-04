@@ -60,27 +60,27 @@
 /* top center: builders busy + shipped today; `right` is set inline so it centres in the space the panel leaves */
 .hud-stats { position: fixed; top: 14px; left: 0; z-index: 3; display: flex; gap: 34px; justify-content: center; pointer-events: none; transition: right .2s; }
 .hud-stats > * { pointer-events: auto; }
-.hud-stats .hud-elixir-trough { width: 190px; }
+.hud-stats .hud-resource-trough { width: 190px; }
 .hud-res > *, .hud-res-col > * { pointer-events: auto; }
 .hud-res-col { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; pointer-events: none; }
 
-/* the agents' limits as Clash-style resource bars (ElixirBars.tsx) */
-.hud-elixir { position: relative; display: flex; align-items: center; padding: 0; margin: 0 -4px 0 0; border: 0; background: none; cursor: pointer; }
-.hud-elixir-trough { position: relative; display: flex; align-items: center; justify-content: flex-end; gap: 8px; width: 236px; height: 34px; margin-right: -22px; padding: 0 30px 0 12px; box-sizing: border-box; overflow: hidden;
+/* the agents' limits as resource bars (ResourceBars.tsx) */
+.hud-resource { position: relative; display: flex; align-items: center; padding: 0; margin: 0 -4px 0 0; border: 0; background: none; cursor: pointer; }
+.hud-resource-trough { position: relative; display: flex; align-items: center; justify-content: flex-end; gap: 8px; width: 236px; height: 34px; margin-right: -22px; padding: 0 30px 0 12px; box-sizing: border-box; overflow: hidden;
   background: #26180e; border: 3px solid var(--hud-out); border-radius: 10px; box-shadow: inset 0 2px 4px rgba(0,0,0,.55), 0 3px 0 var(--hud-out); }
-.hud-elixir-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 6px 0 0 6px; transition: width .4s; box-shadow: inset 0 -3px 0 rgba(0,0,0,.18); }
-.hud-elixir-fill::after { content: ''; position: absolute; left: 6px; right: 6px; top: 4px; height: 5px; border-radius: 3px; background: rgba(255,255,255,.45); }
-.hud-elixir-sub { position: relative; margin-right: auto; font: 800 11px system-ui; color: #fff; -webkit-text-stroke: 3px var(--hud-out); paint-order: stroke fill; white-space: nowrap; }
-.hud-elixir b { position: relative; font-weight: 400; font-size: 20px; }
+.hud-resource-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 6px 0 0 6px; transition: width .4s; box-shadow: inset 0 -3px 0 rgba(0,0,0,.18); }
+.hud-resource-fill::after { content: ''; position: absolute; left: 6px; right: 6px; top: 4px; height: 5px; border-radius: 3px; background: rgba(255,255,255,.45); }
+.hud-resource-sub { position: relative; margin-right: auto; font: 800 11px system-ui; color: #fff; -webkit-text-stroke: 3px var(--hud-out); paint-order: stroke fill; white-space: nowrap; }
+.hud-resource b { position: relative; font-weight: 400; font-size: 20px; }
 .hud-drop { position: relative; width: 40px; height: 48px; flex: none; filter: drop-shadow(0 3px 0 var(--hud-out)); }
 .hud-stat { cursor: default; }
 .hud-stat-ico { object-fit: contain; }
 img.hud-stat-ico { width: 48px; height: 48px; margin: 0 -4px; filter: none; }
 .hud-stat-builder { width: 40px; height: 40px; display: grid; place-items: center; overflow: hidden; border-radius: 50%; border: 3px solid var(--hud-out);
   background: radial-gradient(circle at 50% 40%, #fffdf7 0%, #e5cda4 100%); box-shadow: inset 0 3px 0 rgba(255,255,255,.35), 0 3px 0 var(--hud-out); filter: none; box-sizing: border-box; }
-.hud-stat:hover .hud-elixir-trough { border-color: var(--hud-out); }
-.hud-elixir:hover .hud-elixir-trough { border-color: #000; }
-.hud-elixir:focus-visible { outline: 2px solid #fff; outline-offset: 2px; border-radius: 12px; }
+.hud-stat:hover .hud-resource-trough { border-color: var(--hud-out); }
+.hud-resource:hover .hud-resource-trough { border-color: #000; }
+.hud-resource:focus-visible { outline: 2px solid #fff; outline-offset: 2px; border-radius: 12px; }
 .hud-gear { position: fixed; left: 12px; bottom: 14px; z-index: 3; width: 40px; height: 40px; padding: 0; display: grid; place-items: center; border-radius: 12px; }
 
 /* bottom roster */

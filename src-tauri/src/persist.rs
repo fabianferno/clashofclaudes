@@ -176,6 +176,21 @@ mod tests {
         std::fs::write(&p, r#"{"version":2,"workspaces":[],"builders":[],"settings":{"updatesEnabled":false}}"#).unwrap();
         let s = load(&p).settings;
         assert!(!s.updates_enabled && s.notify_needs_you && s.notify_finished && s.dock_badge);
+        assert_eq!((s.player_name, s.onboarded), (None, false), "files from before onboarding get the welcome");
+    }
+
+    #[test]
+    fn player_name_and_onboarded_round_trip() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("state.json");
+        let mut d = sample();
+        d.settings.player_name = Some("Fabian".into());
+        d.settings.onboarded = true;
+        save(&p, &d).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&p).unwrap()).unwrap();
+        assert_eq!((v["settings"]["playerName"].as_str(), v["settings"]["onboarded"].as_bool()), (Some("Fabian"), Some(true)));
+        let s = load(&p).settings;
+        assert_eq!((s.player_name.as_deref(), s.onboarded), (Some("Fabian"), true));
     }
 
     #[test]

@@ -3,10 +3,13 @@ import { getVersion } from '@tauri-apps/api/app';
 import { ipc } from '../api/ipc';
 import type { Settings } from '../api/types';
 import { useApp } from '../state/store';
+import { DEFAULT_SETTINGS, PLAYER_NAME_MAX, cleanName, loadSettings, saveSettings, townHallTitle } from '../state/settings';
+import { startTour } from '../onboarding/tour';
 import AgentsStatus from './AgentsStatus';
+import '../onboarding/onboarding.css';
 import { openBugReport } from './BugReport';
 
-export const DEFAULT_SETTINGS: Settings = { updatesEnabled: true, notifyNeedsYou: true, notifyFinished: true, dockBadge: true };
+export { DEFAULT_SETTINGS };
 
 export const SHORTCUTS: Array<[keys: string, what: string]> = [
   ['⌘ ,', 'Open Settings'],
@@ -38,11 +41,36 @@ function Toggle({ label, hint, checked, onChange }: { label: string; hint?: stri
   );
 }
 
+/** The owner's name, saved on Enter or when the field loses focus; the Town Hall's plate follows it. */
+function NameField({ saved, onSave }: { saved: string | null; onSave: (name: string | null) => void }) {
+  const [draft, setDraft] = useState<string | null>(null); // null: showing the saved name
+  const value = draft ?? saved ?? '';
+  const commit = () => {
+    if (draft === null) return;
+    const name = cleanName(draft);
+    setDraft(null);
+    if (name !== saved) onSave(name);
+  };
+  return (
+    <label className="set-row set-name">
+      <span className="set-text">
+        <span className="set-label">Your name</span>
+        <span className="set-hint">The plate over your hall reads <b>{townHallTitle(draft ?? saved)}</b>.</span>
+      </span>
+      <input type="text" aria-label="Your name" placeholder="Your name" maxLength={PLAYER_NAME_MAX} value={value} spellCheck={false}
+        onChange={(e) => setDraft(e.target.value)} onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+        }} />
+    </label>
+  );
+}
+
 /** App preferences, full page over the village. The gear, Cmd+, or the Town Hall opens it; ✕ or Esc closes it. */
 export default function SettingsPage() {
   const open = useApp((s) => s.settingsOpen);
   const close = () => useApp.getState().setSettingsOpen(false);
-  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
+  const settings = useApp((s) => s.settings) ?? DEFAULT_SETTINGS;
   const [version, setVersion] = useState<string | null>(null);
   const [folder, setFolder] = useState<string | null>(null);
   const [check, setCheck] = useState<Check>(null);
@@ -52,7 +80,7 @@ export default function SettingsPage() {
     if (!open) return;
     let live = true;
     setCheck(null);
-    ipc.getSettings().then((s) => live && setSettings({ ...DEFAULT_SETTINGS, ...s })).catch(() => {});
+    loadSettings().catch(() => {});
     getVersion().then((v) => live && setVersion(v)).catch(() => {});
     ipc.dataFolder().then((f) => live && setFolder(f)).catch(() => {});
     const onKey = (e: KeyboardEvent) => {
@@ -66,12 +94,9 @@ export default function SettingsPage() {
   }, [open]);
   if (!open) return null;
 
-  // the whole struct goes back: the backend replaces it
+  // the whole struct goes back (the backend replaces it); a failed save puts the toggle back
   const change = (patch: Partial<Settings>) => {
-    const before = settings;
-    const next = { ...settings, ...patch };
-    setSettings(next);
-    ipc.setSettings(next).catch((e) => { setSettings(before); useApp.getState().setError(String(e)); });
+    saveSettings(patch).catch((e) => useApp.getState().setError(String(e)));
   };
   const checkNow = () => {
     setCheck('checking');
@@ -93,6 +118,17 @@ export default function SettingsPage() {
       </header>
       <div className="set-scroll">
         <div className="set-col">
+          <section className="set-card" aria-label="Your village">
+            <h3 className="kb-head ol" style={{ background: '#c8860d' }}>Your village</h3>
+            <div className="set-body">
+              <NameField saved={settings.playerName ?? null} onSave={(playerName) => change({ playerName })} />
+              <div className="set-line">
+                <span className="set-note">New here, or want a refresher? Walk through a sample compound again.</span>
+                <button className="hud-btn green sm" onClick={() => { close(); startTour(); }}>Replay the tour</button>
+              </div>
+            </div>
+          </section>
+
           <section className="set-card" aria-label="Beta feedback">
             <h3 className="kb-head ol" style={{ background: '#2f95db' }}>Beta feedback</h3>
             <div className="set-body">

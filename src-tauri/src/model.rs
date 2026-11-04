@@ -94,7 +94,7 @@ pub struct AppData {
     pub stats: Stats,
     #[serde(default)]
     pub settings: Settings,
-    /// Top-left tiles of the elixir collectors the owner has dragged; the rest stand in their default slots.
+    /// Top-left tiles of the resource collectors the owner has dragged; the rest stand in their default slots.
     #[serde(default)]
     pub collector_spots: BTreeMap<AgentKind, Tile>,
     /// Tasks written down for the workspaces and not started yet (the Kanban's To Do), oldest first.
@@ -130,15 +130,56 @@ pub struct Settings {
     /// The Dock icon counts the sessions that need you or finished.
     #[serde(default = "default_true")]
     pub dock_badge: bool,
+    /// What the owner asked to be called: the plate over the Town Hall reads "<name>'s Town Hall".
+    #[serde(default)]
+    pub player_name: Option<String>,
+    /// The first-run welcome (and its tour) has been completed or skipped.
+    #[serde(default)]
+    pub onboarded: bool,
 }
 
 fn default_true() -> bool {
     true
 }
 
+/// Longest name kept, in characters (it has to fit on the Town Hall's plate).
+pub const PLAYER_NAME_MAX: usize = 24;
+
+impl Settings {
+    /// The name trimmed and capped at PLAYER_NAME_MAX characters; blank becomes None.
+    pub fn normalized(mut self) -> Self {
+        self.player_name = self
+            .player_name
+            .map(|n| n.trim().chars().take(PLAYER_NAME_MAX).collect::<String>().trim_end().to_string())
+            .filter(|n| !n.is_empty());
+        self
+    }
+}
+
+#[cfg(test)]
+mod settings_tests {
+    use super::*;
+
+    #[test]
+    fn player_name_is_trimmed_capped_and_blank_dropped() {
+        let named = |n: &str| Settings { player_name: Some(n.into()), ..Settings::default() }.normalized().player_name;
+        assert_eq!(named("  Fabian "), Some("Fabian".into()));
+        assert_eq!(named("   "), None);
+        assert_eq!(named(&"é".repeat(40)).map(|n| n.chars().count()), Some(PLAYER_NAME_MAX));
+        assert_eq!(Settings::default().normalized().player_name, None);
+    }
+}
+
 impl Default for Settings {
     fn default() -> Self {
-        Self { updates_enabled: true, notify_needs_you: true, notify_finished: true, dock_badge: true }
+        Self {
+            updates_enabled: true,
+            notify_needs_you: true,
+            notify_finished: true,
+            dock_badge: true,
+            player_name: None,
+            onboarded: false,
+        }
     }
 }
 

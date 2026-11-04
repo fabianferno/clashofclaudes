@@ -2,7 +2,7 @@
 //!
 //! The decision logic here is pure (no Tauri); `lib.rs` wires it to the window and the plugin.
 
-use crate::model::{SessionInfo, SessionKind, SessionState};
+use crate::model::{SessionInfo, SessionKind, SessionState, Settings};
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -153,9 +153,29 @@ pub fn badge_value(n: i64) -> Option<i64> {
     (n > 0).then_some(n)
 }
 
+/// Whether the settings let a note for a session in `state` show.
+pub fn wanted(settings: &Settings, state: &SessionState) -> bool {
+    match state {
+        SessionState::NeedsYou { .. } => settings.notify_needs_you,
+        SessionState::Finished => settings.notify_finished,
+        _ => true,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn settings_turn_each_kind_of_note_off() {
+        let all = Settings::default();
+        let needs = SessionState::NeedsYou { reason: "ok?".into() };
+        assert!(wanted(&all, &needs) && wanted(&all, &SessionState::Finished));
+        let quiet = Settings { notify_needs_you: false, ..all.clone() };
+        assert!(!wanted(&quiet, &needs) && wanted(&quiet, &SessionState::Finished));
+        let quiet = Settings { notify_finished: false, ..all };
+        assert!(wanted(&quiet, &needs) && !wanted(&quiet, &SessionState::Finished));
+    }
 
     fn info(id: &str, kind: SessionKind, state: SessionState) -> SessionInfo {
         SessionInfo {

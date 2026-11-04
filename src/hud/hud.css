@@ -57,6 +57,9 @@
 .hud-res { position: fixed; top: 14px; transition: right .2s; z-index: 3; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; pointer-events: none; }
 .hud-rbar { display: flex; align-items: center; gap: 14px; justify-content: space-between; min-width: 210px; padding: 5px 14px; font-size: 16px; background: #26180e; border: 3px solid var(--hud-out); border-radius: 12px; box-shadow: inset 0 2px 4px rgba(0,0,0,.55), 0 3px 0 var(--hud-out); }
 .hud-rbar b { font-weight: 400; font-size: 20px; }
+.hud-res-row { display: flex; gap: 8px; align-items: center; }
+.hud-res-row > * { pointer-events: auto; }
+.hud-gear { width: 40px; height: 40px; padding: 0; display: grid; place-items: center; border-radius: 12px; }
 
 /* bottom roster */
 .hud-roster-zone { position: fixed; left: 0; bottom: 10px; z-index: 3; display: flex; justify-content: center; pointer-events: none; transition: right .2s; padding: 0 12px; } /* right padding set inline (rosterReserve) */

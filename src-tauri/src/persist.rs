@@ -169,6 +169,15 @@ mod tests {
     }
 
     #[test]
+    fn settings_saved_before_the_notification_toggles_keep_updates_off() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("state.json");
+        std::fs::write(&p, r#"{"version":2,"workspaces":[],"builders":[],"settings":{"updatesEnabled":false}}"#).unwrap();
+        let s = load(&p).settings;
+        assert!(!s.updates_enabled && s.notify_needs_you && s.notify_finished && s.dock_badge);
+    }
+
+    #[test]
     fn load_v1_state_gets_village_defaults() {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("state.json");
@@ -178,6 +187,7 @@ mod tests {
         assert_eq!((w.level, w.xp, w.compound.clone()), (1, 0, None));
         assert_eq!(d.stats, Stats::default());
         assert!(d.settings.updates_enabled, "old files default to updates on");
+        assert_eq!(d.settings, Settings::default(), "and to notifications and the Dock badge on");
         save(&p, &d).unwrap();
         let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&p).unwrap()).unwrap();
         assert_eq!(v["version"], 2);

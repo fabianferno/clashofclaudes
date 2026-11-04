@@ -108,7 +108,7 @@ fn claude_procs(session_id: &str) -> usize {
 #[tokio::test(flavor = "multi_thread")]
 async fn custom_builder_exit_3_goes_stuck_with_output_retained() {
     let r = rig().await;
-    let s = r.mgr.start_agent(&r.ws, &builder(AgentKind::Custom, Some("printf partial; exit 3")), None).unwrap();
+    let s = r.mgr.start_agent(&r.ws, &builder(AgentKind::Custom, Some("printf partial; exit 3")), None, &[]).unwrap();
     wait_for("Stuck exited with code 3", 15, || state(&r, &s.id) == SessionState::Stuck { reason: "exited with code 3".into() });
     assert!(String::from_utf8_lossy(&r.mgr.attach(&s.id).unwrap().0).contains("partial"));
     assert!(!r.mgr.close(&s.id).unwrap().reached_finished);
@@ -120,7 +120,7 @@ async fn missing_workspace_start_errors() {
     let mut ws = r.ws.clone();
     ws.path = Path::new("/definitely/not/here").to_path_buf();
     ws.missing = true;
-    let err = r.mgr.start_agent(&ws, &builder(AgentKind::Custom, Some("true")), None).unwrap_err();
+    let err = r.mgr.start_agent(&ws, &builder(AgentKind::Custom, Some("true")), None, &[]).unwrap_err();
     assert!(!err.to_string().is_empty());
     assert!(r.mgr.start_terminal(&ws).is_err());
     assert!(r.mgr.list().is_empty());
@@ -136,7 +136,7 @@ async fn real_claude_full_lifecycle() {
     std::fs::write(cdir.join("settings.json"), r#"{"permissions":{"ask":["Bash"]}}"#).unwrap();
 
     let task = "Using the Bash tool, run: echo hi > hello2.txt . Then reply done.";
-    let s = r.mgr.start_agent(&r.ws, &builder(AgentKind::Claude, None), Some(task)).unwrap();
+    let s = r.mgr.start_agent(&r.ws, &builder(AgentKind::Claude, None), Some(task), &[]).unwrap();
     let id = s.id.clone();
     let session_dir = r.data.path().join("sessions").join(&id);
     assert!(session_dir.exists());

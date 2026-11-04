@@ -23,6 +23,7 @@ vi.mock('./api/ipc', () => ({
       return { ...useApp.getState().workspaces.find((w) => w.id === id), compound };
     }),
     onConfirmQuit: vi.fn().mockResolvedValue(() => {}),
+    onOpenSettings: vi.fn().mockResolvedValue(() => {}),
     onUpdateProgress: vi.fn().mockResolvedValue(() => {}),
     onSelectSession: vi.fn(async (cb: (id: string) => void) => { onSelectSession = cb; return () => {}; }),
   },

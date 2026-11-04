@@ -271,14 +271,11 @@ test('town hall: no-builders copy', () => {
   expect(screen.getByText('No builders yet — recruit one from + New session.')).toBeTruthy();
 });
 
-test('settings_toggle_disables_updates: Town Hall checkbox persists via set_settings', async () => {
-  ipc.getSettings.mockResolvedValue({ updatesEnabled: true });
+test('town hall opens the Settings page', () => {
   render(<TownHallPanel />);
-  const box = (await screen.findByLabelText('Check for updates automatically')) as HTMLInputElement;
-  expect(box.checked).toBe(true);
-  await act(async () => { fireEvent.click(box); });
-  expect(ipc.setSettings).toHaveBeenCalledWith({ updatesEnabled: false });
-  expect((screen.getByLabelText('Check for updates automatically') as HTMLInputElement).checked).toBe(false);
+  fireEvent.click(screen.getByRole('button', { name: 'Open Settings' }));
+  expect(useApp.getState().settingsOpen).toBe(true);
+  act(() => useApp.getState().setSettingsOpen(false));
 });
 
 test('builder_agent_is_icon_buttons; switching resets model and effort to the new agent', async () => {

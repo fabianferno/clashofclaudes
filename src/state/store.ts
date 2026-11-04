@@ -207,6 +207,12 @@ export interface AppState {
   /** The workspace whose Kanban is open full-page, if any. */
   kanban: string | null;
   setKanban: (workspaceId: string | null) => void;
+  /** The Settings page is open full-page. */
+  settingsOpen: boolean;
+  setSettingsOpen: (open: boolean) => void;
+  /** An update was found (by the scheduled check or Settings' Check now); the toast offers it. */
+  updateAvailable: boolean;
+  setUpdateAvailable: (available: boolean) => void;
   /** Browsers the owner opened, each standing as a board in its workspace. */
   browsers: Browser[];
   openBrowser: (workspaceId: string, url: string) => Browser;
@@ -240,6 +246,8 @@ export const useApp = create<AppState>((set, get) => ({
   covers: 0,
   todos: [],
   kanban: null,
+  settingsOpen: false,
+  updateAvailable: false,
   browsers: [],
   selectedSessionId: null,
   selection: null,
@@ -356,6 +364,8 @@ export const useApp = create<AppState>((set, get) => ({
   addTodo: (t) => set((st) => ({ todos: [...st.todos.filter((x) => x.id !== t.id), t] })),
   removeTodo: (id) => set((st) => ({ todos: st.todos.filter((x) => x.id !== id) })),
   setKanban: (kanban) => set({ kanban }),
+  setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
+  setUpdateAvailable: (updateAvailable) => set({ updateAvailable }),
   setBrowserUrl: (id, url) => set((st) => ({ browsers: st.browsers.map((b) => (b.id === id ? { ...b, url } : b)) })),
   setBoardSpots: (boardSpots) => set({ boardSpots }),
   setAppPopout: (appPopout) => set({ appPopout }),

@@ -118,6 +118,15 @@ pub struct Todo {
 pub struct Settings {
     #[serde(default = "default_true")]
     pub updates_enabled: bool,
+    /// Notify when a builder needs you (while the window is in the background).
+    #[serde(default = "default_true")]
+    pub notify_needs_you: bool,
+    /// Notify when a builder finishes (while the window is in the background).
+    #[serde(default = "default_true")]
+    pub notify_finished: bool,
+    /// The Dock icon counts the sessions that need you or finished.
+    #[serde(default = "default_true")]
+    pub dock_badge: bool,
 }
 
 fn default_true() -> bool {
@@ -126,7 +135,7 @@ fn default_true() -> bool {
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { updates_enabled: true }
+        Self { updates_enabled: true, notify_needs_you: true, notify_finished: true, dock_badge: true }
     }
 }
 

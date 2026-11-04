@@ -765,11 +765,27 @@ pub fn get_settings(state: State<'_, AppState>) -> Settings {
 }
 
 #[tauri::command]
-pub fn set_settings(settings: Settings, state: State<'_, AppState>) -> Result<Settings, String> {
-    let mut d = state.data();
-    d.settings = settings;
-    state.save(&d)?;
-    Ok(d.settings.clone())
+pub fn set_settings(settings: Settings, app: AppHandle, state: State<'_, AppState>) -> Result<Settings, String> {
+    let saved = {
+        let mut d = state.data();
+        d.settings = settings;
+        state.save(&d)?;
+        d.settings.clone()
+    };
+    crate::refresh_badge(&app); // the Dock badge setting shows at once
+    Ok(saved)
+}
+
+/// The folder holding the app's data (state.json, sessions/, attachments/).
+#[tauri::command]
+pub fn data_folder(state: State<'_, AppState>) -> String {
+    state.data_dir().to_string_lossy().into_owned()
+}
+
+/// Opens the data folder in Finder.
+#[tauri::command]
+pub fn show_data_folder(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    app.opener().open_path(state.data_dir().to_string_lossy(), None::<&str>).map_err(|e| e.to_string())
 }
 
 /// Checks for an update. Refuses with "disabled" BEFORE any network call in debug builds, with

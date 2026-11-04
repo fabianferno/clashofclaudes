@@ -179,6 +179,12 @@ export interface ConfirmQuit {
 
 export interface Settings {
   updatesEnabled: boolean;
+  /** Notify when a builder needs you, while the window is in the background. */
+  notifyNeedsYou: boolean;
+  /** Notify when a builder finishes, while the window is in the background. */
+  notifyFinished: boolean;
+  /** The Dock icon counts the sessions that need you or finished. */
+  dockBadge: boolean;
 }
 
 export interface UpdateStatus {

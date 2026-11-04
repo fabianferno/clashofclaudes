@@ -3,6 +3,7 @@ import { useApp, type Selection } from '../state/store';
 import { badgeOf, idleOf, liveAgentSessions, msToNextMidnight, startOfToday, type BadgeState } from './hudState';
 import { RES_MARGIN, panelInset } from './layout';
 import ElixirBars from './ElixirBars';
+import BuilderAvatar from './BuilderAvatar';
 import './hud.css';
 
 interface PillDef { id: string; badge: BadgeState; label: string; pulse?: boolean }
@@ -71,13 +72,21 @@ export default function TopBar() {
       <div id="resources" className="hud-res" style={{ right: panelInset(panelOpen) + RES_MARGIN }}>
         <div className="hud-res-col">
           <ElixirBars />
-          <div className="hud-rbar ol">
-            <span>Builders busy</span>
-            <b>{busy} / {builders.length}</b>
+          <div className="hud-elixir hud-stat">
+            <span className="hud-elixir-trough">
+              <span className="hud-elixir-sub">Builders busy</span>
+              <b className="ol">{busy} / {builders.length}</b>
+            </span>
+            <span className="hud-drop hud-stat-ico hud-stat-builder" aria-hidden="true">
+              <BuilderAvatar agent={builders[0]?.agent ?? 'claude'} model={builders[0]?.model ?? null} effort={builders[0]?.effort ?? null} size={34} />
+            </span>
           </div>
-          <div className="hud-rbar ol">
-            <span>Shipped today</span>
-            <b data-testid="shipped-today">{today}</b>
+          <div className="hud-elixir hud-stat">
+            <span className="hud-elixir-trough">
+              <span className="hud-elixir-sub">Shipped today</span>
+              <b className="ol" data-testid="shipped-today">{today}</b>
+            </span>
+            <img className="hud-drop hud-stat-ico" src="/assets/village/ui/ribbon.png" alt="" aria-hidden="true" />
           </div>
         </div>
       </div>

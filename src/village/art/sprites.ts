@@ -225,9 +225,9 @@ const FIST: Record<Strip, { x: number; y: number; len: number }> = {
  * against the idle head; the same on every agent's strip). Unflipped frame px.
  */
 const BADGE: Record<Strip, { x: number; y: number; r: number }> = {
-  0: { x: 116, y: 104, r: 8.5 },
-  1: { x: 116, y: 95, r: 9.5 },
-  2: { x: 118, y: 86, r: 9 },
+  0: { x: 116, y: 102, r: 11.5 },
+  1: { x: 116, y: 93, r: 12.5 },
+  2: { x: 118, y: 84, r: 12 },
 };
 const HEAD_SHIFT: Record<Strip, Partial<Record<(typeof STRIP)[number], [number, number]>>> = {
   0: { walk0: [-3, 0], walk1: [-2, 1], hammer0: [6, 0], cheer: [-3, -2], sad: [6, 4] },
@@ -245,9 +245,9 @@ function capBadge(g: CanvasRenderingContext2D, agent: AgentKind, x: number, y: n
   g.fillStyle = '#fff3dc'; g.strokeStyle = 'rgba(42,29,20,.9)'; g.lineWidth = 1.6;
   g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill(); g.stroke();
   g.fillStyle = bg;
-  g.beginPath(); g.arc(x, y, r - 1.8, 0, Math.PI * 2); g.fill();
+  g.beginPath(); g.arc(x, y, r - 1.6, 0, Math.PI * 2); g.fill();
   // the mark in its 24px box, filling most of the badge
-  const k = (r * 1.15) / 24;
+  const k = (r * 1.3) / 24;
   g.translate(x - 12 * k, y - 12 * k); g.scale(k, k);
   if (t.fg === 'gradient') {
     const m = g.createLinearGradient(0, 0, 24, 24);

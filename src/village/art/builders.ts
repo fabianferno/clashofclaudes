@@ -3,7 +3,17 @@ import { PALETTE, type ClassTier, type Gear } from '../look';
 import { OUT, bake, ctx, dot, line, roundRect, shade, shadow, type Art } from './draw';
 import { paintedBuilder } from './sprites';
 
-export type Pose = 'idle' | 'walk0' | 'walk1' | 'hammer0' | 'hammer1' | 'cheer' | 'sad';
+export type Pose = 'idle' | 'walk0' | 'walk1' | 'hammer0' | 'hammer1' | 'hammer2' | 'cheer' | 'sad';
+
+/** One hammer stroke, in seconds: raised and held, a quick swing down, a beat on the work, back up. */
+export const STROKE = 0.9;
+const STROKE_STEPS: ReadonlyArray<[until: number, pose: Pose]> = [[0.44, 'hammer0'], [0.52, 'hammer1'], [0.74, 'hammer2'], [0.82, 'hammer1'], [0.9, 'hammer0']];
+
+/** The hammering pose at `time` (s); `phase` (0..1) keeps builders out of step with each other. */
+export function hammerPose(time: number, phase = 0): Pose {
+  const t = (((time / STROKE + phase) % 1) + 1) % 1 * STROKE;
+  return STROKE_STEPS.find(([until]) => t < until)?.[1] ?? 'hammer0';
+}
 
 const CLASS_SCALE = [1.05, 1.25, 1.45];
 const HEAD: Record<Gear, string> = { 0: '#8a5a2b', 1: '#9aa3a8', 2: '#ffcf33', 3: '#8fb3c9', 4: '#fff1a0' };
@@ -62,10 +72,10 @@ function figure(agent: AgentKind, cls: ClassTier, gear: Gear, pose: Pose, face: 
       g.quadraticCurveTo(-6 * face, -42 + sad, 0, -36 + sad); g.fillStyle = '#e8392a'; g.fill(); g.stroke();
     }
   }
-  if (pose === 'hammer0' || pose === 'hammer1') {
+  if (pose === 'hammer0' || pose === 'hammer1' || pose === 'hammer2') {
     g.save();
     g.translate(-6, -17);
-    g.rotate(pose === 'hammer0' ? -1.1 : 0.55);
+    g.rotate(pose === 'hammer0' ? -1.1 : pose === 'hammer1' ? 0.5 : 1.4);
     hammer(gear);
     g.restore();
   } else if (pose === 'cheer') {

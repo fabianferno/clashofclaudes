@@ -8,7 +8,7 @@ import { blockedBy, dropOf, onGround, retarget, routeHome, routeToSite, standTil
 import {
   GROUND_SCALE, drawPathTile, pathLinks, pathTiles, treesOverPaths, drawGroundTree, drawBuilderShadow, drawBoard, drawBubble, drawBuilder, drawCollector, drawGate, drawGround, drawHall, drawHouse, drawPuff, drawRing, drawStatusBar, drawStructure,
   drawWallSeg, drawRuneStone, groundOrigin,
-  type Art, type GroundTree, type Pose,
+  hammerPose, type Art, type GroundTree, type Pose,
 } from './art/entities';
 import { getTexture, holdTextures, prepareArt, releaseRetired, spriteTextures } from './textures';
 import { STATUS_LIFT, statusKey, statusSignature, statusesDue, type StatusTone } from './status';
@@ -292,7 +292,6 @@ export function siteDepth(c: Compound, spots: readonly Tile[]): number {
 }
 /** Px a picked-up builder hangs above the tile it would be set down on. */
 const HELD_LIFT = 18;
-const HAMMER_PERIOD = 0.18;
 const WALK_PERIOD = 0.25;
 /** A cheering builder hops in place: one hop every HOP_PERIOD s, HOP_PX world px high. */
 const HOP_PERIOD = 0.6;
@@ -340,7 +339,7 @@ export function poseOf(w: Walker, site: Site | null, time: number): Pose {
   if (w.mode !== 'atSite' || !site || site.paused) return 'idle';
   switch (site.state) {
     case 'starting':
-    case 'working': return Math.floor(time / HAMMER_PERIOD) % 2 ? 'hammer1' : 'hammer0';
+    case 'working': return hammerPose(time, (hashOf(site.sessionId) % 997) / 997);
     case 'finished': return 'cheer';
     case 'stuck': return 'sad';
     case 'ended': return site.reachedFinished ? 'cheer' : 'sad';

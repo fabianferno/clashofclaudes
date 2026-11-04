@@ -7,7 +7,7 @@ Design record and decisions: `DESIGN.md`. All copy and links: `src/data/site.ts`
 pnpm install
 pnpm build            # needs Node >= 22.23.4 (Astro 7)
 pnpm preview          # serves dist/
-vercel --prod         # project "clashofclaudes", aliased to https://clashofclaudes.vercel.app
+vercel --prod         # project "clashofclaudes", served at https://clashofclaudes.crevn.xyz (and the old clashofclaudes.vercel.app)
 ```
 
 - Images are built from the app's art by `node scripts/assets.mjs [path/to/app]` and committed.

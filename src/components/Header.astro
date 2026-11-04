@@ -14,7 +14,7 @@ const current = (href: string) => (!href.includes('#') && path.startsWith(href) 
       {nav.map((n) => (
         <li>
           <a href={n.href} aria-current={current(n.href)}>
-            <span class="roll"><span>{n.label}</span><span aria-hidden="true">{n.label}</span></span>
+            <span class="roll" data-label={n.label}><span>{n.label}</span></span>
           </a>
         </li>
       ))}

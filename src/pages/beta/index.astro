@@ -2,6 +2,7 @@
 import Base from '../../layouts/Base.astro';
 import Builder from '../../components/Builder.astro';
 import DownloadButton from '../../components/DownloadButton.astro';
+import RisingTent from '../../components/RisingTent.astro';
 import { site } from '../../data/site';
 const toc = [
   ['install', 'Install'],
@@ -13,11 +14,18 @@ const toc = [
 ];
 ---
 <Base title="Beta guide" description="How to install the Clash of Claudes beta on your Mac, set up your first village, send bugs and ideas from inside the app, and what is still rough.">
+  <script slot="head" type="application/ld+json" set:html={JSON.stringify({
+    '@context': 'https://schema.org', '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Clash of Claudes', item: 'https://clashofclaudes.crevn.xyz/' },
+      { '@type': 'ListItem', position: 2, name: 'Beta guide', item: 'https://clashofclaudes.crevn.xyz/beta/' },
+    ],
+  })} />
   <section class="page-hero" aria-labelledby="page-title">
     <h1 class="title" id="page-title" data-split="lines" data-intro>Beta guide</h1>
-    <p class="page-hero__lede" data-reveal="up" data-intro data-delay="0.2">Everything you need to go from download to a working village in a few minutes, and how to tell us what broke.</p>
-    <div class="page-hero__art" aria-hidden="true" data-reveal="place" data-intro data-delay="0.3">
-      <img src="/img/tent-foundation.webp" alt="" width="360" height="330" />
+    <p class="page-hero__lede">Everything you need to go from download to a working village in a few minutes, and how to tell us what broke.</p>
+    <div class="page-hero__art drop-in" aria-hidden="true">
+      <RisingTent agent="opencode" rise={0.45} building loading="eager" />
       <Builder sheet="craftsman-opencode" pose="hammer" />
     </div>
   </section>

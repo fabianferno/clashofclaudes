@@ -3,11 +3,18 @@ import Base from '../../layouts/Base.astro';
 import Builder from '../../components/Builder.astro';
 ---
 <Base title="Privacy" description="What Clash of Claudes does on your Mac: no agent data leaves your machine, your agent configuration is never edited, and status stays on localhost.">
+  <script slot="head" type="application/ld+json" set:html={JSON.stringify({
+    '@context': 'https://schema.org', '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Clash of Claudes', item: 'https://clashofclaudes.crevn.xyz/' },
+      { '@type': 'ListItem', position: 2, name: 'Privacy', item: 'https://clashofclaudes.crevn.xyz/privacy/' },
+    ],
+  })} />
   <section class="page-hero" aria-labelledby="page-title">
     <h1 class="title" id="page-title" data-split="lines" data-intro>What stays on your Mac</h1>
-    <p class="page-hero__lede" data-reveal="up" data-intro data-delay="0.2">Short version: all of it. Here is exactly what the app touches, what it sends, and what it never does.</p>
-    <div class="page-hero__art" aria-hidden="true" data-reveal="place" data-intro data-delay="0.3">
-      <img src="/img/tent-codex.webp" alt="" width="360" height="330" />
+    <p class="page-hero__lede">Short version: all of it. Here is exactly what the app touches, what it sends, and what it never does.</p>
+    <div class="page-hero__art drop-in" aria-hidden="true">
+      <img src="/img/tent-codex.webp" alt="" width="360" height="330" fetchpriority="high" />
       <Builder sheet="craftsman-codex" pose="cheer" />
     </div>
   </section>

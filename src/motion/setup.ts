@@ -3,6 +3,8 @@ import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { ease, onPage, onScroll, setTransition } from '../engine';
 import { startSession } from './session';
+import { startTour } from './tour';
+import { startHero } from './hero';
 import { site } from '../data/site';
 
 export function setupMotion() {
@@ -28,6 +30,8 @@ export function setupMotion() {
   });
 
   startSession();
+  startTour();
+  startHero();
   toc();
   menu();
   version();

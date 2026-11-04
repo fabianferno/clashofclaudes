@@ -6,6 +6,7 @@ import Builder from './Builder.astro';
 ---
 <footer class="foot">
   <TreeLine class="foot__trees" seed={5} />
+  <div class="foot__flies" aria-hidden="true">{Array.from({ length: 14 }, (_, i) => <i style={`--i:${i};top:${12 + ((i * 37) % 70)}%`}></i>)}</div>
   <div class="foot__inner">
     <div class="foot__finale">
       <h2 class="foot__big title">Raise your village.</h2>
@@ -17,10 +18,18 @@ import Builder from './Builder.astro';
         <Builder sheet="craftsman-codex" pose="idle" />
       </div>
     </div>
+    <div class="foot__talk">
+      <p class="foot__talk-q">Ideas, bugs, or just want to say hi?</p>
+      <a class="btn btn--x" href={site.maker.x} rel="me noopener">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M18.9 2H22l-7.6 8.7L23.3 22h-7l-5.5-7.1L4.5 22H1.4l8.1-9.3L1 2h7.2l5 6.6L18.9 2Zm-1.2 18h1.7L7.4 3.9H5.6L17.7 20Z"/></svg>
+        <span>DM @{site.maker.handle} on X</span>
+      </a>
+    </div>
     <div class="foot__cols">
       <nav aria-label="Footer">
         <ul class="foot__links">
           <li><a class="ulink" href="/beta/">Beta guide</a></li>
+          <li><a class="ulink" href="/#faq">FAQ</a></li>
           <li><a class="ulink" href="/privacy/">Privacy</a></li>
           <li><a class="ulink" href={site.releases}>All releases</a></li>
         </ul>
@@ -30,7 +39,10 @@ import Builder from './Builder.astro';
         Anthropic, OpenAI, Google or the OpenCode team. Claude Code, Codex, Antigravity and OpenCode
         are names of their respective owners.
       </p>
-      <p class="foot__copy">© 2026 Clash of Claudes. Made for people who run too many agents.</p>
+      <p class="foot__copy">
+        <span class="foot__built">Built by <a class="ulink" href={site.studio.url}>{site.studio.label}</a></span>
+        <span>© 2026 {site.studio.name}. Made for people who run too many agents.</span>
+      </p>
     </div>
   </div>
 </footer>

@@ -2,6 +2,7 @@
 // The signature: one session, start to finish. Chapters scroll on the left; the sticky stage on
 // the right follows the chapter in view (src/motion/session.ts sets data-state on the stage).
 import Builder from './Builder.astro';
+import RisingTent from './RisingTent.astro';
 import { chapters } from '../data/site';
 ---
 <section class="session" id="session" aria-labelledby="session-title">
@@ -18,8 +19,8 @@ import { chapters } from '../data/site';
           <span class="pill pill--shipped">Shipped today <b data-stage-shipped>1</b></span>
         </div>
         <div class="stage__plot" aria-hidden="true">
-          <img class="stage__tent stage__tent--base" src="/img/tent-foundation.webp" alt="" width="360" height="330" loading="lazy" decoding="async" />
-          <img class="stage__tent stage__tent--done" src="/img/tent-claude.webp" alt="" width="360" height="330" loading="lazy" decoding="async" />
+          <img class="stage__house" src="/img/house-orange.webp" alt="" width="440" height="500" loading="lazy" decoding="async" />
+          <RisingTent agent="claude" rise={1} class="stage__tent" />
           <img class="stage__puff" src="/img/puff.webp" alt="" width="80" height="80" loading="lazy" />
           <div class="stage__unit">
             <img class="stage__bubble" src="/img/bubble-needs.webp" alt="" width="120" height="120" loading="lazy" />

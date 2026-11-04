@@ -35,9 +35,23 @@ for (const [i, name] of ['oak', 'pine', 'elm', 'fir'].entries()) {
 }
 for (const u of ['bubble-needs', 'ribbon', 'puff']) await webp(sharp(`${V}ui/${u}.png`), `${u}.webp`, 90);
 
-// The real app screenshot.
-await webp(sharp(`${APP}/docs/brand/screenshot.jpg`), 'village-1600.webp', 80);
-await webp(sharp(`${APP}/docs/brand/screenshot.jpg`).resize(820), 'village-820.webp', 80);
+// Each workspace's house, at the size the app grows it to after a few shipped sessions.
+const house = { left: 70, top: 100, width: 440, height: 500 };
+for (const c of ['orange', 'purple', 'blue', 'teal']) await webp(sharp(`${V}buildings/house-stage-2-${c}.png`).extract(house), `house-${c}.webp`);
+
+// Real app screenshots, staged in a throwaway dev data folder (sample workspaces, builders and
+// sessions), captured with the app's own window snapshot. Pass the folder holding village.png
+// and kanban.png as the second argument; without it the committed images stay as they are.
+const SHOTS = process.argv[3];
+if (SHOTS) {
+  const v = sharp(`${SHOTS}/village.png`);
+  const { width, height } = await v.metadata();
+  const box = { left: 0, top: 0, width, height: Math.min(height, Math.round(width / 1.6)) };
+  for (const w of [2400, 1600, 820]) await webp(sharp(`${SHOTS}/village.png`).extract(box).resize(w), `village-${w}.webp`, 80);
+  const k = await sharp(`${SHOTS}/kanban.png`).metadata();
+  const kbox = { left: 0, top: 0, width: k.width, height: Math.round(k.height * 0.36) };
+  for (const w of [2000, 820]) await webp(sharp(`${SHOTS}/kanban.png`).extract(kbox).resize(w), `kanban-${w}.webp`, 82);
+}
 
 // App icon (1024 with transparent margins; the artwork fills 100..924).
 const icon = `${APP}/docs/brand/app-icon.png`;

@@ -1,53 +1,64 @@
 ---
-// The hero plot: the Town Hall, four agent tents and their builders, each in a different state.
+// The hero plot, drawn like the app draws a village today: the Town Hall at the crossroads and a
+// compound per workspace (its house, the agent's tent, its builder), each in a different state.
 // Positions are percentages of the scene box (anchor = the sprite's feet), so it scales as one.
 import Builder from './Builder.astro';
+import RisingTent from './RisingTent.astro';
 type Item = { x: number; y: number; w: number };
 const trees: (Item & { kind: string })[] = [
-  { kind: 'pine', x: 8, y: 30, w: 9 }, { kind: 'fir', x: 15, y: 22, w: 7 }, { kind: 'oak', x: 90, y: 27, w: 11 },
-  { kind: 'pine', x: 84, y: 19, w: 7 }, { kind: 'elm', x: 50, y: 13, w: 12 }, { kind: 'fir', x: 61, y: 12, w: 6 },
-  { kind: 'oak', x: 6, y: 66, w: 10 }, { kind: 'pine', x: 95, y: 64, w: 8 }, { kind: 'fir', x: 40, y: 12, w: 6 },
-  { kind: 'pine', x: 50, y: 99, w: 8 }, { kind: 'fir', x: 58, y: 100, w: 6 },
+  { kind: 'pine', x: 7, y: 33, w: 8 }, { kind: 'fir', x: 14, y: 25, w: 6 }, { kind: 'oak', x: 92, y: 30, w: 10 },
+  { kind: 'pine', x: 85, y: 21, w: 7 }, { kind: 'elm', x: 50, y: 15, w: 11 }, { kind: 'fir', x: 61, y: 14, w: 6 },
+  { kind: 'oak', x: 5, y: 68, w: 9 }, { kind: 'pine', x: 96, y: 66, w: 7 }, { kind: 'fir', x: 39, y: 14, w: 6 },
+  { kind: 'pine', x: 47, y: 101, w: 7 }, { kind: 'fir', x: 55, y: 102, w: 5 },
 ];
 const z = (y: number) => Math.round(y * 10);
+const at = (x: number, y: number, w: number) => `--x:${x}%;--y:${y}%;--w:${w}%;z-index:${z(y)}`;
 ---
-<div class="scene" aria-hidden="true">
+<div class="scene" aria-hidden="true" data-hero-scene>
   <div class="scene__ground"></div>
+  <div class="scene__clouds"><span></span><span></span></div>
   <div class="scene__paths"></div>
+  <span class="scene__plot" style="--x:28%;--y:44%"></span>
+  <span class="scene__plot" style="--x:72%;--y:44%"></span>
+  <span class="scene__plot" style="--x:28%;--y:82%"></span>
+  <span class="scene__plot" style="--x:72%;--y:82%"></span>
   {trees.map((t, i) => (
     <img class="scene__item" src={`/img/tree-${t.kind}.webp`} alt="" width="200" height="260" loading="eager" decoding="async"
-      style={`--x:${t.x}%;--y:${t.y}%;--w:${t.w}%;z-index:${z(t.y)}`} data-reveal="place" data-intro data-delay={(0.05 + i * 0.03).toFixed(2)} />
+      style={at(t.x, t.y, t.w)} data-reveal="place" data-intro data-delay={(0.05 + i * 0.03).toFixed(2)} />
   ))}
   <img class="scene__item" src="/img/hall.webp" alt="" width="500" height="570" fetchpriority="high"
-    style={`--x:50%;--y:60%;--w:27%;z-index:${z(60)}`} data-reveal="place" data-intro data-delay="0.15" />
+    style={at(50, 63, 26)} data-reveal="place" data-intro data-delay="0.15" />
 
-  <!-- Claude Code: finished -->
-  <img class="scene__item" src="/img/tent-claude.webp" alt="" width="360" height="330" style={`--x:24%;--y:44%;--w:23%;z-index:${z(44)}`} data-reveal="place" data-intro data-delay="0.3" />
-  <div class="scene__unit" style={`--x:35%;--y:49%;--w:10.5%;z-index:${z(49)}`} data-reveal="place" data-intro data-delay="0.7">
+  <!-- Claude Code workspace: shipped -->
+  <img class="scene__item" src="/img/house-orange.webp" alt="" width="440" height="500" style={at(21, 43, 17)} data-reveal="place" data-intro data-delay="0.26" />
+  <img class="scene__item" src="/img/tent-claude.webp" alt="" width="360" height="330" style={at(35, 50, 14)} data-reveal="place" data-intro data-delay="0.34" />
+  <div class="scene__unit" style={at(29, 53, 8.5)} data-reveal="place" data-intro data-delay="0.7">
     <img class="scene__ribbon" src="/img/ribbon.webp" alt="" width="140" height="140" />
     <Builder sheet="master-claude" pose="cheer" />
     <span class="plate plate--done">Finished</span>
   </div>
 
-  <!-- Codex: working -->
-  <img class="scene__item" src="/img/tent-foundation.webp" alt="" width="360" height="330" style={`--x:76%;--y:42%;--w:23%;z-index:${z(42)}`} data-reveal="place" data-intro data-delay="0.38" />
-  <div class="scene__unit" style={`--x:67%;--y:45%;--w:10%;z-index:${z(44.5)}`} data-reveal="place" data-intro data-delay="0.78">
+  <!-- Codex workspace: working, the tent climbing as it hammers -->
+  <img class="scene__item" src="/img/house-purple.webp" alt="" width="440" height="500" style={at(79, 43, 17)} data-reveal="place" data-intro data-delay="0.3" />
+  <div class="scene__item" style={at(65, 50, 14)} data-reveal="place" data-intro data-delay="0.38"><RisingTent agent="codex" rise={0.4} building loading="eager" /></div>
+  <div class="scene__unit" style={at(72, 54, 8.5)} data-reveal="place" data-intro data-delay="0.78">
     <Builder sheet="craftsman-codex" pose="hammer" />
     <span class="plate plate--work">Working</span>
   </div>
 
-  <!-- Antigravity: needs you -->
-  <img class="scene__item" src="/img/tent-foundation.webp" alt="" width="360" height="330" style={`--x:24%;--y:83%;--w:23%;z-index:${z(83)}`} data-reveal="place" data-intro data-delay="0.46" />
-  <div class="scene__unit" style={`--x:34%;--y:86%;--w:9.5%;z-index:${z(86)}`} data-reveal="place" data-intro data-delay="0.86">
+  <!-- Antigravity workspace: halfway up, waiting on a permission prompt -->
+  <img class="scene__item" src="/img/house-blue.webp" alt="" width="440" height="500" style={at(20, 80, 17)} data-reveal="place" data-intro data-delay="0.42" />
+  <div class="scene__item" style={at(35, 88, 14)} data-reveal="place" data-intro data-delay="0.46"><RisingTent agent="antigravity" rise={0.55} loading="eager" /></div>
+  <div class="scene__unit" style={at(27, 92, 8)} data-reveal="place" data-intro data-delay="0.86">
     <img class="scene__bubble" src="/img/bubble-needs.webp" alt="" width="120" height="120" />
     <Builder sheet="apprentice-antigravity" pose="idle" />
     <span class="plate plate--needs">Needs you</span>
   </div>
 
-  <!-- OpenCode: finished earlier, builder strolling back -->
-  <img class="scene__item" src="/img/tent-opencode.webp" alt="" width="360" height="330" style={`--x:76%;--y:84%;--w:23%;z-index:${z(84)}`} data-reveal="place" data-intro data-delay="0.54" />
-  <div class="scene__unit" style={`--x:63%;--y:80%;--w:10%;z-index:${z(80)}`} data-reveal="place" data-intro data-delay="0.94">
+  <!-- OpenCode workspace: finished earlier, its builder strolling back to the hall -->
+  <img class="scene__item" src="/img/house-teal.webp" alt="" width="440" height="500" style={at(80, 80, 17)} data-reveal="place" data-intro data-delay="0.5" />
+  <img class="scene__item" src="/img/tent-opencode.webp" alt="" width="360" height="330" style={at(66, 88, 14)} data-reveal="place" data-intro data-delay="0.54" />
+  <div class="scene__unit scene__walker" style={at(60, 77, 8)} data-reveal="place" data-intro data-delay="0.94">
     <Builder sheet="craftsman-opencode" pose="walk" />
-    <span class="plate plate--idle">Idle</span>
   </div>
 </div>

@@ -7,8 +7,8 @@ import { isMobile, onPage, prefersReducedMotion } from '../engine';
 
 type State = 'working' | 'needs' | 'allowed' | 'finished';
 const captions: Record<State, string> = {
-  working: 'The builder hammers at its foundation: the agent is working.',
-  needs: 'A red “!” over the builder: the agent is waiting on a permission prompt.',
+  working: 'The builder hammers and the tent starts going up: the agent is working.',
+  needs: 'A red “!” over the builder and the tent stops half raised: the agent is waiting on a permission prompt.',
   allowed: 'Allowed from the village. The builder picks the hammer back up.',
   finished: 'The tent stands and the builder cheers: the session finished.',
 };

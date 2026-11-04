@@ -5,18 +5,22 @@ import SessionStage from '../components/SessionStage.astro';
 import DownloadButton from '../components/DownloadButton.astro';
 import Builder from '../components/Builder.astro';
 import TreeLine from '../components/TreeLine.astro';
-import { agents, privacy, site, villageNotes } from '../data/site';
+import { agents, faq, privacy, site, tour, villageNotes } from '../data/site';
 ---
-<Base>
+<Base description="A Mac app that runs Claude Code, Codex, Antigravity CLI and OpenCode as builders in a village: see who is working, who needs you, who shipped.">
+  <script slot="head" type="application/ld+json" set:html={JSON.stringify({
+    '@context': 'https://schema.org', '@type': 'FAQPage',
+    mainEntity: faq.map((f) => ({ '@type': 'Question', name: f.q, acceptedAnswer: { '@type': 'Answer', text: f.a } })),
+  })} />
   <section class="hero" aria-labelledby="hero-title">
     <div class="hero__copy">
       <h1 class="title hero__title" id="hero-title" data-split="lines" data-intro>Run all your coding agents from one village.</h1>
-      <p class="hero__lede" data-reveal="up" data-intro data-delay="0.25">
+      <p class="hero__lede">
         Claude Code, Codex, Antigravity CLI and OpenCode sessions become builders in a little
         isometric town on your Mac. See who is working, who needs you and who shipped, without
         clicking through terminal tabs.
       </p>
-      <div class="hero__cta" data-reveal="up" data-intro data-delay="0.4">
+      <div class="hero__cta" data-reveal="up" data-intro data-delay="0.15">
         <DownloadButton requirements />
         <p class="hero__more"><a class="ulink" href="/beta/">How the beta works</a></p>
       </div>
@@ -81,23 +85,58 @@ import { agents, privacy, site, villageNotes } from '../data/site';
     </div>
   </section>
 
-  <section class="village" aria-labelledby="village-title">
-    <figure class="village__shot" data-reveal="clip">
-      <picture>
-        <source media="(max-width: 860px)" srcset="/img/village-820.webp" />
-        <img src="/img/village-1600.webp" width="1600" height="960" loading="lazy" decoding="async"
-          alt="The Clash of Claudes window: five walled compounds around a red-roofed Town Hall in a clearing ringed by pine forest, a roster of six builders along the bottom, and Builders busy and Shipped today counters at the top right." />
-      </picture>
-      <figcaption>A real village: five workspaces, six builders resting between tasks.</figcaption>
-    </figure>
-    <div class="village__notes">
-      <h2 class="title village__title" id="village-title" data-split="lines">A whole town of work, at a glance</h2>
-      <ul>
+  <section class="tour" id="app" aria-labelledby="tour-title" data-tour>
+    <div class="tour__pin">
+      <div class="tour__copy">
+        <h2 class="title tour__title" id="tour-title" data-split="lines">The real app, up close</h2>
+        <ol class="tour__stops">
+          {tour.map((t, i) => (
+            <li class="tour__stop" data-stop={i} data-x={t.x} data-y={t.y} data-zoom={t.zoom}>
+              <h3>{t.title}</h3>
+              <p>{t.text}</p>
+            </li>
+          ))}
+        </ol>
+      </div>
+      <figure class="tour__frame">
+        <div class="tour__window">
+          <div class="tour__bar" aria-hidden="true"><i></i><i></i><i></i><span>Clash of Claudes</span></div>
+          <div class="tour__view">
+            <div class="tour__cam" data-tour-cam>
+              <picture>
+                <source media="(max-width: 860px)" srcset="/img/village-1600.webp" />
+                <img src="/img/village-2400.webp" srcset="/img/village-1600.webp 1600w, /img/village-2400.webp 2400w" sizes="(max-width: 860px) 100vw, 62vw"
+                  width="2400" height="1500" loading="lazy" decoding="async"
+                  alt="The Clash of Claudes window: four walled workspaces around Fabian's Town Hall, each with a house, agent tents and builders. One builder has a red Waiting for you plate, the top left counts 4 building, 1 needs you and 2 ready to review, usage bars for Claude, Codex and Antigravity sit top right, and a roster of eight builders runs along the bottom." />
+              </picture>
+              {tour.slice(0, -1).map((t, i) => (
+                <span class="tour__ring" data-ring={i} style={`--x:${t.x * 100}%;--y:${t.y * 100}%`} aria-hidden="true"></span>
+              ))}
+            </div>
+          </div>
+        </div>
+        <figcaption>The app running with a sample village: four workspaces, eight builders, real UI.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="board" aria-labelledby="board-title">
+    <div class="board__copy">
+      <h2 class="title board__title" id="board-title" data-split="lines">A Kanban for every workspace</h2>
+      <p class="board__lede">Write tasks in To Do and start one when a builder is free. Sessions move across Active, Needs You and Finished on their own, and a permission prompt can be allowed or denied right on its card.</p>
+      <ul class="board__notes">
         {villageNotes.map((n) => (
           <li data-reveal="up"><h3>{n.title}</h3><p>{n.text}</p></li>
         ))}
       </ul>
     </div>
+    <figure class="board__shot" data-board>
+      <picture>
+        <source media="(max-width: 860px)" srcset="/img/kanban-820.webp" />
+        <img src="/img/kanban-2000.webp" width="2000" height="451" loading="lazy" decoding="async"
+          alt="The payments-api Kanban: two to-dos waiting for a free builder, Gus on Codex rate-limiting the webhook route in Active, Cyra on Claude Code asking to run pnpm prisma migrate deploy with Allow and Deny buttons in Needs You, and Hana's finished Stripe webhook retry in Finished." />
+      </picture>
+    </figure>
   </section>
 
   <section class="privacy" aria-labelledby="privacy-title">
@@ -110,6 +149,21 @@ import { agents, privacy, site, villageNotes } from '../data/site';
         <li data-reveal="up"><h3>{p.title}</h3><p>{p.text}</p></li>
       ))}
     </ul>
+  </section>
+
+  <section class="faq" id="faq" aria-labelledby="faq-title">
+    <div class="faq__head">
+      <h2 class="title faq__title" id="faq-title" data-split="lines">Questions, answered</h2>
+      <p>Still curious? <a class="ulink" href={site.maker.x} rel="me noopener">DM @{site.maker.handle} on X</a>.</p>
+    </div>
+    <div class="faq__list">
+      {faq.map((f, i) => (
+        <details class="faq__item" data-reveal="up" data-delay={(i * 0.04).toFixed(2)} open={i === 0}>
+          <summary><h3>{f.q}</h3><span class="faq__mark" aria-hidden="true"></span></summary>
+          <p>{f.a}</p>
+        </details>
+      ))}
+    </div>
   </section>
 
   <section class="beta" id="beta" aria-labelledby="beta-title">
@@ -135,7 +189,7 @@ import { agents, privacy, site, villageNotes } from '../data/site';
       <p>New beta builds install themselves, so you are always testing the latest one.</p>
       <h3>You will need</h3>
       <ul class="needs">
-        <li>{site.requirements}.</li>
+        <li>An Apple Silicon or Intel Mac on macOS 13 or newer.</li>
         <li>At least one agent CLI installed and signed in.</li>
       </ul>
     </aside>

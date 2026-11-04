@@ -194,3 +194,39 @@ No loader: a product page earns the craft, not the theatre.
   page only, cached for an hour in localStorage. During QA the test machine's IP hit GitHub's
   unauthenticated rate limit (60/h), so the crawl logged 403s in the console; real visitors make
   at most one call an hour. Decision: keep the refresh so the label is never stale after a release.
+
+## Revision 2 (2026-11-04, owner request)
+
+The owner asked for: the domain clashofclaudes.crevn.xyz, no "white patches" in the art, current
+screenshots, more effects, "Built by crevn.xyz" and an X contact, and proper SEO and AEO.
+
+- **Domain:** `site.url` and `astro.config.mjs` now use https://clashofclaudes.crevn.xyz (canonical,
+  OG, sitemap, robots, JSON-LD). The vercel.app alias still serves the site. Redirect it to the new
+  domain only after the Cloudflare DNS record is live.
+- **White patches:** the sprites themselves had no halos, checked on meadow green in Chromium and
+  WebKit. What read as white patches were the bare pale foundation tarps: two in the hero, a big
+  one on the stage, one on the beta page. They are now `RisingTent.astro`, the finished tent
+  revealed from the ground up (`--rise`). The stage tent climbs with the chapters (0.32, 0.55,
+  0.78, 1). The 404 page keeps its empty plot on purpose ("This plot is still empty").
+- **Current art:** the hero now draws a compound per workspace, as the app does today: the
+  workspace's house (`house-*.webp` from `house-stage-2-<colour>`), the agent's tent and its
+  builder, on a patch of bare earth.
+- **Screenshots:** `village-*.webp` and `kanban-*.webp` are the real app (dev build, throwaway
+  data folder, staged sample workspaces and sessions), captured with the app's own window snapshot
+  with the builder portraits composited in. `scripts/assets.mjs <app> <shots dir>` rebuilds them.
+- **New signature (two):** "The real app, up close". The section pins while a camera flies over
+  the real window, stopping on five points of interest (`tour` in site.ts, `src/motion/tour.ts`),
+  with a ring pulsing on each. Under reduced motion it shows the full window and all stops as a
+  list.
+- **Effects:** cloud shadows drift over the hero meadow; the hero village leans toward the pointer
+  in depth layers; a builder strolls the path; tents rise while builders hammer; the Kanban shot
+  stands up from the table on scroll; clicks kick up a puff of dust; fireflies drift in the
+  footer forest. All of it is off under reduced motion.
+- **Credits and contact:** the footer has "Built by crevn.xyz" and a "DM @fabianferno on X" button.
+  The FAQ points there too. This replaces the earlier "no socials" assumption.
+- **SEO and AEO:** one JSON-LD graph per page (Organization Crevn, Person Fabian Ferno,
+  WebSite, SoftwareApplication with featureList and softwareVersion), FAQPage on home (nine
+  questions people actually search, answered in full on the page), BreadcrumbList on inner pages,
+  `twitter:site` and `twitter:creator`, and `/llms.txt` generated from the content file. robots.txt
+  allows every crawler. The hero lede and the doc ledes render without waiting for JS, so the
+  throttled phone LCP is 0.7 s on home (was 3.75 s).

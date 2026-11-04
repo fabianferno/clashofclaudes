@@ -49,8 +49,8 @@ export function drawGround(
   const { w, h } = groundBakeSize(b);
   return bake(w, h, 0, 0, () => {
     const g = ctx();
-    g.fillStyle = '#5aa832';
-    g.fillRect(o.x, o.y, w, h);
+    // No solid fill: the bake is a rectangle, but its grass detail and forest cover only the village's
+    // diamond, so a fill left flat green corners over the endless meadow drawn behind it (scene.ts).
     for (const t of blobs) {
       const p = iso(t.x, t.y);
       const rgb = t.light ? '120,196,64' : '62,130,34';

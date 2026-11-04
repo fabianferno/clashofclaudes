@@ -21,13 +21,13 @@ v1 is Mac only (macOS 13 or later, Apple Silicon and Intel). Free and open sourc
 
 ## Install
 
-1. Download the latest `Clash of Claudes_<version>_universal.dmg` from the project's Releases page.
+1. Download **[Clash-of-Claudes.dmg](https://github.com/fabianferno/clashofclaudes-releases/releases/latest/download/Clash-of-Claudes.dmg)** (the newest release, from the public [releases repo](https://github.com/fabianferno/clashofclaudes-releases/releases)).
 2. Open the DMG and drag **Clash of Claudes** onto **Applications**.
-3. Launch it from Applications.
+3. Launch it from Applications. Releases are signed and notarized, and the app updates itself.
 
-Signed and notarized releases open normally and need none of this. An unsigned build (made from source without Apple credentials) is not notarized, so macOS blocks it. Try to open it once, then go to **System Settings > Privacy & Security**, scroll to the blocked-app message and click **Open Anyway**. (Right-click > Open no longer reliably works on recent macOS.) For technical users, the fallback is `xattr -dr com.apple.quarantine "/Applications/Clash of Claudes.app"`.
+An unsigned build (made from source without Apple credentials) is not notarized, so macOS blocks it. Try to open it once, then go to **System Settings > Privacy & Security** and click **Open Anyway**.
 
-To build it yourself, see [docs/release.md](docs/release.md).
+To ship a release, see [docs/release.md](docs/release.md).
 
 ## First run
 
@@ -64,7 +64,7 @@ When the app is in the background, it shows a macOS notification when a session 
 
 - The app makes **no network connections** except one optional check for updates, which you can turn off in Settings (the gear at the top right, or ⌘,), and the bug reports you choose to send (Help › Report a Bug…). A report holds what you type, app and system details (app, macOS and agent versions, counts of workspaces and sessions, and the last error the app showed, if any; never workspace names or tasks) and, only if you tick it, a screenshot. You see all of it before sending. Builds whose update key or GitHub repository is not configured (the source ships placeholders for both) never check at all.
 - Agent output, prompts, file names and folders never leave your machine.
-- The app **never edits your agent configuration**: nothing under `~/.claude`, `~/.codex`, `~/.gemini`, `~/.config/opencode`, or a project's `.claude`, `.codex`, `.gemini` or `.opencode`. To get status events it hands each agent a private per-session settings file stored in the app's own data folder (`~/Library/Application Support/dev.clashofclaudes.app/sessions/`), and deletes it when the session closes.
+- The app **never edits your agent configuration**: nothing under `~/.claude`, `~/.codex`, `~/.gemini`, `~/.config/opencode`, or a project's `.claude`, `.codex`, `.gemini` or `.opencode`. To get status events it hands each agent a private per-session settings file stored in the app's own data folder (`~/Library/Application Support/dev.clashofclaudes.desktop/sessions/`), and deletes it when the session closes.
 - Status events arrive on a localhost-only server protected by a random per-session token.
 - Quitting the app stops your agent sessions (it asks first if any are running). They come back paused on the next launch, where they stood: **Resume** continues a Claude Code, Codex or Antigravity session on its own conversation (`claude --resume`, `codex resume`, `agy --conversation`); OpenCode, custom agents and terminals start fresh in the same folder. To find an Antigravity session's conversation the app reads (never writes) `~/.gemini/antigravity-cli/history.jsonl`.
 - macOS may ask whether Clash of Claudes can read your Downloads, Desktop or Documents folder. That is an agent or terminal running inside the app (macOS asks on behalf of the app that started it), the same prompt iTerm or VS Code shows the first time. Allow it for folders that hold your workspaces; saying no elsewhere is safe. Change it later in **System Settings > Privacy & Security > Files & Folders**.

@@ -52,7 +52,7 @@ print(t)'; }
   python3 -c "print('cpu time: %.2f s in %.1f s = %.2f%% of one core' % ($c1 - $c0, $t1 - $t0, 100 * ($c1 - $c0) / ($t1 - $t0)))"
   ;;
 cold)
-  f="$HOME/Library/Application Support/dev.clashofclaudes.app/driver.json"
+  f="$HOME/Library/Application Support/dev.clashofclaudes.desktop/driver.json"
   bin="$here/../src-tauri/target/debug/clash-of-claudes"
   rm -f "$f"
   t0=$(python3 -c 'import time; print(time.time())')

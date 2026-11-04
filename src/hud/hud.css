@@ -119,4 +119,7 @@ img.hud-stat-ico { width: 48px; height: 48px; margin: 0 -4px; filter: none; }
 .update-toast { position: fixed; left: 64px; bottom: 16px; z-index: 30; display: flex; align-items: center; gap: 8px;
   padding: 6px 8px 6px 12px; border-radius: 12px; color: #fff; background: linear-gradient(#5b4a3a, #3b2c20); border: 2px solid #1d130b; box-shadow: 0 3px 0 #1d130b; }
 .update-toast .ol { text-shadow: -1px -1px 0 #1d130b, 1px -1px 0 #1d130b, -1px 1px 0 #1d130b, 1px 1px 0 #1d130b; font-family: 'Lilita One', system-ui, sans-serif; }
+.update-notes-btn { background: transparent; border: 0; padding: 0 2px; color: #ffe08a; font: 800 12px system-ui; text-decoration: underline; cursor: pointer; }
+.update-notes { position: absolute; left: 0; bottom: calc(100% + 8px); width: min(360px, calc(100vw - 96px)); max-height: 220px; overflow: auto;
+  white-space: pre-wrap; padding: 10px 12px; border-radius: 12px; background: #fff8e8; color: #2b2018; border: 2px solid #1d130b; box-shadow: 0 3px 0 #1d130b; font: 600 12px/1.5 system-ui; }
 .update-toast .update-x { background: transparent; border: 0; color: #fff; padding: 0 6px; font-size: 18px; line-height: 1; }

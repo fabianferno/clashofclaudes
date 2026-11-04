@@ -44,8 +44,8 @@ test('no credentials: unsigned dry run succeeds', () => {
   assert.match(r.stdout, /UNSIGNED BUILD/);
 });
 
-test('updater key with the shipped placeholders is refused', () => {
-  const r = dryRun({ TAURI_SIGNING_PRIVATE_KEY: 'fake-key-secret' });
+test('updater key with the placeholders is refused', () => {
+  const r = dryRun({ TAURI_SIGNING_PRIVATE_KEY: 'fake-key-secret' }, configured({ pubkey: 'REPLACE_WITH_UPDATER_PUBLIC_KEY', endpoints: ['https://github.com/OWNER/REPO/releases/latest/download/latest.json'] }));
   assert.notEqual(r.status, 0);
   assert.match(r.stderr, /pubkey is still the placeholder/);
   assert.match(r.stderr, /OWNER\/REPO/);
@@ -74,4 +74,12 @@ test('signing without the updater key warns that the build never auto-updates', 
   assert.match(r.stdout, /MODE: signed \+ notarized/);
   assert.match(r.stderr, /this build will never auto-update/);
   assert.doesNotMatch(r.stdout + r.stderr, /pw-secret/);
+});
+
+test('a keychain notary profile signs and notarizes the DMG after the build', () => {
+  const r = dryRun({ APPLE_SIGNING_IDENTITY: 'Developer ID Application: X (T)', NOTARY_PROFILE: 'team' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /notarization credentials: keychain-profile/);
+  assert.match(r.stdout, /MODE: signed \+ notarized/);
+  assert.match(r.stdout, /notarytool submit .*--keychain-profile/);
 });

@@ -14,7 +14,8 @@
     "app": "bash scripts/dev.sh",
     "app:install": "bash scripts/install-local.sh",
     "release": "bash scripts/release.sh",
-    "release:dry": "bash scripts/release.sh --dry-run"
+    "release:dry": "bash scripts/release.sh --dry-run",
+    "ship": "bash scripts/publish.sh"
   },
   "dependencies": {
     "@fontsource/lilita-one": "^5.3.0",

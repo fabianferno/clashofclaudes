@@ -97,12 +97,17 @@ mod tests {
         assert_eq!(gate(false, "RWQrealkey", &[REAL[0], shipped], true), Err("disabled"));
         assert_eq!(gate(false, "RWQrealkey", &[], true), Err("disabled"), "no endpoint");
         assert_eq!(gate(false, "RWQrealkey", &[" "], true), Err("disabled"));
-        // The shipped config really is the placeholder pair.
+        assert_eq!(gate(false, PLACEHOLDER_PUBKEY, REAL, true), Err("disabled"), "nor a real endpoint alone");
+    }
+
+    #[test]
+    fn the_shipped_config_updates_from_the_public_releases_repo() {
         let conf: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
         let eps: Vec<&str> = conf["plugins"]["updater"]["endpoints"].as_array().unwrap().iter().map(|v| v.as_str().unwrap()).collect();
         let key = conf["plugins"]["updater"]["pubkey"].as_str().unwrap();
-        assert_eq!(gate(false, key, &eps, true), Err("disabled"));
-        assert_eq!(gate(false, "RWQrealkey", &eps, true), Err("disabled"));
+        assert_eq!(eps, ["https://github.com/fabianferno/clashofclaudes-releases/releases/latest/download/latest.json"]);
+        assert_eq!(gate(false, key, &eps, true), Ok(()));
+        assert_eq!(gate(true, key, &eps, true), Err("disabled"), "never from a dev build");
     }
 
     #[test]

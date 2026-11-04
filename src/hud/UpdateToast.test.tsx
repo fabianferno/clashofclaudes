@@ -9,7 +9,8 @@ const ipc = vi.hoisted(() => ({
 }));
 let progress: (pct: number | null) => void = () => {};
 vi.mock('../api/ipc', () => ({ ipc }));
-import UpdateToast, { FIRST_CHECK_MS, CHECK_EVERY_MS } from './UpdateToast';
+vi.mock('@tauri-apps/api/app', () => ({ getVersion: vi.fn().mockResolvedValue('1.2.0') }));
+import UpdateToast, { FIRST_CHECK_MS, CHECK_EVERY_MS, INSTALLING_KEY } from './UpdateToast';
 import { useApp } from '../state/store';
 
 beforeEach(() => {
@@ -18,7 +19,8 @@ beforeEach(() => {
   ipc.installUpdate.mockReset().mockResolvedValue(undefined);
   ipc.restartForUpdate.mockReset().mockResolvedValue(undefined);
   ipc.onUpdateProgress.mockReset().mockImplementation((cb: (pct: number | null) => void) => { progress = cb; return Promise.resolve(() => {}); });
-  act(() => { useApp.getState().setError(null); useApp.getState().setUpdateAvailable(false); });
+  act(() => { useApp.getState().setError(null); useApp.getState().setUpdateAvailable(null); });
+  localStorage.clear();
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
@@ -48,7 +50,7 @@ test('toast_restart_runs_quit_guard: click installs via the backend (which asks 
   render(<UpdateToast />);
   await act(async () => { vi.advanceTimersByTime(FIRST_CHECK_MS); });
   await flush();
-  expect(screen.getByTestId('update-toast').textContent).toContain('Update available — Restart to update');
+  expect(screen.getByTestId('update-toast').textContent).toContain('Version 1.2.0 is out — Restart to update');
   fireEvent.click(screen.getByTestId('update-restart'));
   expect(ipc.installUpdate).toHaveBeenCalledTimes(1);
 });
@@ -103,4 +105,34 @@ test('a failed install re-enables the button', async () => {
   expect(screen.getByTestId('update-toast').textContent).toContain('Restart to update');
   fireEvent.click(screen.getByTestId('update-restart'));
   expect(ipc.installUpdate).toHaveBeenCalledTimes(2);
+});
+
+test('the toast names the version and folds out its notes; installing leaves a note for after the restart', async () => {
+  ipc.checkForUpdate.mockResolvedValue({ available: true, version: '1.2.0', notes: '- Feature requests\n- Faster boards' });
+  ipc.installUpdate.mockReturnValue(new Promise<void>(() => {}));
+  render(<UpdateToast />);
+  await act(async () => { vi.advanceTimersByTime(FIRST_CHECK_MS); });
+  await flush();
+  expect(screen.queryByTestId('update-notes')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: "What's new" }));
+  expect(screen.getByTestId('update-notes').textContent).toBe('- Feature requests\n- Faster boards');
+  fireEvent.click(screen.getByTestId('update-restart'));
+  expect(JSON.parse(localStorage.getItem(INSTALLING_KEY)!)).toEqual({ version: '1.2.0', notes: '- Feature requests\n- Faster boards' });
+});
+
+test('after the restart it says once what was installed, and nothing when the install never landed', async () => {
+  localStorage.setItem(INSTALLING_KEY, JSON.stringify({ version: '1.2.0', notes: '- Feature requests' }));
+  render(<UpdateToast />);
+  await flush();
+  expect(screen.getByTestId('update-done').textContent).toContain('Updated to 1.2.0');
+  expect(localStorage.getItem(INSTALLING_KEY)).toBeNull();
+  fireEvent.click(screen.getByLabelText('Dismiss update notice'));
+  expect(screen.queryByTestId('update-done')).toBeNull();
+
+  cleanup();
+  localStorage.setItem(INSTALLING_KEY, JSON.stringify({ version: '9.9.9', notes: null }));
+  render(<UpdateToast />);
+  await flush();
+  expect(screen.queryByTestId('update-done')).toBeNull();
+  expect(localStorage.getItem(INSTALLING_KEY)).toBeNull();
 });

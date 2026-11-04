@@ -7,7 +7,7 @@ export const site = {
   tagline: 'Run all your coding agents from one village',
   url: 'https://clashofclaudes.vercel.app',
   description:
-    'A macOS app that turns your Claude Code, Codex, Antigravity CLI and OpenCode sessions into builders in a cozy isometric village. See who is working, who needs you, and who shipped.',
+    'A Mac app that turns Claude Code, Codex, Antigravity CLI and OpenCode sessions into builders in a cozy village. See who is working, who needs you, who shipped.',
   download: 'https://github.com/fabianferno/clashofclaudes-releases/releases/latest/download/Clash-of-Claudes.dmg',
   releases: 'https://github.com/fabianferno/clashofclaudes-releases/releases',
   latestApi: 'https://api.github.com/repos/fabianferno/clashofclaudes-releases/releases/latest',

@@ -1,6 +1,6 @@
 import type { AgentKind } from '../api/types';
 
-export type ClassTier = 0 | 1 | 2; // Apprentice, Craftsman, Master
+export type ClassTier = 0 | 1 | 2 | 3; // Apprentice, Craftsman, Master, Legend
 export type Gear = 0 | 1 | 2 | 3 | 4; // wooden, iron, gold, runed, enchanted
 
 export const PALETTE: Record<
@@ -27,7 +27,7 @@ export const ELIXIR: Record<'claude' | 'codex' | 'antigravity', { deep: string; 
 
 /** Model name (lowercase) to builder class; single-model or unknown agents are Craftsman. */
 export const CLASS_MAP: Record<AgentKind, Record<string, ClassTier>> = {
-  claude: { haiku: 0, sonnet: 1, opus: 2, fable: 2 },
+  claude: { haiku: 0, sonnet: 1, opus: 2, fable: 3 },
   codex: {},
   // Model ids such as "gemini-3.8-flash-medium" or "claude-opus-5-5-high" (matched by substring).
   antigravity: { flash: 0, sonnet: 1, argon: 2, opus: 2 },
@@ -56,7 +56,7 @@ export function stars(g: Gear): number {
   return Math.min(g + 1, 4);
 }
 
-export const CLASS_NAMES = ['Apprentice', 'Craftsman', 'Master'] as const;
+export const CLASS_NAMES = ['Apprentice', 'Craftsman', 'Master', 'Legend'] as const;
 export const GEAR_NAMES = [
   'Wooden hammer',
   'Iron hammer',

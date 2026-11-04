@@ -282,9 +282,9 @@ interface BuilderView {
   held: Tile | null;
 }
 
-const HEAD_HEIGHT: Record<ClassTier, number> = { 0: 56, 1: 64, 2: 80 };
+const HEAD_HEIGHT: Record<ClassTier, number> = { 0: 56, 1: 64, 2: 80, 3: 88 };
 /** A builder's shadow by class, as the figures grow with it. */
-const SHADOW_SIZE: Record<ClassTier, number> = { 0: 0.9, 1: 1, 2: 1.15 };
+const SHADOW_SIZE: Record<ClassTier, number> = { 0: 0.9, 1: 1, 2: 1.15, 3: 1.25 };
 
 /** The depth a builder at work in compound `c` is drawn over: the house's and every structure's front corner. */
 export function siteDepth(c: Compound, spots: readonly Tile[]): number {

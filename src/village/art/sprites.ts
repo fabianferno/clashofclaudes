@@ -1,4 +1,5 @@
 import type { AgentKind } from '../../api/types';
+import { MARK_GRADIENT, MARK_PATHS, PROMPT_GLYPH, TILES } from '../../agentMarks';
 import { ELIXIR, HOUSE_COLORS, type ClassTier, type Gear } from '../look';
 import { outlinedText, withContext, type Art } from './draw';
 
@@ -12,6 +13,11 @@ import { outlinedText, withContext, type Art } from './draw';
 const BASE = '/assets/village/';
 
 const CLASSES = ['apprentice', 'craftsman', 'master'] as const;
+/** The painted strips; a Legend (tier 3) is drawn from the Master's. */
+type Strip = 0 | 1 | 2;
+const stripOf = (cls: ClassTier): Strip => (cls === 3 ? 2 : cls);
+/** How much bigger a Legend stands than a Master (about the feet). */
+export const LEGEND_SCALE = 1.08;
 const AGENTS: AgentKind[] = ['claude', 'codex', 'antigravity', 'opencode', 'custom'];
 /** The frames of a class's strip, in order. The kit's second hammer frame (hammer on the other shoulder, mid-stride) is unused: see `paintedBuilder`. */
 const STRIP = ['idle', 'walk0', 'walk1', 'hammer0', 'kitHammer1', 'cheer', 'sad'] as const;
@@ -178,17 +184,94 @@ const B_W = 220, B_H = 260, B_AX = 110, B_AY = 200;
 const GEAR_HEAD = ['#926132', '#9da8b2', '#efc53f', '#98c3df', '#fbe48d'];
 interface Box { x: number; y: number; w: number; h: number }
 /** The hammer head on each class's raised-hammer frame (unflipped frame px); the strips all paint one iron hammer. */
-const HAMMER_BOX: Record<ClassTier, Box> = {
+const HAMMER_BOX: Record<Strip, Box> = {
   0: { x: 70, y: 118, w: 24, h: 30 },
   1: { x: 63, y: 106, w: 28, h: 30 },
   2: { x: 58, y: 92, w: 30, h: 36 },
 };
 /** The front fist on each class's idle frame (unflipped frame px; the feet stand at y 200), and its hammer's handle length. */
-const FIST: Record<ClassTier, { x: number; y: number; len: number }> = {
+const FIST: Record<Strip, { x: number; y: number; len: number }> = {
   0: { x: 131, y: 167, len: 36 },
   1: { x: 136, y: 165, len: 39 },
   2: { x: 143, y: 162, len: 42 },
 };
+/**
+ * Where the agent's badge sits on the hat front (the cap's crown, the helmet's dome, the crown's
+ * middle) on the idle frame, its radius, and how far the head moves on the other frames (matched
+ * against the idle head; the same on every agent's strip). Unflipped frame px.
+ */
+const BADGE: Record<Strip, { x: number; y: number; r: number }> = {
+  0: { x: 116, y: 104, r: 8.5 },
+  1: { x: 116, y: 95, r: 9.5 },
+  2: { x: 118, y: 86, r: 9 },
+};
+const HEAD_SHIFT: Record<Strip, Partial<Record<(typeof STRIP)[number], [number, number]>>> = {
+  0: { walk0: [-3, 0], walk1: [-2, 1], hammer0: [6, 0], cheer: [-3, -2], sad: [6, 4] },
+  1: { walk0: [1, 0], walk1: [0, 2], hammer0: [7, -1], cheer: [-3, -3], sad: [7, 4] },
+  2: { walk0: [1, 0], walk1: [1, 2], hammer0: [2, -3], cheer: [-9, -4], sad: [13, 9] },
+};
+
+/** The agent's mark on a round badge (its logo tile's colours) centred at (x, y), radius r. */
+function capBadge(g: CanvasRenderingContext2D, agent: AgentKind, x: number, y: number, r: number): void {
+  const t = TILES[agent];
+  g.save();
+  const bg = g.createLinearGradient(x, y - r, x, y + r);
+  bg.addColorStop(0, t.top); bg.addColorStop(1, t.bottom);
+  // a pin badge: dark edge, cream rim, the tile's colours inside
+  g.fillStyle = '#fff3dc'; g.strokeStyle = 'rgba(42,29,20,.9)'; g.lineWidth = 1.6;
+  g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill(); g.stroke();
+  g.fillStyle = bg;
+  g.beginPath(); g.arc(x, y, r - 1.8, 0, Math.PI * 2); g.fill();
+  // the mark in its 24px box, filling most of the badge
+  const k = (r * 1.15) / 24;
+  g.translate(x - 12 * k, y - 12 * k); g.scale(k, k);
+  if (t.fg === 'gradient') {
+    const m = g.createLinearGradient(0, 0, 24, 24);
+    for (const [o, c] of MARK_GRADIENT) m.addColorStop(o, c);
+    g.fillStyle = m; g.strokeStyle = m;
+  } else {
+    g.fillStyle = t.fg; g.strokeStyle = t.fg;
+  }
+  const path = MARK_PATHS[agent];
+  if (typeof Path2D !== 'undefined') {
+    if (path) g.fill(new Path2D(path));
+    else {
+      g.lineWidth = 3; g.lineCap = 'round'; g.lineJoin = 'round';
+      for (const d of PROMPT_GLYPH) g.stroke(new Path2D(d));
+    }
+  }
+  g.restore();
+  // a glint along the top, like the logo tile's gloss
+  g.save();
+  g.fillStyle = 'rgba(255,255,255,.35)';
+  g.beginPath(); g.ellipse(x - r * 0.15, y - r * 0.55, r * 0.55, r * 0.22, -0.2, 0, Math.PI * 2); g.fill();
+  g.restore();
+}
+
+/** A Legend's golden aura behind the figure and twinkles round its head (frame px, unflipped). */
+function legendGlow(g: CanvasRenderingContext2D, head: { x: number; y: number }): void {
+  g.save();
+  g.globalCompositeOperation = 'destination-over';
+  const glow = g.createRadialGradient(head.x, head.y + 40, 10, head.x, head.y + 40, 92);
+  glow.addColorStop(0, 'rgba(255,226,120,.55)');
+  glow.addColorStop(0.6, 'rgba(255,206,90,.22)');
+  glow.addColorStop(1, 'rgba(255,206,90,0)');
+  g.fillStyle = glow; g.fillRect(0, 0, B_W, B_H);
+  g.restore();
+  g.save();
+  g.fillStyle = '#fff6c8'; g.strokeStyle = 'rgba(190,130,20,.8)'; g.lineWidth = 1.2;
+  for (const [dx, dy, r] of [[-44, -20, 7], [40, -34, 5.5], [48, 14, 4.5]] as const) {
+    const cx = head.x + dx, cy = head.y + dy;
+    g.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const a = (i * Math.PI) / 4, d = i % 2 ? r * 0.32 : r;
+      g.lineTo(cx + Math.sin(a) * d, cy - Math.cos(a) * d);
+    }
+    g.closePath(); g.fill(); g.stroke();
+  }
+  g.restore();
+}
+
 /** The swing in radians from straight up, toward the way the builder faces: level mid-swing, then down on the work. */
 const SWING = { hammer1: 1.65, hammer2: 2.45 } as const;
 
@@ -285,11 +368,12 @@ function impact(g: CanvasRenderingContext2D, x: number, y: number): void {
  * own second frame only moves the hammer to the other shoulder and reads as a dance step.
  */
 export function paintedBuilder(agent: AgentKind, cls: ClassTier, gear: Gear, pose: BuilderPose, face: 1 | -1): Art | null {
-  const img = get(`sheets/builder-${CLASSES[cls]}-${agent}.png`);
+  const st = stripOf(cls);
+  const img = get(`sheets/builder-${CLASSES[st]}-${agent}.png`);
   if (!img) return null;
-  const art = canvasArt(B_W, B_H, B_AX, B_AY, (g) => {
+  const body = canvasArt(B_W, B_H, B_AX, B_AY, (g) => {
     if (pose === 'hammer1' || pose === 'hammer2') {
-      const f = FIST[cls], a = SWING[pose];
+      const f = FIST[st], a = SWING[pose];
       g.save();
       if (pose === 'hammer2') { g.translate(B_AX, B_AY); g.scale(1.03, 0.96); g.translate(-B_AX, -B_AY); }
       g.drawImage(img, 0, 0, B_W, B_H, 0, 0, B_W, B_H);
@@ -301,10 +385,21 @@ export function paintedBuilder(agent: AgentKind, cls: ClassTier, gear: Gear, pos
       return;
     }
     g.drawImage(img, STRIP.indexOf(pose) * B_W, 0, B_W, B_H, 0, 0, B_W, B_H);
-    if (pose === 'hammer0') gearHammer(g, HAMMER_BOX[cls], gear);
+    if (pose === 'hammer0') gearHammer(g, HAMMER_BOX[st], gear);
   });
-  if (face === 1) return art;
-  return canvasArt(B_W, B_H, B_AX, B_AY, (g) => { g.translate(B_W, 0); g.scale(-1, 1); g.drawImage(art.canvas, 0, 0); });
+  // the badge goes on after any mirroring, so the mark never reads backwards
+  const b = BADGE[st];
+  const [dx, dy] = pose === 'hammer1' || pose === 'hammer2' ? [0, 0] : HEAD_SHIFT[st][pose] ?? [0, 0];
+  let bx = b.x + dx, by = b.y + dy;
+  if (pose === 'hammer2') by = B_AY - (B_AY - by) * 0.96; // the squash
+  if (face === -1) bx = B_W - bx;
+  return canvasArt(B_W, B_H, B_AX, B_AY, (g) => {
+    if (cls === 3) { g.translate(B_AX, B_AY); g.scale(LEGEND_SCALE, LEGEND_SCALE); g.translate(-B_AX, -B_AY); }
+    if (face === -1) { g.save(); g.translate(B_W, 0); g.scale(-1, 1); g.drawImage(body.canvas, 0, 0); g.restore(); }
+    else g.drawImage(body.canvas, 0, 0);
+    capBadge(g, agent, bx, by, b.r);
+    if (cls === 3) legendGlow(g, { x: bx, y: by });
+  });
 }
 
 const S_W = 440, S_H = 500, S_AX = 220, S_AY = 392;

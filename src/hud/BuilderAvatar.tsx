@@ -1,7 +1,7 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import type { AgentKind } from '../api/types';
 import { drawBuilder } from '../village/art/entities';
-import { loadSprites, onSprites, spritesReady } from '../village/art/sprites';
+import { LEGEND_SCALE, loadSprites, onSprites, spritesReady } from '../village/art/sprites';
 import { classOf, gearOf } from '../village/look';
 
 const SIZE = 46;
@@ -38,9 +38,13 @@ export default function BuilderAvatar({ agent, model, effort, size = SIZE }: {
     const dpr = window.devicePixelRatio || 1;
     canvas.width = Math.round(size * dpr);
     canvas.height = Math.round(size * dpr);
-    const a = drawBuilder(agent, classOf(agent, model), gearOf(effort), 'idle', 1);
-    const box = opaqueBox(a.canvas);
-    if (!box) return;
+    const cls = classOf(agent, model), gear = gearOf(effort);
+    const a = drawBuilder(agent, cls, gear, 'idle', 1);
+    // a Legend's glow and twinkles are not the figure: measure the Master it is drawn from, a size up
+    const m = cls === 3 ? opaqueBox(drawBuilder(agent, 2, gear, 'idle', 1).canvas) : opaqueBox(a.canvas);
+    if (!m) return;
+    const k3 = cls === 3 ? LEGEND_SCALE : 1;
+    const box = { x0: a.ax + (m.x0 - a.ax) * k3, y0: a.ay + (m.y0 - a.ay) * k3, x1: a.ax + (m.x1 - a.ax) * k3, y1: a.ay + (m.y1 - a.ay) * k3 };
     // scale the top of the figure to the frame's height, centred on the figure
     const top = (TOP * size) / SIZE;
     const k = ((size - top) * dpr) / ((box.y1 - box.y0) * SHOWN);

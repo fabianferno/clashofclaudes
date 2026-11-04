@@ -11,7 +11,7 @@ describe('look', () => {
   it('class_mapping', () => {
     expect(classOf('claude', 'haiku')).toBe(0);
     expect(classOf('claude', 'opus')).toBe(2);
-    expect(classOf('claude', 'fable')).toBe(2);
+    expect(classOf('claude', 'fable')).toBe(3); // Legend, above Opus
     expect(classOf('claude', null)).toBe(1);
     expect(classOf('opencode', 'anthropic/claude-opus-4')).toBe(1);
     expect(classOf('codex', 'anything')).toBe(1);

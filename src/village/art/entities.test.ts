@@ -28,7 +28,7 @@ describe('art', () => {
     for (const a of AGENTS) {
       for (const st of ['foundation', 'scaffold', 'complete'] as const)
         for (const h of [0, 0.5, 1]) ok(drawStructure(a, st, h));
-      for (const cls of [0, 1, 2] as const)
+      for (const cls of [0, 1, 2, 3] as const)
         for (const gear of [0, 1, 2, 3, 4] as const)
           for (const pose of ['idle', 'walk0', 'walk1', 'hammer0', 'hammer1', 'hammer2', 'cheer', 'sad'] as const)
             for (const face of [1, -1] as const) ok(drawBuilder(a, cls, gear, pose, face));
@@ -116,6 +116,15 @@ describe('painted sprites', () => {
       expect(drew(right)).toBe(1);
       // mirrored about the feet (x = 110 of the 220 px frame)
       expect(left.canvas.getContext('2d')!.__getDrawCalls()[0].transform.map((v: number) => v + 0)).toEqual([-1, 0, 0, 1, 220, 0]);
+      // the cap badge goes on after the mirroring, so its mark never reads backwards
+      const calls = left.canvas.getContext('2d')!.__getDrawCalls();
+      const badge = calls.filter((c: { type: string }) => c.type === 'fill');
+      expect(badge.length).toBeGreaterThan(0);
+      expect(badge.every((c: { transform: number[] }) => c.transform[0] > 0)).toBe(true);
+      // a Legend (Fable) is the Master's strip, a size up about the feet
+      const legend = drawBuilder('claude', 3, 4, 'idle', 1);
+      expect(drew(legend)).toBe(1);
+      expect(legend.canvas.getContext('2d')!.__getDrawCalls()[0].transform.map((v: number) => +v.toFixed(2))).toEqual([1.08, 0, 0, 1.08, -8.8, -16]);
       expect(drew(drawBuilder('codex', 2, 4, 'idle', 1))).toBe(0); // no strip loaded: baked figure
       expect(drew(drawStructure('codex', 'foundation', 0))).toBe(1);
       expect(drew(drawStructure('codex', 'scaffold', 0.5))).toBe(2); // cloth, then the canvas climbing the frame

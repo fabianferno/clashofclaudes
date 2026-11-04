@@ -231,3 +231,24 @@ screenshots, more effects, "Built by crevn.xyz" and an X contact, and proper SEO
   `twitter:site` and `twitter:creator`, and `/llms.txt` generated from the content file. robots.txt
   allows every crawler. The hero lede and the doc ledes render without waiting for JS, so the
   throttled phone LCP is 0.7 s on home (was 3.75 s).
+
+## Polish pass (2026-11-05, impeccable)
+
+The owner said the page read as "vibecoded". What caused it, and what changed:
+
+- **Bug:** GSAP folds a sprite's CSS `translate` into its own transform when it animates the
+  landing, and lost the `-100%`. Every hero house, tent and builder sat one full height below its
+  plot. Hero sprites are now anchored with `left`/`bottom` (no translate).
+- **Cloud shadows** were clipped by the scene's box and showed a hard vertical edge. They are now
+  clipped to the land diamond.
+- **One costume, not ten:** the outlined game title is kept for the hero, the footer finale and
+  the inner page heroes. Section titles are set plain (ink on meadow, parchment on forest). The
+  hard ink lip stays on the game buttons only; panels, cards, the stage and the screenshots rest
+  on `--lift-shadow` (a hairline and a long soft drop).
+- **Display face at display sizes only:** small headings (tour stops, Kanban notes, privacy
+  facts, beta panel, FAQ) use Host Grotesk 600 to 700, not Lilita.
+- **Fewer labels:** no "1 of 4" eyebrow over chapters; agent rank is a plate on the card's tile;
+  the check status is a dotted line, not a coloured box; the version is text, not a pill.
+- **Lists, not cards:** FAQ is a ruled list on the forest; install steps are a ruled sequence;
+  the footer contact is a plain line (no dashed box); footer links underline on hover only.
+- **Phone hero:** the lede now comes before the download button.

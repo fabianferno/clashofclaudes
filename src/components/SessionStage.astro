@@ -32,9 +32,8 @@ import { chapters } from '../data/site';
       </figure>
     </div>
     <ol class="chapters">
-      {chapters.map((c, i) => (
+      {chapters.map((c) => (
         <li class="chapter" data-chapter={c.state} data-status={c.status}>
-          <p class="chapter__step" aria-hidden="true">{i + 1} of {chapters.length}</p>
           <h3 class="chapter__title">{c.title}</h3>
           <p class="chapter__text">{c.text}</p>
         </li>

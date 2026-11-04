@@ -64,8 +64,8 @@ import { agents, faq, privacy, site, tour, villageNotes } from '../data/site';
           <li class={`card card--${a.key}`} data-reveal="up" data-delay={(i * 0.06).toFixed(2)}>
             <div class="card__tile" aria-hidden="true">
               <Builder sheet={a.builder} pose="idle" class="card__builder" />
+              <span class="card__rank">{a.rank}</span>
             </div>
-            <p class="card__rank" aria-hidden="true">{a.rank}</p>
             <h3 class="card__name">{a.name}</h3>
             <p class="card__cmd"><code>{a.command}</code></p>
             <dl class="card__facts">

@@ -70,6 +70,8 @@
   --radius: 14px;
   --stroke: 3px;
   --lip: 5px;
+  /* Panels rest on the page: a hairline and a long soft drop, no hard lip (that is for buttons). */
+  --lift-shadow: 0 0 0 1px rgb(24 33 15 / 0.18), 0 2px 0 rgb(24 33 15 / 0.12), 0 36px 60px -32px rgb(10 30 10 / 0.6);
 
   --z-content: 1;
   --z-header: 50;

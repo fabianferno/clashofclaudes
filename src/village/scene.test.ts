@@ -4,7 +4,8 @@ import { findSpot, gapBetween, placeCompound, wallRect } from './layout';
 import { COLLECTOR_SLOT } from './quota';
 import { enclosure, seedOf } from './enclosure';
 import { scaffoldHeight } from './look';
-import { buildEntities, hopOf, siteDepth, needsRefit, rendererOptions, structureLook, type VillageInput } from './scene';
+import { HALL_LIFT, buildEntities, hopOf, siteDepth, needsRefit, rendererOptions, structureLook, type VillageInput } from './scene';
+import { statusSignature, statusesDue } from './status';
 
 const ws = (id: string, compound: Compound | null, level = 1): Workspace => ({
   id, name: id, path: `/p/${id}`, createdAt: 0, missing: false, level, xp: 0, compound,
@@ -49,7 +50,7 @@ describe('buildEntities', () => {
         sess('a4', 'w1', 'b4', spots[3], { kind: 'finished' }),
       ],
     };
-    const structBars = (es: ReturnType<typeof buildEntities>) => es.filter((e) => e.kind === 'status' && !e.id.startsWith('status:house:'));
+    const structBars = (es: ReturnType<typeof buildEntities>) => es.filter((e) => e.kind === 'status' && !e.id.startsWith('status:house:') && e.id !== 'status:hall');
     expect(structBars(buildEntities(input))).toEqual([]); // no clock, no bars
     const bars = structBars(buildEntities({ ...input, now: 1000 + 12 * 60_000 }));
     expect(Object.fromEntries(bars.map((e) => [e.id, e.texKey]))).toEqual({
@@ -67,6 +68,22 @@ describe('buildEntities', () => {
       .find((e) => e.id === 'status:house:w1')!;
     expect(plate).toMatchObject({ kind: 'status', texKey: 'status:house:my app', x: c1.house.x + 1.5, y: c1.house.y + 1.5 });
     expect(plate.lift).toBeGreaterThan(140); // above the roof, not at a structure's height
+  });
+
+  it('the_hall_carries_its_owners_name_on_a_plate_over_the_flag', () => {
+    const plateOf = (ownerName?: string | null) => buildEntities({ workspaces: [], builders: [], sessions: [], ownerName })
+      .find((e) => e.id === 'status:hall')!;
+    expect(plateOf('Fabian')).toMatchObject({ kind: 'status', texKey: "hallplate:Fabian's Town Hall", x: 0.5, y: 0.5 });
+    expect(plateOf('Fabian').lift).toBe(HALL_LIFT);
+    expect(HALL_LIFT).toBeGreaterThan(200); // over the hall's flag, far above a house's plate
+    expect(plateOf(null).texKey).toBe('hallplate:Town Hall'); // before a name is given
+    expect(plateOf('  ').texKey).toBe('hallplate:Town Hall');
+    expect(plateOf('a:b').texKey).toBe("hallplate:a b's Town Hall"); // texture keys split on ':'
+  });
+
+  it('the_hall_plate_is_part_of_the_status_signature_so_a_rename_is_not_a_resync_every_second', () => {
+    const es = buildEntities({ workspaces: [], builders: [], sessions: [], ownerName: 'Ada' });
+    expect(statusesDue(es, [], 0)).toBe(statusSignature(es));
   });
 
   it('entities_for_two_workspaces_and_three_sessions', () => {
@@ -186,7 +203,7 @@ describe('collectors', () => {
     ]));
     expect(cols).toHaveLength(2); // OpenCode reports no limits
     const label = es.find((e) => e.id === 'status:collector:codex')!;
-    expect(label.texKey).toBe('status:elixir-codex:Codex 62% · 5h');
+    expect(label.texKey).toBe('status:resource-codex:Codex 62% · 5h');
     expect(es.find((e) => e.id === 'status:collector:claude')?.texKey).toBe('status:stuck:Claude · no reading');
     const c = cols.find((e) => e.id === 'collector:codex')!;
     expect([c.x, c.y]).toEqual([COLLECTOR_SLOT.codex.x + 2, COLLECTOR_SLOT.codex.y + 2]);

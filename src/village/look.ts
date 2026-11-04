@@ -15,11 +15,11 @@ export const PALETTE: Record<
 };
 
 /**
- * Each collector's elixir (tank, label, panel bars) in its agent's colour: Claude's coral, Codex's
+ * Each collector's resource (tank, label, panel bars) in its agent's colour: Claude's coral, Codex's
  * white, Antigravity's blue. `deep` shades the tank's sides, `lit` is the surface and highlights,
- * `label` fills the bar over the tank (darker than white Codex elixir, so the white text reads).
+ * `label` fills the bar over the tank (darker than white Codex resource, so the white text reads).
  */
-export const ELIXIR: Record<'claude' | 'codex' | 'antigravity', { deep: string; mid: string; lit: string; bubble: string; label: string }> = {
+export const RESOURCE: Record<'claude' | 'codex' | 'antigravity', { deep: string; mid: string; lit: string; bubble: string; label: string }> = {
   claude: { deep: '#9a3c1f', mid: '#e27a50', lit: '#ffb995', bubble: 'rgba(255, 228, 212, 0.75)', label: '#e27a50' },
   codex: { deep: '#a9b0bf', mid: '#eef1f6', lit: '#ffffff', bubble: 'rgba(150, 160, 182, 0.55)', label: '#9aa2b3' },
   antigravity: { deep: '#1d3a9a', mid: '#4f7cf0', lit: '#a8c1ff', bubble: 'rgba(222, 232, 255, 0.75)', label: '#4f7cf0' },

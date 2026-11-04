@@ -1,5 +1,5 @@
 import { iso } from '../iso';
-import { ELIXIR } from '../look';
+import { RESOURCE } from '../look';
 import { OUT, bake, ctx, dot, flag, line, outlinedText, poly, roundRect, shadow, up, type Art, type Pt } from './draw';
 import { paintTreeAt, paintedBubble, paintedGate, paintedPuff, paintedTree, paintedWall } from './sprites';
 
@@ -165,7 +165,7 @@ export function drawPuff(): Art {
 
 const STATUS_FILL = {
   working: '#f5a623', needs: '#ff4b3e', stuck: '#8e8e8e', app: '#2fbf71', house: '#9a6634',
-  'elixir-claude': ELIXIR.claude.label, 'elixir-codex': ELIXIR.codex.label, 'elixir-antigravity': ELIXIR.antigravity.label,
+  'resource-claude': RESOURCE.claude.label, 'resource-codex': RESOURCE.codex.label, 'resource-antigravity': RESOURCE.antigravity.label,
 } as const;
 
 /**
@@ -184,5 +184,43 @@ export function drawStatusBar(tone: keyof typeof STATUS_FILL, label: string): Ar
     g.fillStyle = STATUS_FILL[tone]; g.fillRect(-bw / 2, -18, bw, 16);
     g.restore();
     outlinedText(label, 0, -5.5, 11, '#fff', 3);
+  });
+}
+
+const PLATE_FONT = 15;
+
+/** Width of `label` in the plate's font (an estimate where the canvas cannot measure, as in tests). */
+function plateTextWidth(label: string): number {
+  const g = document.createElement('canvas').getContext('2d');
+  if (g) {
+    g.font = `400 ${PLATE_FONT}px "Lilita One", sans-serif`;
+    const w = g.measureText(label).width;
+    if (w > 0) return w;
+  }
+  return label.length * PLATE_FONT * 0.56;
+}
+
+/**
+ * The Town Hall's name plate ("Fabian's Town Hall"): a wooden board with gold trim on a red ribbon,
+ * larger than a house's plate. Anchor: the board's bottom centre.
+ */
+export function drawHallPlate(label: string): Art {
+  const bw = Math.max(120, Math.ceil(plateTextWidth(label)) + 34);
+  const tail = 16, h = 26;
+  return bake(bw + 2 * tail + 8, h + 12, bw / 2 + tail + 4, h + 6, () => {
+    const g = ctx();
+    // ribbon tails behind the board, notched at their ends
+    for (const s of [-1, 1]) {
+      const x0 = s * (bw / 2 - 6), x1 = s * (bw / 2 + tail);
+      poly([{ x: x0, y: -h + 7 }, { x: x1, y: -h + 7 }, { x: x1 - s * 6, y: -h / 2 + 3 }, { x: x1, y: 1 }, { x: x0, y: 1 }], '#b8322a', OUT, 2.5);
+    }
+    roundRect(-bw / 2, -h - 2, bw, h, 9);
+    const wood = g.createLinearGradient(0, -h - 2, 0, -2);
+    wood.addColorStop(0, '#7a4e2b'); wood.addColorStop(1, '#4a2d17');
+    g.fillStyle = wood; g.fill();
+    g.strokeStyle = OUT; g.lineWidth = 3; g.stroke();
+    roundRect(-bw / 2 + 3, -h + 1, bw - 6, h - 6, 6);
+    g.strokeStyle = '#ffcf33'; g.lineWidth = 1.6; g.stroke();
+    outlinedText(label, 0, -h / 2 + 3.5, PLATE_FONT, '#ffe9a8', 3.5);
   });
 }

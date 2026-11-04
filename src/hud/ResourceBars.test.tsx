@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test } from 'vitest';
 import type { AgentInfo, AgentQuota } from '../api/types';
 import { useApp } from '../state/store';
-import ElixirBars, { elixirBar } from './ElixirBars';
+import ResourceBars, { resourceBar } from './ResourceBars';
 
 const NOW = 1_000_000_000_000;
 const DAY = 86_400_000;
@@ -22,19 +22,19 @@ beforeEach(() => {
 afterEach(cleanup);
 
 test('a bar shows how much of the main limit is left, and when it refills', () => {
-  expect(elixirBar(quota('claude', 41.6), NOW, 'claude')).toEqual({
+  expect(resourceBar(quota('claude', 41.6), NOW, 'claude')).toEqual({
     pct: 42, value: '42%', sub: 'Claude · week', title: 'Claude: 42% of Weekly limit left, refills in 2d',
   });
-  expect(elixirBar(quota('codex', 0), NOW, 'codex').value).toBe('Empty');
-  expect(elixirBar(undefined, NOW, 'antigravity')).toEqual({ pct: null, value: '—', sub: 'Antigravity', title: 'Antigravity: no limits read yet' });
+  expect(resourceBar(quota('codex', 0), NOW, 'codex').value).toBe('Empty');
+  expect(resourceBar(undefined, NOW, 'antigravity')).toEqual({ pct: null, value: '—', sub: 'Antigravity', title: 'Antigravity: no limits read yet' });
 });
 
 test('one bar per rationed agent with a reading or installed; a click opens its collector', () => {
-  render(<ElixirBars />);
-  expect(screen.getByTestId('elixir-claude')).toBeTruthy();
-  expect(screen.getByTestId('elixir-codex').textContent).toContain('—'); // installed, nothing read yet
-  expect(screen.queryByTestId('elixir-antigravity')).toBeNull(); // not installed, no reading
-  expect(screen.queryByTestId('elixir-opencode')).toBeNull(); // not rationed
-  fireEvent.click(screen.getByTestId('elixir-claude'));
+  render(<ResourceBars />);
+  expect(screen.getByTestId('resource-claude')).toBeTruthy();
+  expect(screen.getByTestId('resource-codex').textContent).toContain('—'); // installed, nothing read yet
+  expect(screen.queryByTestId('resource-antigravity')).toBeNull(); // not installed, no reading
+  expect(screen.queryByTestId('resource-opencode')).toBeNull(); // not rationed
+  fireEvent.click(screen.getByTestId('resource-claude'));
   expect(useApp.getState().selection).toEqual({ kind: 'quota', agent: 'claude' });
 });

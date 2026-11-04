@@ -72,3 +72,21 @@ test('select-session selects that session and opens the panel; unknown ids are i
   expect(useApp.getState().selection).toEqual({ kind: 'session', id: 's9' });
   expect(useApp.getState().panelOpen).toBe(true);
 });
+
+test('the first launch opens the welcome; once onboarded it stays away', async () => {
+  const { ipc } = await import('./api/ipc');
+  const { useTour } = await import('./onboarding/tour');
+  const { uninstallSandbox } = await import('./onboarding/demo');
+  const reset = () => act(() => { useTour.setState({ step: null }); uninstallSandbox(); });
+  reset();
+  vi.mocked(ipc.getSettings).mockResolvedValueOnce({ updatesEnabled: true, notifyNeedsYou: true, notifyFinished: true, dockBadge: true });
+  const first = render(<App />);
+  expect(await screen.findByTestId('tour-welcome')).toBeTruthy();
+  first.unmount();
+  reset();
+  vi.mocked(ipc.getSettings).mockResolvedValueOnce({ updatesEnabled: true, notifyNeedsYou: true, notifyFinished: true, dockBadge: true, playerName: 'Ada', onboarded: true });
+  render(<App />);
+  await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+  expect(screen.queryByTestId('tour-welcome')).toBeNull();
+  expect(useApp.getState().settings?.playerName).toBe('Ada');
+});

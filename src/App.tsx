@@ -14,6 +14,9 @@ import Kanban from './panels/Kanban';
 import SettingsPage from './panels/SettingsPage';
 import BugReportDialog, { openBugReport } from './panels/BugReport';
 import { preloadTerminal } from './components/LazyTerminalView';
+import TourOverlay from './onboarding/TourOverlay';
+import { startTour } from './onboarding/tour';
+import { loadSettings } from './state/settings';
 import './App.css';
 
 function App() {
@@ -58,6 +61,8 @@ function App() {
     ipc.getQuotas().then((q) => !cancelled && useApp.getState().setQuotas(q)).catch(() => {}); // collectors just stay unread
     ipc.getApps().then((a) => !cancelled && useApp.getState().setApps(a)).catch(() => {}); // boards come with the next scan
     ipc.detectAgents().then((a) => !cancelled && useApp.getState().setAgents(a)).catch((e) => useApp.getState().setError(String(e)));
+    // the welcome (and its tour) until the owner has been through it once; Settings can replay it
+    loadSettings().then((s) => { if (!cancelled && !s.onboarded) startTour(); }).catch(() => {});
     const preload = window.setTimeout(preloadTerminal, 2000); // after the village's first frames
     const stopSnapshots = autoSnapshots();
     return () => { cancelled = true; window.clearTimeout(preload); stopLayout?.(); stopSnapshots(); unlisten.forEach((u) => u()); };
@@ -75,6 +80,7 @@ function App() {
     <PopOutApp />
     <SettingsPage />
     <BugReportDialog />
+    <TourOverlay />
     <UpdateToast />
     <div className="toasts">
       {error && <div className="error" onClick={() => setError(null)}>{error}</div>}

@@ -2,14 +2,14 @@ import { useEffect, useState } from 'react';
 import { ipc } from '../api/ipc';
 import type { AgentKind, QuotaWindow } from '../api/types';
 import { useApp } from '../state/store';
-import { ELIXIR } from '../village/look';
+import { RESOURCE } from '../village/look';
 import { isCollectorAgent, leftNow, primaryWindow, quotaTone, untilText } from '../village/quota';
 
-const elixirBar = (a: keyof typeof ELIXIR) => `linear-gradient(${ELIXIR[a].lit}, ${ELIXIR[a].label})`;
+const resourceBar = (a: keyof typeof RESOURCE) => `linear-gradient(${RESOURCE[a].lit}, ${RESOURCE[a].label})`;
 const BAR: Record<ReturnType<typeof quotaTone>, string> = {
-  'elixir-claude': elixirBar('claude'),
-  'elixir-codex': elixirBar('codex'),
-  'elixir-antigravity': elixirBar('antigravity'),
+  'resource-claude': resourceBar('claude'),
+  'resource-codex': resourceBar('codex'),
+  'resource-antigravity': resourceBar('antigravity'),
   working: 'linear-gradient(#ffd27a, #f5a623)',
   needs: 'linear-gradient(#ff8a7e, #ff4b3e)',
   stuck: 'linear-gradient(#cfcfcf, #8e8e8e)',

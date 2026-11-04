@@ -292,8 +292,8 @@ test('town_hall_lists_every_builder_with_its_status', () => {
   expect(screen.getByText('proj')).toBeTruthy();
   expect(screen.getByText('missing')).toBeTruthy();
   expect(screen.getByText(/1 session/)).toBeTruthy();
-  expect(screen.getByRole('button', { name: 'Open folder' })).toBeTruthy();
-  expect(screen.getByRole('button', { name: 'New folder' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Open workspace' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'New workspace' })).toBeTruthy();
 });
 
 test('side_panel_maps_selection_closes_on_x_and_esc', () => {

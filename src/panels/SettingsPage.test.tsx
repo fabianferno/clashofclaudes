@@ -76,3 +76,42 @@ test('Esc and ✕ close it', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Close Settings' }));
   expect(useApp.getState().settingsOpen).toBe(false);
 });
+
+test('the name saves on Enter, trimmed, and the plate preview follows it', async () => {
+  ipc.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, playerName: 'Ada', onboarded: true });
+  render(<SettingsPage />);
+  await screen.findByText('Version 0.1.0');
+  const name = screen.getByLabelText('Your name') as HTMLInputElement;
+  expect(name.value).toBe('Ada');
+  expect(screen.getByText("Ada's Town Hall")).toBeTruthy();
+  act(() => name.focus());
+  fireEvent.change(name, { target: { value: '  Fabian ' } });
+  expect(screen.getByText("Fabian's Town Hall")).toBeTruthy();
+  await act(async () => { fireEvent.keyDown(name, { key: 'Enter' }); }); // Enter leaves the field, which saves
+  expect(ipc.setSettings).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, playerName: 'Fabian', onboarded: true });
+  expect(useApp.getState().settings?.playerName).toBe('Fabian');
+});
+
+test('clearing the name goes back to a plain Town Hall; an unchanged name is not saved', async () => {
+  ipc.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, playerName: 'Ada' });
+  render(<SettingsPage />);
+  await screen.findByText('Version 0.1.0');
+  const name = screen.getByLabelText('Your name') as HTMLInputElement;
+  fireEvent.change(name, { target: { value: 'Ada ' } });
+  await act(async () => { fireEvent.blur(name); });
+  expect(ipc.setSettings).not.toHaveBeenCalled();
+  fireEvent.change(name, { target: { value: '   ' } });
+  await act(async () => { fireEvent.blur(name); });
+  expect(ipc.setSettings).toHaveBeenCalledWith(expect.objectContaining({ playerName: null }));
+  expect(screen.getByText('Town Hall')).toBeTruthy();
+});
+
+test('Replay the tour closes Settings and opens the welcome', async () => {
+  render(<SettingsPage />);
+  await screen.findByText('Version 0.1.0');
+  fireEvent.click(screen.getByRole('button', { name: 'Replay the tour' }));
+  expect(useApp.getState().settingsOpen).toBe(false);
+  const { useTour, endTour } = await import('../onboarding/tour');
+  expect(useTour.getState().step).toBe('welcome');
+  await act(async () => { await endTour(); });
+});

@@ -570,7 +570,7 @@ pub fn move_compound(workspace_id: String, dx: i32, dy: i32, app: AppHandle, sta
     Ok(MovedCompound { workspace: ws, sessions })
 }
 
-/// Moves `agent`'s elixir collector (Claude Code, Codex and Antigravity have one); returns every moved collector.
+/// Moves `agent`'s resource collector (Claude Code, Codex and Antigravity have one); returns every moved collector.
 pub fn apply_collector_spot(d: &mut AppData, agent: AgentKind, spot: Tile) -> Result<BTreeMap<AgentKind, Tile>, String> {
     if !matches!(agent, AgentKind::Claude | AgentKind::Codex | AgentKind::Antigravity) {
         return Err("this agent has no collector".into());
@@ -794,7 +794,7 @@ pub fn get_settings(state: State<'_, AppState>) -> Settings {
 pub fn set_settings(settings: Settings, app: AppHandle, state: State<'_, AppState>) -> Result<Settings, String> {
     let saved = {
         let mut d = state.data();
-        d.settings = settings;
+        d.settings = settings.normalized();
         state.save(&d)?;
         d.settings.clone()
     };

@@ -5,6 +5,7 @@ import ZoomControls from '../hud/ZoomControls';
 import { PANEL_W } from './camera';
 import { createScene, type BoardInput, type Scene, type VillageInput } from './scene';
 import { setBoardImage } from './art/entities';
+import { clearProbeScene, setProbeScene } from './probe';
 
 /** Each page's decoded snapshot: the store's `at` it came from and its key for `drawBoard`. */
 const decoded = new Map<string, { at: number; key: string }>();
@@ -48,6 +49,7 @@ const inputOf = (s: AppState): VillageInput => ({
   installed: s.agents.filter((a) => a.installed).map((a) => a.kind),
   collectorSpots: s.collectorSpots,
   boards: boardsOf(s),
+  ownerName: s.settings?.playerName ?? null,
 });
 
 /** Cmd (Ctrl elsewhere) with + / = zooms in, with - zooms out, with 0 fits the village; else null. */
@@ -89,6 +91,7 @@ export default function VillageCanvas({ onError }: { onError?: (e: unknown) => v
         if (cancelled) { s.destroy(); return; }
         made = s;
         setScene(s);
+        setProbeScene(s);
         s.sync(inputOf(useApp.getState()));
         s.select(useApp.getState().selection);
         s.setCovered(useApp.getState().covers > 0);
@@ -100,7 +103,8 @@ export default function VillageCanvas({ onError }: { onError?: (e: unknown) => v
           if (st.selection !== prev.selection) { s.reveal(st.selection); s.select(st.selection); }
           if (st.workspaces !== prev.workspaces || st.sessions !== prev.sessions || st.builders !== prev.builders || st.lastClosed !== prev.lastClosed
             || st.quotas !== prev.quotas || st.agents !== prev.agents || st.collectorSpots !== prev.collectorSpots
-            || st.apps !== prev.apps || st.browsers !== prev.browsers || st.boardSpots !== prev.boardSpots)
+            || st.apps !== prev.apps || st.browsers !== prev.browsers || st.boardSpots !== prev.boardSpots
+            || st.settings?.playerName !== prev.settings?.playerName)
             s.sync(inputOf(st));
         });
       },
@@ -109,6 +113,7 @@ export default function VillageCanvas({ onError }: { onError?: (e: unknown) => v
     return () => {
       cancelled = true;
       unsub?.();
+      if (made) clearProbeScene(made);
       made?.destroy();
       setScene(null);
     };

@@ -187,6 +187,10 @@ export interface Settings {
   notifyFinished: boolean;
   /** The Dock icon counts the sessions that need you or finished. */
   dockBadge: boolean;
+  /** What the owner asked to be called (the Town Hall's plate); null until given. */
+  playerName?: string | null;
+  /** The first-run welcome (and its tour) was completed or skipped. */
+  onboarded?: boolean;
 }
 
 export interface UpdateStatus {

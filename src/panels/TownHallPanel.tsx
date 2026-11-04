@@ -21,7 +21,7 @@ export default function TownHallPanel() {
   return (
     <>
       <div className="sp-sec">Workspaces ({workspaces.length})</div>
-      {workspaces.length === 0 && <div className="sp-note">No workspaces yet. Open a folder or start a new one.</div>}
+      {workspaces.length === 0 && <div className="sp-note">No workspaces yet. Open one or start a new one.</div>}
       {workspaces.map((w) => (
         <button key={w.id} className="sp-row" data-testid={`hall-ws-${w.id}`} onClick={() => setSelection({ kind: 'workspace', id: w.id })}>
           <span className="sp-av" style={{ background: houseColors(w).roof }}><span className="ol">{w.level}</span></span>
@@ -33,12 +33,12 @@ export default function TownHallPanel() {
         </button>
       ))}
       <div className="sp-btns">
-        <button className="hud-btn blue sm" onClick={() => void wsActions.openFolder()}>Open folder</button>
+        <button className="hud-btn blue sm" onClick={() => void wsActions.openFolder()}>Open workspace</button>
         {newName === null
-          ? <button className="hud-btn sm" onClick={() => setNewName('')}>New folder</button>
+          ? <button className="hud-btn sm" onClick={() => setNewName('')}>New workspace</button>
           : (
             <span className="sp-inline">
-              <input autoFocus aria-label="Folder name" placeholder="Folder name" value={newName} onChange={(e) => setNewName(e.target.value)}
+              <input autoFocus aria-label="Workspace name" placeholder="Workspace name" value={newName} onChange={(e) => setNewName(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') void create(); if (e.key === 'Escape') setNewName(null); }} />
               <button className="hud-btn sm" disabled={!newName.trim()} onClick={() => void create()}>Create</button>
             </span>

@@ -5,6 +5,7 @@ import type { CloseOutcome, Review } from '../api/types';
 import TerminalView from '../components/LazyTerminalView';
 import { CLASS_NAMES, GEAR_NAMES, classOf, gearOf } from '../village/look';
 import PopOutTerminal from './PopOutTerminal';
+import { isDemoId } from '../onboarding/demo';
 
 function elapsed(from: number, now: number): string {
   const s = Math.max(0, Math.floor((now - from) / 1000));
@@ -44,6 +45,8 @@ export default function SessionPanel({ sessionId, onClosed }: { sessionId: strin
   if (!session) return null;
   const builder = session.kind.kind === 'agent' ? builders.find((b) => b.id === (session.kind as { builderId: string }).builderId) : undefined;
   const agent = builder ? agents.find((a) => a.kind === builder.agent) : undefined;
+  // the tour's sample sessions take Allow and Deny whatever their agent
+  const canApprove = !!agent?.canApprove || isDemoId(sessionId);
   const stillShown = (sid: string) => current.current === sid;
   const run = async (p: Promise<unknown>) => {
     const sid = sessionId;
@@ -106,18 +109,18 @@ export default function SessionPanel({ sessionId, onClosed }: { sessionId: strin
         {tier && <div className="sp-d session-tier">{tier}</div>}
       </header>
       <div className="session-actions">
-        {session.state.kind === 'needsYou' && (agent?.canApprove && session.awaitingDecision
+        {session.state.kind === 'needsYou' && (canApprove && session.awaitingDecision
           ? <>
-              <button className="hud-btn sm" disabled={answering} onClick={() => answer(() => ipc.approve(sessionId))}>Allow</button>
+              <button className="hud-btn sm" data-tour="allow" disabled={answering} onClick={() => answer(() => ipc.approve(sessionId))}>Allow</button>
               <button className="hud-btn red sm" disabled={answering} onClick={() => answer(() => ipc.deny(sessionId))}>Deny</button>
             </>
-          : <><em>Answer in the terminal</em>{agent?.canApprove && session.state.reason && <span className="sp-d">{session.state.reason}</span>}</>)}
+          : <><em>Answer in the terminal</em>{canApprove && session.state.reason && <span className="sp-d">{session.state.reason}</span>}</>)}
         {st === 'finished' && (
           <button className="hud-btn sm" onClick={() => void showReview()}>Review</button>
         )}
         {paused && <button className="hud-btn sm" onClick={() => void resume()}>Resume</button>}
         {!paused && <button className="hud-btn grey sm" onClick={() => run(ipc.stopSession(sessionId))}>Stop</button>}
-        <button className="hud-btn grey sm" onClick={close}>Close</button>
+        <button className="hud-btn grey sm" data-tour="close-session" onClick={close}>Close</button>
         {!paused && <button className="hud-btn blue sm" onClick={() => setPopped(true)}>Pop out</button>}
       </div>
       {error && <div className="panel-warn">{error}</div>}

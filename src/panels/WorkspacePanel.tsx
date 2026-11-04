@@ -85,8 +85,8 @@ export default function WorkspacePanel({ workspaceId }: { workspaceId: string })
       )}
       {err && <div className="panel-warn">{err}</div>}
       <div className="sp-btns sp-btns-top">
-        <button className="hud-btn sm" disabled={ws.missing} title={why} onClick={() => setForm(true)}>+ New session</button>
-        <button className="hud-btn blue sm" disabled={ws.missing} title={why}
+        <button className="hud-btn sm" data-tour="new-session" disabled={ws.missing} title={why} onClick={() => setForm(true)}>+ New session</button>
+        <button className="hud-btn blue sm" data-tour="terminal" disabled={ws.missing} title={why}
           onClick={() => guard(async () => {
             const s = await ipc.startTerminal(workspaceId);
             st.upsertSession(s);
@@ -94,7 +94,7 @@ export default function WorkspacePanel({ workspaceId }: { workspaceId: string })
           })}>+ Terminal</button>
         <button className="hud-btn blue sm" disabled={ws.missing} title={why}
           onClick={() => { setErr(null); setAddr((a) => (a === null ? 'http://localhost:3000' : null)); }}>+ Browser</button>
-        <button className="hud-btn sm" onClick={() => st.setKanban(workspaceId)}>Kanban</button>
+        <button className="hud-btn sm" data-tour="kanban" onClick={() => st.setKanban(workspaceId)}>Kanban</button>
         <button className="hud-btn grey sm" disabled={ws.missing} title={why} onClick={() => guard(() => ipc.openInEditor(ws.path))}>Open in editor</button>
         <button className="hud-btn grey sm" disabled={ws.missing} title={why} onClick={() => guard(() => ipc.openInFinder(ws.path))}>Open in Finder</button>
         <button className="hud-btn blue sm" disabled={ws.missing || !ws.compound} title={why} onClick={() => useApp.getState().requestZoom(workspaceId)}>Focus</button>

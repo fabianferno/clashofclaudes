@@ -1,6 +1,6 @@
 import type { AgentKind } from '../../api/types';
 import { MARK_GRADIENT, MARK_PATHS, PROMPT_GLYPH, TILES } from '../../agentMarks';
-import { ELIXIR, HOUSE_COLORS, type ClassTier, type Gear } from '../look';
+import { RESOURCE, HOUSE_COLORS, type ClassTier, type Gear } from '../look';
 import { outlinedText, withContext, type Art } from './draw';
 
 /**
@@ -504,8 +504,8 @@ export function paintedStructure(agent: AgentKind, stage: 'foundation' | 'scaffo
 const C_W = 400, C_H = 440, C_AX = 200, C_AY = 380;
 /**
  * The collector's glass: centre x, half width, ellipse half height; the arc under the top band
- * (the glass shows below it), the elixir's bottom and its surface when full; and the gold bands'
- * centres, redrawn over the elixir. Measured on collector-base.png.
+ * (the glass shows below it), the resource's bottom and its surface when full; and the gold bands'
+ * centres, redrawn over the resource. Measured on collector-base.png.
  */
 const GLASS = { cx: 200, rx: 46, ry: 18, rim: 223, bot: 290, top: 228, bands: [217, 252, 286], band: 5 };
 
@@ -518,11 +518,11 @@ function glassClip(g: CanvasRenderingContext2D) {
   g.clip();
 }
 
-/** Elixir collector: the painted tank, filled `tenths` (0-10) with the agent's elixir; null shows "?". */
-export function paintedCollector(agent: keyof typeof ELIXIR, tenths: number | null): Art | null {
+/** Resource collector: the painted tank, filled `tenths` (0-10) with the agent's resource; null shows "?". */
+export function paintedCollector(agent: keyof typeof RESOURCE, tenths: number | null): Art | null {
   const base = get('structures/collector-base.png');
   if (!base) return null;
-  const E = ELIXIR[agent];
+  const E = RESOURCE[agent];
   const { cx, rx, ry, bot, top } = GLASS;
   return canvasArt(C_W, C_H, C_AX, C_AY, (g) => {
     g.drawImage(base, 0, 0);
@@ -531,7 +531,7 @@ export function paintedCollector(agent: keyof typeof ELIXIR, tenths: number | nu
       const surf = bot - (bot - top) * level;
       g.save();
       glassClip(g);
-      // the column of elixir, to the surface
+      // the column of resource, to the surface
       const column = () => {
         g.beginPath(); g.ellipse(cx, bot, rx, ry, 0, 0, Math.PI); g.lineTo(cx - rx, surf); g.lineTo(cx + rx, surf); g.closePath();
       };
@@ -548,14 +548,14 @@ export function paintedCollector(agent: keyof typeof ELIXIR, tenths: number | nu
         if (y > surf + 8) { g.beginPath(); g.arc(cx + dx, y, r, 0, Math.PI * 2); g.fillStyle = E.bubble; g.fill(); }
       }
       g.restore();
-      // the surface seen from above: a little lighter than the elixir, lit along its far rim
+      // the surface seen from above: a little lighter than the resource, lit along its far rim
       const sg = g.createLinearGradient(0, surf - ry, 0, surf + ry);
       sg.addColorStop(0, E.lit); sg.addColorStop(1, E.mid);
       g.beginPath(); g.ellipse(cx, surf, rx - 1, ry - 1, 0, 0, Math.PI * 2);
       g.globalAlpha = 0.8; g.fillStyle = sg; g.fill();
       g.globalAlpha = 0.7; g.strokeStyle = E.deep; g.lineWidth = 1.5; g.stroke();
       g.globalAlpha = 1;
-      // the glass' own reflections, over the elixir
+      // the glass' own reflections, over the resource
       column();
       g.ellipse(cx, surf, rx, ry, 0, 0, Math.PI * 2);
       g.clip();
@@ -563,7 +563,7 @@ export function paintedCollector(agent: keyof typeof ELIXIR, tenths: number | nu
       g.globalAlpha = 0.35;
       g.drawImage(base, 0, 0);
       g.restore();
-      // the gold bands in front of the elixir, from the painted tank
+      // the gold bands in front of the resource, from the painted tank
       g.save();
       g.beginPath();
       for (const c of GLASS.bands) {

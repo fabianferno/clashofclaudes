@@ -34,15 +34,15 @@ describe('quota', () => {
 
   it('labels: percent and window while some is left, a countdown when empty', () => {
     const now = 1_000_000;
-    expect(collectorLook(quota(win('5h', 62.4, 300, now + 3_600_000)), now, 'antigravity')).toEqual({ tenths: 6, tone: 'elixir-antigravity', label: '62% · 5h' });
+    expect(collectorLook(quota(win('5h', 62.4, 300, now + 3_600_000)), now, 'antigravity')).toEqual({ tenths: 6, tone: 'resource-antigravity', label: '62% · 5h' });
     expect(collectorLook(quota(win('5h', 0, 300, now + (2 * 60 + 10) * 60_000)), now, 'antigravity')).toEqual({ tenths: 0, tone: 'needs', label: 'Empty · 2h 10m' });
     expect(collectorLook(quota(win('5h', 0, 300, now - 1)), now, 'antigravity')?.label).toBe('100% · 5h');
     expect(collectorLook(undefined, now, 'claude')).toBeNull();
   });
 
   it('tones, durations and window names', () => {
-    expect([80, 25, 11, 10, 0].map((l) => quotaTone(l, 'codex'))).toEqual(['elixir-codex', 'working', 'working', 'needs', 'needs']);
-    expect(quotaTone(80, 'claude')).toBe('elixir-claude');
+    expect([80, 25, 11, 10, 0].map((l) => quotaTone(l, 'codex'))).toEqual(['resource-codex', 'working', 'working', 'needs', 'needs']);
+    expect(quotaTone(80, 'claude')).toBe('resource-claude');
     expect([30_000, 12 * 60_000, 120 * 60_000, (3 * 1440 + 4 * 60) * 60_000].map(untilText)).toEqual(['<1m', '12m', '2h', '3d 4h']);
     expect([300, 10_080, 43_200, 1440, null].map(windowShort)).toEqual(['5h', 'week', 'month', '1d', '']);
   });

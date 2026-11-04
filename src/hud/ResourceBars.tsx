@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../state/store';
-import { ELIXIR } from '../village/look';
+import { RESOURCE } from '../village/look';
 import { COLLECTOR_NAME, leftNow, primaryWindow, shownCollectors, untilText, windowShort, type CollectorAgent } from '../village/quota';
 
 /** One agent's tank as a bar: how much of its main limit is left, and what the bar says. */
-export function elixirBar(q: Parameters<typeof primaryWindow>[0] | undefined, now: number, agent: CollectorAgent): { pct: number | null; value: string; sub: string; title: string } {
+export function resourceBar(q: Parameters<typeof primaryWindow>[0] | undefined, now: number, agent: CollectorAgent): { pct: number | null; value: string; sub: string; title: string } {
   const w = q && primaryWindow(q, now);
   const name = COLLECTOR_NAME[agent];
   if (!w) return { pct: null, value: '—', sub: name, title: `${name}: no limits read yet` };
@@ -19,9 +19,9 @@ export function elixirBar(q: Parameters<typeof primaryWindow>[0] | undefined, no
   };
 }
 
-/** An elixir drop in the agent's colours. */
+/** A resource drop in the agent's colours. */
 function Drop({ agent }: { agent: CollectorAgent }) {
-  const c = ELIXIR[agent];
+  const c = RESOURCE[agent];
   const id = `drop-${agent}`;
   return (
     <svg className="hud-drop" viewBox="0 0 40 48" aria-hidden="true">
@@ -38,8 +38,8 @@ function Drop({ agent }: { agent: CollectorAgent }) {
   );
 }
 
-/** Top right, Clash style: each rationed agent's limit as a resource bar; a click opens its collector. */
-export default function ElixirBars() {
+/** Top right: each rationed agent's limit as a resource bar; a click opens its collector. */
+export default function ResourceBars() {
   const quotas = useApp((s) => s.quotas);
   const agents = useApp((s) => s.agents);
   const setSelection = useApp((s) => s.setSelection);
@@ -53,13 +53,13 @@ export default function ElixirBars() {
   return (
     <>
       {shown.map((agent) => {
-        const b = elixirBar(quotas[agent], now, agent);
+        const b = resourceBar(quotas[agent], now, agent);
         return (
-          <button key={agent} type="button" className="hud-elixir" data-testid={`elixir-${agent}`} title={b.title} aria-label={b.title}
+          <button key={agent} type="button" className="hud-resource" data-testid={`resource-${agent}`} title={b.title} aria-label={b.title}
             onClick={() => setSelection({ kind: 'quota', agent })}>
-            <span className="hud-elixir-trough">
-              <i className="hud-elixir-fill" style={{ width: `${b.pct ?? 0}%`, background: `linear-gradient(${ELIXIR[agent].lit}, ${ELIXIR[agent].mid} 55%, ${ELIXIR[agent].deep})` }} />
-              <span className="hud-elixir-sub">{b.sub}</span>
+            <span className="hud-resource-trough">
+              <i className="hud-resource-fill" style={{ width: `${b.pct ?? 0}%`, background: `linear-gradient(${RESOURCE[agent].lit}, ${RESOURCE[agent].mid} 55%, ${RESOURCE[agent].deep})` }} />
+              <span className="hud-resource-sub">{b.sub}</span>
               <b className="ol">{b.value}</b>
             </span>
             <Drop agent={agent} />

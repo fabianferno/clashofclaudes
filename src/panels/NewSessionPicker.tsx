@@ -9,6 +9,7 @@ import { modelPlaceholder } from './BuilderPanel';
 import { EffortSlider, ModelSlider } from './Choosers';
 import AgentPicker from './AgentPicker';
 import { AttachmentStrip, useAttachments } from './Attachments';
+import { DEMO_TASK, createDemoBuilder, isDemoId } from '../onboarding/demo';
 
 export const RECRUIT_NAMES = ['Ivy', 'Jax', 'Kai', 'Lu', 'Mo', 'Nia', 'Oz', 'Pip', 'Quin', 'Rex'];
 
@@ -58,10 +59,13 @@ export default function NewSessionPicker({ workspaceId, builderId }: { workspace
   const allBuilders = useApp((s) => s.builders);
   const sessions = useApp((s) => s.sessions);
   const agents = useApp((s) => s.agents);
-  const idle = idleBuilders({ builders: allBuilders, sessions });
-  const offered = agents.filter((a) => a.installed || a.kind === 'custom'); // selectable; the rest are shown disabled
-
   const [wsId, setWsId] = useState(workspaceId);
+  // The tour's sample compound: any agent may be tried (nothing runs), its builders stay in it,
+  // and the workspace list keeps the sample and the owner's own apart.
+  const sample = isDemoId(wsId);
+  const idle = idleBuilders({ builders: allBuilders, sessions }).filter((b) => sample || !isDemoId(b.id));
+  const offered = sample ? agents : agents.filter((a) => a.installed || a.kind === 'custom'); // selectable; the rest are shown disabled
+
   const [picked, setPicked] = useState<string | null>(builderId ?? null);
   const [nameEdit, setNameEdit] = useState<string | null>(null);
   // Derived until the user picks one: agents may be detected after the picker mounts.
@@ -99,7 +103,8 @@ export default function NewSessionPicker({ workspaceId, builderId }: { workspace
         if (isCustom && !command.trim()) return setError('Enter the custom command');
         setBusy(true);
         // the new builder is a valid roster entry even if the start below fails
-        const b = await ipc.createBuilder(name.trim(), kind, model.trim() || null, effort.trim() || null, isCustom ? command.trim() : null);
+        const create = sample ? createDemoBuilder : ipc.createBuilder;
+        const b = await create(name.trim(), kind, model.trim() || null, effort.trim() || null, isCustom ? command.trim() : null);
         st.addBuilder(b);
         setPicked(b.id);
         builderId = b.id;
@@ -127,11 +132,11 @@ export default function NewSessionPicker({ workspaceId, builderId }: { workspace
     <form className="new-session" onSubmit={(e) => { e.preventDefault(); void start(); }}>
       <label className="sp-field">Workspace
         <select value={wsId} onChange={(e) => setWsId(e.target.value)}>
-          {workspaces.filter((w) => !w.missing).map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+          {workspaces.filter((w) => !w.missing && isDemoId(w.id) === sample).map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
         </select>
       </label>
       <label className="sp-field" ref={taskField}>Task (optional)
-        <textarea rows={3} value={task} placeholder="Paste or drop images here too"
+        <textarea rows={3} value={task} placeholder={sample ? `Try: ${DEMO_TASK}` : 'Paste or drop images here too'}
           onChange={(e) => setTask(e.target.value)} onPaste={att.onPaste} />
       </label>
       <AttachmentStrip names={att.names} onRemove={att.remove} />
@@ -157,7 +162,7 @@ export default function NewSessionPicker({ workspaceId, builderId }: { workspace
       {recruiting && (
         <>
           <label className="sp-field">Name <input value={name} onChange={(e) => setNameEdit(e.target.value)} /></label>
-          <AgentPicker agents={agents} value={kind} installedOnly
+          <AgentPicker agents={agents} value={kind} installedOnly={!sample}
             onChange={(k) => { setKind(k); setModel(DEFAULT); setEffort(DEFAULT); }} />
           {isCustom ? (
             <>

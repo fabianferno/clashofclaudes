@@ -1,6 +1,6 @@
 import type { AgentKind } from '../../api/types';
 import { iso } from '../iso';
-import { ELIXIR, PALETTE } from '../look';
+import { RESOURCE, PALETTE } from '../look';
 import {
   OUT, bake, ctx, dot, faceQuad, flag, isoBox, lerp, line, outlinedText, poly, roof, shadow, shade, spire, up,
   type Art, type Box, type Pt, type RoofPts,
@@ -191,14 +191,14 @@ function ribbon(p: Pt): void {
 }
 
 /**
- * Elixir collector, 2x2 footprint: a glass tank on a stone base, banded in gold, a pump on top and
- * the agent's pennant, filled with the agent's elixir. `tenths` (0-10) is how full the tank is; null means no reading yet (an empty
+ * Resource collector, 2x2 footprint: a glass tank on a stone base, banded in gold, a pump on top and
+ * the agent's pennant, filled with the agent's resource. `tenths` (0-10) is how full the tank is; null means no reading yet (an empty
  * tank with a "?"). Anchor: the footprint's front corner, grid point (gx+2, gy+2).
  */
-export function drawCollector(agent: keyof typeof ELIXIR, tenths: number | null): Art {
+export function drawCollector(agent: keyof typeof RESOURCE, tenths: number | null): Art {
   const p = paintedCollector(agent, tenths);
   if (p) return p;
-  const P = PALETTE[agent], E = ELIXIR[agent];
+  const P = PALETTE[agent], E = RESOURCE[agent];
   return bake(200, 220, 100, 190, () => {
     const g = ctx();
     const c = iso(1, 1);
@@ -213,7 +213,7 @@ export function drawCollector(agent: keyof typeof ELIXIR, tenths: number | null)
       line(p, up(p, H + 6), '#9a6634', 4, 'round');
     };
     post(0.38, 0.38); // the back post stands behind the glass
-    // glass back wall, then the elixir (body, then its surface), then the front glass
+    // glass back wall, then the resource (body, then its surface), then the front glass
     g.save();
     g.beginPath();
     g.ellipse(c.x, bot, rx, ry, 0, 0, Math.PI);
@@ -233,7 +233,7 @@ export function drawCollector(agent: keyof typeof ELIXIR, tenths: number | null)
       g.beginPath(); g.ellipse(c.x, surf, rx - 1, ry - 1, 0, 0, Math.PI * 2);
       g.fillStyle = E.lit; g.fill();
       g.strokeStyle = E.deep; g.lineWidth = 1.5; g.stroke();
-      // a few bubbles rising through the elixir
+      // a few bubbles rising through the resource
       for (const [dx, dy, r] of [[-10, 0.35, 3], [6, 0.6, 2.2], [13, 0.25, 1.8], [-4, 0.8, 1.6]] as const)
         if (bot - (bot - surf) * dy > surf + 4) dot(c.x + dx, bot - (bot - surf) * dy, r, E.bubble);
     }

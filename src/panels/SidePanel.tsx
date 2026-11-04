@@ -86,6 +86,6 @@ function headOf(
       const b = s.kind.kind === 'agent' ? st.builders.find((x) => x.id === (s.kind as { builderId: string }).builderId) : undefined;
       return { title: s.task ?? (b ? b.name : 'Terminal'), sub: `${w?.name ?? ''} · ${b?.name ?? 'Terminal'}` };
     }
-    case 'quota': return { title: 'Elixir', sub: `${PALETTE[sel.agent].label} limits` };
+    case 'quota': return { title: 'Resources', sub: `${PALETTE[sel.agent].label} limits` };
   }
 }

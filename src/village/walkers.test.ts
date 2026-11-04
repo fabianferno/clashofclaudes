@@ -3,7 +3,7 @@ import type { Compound } from '../api/types';
 import type { Tile } from '../api/types';
 import { enclosure, seedOf } from './enclosure';
 import { gateInside, gateOutside, placeCompound, roadPath, spotFor } from './layout';
-import { ANCHOR_HOP, PLAZA, SPEED, blockedBy, dropOf, interiorPath, onGround, routeHome, retarget, routeToSite, standTile, step, walkable, type Walker } from './walkers';
+import { ANCHOR_HOP, PLAZA, SPEED, blockedBy, dropOf, interiorPath, onGround, routeHome, retarget, routeToSite, standTile, step, takenBy, walkable, type Walker } from './walkers';
 
 const mk = (over: Partial<Walker> = {}): Walker =>
   ({ id: 'b', x: 0, y: 0, path: [], mode: 'idle', face: 1, wait: 0, ...over });
@@ -232,5 +232,20 @@ describe('keeping off blocked ground', () => {
     const block = blockedBy([{ x0: end.x - 1, y0: end.y - 1, w: 2, h: 2 }]);
     const moved = routeHome(gateOutside(c), c, undefined, block);
     expect(block(moved[moved.length - 1])).toBe(false);
+  });
+});
+
+describe('spacing', () => {
+  it('an idle builder never picks a spot where another stands or is heading', () => {
+    const others = [{ x: 5.1, y: 0.5 }, { x: 0.5, y: 5.1 }];
+    const taken = takenBy(others);
+    expect(taken({ x: 5.3, y: 0.7 })).toBe(true);
+    expect(taken({ x: 0.5 - 5.1, y: 0.5 })).toBe(false);
+    let seed = 1;
+    const rnd = () => ((seed = (seed * 9301 + 49297) % 233280) / 233280);
+    for (let i = 0; i < 200; i++) {
+      const w = step({ id: 'a', x: 0.5 + 5, y: 0.5 + 1, path: [], mode: 'idle', face: 1, wait: 0 }, 0.01, rnd, undefined, taken);
+      for (const t of w.path) expect(taken(t)).toBe(false);
+    }
   });
 });

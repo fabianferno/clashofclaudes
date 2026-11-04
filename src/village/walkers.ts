@@ -22,9 +22,17 @@ export const SPEED = 1.1;
 export const PLAZA = 6;
 
 // Wander on a ring around the hall's centre, outside its footprint; short hops keep chords clear of it.
-const HALL_C = { x: 0.5, y: 0.5 };
-const RING_MIN = 4.6;
-const RING_MAX = 5.6;
+export const HALL_C = { x: 0.5, y: 0.5 };
+export const RING_MIN = 4.6;
+export const RING_MAX = 5.6;
+
+/** How far apart (tiles) idle builders stop, so none stands in another. */
+export const SPACING = 1;
+
+/** Taken within SPACING of any of `others` (where builders stand, or the end of their walk). */
+export function takenBy(others: readonly Tile[]): Blocked {
+  return (p) => others.some((o) => Math.hypot(o.x - p.x, o.y - p.y) < SPACING);
+}
 
 /** How far (tiles) an idle builder set down by the owner strays from where it was dropped. */
 export const ANCHOR_HOP = 1.2;
@@ -132,7 +140,7 @@ export function standTile(c: Compound, spot: Tile, house: Tile, walk?: Set<strin
 }
 
 /** Point on the plaza ring in the direction of `p` from the hall, turned along the ring off blocked ground. */
-function plazaPoint(p: Tile, blocked: Blocked = open): Tile {
+export function plazaPoint(p: Tile, blocked: Blocked = open): Tile {
   const a0 = Math.atan2(p.y - HALL_C.y, p.x - HALL_C.x);
   const r = (RING_MIN + RING_MAX) / 2;
   const at = (a: number): Tile => ({ x: HALL_C.x + Math.cos(a) * r, y: HALL_C.y + Math.sin(a) * r });
@@ -220,10 +228,10 @@ export function dropOf(
 /** Advance `dt` seconds: walk the path; when idle with an empty path, rest then pick a new plaza target. */
 /**
  * Advance a walker by `dt` seconds. An idle builder wanders to points it can walk to in a straight
- * line without crossing `blocked` ground; one standing on blocked ground (a collector set down over
- * it) walks straight off.
+ * line without crossing `blocked` ground, and that are not `taken` (where another builder stands or
+ * is heading); one standing on blocked ground (a collector set down over it) walks straight off.
  */
-export function step(w: Walker, dt: number, rnd: () => number, blocked: Blocked = open): Walker {
+export function step(w: Walker, dt: number, rnd: () => number, blocked: Blocked = open, taken: Blocked = open): Walker {
   let { x, y, face, mode, wait } = w;
   const path = w.path.slice();
   let budget = SPEED * dt;
@@ -258,7 +266,7 @@ export function step(w: Walker, dt: number, rnd: () => number, blocked: Blocked 
       // a few tries; when none is clear the builder waits and tries again
       for (let i = 0; i < 8 && !path.length; i++) {
         const t = pick();
-        if (!blocked(t) && (stuck || lineOpen(blocked, here, t))) path.push(t);
+        if (!blocked(t) && !taken(t) && (stuck || lineOpen(blocked, here, t))) path.push(t);
       }
       wait = path.length ? 1 + rnd() * 3 : 0.5;
     }

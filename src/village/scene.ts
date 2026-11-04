@@ -23,6 +23,7 @@ import { DRAG_PX, createDragController } from './drag';
 import { clickPoint, compoundAt, dragTarget, hitTest, selectionOf } from './input';
 import { COLLECTOR_NAME, collectorLook, collectorTiles, shownCollectors, type CollectorAgent } from './quota';
 import { FxRenderer, POP_SECONDS, ORB_SECONDS, Particles, RELOCATE_SECONDS, lifecycleEvents, type Snap } from './effects';
+import { MAX_MINIONS, MINION_SCALE, minionSpots, popScale, shownMinions, trailOffset, type MinionSpot } from './minions';
 
 // ---------------------------------------------------------------- pure part
 
@@ -273,6 +274,25 @@ interface Site {
   reachedFinished: boolean;
   /** Back after a relaunch, not resumed yet: the builder waits by it. */
   paused?: boolean;
+  /** The ids of the session's running subagents, oldest first: its minions. */
+  subagents: string[];
+}
+
+/** A subagent drawn as a small builder by its session's builder (see `minions`). */
+interface MinionView {
+  sprite: Sprite;
+  shadow: Sprite;
+  /** Its place among the builder's minions (`minionSpots`, `trailOffset`), kept for as long as it lives. */
+  slot: number;
+  /** Where it stands now, in tiles; NaN until its first frame. */
+  x: number;
+  y: number;
+  /** Seconds since it appeared, and since its subagent stopped (null while it runs). */
+  age: number;
+  gone: number | null;
+  /** 0..1: keeps its hammer and steps out of time with the builder's. */
+  phase: number;
+  pose: Pose;
 }
 
 interface BuilderView {
@@ -294,6 +314,10 @@ interface BuilderView {
   leaving: { wsId: string; c: Compound } | null;
   /** Picked up by the owner: the tile point it hangs over (not walking meanwhile). */
   held: Tile | null;
+  /** Its session's subagents, by id, including ones shrinking away. */
+  minions: Map<string, MinionView>;
+  /** Where its minions stand while it works at its site, by slot. */
+  minionSpots: MinionSpot[];
 }
 
 const HEAD_HEIGHT: Record<ClassTier, number> = { 0: 56, 1: 64, 2: 80, 3: 88 };
@@ -302,7 +326,8 @@ const SHADOW_SIZE: Record<ClassTier, number> = { 0: 0.9, 1: 1, 2: 1.15, 3: 1.25 
 
 /** The depth a builder at work in compound `c` is drawn over: the house's and every structure's front corner. */
 export function siteDepth(c: Compound, spots: readonly Tile[]): number {
-  return Math.max(c.house.x + c.house.y + 2 * HOUSE, ...spots.map((s) => s.x + s.y + 2 * STRUCT)) + 0.002;
+  // the house and structures sort by their front corner plus their kind's rank (see `ent`): outrank them
+  return Math.max(c.house.x + c.house.y + 2 * HOUSE, ...spots.map((s) => s.x + s.y + 2 * STRUCT)) + KIND_RANK.builder * 0.001;
 }
 /** Px a picked-up builder hangs above the tile it would be set down on. */
 const HELD_LIFT = 18;
@@ -344,6 +369,7 @@ function siteOf(b: Builder, state: VillageInput, compounds: Map<string, Compound
   return {
     sessionId: best.id, workspaceId: best.workspaceId, compound: compounds.get(best.workspaceId)!,
     spot: best.spot, state: best.state.kind, reachedFinished: best.reachedFinished, paused: best.paused,
+    subagents: (best.subagents ?? []).map((a) => a.id),
   };
 }
 
@@ -370,6 +396,8 @@ export interface SceneDebug {
   groundBakes: number;
   /** Live particles (dust, smoke, orbs, floating text). */
   particles: number;
+  /** The minions standing by the builders, one per running subagent (none while shrinking away). */
+  minions: Array<{ id: string; builderId: string; x: number; y: number; pose: string }>;
   cam: Cam;
   /** Client (window) position of an entity's clickable middle: an entity id, or a workspace id for its house. */
   screenOf(id: string): { x: number; y: number } | null;
@@ -815,7 +843,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
         v = {
           walker: { id: b.id, ...plazaPoint({ x: 0.5 + Math.cos(a), y: 0.5 + Math.sin(a) }, blocked), path: [], mode: 'idle', face: 1, wait: 0.5 },
           agent: b.agent, cls: classOf(b.agent, b.model), gear: gearOf(b.effort), site: null,
-          pose: 'idle', sprite, shadow, bubble: null, ring: null, puffs: [], leaving: null, held: null, siteZ: 0,
+          pose: 'idle', sprite, shadow, bubble: null, ring: null, puffs: [], leaving: null, held: null, siteZ: 0, minions: new Map(), minionSpots: [],
         };
         views.set(b.id, v);
       }
@@ -852,11 +880,85 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       }
       v.site = site;
       if (site) v.siteZ = siteDepth(site.compound, spotsIn(state.sessions, site.workspaceId, state.boards));
+      syncMinions(v, site && !site.paused ? shownMinions(site.subagents) : []);
+      if (site && v.minions.size) {
+        const walk = walkOf(site.workspaceId, site.compound);
+        const level = state.workspaces.find((x) => x.id === site.workspaceId)?.level ?? 1;
+        const spots = spotsIn(state.sessions, site.workspaceId, state.boards);
+        const inside = enclosure(site.compound, spots, level, seedOf(site.workspaceId)).inside;
+        v.minionSpots = minionSpots(standTile(site.compound, site.spot, site.compound.house, walk), walk, inside, MAX_MINIONS);
+      }
     }
     for (const [id, v] of views) {
       if (live.has(id)) continue;
       for (const sp of [v.sprite, v.shadow, v.bubble, v.ring, ...v.puffs]) sp?.destroy();
+      for (const m of v.minions.values()) { m.sprite.destroy(); m.shadow.destroy(); }
       views.delete(id);
+    }
+  };
+
+  /** A minion for each of `ids`; the others shrink away (see `updateMinions`). */
+  const syncMinions = (v: BuilderView, ids: string[]) => {
+    const want = new Set(ids);
+    for (const [id, m] of v.minions) if (!want.has(id) && m.gone === null) m.gone = 0;
+    for (const id of ids) {
+      const m = v.minions.get(id);
+      if (m) { m.gone = null; continue; } // stopped and started again before it was gone
+      const used = new Set([...v.minions.values()].map((o) => o.slot));
+      let slot = 0;
+      while (used.has(slot) && slot < MAX_MINIONS) slot++;
+      const sprite = new Sprite();
+      world.addChild(sprite);
+      v.minions.set(id, { sprite, shadow: makeSprite(shadows, 'shadow'), slot, x: NaN, y: NaN, age: 0, gone: null, phase: (hashOf(id) % 97) / 97, pose: 'idle' });
+    }
+  };
+
+  /**
+   * Minions follow their builder, then stand on open ground by it at its site (`minionSpots`) and
+   * hammer away, each out of step with it.
+   */
+  const updateMinions = (v: BuilderView, dt: number, ro: { x: number; y: number } | null) => {
+    const w = v.walker;
+    const atSite = !!v.site && w.mode === 'atSite' && !v.held;
+    const follow = 1 - Math.exp(-dt * 6);
+    for (const [id, m] of v.minions) {
+      const off = trailOffset(m.slot);
+      const spot = atSite ? v.minionSpots[m.slot] : undefined;
+      const to = spot ?? { x: w.x + off.x, y: w.y + off.y };
+      if (Number.isNaN(m.x)) { // its first frame: it appears in a puff where it stands
+        m.x = to.x; m.y = to.y;
+        const p = iso(m.x, m.y);
+        particles.dust({ x: p.x + (ro?.x ?? 0), y: p.y + (ro?.y ?? 0) }, 6, false);
+      }
+      const dx = to.x - m.x, dy = to.y - m.y;
+      const moving = Math.hypot(dx, dy) > 0.08;
+      m.x += dx * follow; m.y += dy * follow;
+      m.age += dt;
+      if (m.gone !== null) m.gone += dt;
+      const k = popScale(m.age, m.gone);
+      if (m.gone !== null && k <= 0) {
+        m.sprite.destroy(); m.shadow.destroy();
+        v.minions.delete(id);
+        continue;
+      }
+      // its subagent is at work even when its builder's turn is over (subagents run on in the background)
+      const pose: Pose = moving || v.pose.startsWith('walk') ? (Math.floor(time / WALK_PERIOD + m.phase * 2) % 2 ? 'walk1' : 'walk0')
+        : v.held ? 'idle' : hammerPose(time, m.phase);
+      m.pose = pose;
+      const face = moving && Math.abs(dx - dy) > 0.05 ? (dx - dy > 0 ? 1 : -1) : w.face;
+      setTex(m.sprite, `builder:${v.agent}:0:0:${pose}:${face}`);
+      const p = iso(m.x, m.y);
+      const x = p.x + (ro?.x ?? 0), y = p.y + (ro?.y ?? 0);
+      const size = 0.5 * MINION_SCALE * k;
+      m.sprite.position.set(x, y);
+      m.sprite.scale.set(size);
+      // its own depth (its spot is clear of anything in front that would cover it); one huddled at its
+      // builder's feet is drawn with the builder, over the site
+      const depth = m.x + m.y + KIND_RANK.builder * 0.001;
+      m.sprite.zIndex = (spot?.huddled && !moving ? v.siteZ : depth) + 0.0001 * (1 + m.slot);
+      setTex(m.shadow, 'shadow');
+      m.shadow.position.set(x, y);
+      m.shadow.scale.set(size * SHADOW_SIZE[0]);
     }
   };
 
@@ -890,6 +992,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       // the stand tile sits beside the structure, often behind it, a neighbour or the house (whose
       // painted sprites reach past their footprints); hammering must stay visible
       if (v.site && w.mode === 'atSite' && !v.held) v.sprite.zIndex = v.siteZ;
+      updateMinions(v, dt, ro);
 
       const st = v.site?.state;
       const needs = st === 'needsYou', stuck = st === 'stuck';
@@ -1044,6 +1147,8 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     ],
     groundBakes,
     particles: particles.count,
+    minions: [...views].flatMap(([builderId, v]) => [...v.minions].filter(([, m]) => m.gone === null)
+      .map(([id, m]) => ({ id, builderId, x: m.x, y: m.y, pose: m.pose }))),
     cam: { ...cam },
     screenOf: (id) => {
       const e = hitEntities().find((x) => x.id === id) ?? hitEntities().find((x) => x.id === `house:${id}`);

@@ -9,7 +9,9 @@
 //!
 //! Hook payload shape (see tests/fixtures/claude-hooks/): every payload has `session_id`,
 //! `cwd` and `hook_event_name`. `Notification` carries `notification_type`
-//! (`permission_prompt` | `idle_prompt` observed) and a `message`.
+//! (`permission_prompt` | `idle_prompt` observed) and a `message`. `SubagentStart` and
+//! `SubagentStop` carry the subagent's `agent_id` and `agent_type`; `Stop` lists the turn's
+//! `background_tasks` (observed on 2.1.318 with two parallel Agent-tool subagents).
 //! Fixture paths: `/Users/<name>/` was rewritten to `/home/user/` to avoid leaking a username.
 use super::{AgentAdapter, Detection, DetectionCache, LaunchRequest, ScreenPrompt, DETECTION_TTL};
 use crate::model::AgentKind;
@@ -21,7 +23,8 @@ use std::time::Instant;
 /// Appended to every agent session's system prompt.
 pub const SHARED_FOLDER_NOTE: &str = "Other coding agents may be working in this same folder at the same time. If your task needs isolation from their changes, you may create your own git worktree and work there.";
 
-const HOOK_EVENTS: [&str; 6] = ["SessionStart", "UserPromptSubmit", "PostToolUse", "Notification", "Stop", "SessionEnd"];
+const HOOK_EVENTS: [&str; 8] =
+    ["SessionStart", "UserPromptSubmit", "PostToolUse", "Notification", "Stop", "SessionEnd", "SubagentStart", "SubagentStop"];
 
 pub struct ClaudeAdapter;
 
@@ -164,7 +167,23 @@ impl AgentAdapter for ClaudeAdapter {
         match body.get("hook_event_name").and_then(|v| v.as_str()) {
             Some("UserPromptSubmit") => out.push(StatusEvent::PromptSubmitted),
             Some("PostToolUse") => out.push(StatusEvent::ToolUsed),
-            Some("Stop") => out.push(StatusEvent::TurnFinished),
+            Some("Stop") => {
+                out.push(StatusEvent::TurnFinished);
+                // a turn can end with subagents still running in the background; with none left,
+                // any minion whose stop hook went missing goes too
+                if body.get("background_tasks").and_then(|v| v.as_array()).is_some_and(|t| t.is_empty()) {
+                    out.push(StatusEvent::SubagentsDone);
+                }
+            }
+            Some("SubagentStart") => {
+                let Some(id) = body.get("agent_id").and_then(|v| v.as_str()) else { return vec![] };
+                let agent_type = body.get("agent_type").and_then(|v| v.as_str()).map(String::from);
+                return vec![StatusEvent::SubagentStarted { id: id.into(), agent_type }];
+            }
+            Some("SubagentStop") => {
+                let Some(id) = body.get("agent_id").and_then(|v| v.as_str()) else { return vec![] };
+                return vec![StatusEvent::SubagentStopped { id: id.into() }];
+            }
             Some("Notification") => match body.get("notification_type").and_then(|v| v.as_str()) {
                 Some("permission_prompt") => {
                     let message = body.get("message").and_then(|v| v.as_str()).unwrap_or("Claude needs your permission");
@@ -300,7 +319,7 @@ mod tests {
         let path = PathBuf::from(&spec.args[3]);
         assert_eq!(path, d.path().join("sessions/sid-9/claude-settings.json"));
         let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
-        for ev in ["SessionStart", "UserPromptSubmit", "PostToolUse", "Notification", "Stop", "SessionEnd"] {
+        for ev in HOOK_EVENTS {
             let h = &v["hooks"][ev][0]["hooks"][0];
             assert_eq!(h["type"], "command", "{ev}");
             let cmd = h["command"].as_str().unwrap();
@@ -376,11 +395,22 @@ mod tests {
 
     #[test]
     fn parses_fixtures() {
-        assert_eq!(parse("stop.json"), vec![TurnFinished, cwd_ev()]);
+        assert_eq!(parse("stop.json"), vec![TurnFinished, SubagentsDone, cwd_ev()]);
         assert!(matches!(parse("notification_permission.json")[0], PermissionRequested { .. }));
         assert_eq!(parse("notification_idle.json")[0], WaitingForInput);
         assert_eq!(parse("post_tool_use.json")[0], ToolUsed);
         assert_eq!(parse("user_prompt_submit.json")[0], PromptSubmitted);
+    }
+
+    #[test]
+    fn subagent_hooks_name_the_subagent() {
+        let id = "aedeadf4ae87e474e".to_string();
+        assert_eq!(parse("subagent_start.json"), vec![SubagentStarted { id: id.clone(), agent_type: Some("general-purpose".into()) }]);
+        assert_eq!(parse("subagent_stop.json"), vec![SubagentStopped { id }]);
+        assert_eq!(ClaudeAdapter.parse_hook(&json!({"hook_event_name": "SubagentStart"})), vec![], "no agent_id");
+        // a turn that leaves background tasks running keeps its minions
+        let busy = json!({"hook_event_name": "Stop", "background_tasks": [{"id": "x"}]});
+        assert_eq!(ClaudeAdapter.parse_hook(&busy), vec![TurnFinished]);
     }
 
     #[test]

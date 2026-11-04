@@ -291,10 +291,19 @@ describe('siteDepth', () => {
     const c = { x0: 0, y0: 0, w: 9, h: 9, house: { x: 1, y: 1 } };
     const own = { x: 5, y: 1 }, neighbour = { x: 5, y: 4 };
     const z = siteDepth(c, [own, neighbour]);
-    // structure sprites sort by their front corner (spot + 2, 2), the house by (house + 3, 3)
-    expect(z).toBeGreaterThan(own.x + own.y + 4);
-    expect(z).toBeGreaterThan(neighbour.x + neighbour.y + 4);
-    expect(z).toBeGreaterThan(c.house.x + c.house.y + 6);
+    // the sprites sort by their entity depth: the front corner plus the kind's rank
+    const depth = (id: string) => buildEntities({ ...input, now: 0 }).find((e) => e.id === id)!.depth;
+    const input: VillageInput = {
+      workspaces: [{ id: 'w', name: 'w', path: '/w', level: 1, compound: c } as VillageInput['workspaces'][number]],
+      sessions: [own, neighbour].map((spot, i) => ({
+        id: `s${i}`, workspaceId: 'w', kind: { kind: 'agent', builderId: `b${i}` }, task: null, state: { kind: 'working' }, steps: 0,
+        startedAt: 0, lastOutputAt: 0, reachedFinished: false, worktree: null, commandPreview: '', awaitingDecision: false, busy: false, rev: 1, spot,
+      })),
+      builders: [],
+    };
+    expect(z).toBeGreaterThan(depth('struct:s0'));
+    expect(z).toBeGreaterThan(depth('struct:s1'));
+    expect(z).toBeGreaterThan(depth('house:w'));
   });
 });
 

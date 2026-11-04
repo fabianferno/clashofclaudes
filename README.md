@@ -2,7 +2,7 @@
 
 <h1 align="center">Clash of Claudes</h1>
 
-<p align="center"><b>Run all your coding agents from one village.</b> · <a href="https://clashofclaudes.vercel.app">clashofclaudes.vercel.app</a><br>
+<p align="center"><b>Run all your coding agents from one village.</b> · <a href="https://clashofclaudes.crevn.xyz">clashofclaudes.crevn.xyz</a><br>
 Claude Code, Codex, Antigravity CLI and OpenCode sessions as builders raising tents in an isometric town.</p>
 
 <p align="center">

@@ -108,7 +108,7 @@
 .agent-dialog-head { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
 .agent-dialog-head h3 { margin: 0; font-size: 20px; color: #fff; }
 .agent-dialog-head > div { flex: 1; display: flex; flex-direction: column; gap: 2px; }
-.agent-dialog-x { align-self: flex-start; width: 30px; height: 30px; border-radius: 8px; border: 2px solid #2b2018; background: #e6d5b0; color: #3d2f22; font: 900 18px/1 system-ui; cursor: pointer; }
+.agent-dialog-x { align-self: flex-start; flex: none; display: grid; place-items: center; width: 30px; height: 30px; padding: 0 0 2px; box-sizing: border-box; border-radius: 8px; border: 2px solid #2b2018; background: #e6d5b0; color: #3d2f22; font: 900 20px/1 system-ui; cursor: pointer; }
 .agent-dialog-x:hover { background: #f8ecd2; }
 .agent-dialog p { margin: 4px 0; }
 .agent-ok { color: #2f7d17; }
@@ -181,16 +181,29 @@
 .bug-field .sp-sec { margin: 0; }
 .bug-field textarea, .bug-field input { width: 100%; box-sizing: border-box; border: 2px solid #c8b083; border-radius: 8px; padding: 7px 9px; background: #fff8e8; font: 600 13px system-ui; color: #2b2018; resize: vertical; }
 .bug-field textarea:focus, .bug-field input:focus { outline: none; border-color: #a8885a; }
-.bug-shot { display: grid; grid-template-columns: auto 120px 1fr; gap: 10px; align-items: center; margin-top: 12px; cursor: pointer; }
-.bug-shot img { width: 120px; border: 2px solid var(--hud-out); border-radius: 6px; display: block; }
-.bug-details { margin-top: 10px; }
+.bug-req, .bug-opt { font: 700 11px system-ui; font-style: normal; letter-spacing: 0; margin-left: 4px; color: #9a8460; }
+.bug-req { color: #b3402f; }
+.bug-field textarea:focus, .bug-field input:focus { box-shadow: 0 0 0 3px rgba(74,176,240,.35); }
+.bug-shot { display: grid; grid-template-columns: auto 132px 1fr; gap: 12px; align-items: center; margin-top: 12px; padding: 8px 10px; cursor: pointer; background: #fbf1da; border: 2px solid #d8c39a; border-radius: 12px; transition: border-color .12s, background .12s; }
+.bug-shot:hover { border-color: #a8885a; }
+.bug-shot:has(input:checked) { border-color: #4ab0f0; background: #eaf6ff; }
+.bug-shot input { width: 18px; height: 18px; accent-color: #2f95db; margin: 0; }
+.bug-shot img { width: 132px; border: 2px solid var(--hud-out); border-radius: 6px; display: block; }
+.bug-shot-text { display: flex; flex-direction: column; gap: 2px; }
+.bug-details { margin-top: 12px; padding: 6px 10px; background: rgba(255,255,255,.35); border: 2px dashed #d8c39a; border-radius: 10px; }
 .bug-details summary { cursor: pointer; }
-.bug-details dl { margin: 6px 0 0; display: grid; gap: 2px; font-size: 12px; }
+.bug-details dl { margin: 8px 0 4px; max-height: 120px; overflow: auto; display: grid; gap: 2px; font-size: 12px; }
 .bug-details dl div { display: flex; gap: 8px; }
 .bug-details dt { flex: none; width: 76px; font-weight: 900; }
 .bug-details dd { margin: 0; overflow-wrap: anywhere; }
-.bug-btns { justify-content: flex-end; margin-top: 12px; }
-.bug-sent { font-weight: 900; font-size: 15px; margin: 14px 0 4px; }
+.bug-btns { justify-content: flex-end; margin-top: 14px; }
+.bug-hint { margin-right: auto; }
+.bug-btns-center { justify-content: center; }
+.bug-done { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 14px 0 2px; }
+.bug-done-badge { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; font: 900 28px/1 system-ui; color: #fff; border: 3px solid var(--hud-out); background: linear-gradient(#a6ef5a, #44a524); box-shadow: inset 0 3px 0 rgba(255,255,255,.45), 0 3px 0 var(--hud-out); animation: bug-pop .35s cubic-bezier(.3,1.6,.5,1); }
+@keyframes bug-pop { from { transform: scale(.4); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .bug-done-badge { animation: none; } }
+.bug-sent { font: 400 20px 'Lilita One', sans-serif; margin: 12px 0 2px; }
 
 /* Settings: app preferences, full page */
 .settings { position: fixed; inset: 0; z-index: 8; display: flex; flex-direction: column; background: #2b2018; color: #2b2018; font-family: system-ui, sans-serif; }

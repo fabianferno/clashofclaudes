@@ -13,7 +13,9 @@ const BASE = '/assets/village/';
 
 const CLASSES = ['apprentice', 'craftsman', 'master'] as const;
 const AGENTS: AgentKind[] = ['claude', 'codex', 'antigravity', 'opencode', 'custom'];
-const POSES = ['idle', 'walk0', 'walk1', 'hammer0', 'hammer1', 'cheer', 'sad'] as const;
+/** The frames of a class's strip, in order. The kit's second hammer frame (hammer on the other shoulder, mid-stride) is unused: see `paintedBuilder`. */
+const STRIP = ['idle', 'walk0', 'walk1', 'hammer0', 'kitHammer1', 'cheer', 'sad'] as const;
+type BuilderPose = 'idle' | 'walk0' | 'walk1' | 'hammer0' | 'hammer1' | 'hammer2' | 'cheer' | 'sad';
 /** Pre-tinted house roofs, by the roof colour they were painted in (coral is the untinted default). */
 const HOUSE_TINTS: Record<string, string> = {
   '': '#c64a32', '-teal': '#3a8f82', '-orange': '#d4852a', '-blue': '#4f6ec8', '-purple': '#7a4ca8',
@@ -175,12 +177,20 @@ const B_W = 220, B_H = 260, B_AX = 110, B_AY = 200;
 /** Each gear's hammer head (sampled from the kit's hammer sheet): wooden, iron, gold, runed, enchanted. */
 const GEAR_HEAD = ['#926132', '#9da8b2', '#efc53f', '#98c3df', '#fbe48d'];
 interface Box { x: number; y: number; w: number; h: number }
-/** The hammer head on each class's hammer0 and hammer1 frames (unflipped frame px); the strips all paint one iron hammer. */
-const HAMMER_BOX: Record<ClassTier, [Box, Box]> = {
-  0: [{ x: 70, y: 118, w: 24, h: 30 }, { x: 127, y: 127, w: 26, h: 28 }],
-  1: [{ x: 63, y: 106, w: 28, h: 30 }, { x: 130, y: 114, w: 30, h: 34 }],
-  2: [{ x: 58, y: 92, w: 30, h: 36 }, { x: 148, y: 98, w: 26, h: 44 }],
+/** The hammer head on each class's raised-hammer frame (unflipped frame px); the strips all paint one iron hammer. */
+const HAMMER_BOX: Record<ClassTier, Box> = {
+  0: { x: 70, y: 118, w: 24, h: 30 },
+  1: { x: 63, y: 106, w: 28, h: 30 },
+  2: { x: 58, y: 92, w: 30, h: 36 },
 };
+/** The front fist on each class's idle frame (unflipped frame px; the feet stand at y 200), and its hammer's handle length. */
+const FIST: Record<ClassTier, { x: number; y: number; len: number }> = {
+  0: { x: 131, y: 167, len: 36 },
+  1: { x: 136, y: 165, len: 39 },
+  2: { x: 143, y: 162, len: 42 },
+};
+/** The swing in radians from straight up, toward the way the builder faces: level mid-swing, then down on the work. */
+const SWING = { hammer1: 1.65, hammer2: 2.45 } as const;
 
 /** Hammer-grey: dull, a little purple (never the warm grey of a custom builder's coat), neither outline nor highlight. */
 const isHammer = (r: number, g: number, b: number) =>
@@ -212,14 +222,86 @@ function gearHammer(g: CanvasRenderingContext2D, box: Box, gear: Gear): void {
   }
 }
 
-/** A builder pose from its class's strip, hammering with its gear's hammer; facing -1 mirrors it about the feet. */
-export function paintedBuilder(agent: AgentKind, cls: ClassTier, gear: Gear, pose: (typeof POSES)[number], face: 1 | -1): Art | null {
+/** A hammer in the fist at `f`, `a` radians from straight up (clockwise), with its gear's head; drawn in frame px. */
+function swungHammer(g: CanvasRenderingContext2D, f: { x: number; y: number; len: number }, a: number, gear: Gear): void {
+  const OUT = 'rgba(42,29,20,.85)';
+  g.save();
+  g.translate(f.x, f.y);
+  g.rotate(a);
+  g.lineCap = 'round';
+  for (const [c, w] of [[OUT, 6.5], ['#8a5a2b', 3.5]] as const) {
+    g.strokeStyle = c; g.lineWidth = w;
+    g.beginPath(); g.moveTo(0, 4); g.lineTo(0, -f.len); g.stroke();
+  }
+  // the head, across the handle's end: base, a shadowed lower half, a lit top edge
+  const hw = 21, hh = 12, y0 = -f.len - hh / 2;
+  const box = (x: number, y: number, w: number, h: number) => { g.beginPath(); g.roundRect(x, y, w, h, 3); };
+  g.fillStyle = GEAR_HEAD[gear]; g.strokeStyle = OUT; g.lineWidth = 2;
+  box(-hw / 2, y0, hw, hh); g.fill();
+  g.fillStyle = 'rgba(40,24,16,.28)'; box(-hw / 2, y0 + hh * 0.55, hw, hh * 0.45); g.fill();
+  g.fillStyle = 'rgba(255,255,255,.35)'; box(-hw / 2 + 3, y0 + 2, hw - 6, 2.5); g.fill();
+  box(-hw / 2, y0, hw, hh); g.stroke();
+  if (gear >= 3) {
+    g.globalCompositeOperation = 'destination-over';
+    const glow = g.createRadialGradient(0, -f.len, 2, 0, -f.len, 30);
+    glow.addColorStop(0, gear === 4 ? 'rgba(255,240,150,.6)' : 'rgba(150,210,255,.5)');
+    glow.addColorStop(1, 'rgba(255,240,150,0)');
+    g.fillStyle = glow; g.fillRect(-30, -f.len - 30, 60, 60);
+  }
+  g.restore();
+}
+
+/** The arc the head just travelled, fading toward where it came from (the mid-swing frame). */
+function swoosh(g: CanvasRenderingContext2D, f: { x: number; y: number; len: number }, to: number): void {
+  const r = f.len + 2;
+  g.save();
+  g.lineCap = 'round';
+  for (let i = 0; i < 4; i++) {
+    const from = to - 0.35 * (i + 1);
+    g.strokeStyle = `rgba(255,250,235,${0.42 - i * 0.1})`; g.lineWidth = 7 - i * 1.4;
+    g.beginPath(); g.arc(f.x, f.y, r, from - Math.PI / 2, from + 0.35 - Math.PI / 2); g.stroke();
+  }
+  g.restore();
+}
+
+/** Dust and chips kicked up where the head lands (the strike frame). */
+function impact(g: CanvasRenderingContext2D, x: number, y: number): void {
+  g.save();
+  g.fillStyle = 'rgba(226,206,160,.75)';
+  for (const [dx, dy, r] of [[-12, 2, 6], [11, 1, 7], [0, 5, 5], [-20, -3, 3.5], [19, -5, 3]] as const) {
+    g.beginPath(); g.ellipse(x + dx, y + dy, r * 1.3, r, 0, 0, Math.PI * 2); g.fill();
+  }
+  g.strokeStyle = '#fff3c4'; g.lineWidth = 2.5; g.lineCap = 'round';
+  for (const [dx, dy] of [[-14, -14], [0, -19], [14, -14]] as const) {
+    g.beginPath(); g.moveTo(x + dx * 0.45, y + dy * 0.45); g.lineTo(x + dx, y + dy); g.stroke();
+  }
+  g.restore();
+}
+
+/**
+ * A builder pose from its class's strip; facing -1 mirrors it about the feet. A hammer stroke is
+ * hammer0 (the kit's raised hammer, recoloured for the gear), then hammer1 (level, mid-swing) and
+ * hammer2 (down on the work, the body squashed a little) drawn on the planted idle frame: the kit's
+ * own second frame only moves the hammer to the other shoulder and reads as a dance step.
+ */
+export function paintedBuilder(agent: AgentKind, cls: ClassTier, gear: Gear, pose: BuilderPose, face: 1 | -1): Art | null {
   const img = get(`sheets/builder-${CLASSES[cls]}-${agent}.png`);
   if (!img) return null;
-  const i = POSES.indexOf(pose);
   const art = canvasArt(B_W, B_H, B_AX, B_AY, (g) => {
-    g.drawImage(img, i * B_W, 0, B_W, B_H, 0, 0, B_W, B_H);
-    if (pose === 'hammer0' || pose === 'hammer1') gearHammer(g, HAMMER_BOX[cls][pose === 'hammer0' ? 0 : 1], gear);
+    if (pose === 'hammer1' || pose === 'hammer2') {
+      const f = FIST[cls], a = SWING[pose];
+      g.save();
+      if (pose === 'hammer2') { g.translate(B_AX, B_AY); g.scale(1.03, 0.96); g.translate(-B_AX, -B_AY); }
+      g.drawImage(img, 0, 0, B_W, B_H, 0, 0, B_W, B_H);
+      g.restore();
+      const fist = pose === 'hammer2' ? { ...f, y: B_AY - (B_AY - f.y) * 0.96 } : f;
+      if (pose === 'hammer1') swoosh(g, fist, a);
+      swungHammer(g, fist, a, gear);
+      if (pose === 'hammer2') impact(g, fist.x + Math.sin(a) * (f.len + 4), fist.y - Math.cos(a) * (f.len + 4) + 8);
+      return;
+    }
+    g.drawImage(img, STRIP.indexOf(pose) * B_W, 0, B_W, B_H, 0, 0, B_W, B_H);
+    if (pose === 'hammer0') gearHammer(g, HAMMER_BOX[cls], gear);
   });
   if (face === 1) return art;
   return canvasArt(B_W, B_H, B_AX, B_AY, (g) => { g.translate(B_W, 0); g.scale(-1, 1); g.drawImage(art.canvas, 0, 0); });

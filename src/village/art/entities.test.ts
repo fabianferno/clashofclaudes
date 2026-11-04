@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PALETTE } from '../look';
 import { shade } from './draw';
 import {
-  GROUND_SCALE, drawBuilder, drawGate, drawGround, groundBakeSize, drawHall, drawHouse, drawStatusBar, drawStructure, drawTree, drawWallSeg,
+  GROUND_SCALE, STROKE, drawBuilder, hammerPose, drawGate, drawGround, groundBakeSize, drawHall, drawHouse, drawStatusBar, drawStructure, drawTree, drawWallSeg,
 } from './entities';
 import { getTexture, clearTextures, textureCacheSize } from '../textures';
 import { setSpritesForTest } from './sprites';
@@ -30,7 +30,7 @@ describe('art', () => {
         for (const h of [0, 0.5, 1]) ok(drawStructure(a, st, h));
       for (const cls of [0, 1, 2] as const)
         for (const gear of [0, 1, 2, 3, 4] as const)
-          for (const pose of ['idle', 'walk0', 'walk1', 'hammer0', 'hammer1', 'cheer', 'sad'] as const)
+          for (const pose of ['idle', 'walk0', 'walk1', 'hammer0', 'hammer1', 'hammer2', 'cheer', 'sad'] as const)
             for (const face of [1, -1] as const) ok(drawBuilder(a, cls, gear, pose, face));
     }
     for (const l of ['ew', 'ns', 'es', 'nw', 'nesw', '']) ok(drawWallSeg(l));
@@ -198,4 +198,16 @@ describe('treesOverPaths', () => {
     }
     expect(treesOverPaths(b, [c], 7, [], tiles)).toEqual(lifted); // deterministic
   });
+});
+
+test('a hammer stroke holds the hammer up, swings it down fast and rests on the work', () => {
+  const at = (t: number, phase = 0) => hammerPose(t, phase);
+  expect(at(0)).toBe('hammer0');
+  expect(at(0.3)).toBe('hammer0');
+  expect(at(0.48)).toBe('hammer1');
+  expect(at(0.6)).toBe('hammer2');
+  expect(at(0.78)).toBe('hammer1');
+  expect(at(0.85)).toBe('hammer0');
+  expect(at(STROKE + 0.6)).toBe('hammer2');
+  expect(at(0.6, 0.5)).not.toBe(at(0.6)); // builders out of step
 });

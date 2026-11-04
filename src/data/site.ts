@@ -40,7 +40,7 @@ export const agents: {
     builder: 'master-claude',
     rank: 'Master',
     reports: 'Working, needs you, finished, and how many tool steps it took. It also spots the first run "trust this folder" menu.',
-    approve: 'Allow or deny right from the village',
+    approve: 'Allow or deny from the village, no terminal needed.',
     verified: true,
   },
   {
@@ -50,7 +50,7 @@ export const agents: {
     builder: 'craftsman-codex',
     rank: 'Craftsman',
     reports: 'Working and finished. Needs you is read from its approval and trust prompts on screen.',
-    approve: 'Answer in the terminal',
+    approve: 'Answer in its terminal. The red “!” still tells you when.',
     verified: false,
   },
   {
@@ -60,7 +60,7 @@ export const agents: {
     builder: 'apprentice-antigravity',
     rank: 'Apprentice',
     reports: 'Working, needs you, finished, interrupted, failed, and tool steps, read from what agy prints. No settings files at all.',
-    approve: 'Allow or deny right from the village',
+    approve: 'Allow or deny from the village too.',
     verified: true,
   },
   {
@@ -70,7 +70,7 @@ export const agents: {
     builder: 'craftsman-opencode',
     rank: 'Craftsman',
     reports: 'Working, needs you, finished, and stuck on an error.',
-    approve: 'Answer in the terminal',
+    approve: 'Answer in its terminal, one click from the builder.',
     verified: false,
   },
 ];

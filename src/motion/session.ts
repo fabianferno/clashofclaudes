@@ -3,7 +3,7 @@
 // Idle input: while the builder works, the tool step counter ticks on the GSAP clock.
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { onPage, prefersReducedMotion } from '../engine';
+import { isMobile, onPage, prefersReducedMotion } from '../engine';
 
 type State = 'working' | 'needs' | 'allowed' | 'finished';
 const captions: Record<State, string> = {
@@ -52,8 +52,9 @@ export function startSession() {
     chapters.forEach((c) => {
       ScrollTrigger.create({
         trigger: c,
-        start: 'top 60%',
-        end: 'bottom 60%',
+        // On phones the sticky stage covers the top half, so a chapter counts once it is in the lower half.
+        start: isMobile() ? 'top 85%' : 'top 60%',
+        end: isMobile() ? 'bottom 85%' : 'bottom 60%',
         onToggle: (self) => { if (self.isActive) apply(c.dataset.chapter as State); },
       });
     });

@@ -106,8 +106,10 @@ function version() {
     try { const c = JSON.parse(localStorage.getItem(KEY) || 'null'); return c && Date.now() - c.at < 36e5 ? c : null; } catch { return null; }
   };
   const save = (tag: string | null) => { try { localStorage.setItem(KEY, JSON.stringify({ tag, at: Date.now() })); } catch {} };
-  onPage(() => {
+  onPage(({ path }) => {
     if (latest !== undefined) return paint();
+    // The build bakes the version in; only the home page checks for a newer one.
+    if (path !== '/') return;
     const cached = read(); // one GitHub API call per visitor per hour at most (its limit is 60/h per IP)
     if (cached) { latest = cached.tag; return paint(); }
     latest = null;

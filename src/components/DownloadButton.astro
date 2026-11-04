@@ -1,5 +1,6 @@
 ---
 import { site } from '../data/site';
+import { builtVersion } from '../data/version';
 interface Props { label?: string; size?: 'l' | 'm'; class?: string; requirements?: boolean }
 const { label = 'Download for Mac', size = 'l', class: cls = '', requirements = false } = Astro.props;
 ---
@@ -10,6 +11,6 @@ const { label = 'Download for Mac', size = 'l', class: cls = '', requirements = 
   </a>
   <p class="dl__meta">
     {requirements && <span>{site.requirements}.</span>}
-    <span class="dl__version" data-version hidden></span>
+    <span class="dl__version" data-version hidden={!builtVersion}>{builtVersion && `Latest: ${builtVersion}`}</span>
   </p>
 </div>

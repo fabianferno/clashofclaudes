@@ -69,7 +69,7 @@
   /* Shape: the game UI rule. */
   --radius: 14px;
   --stroke: 3px;
-  --lip: 4px;
+  --lip: 5px;
 
   --z-content: 1;
   --z-header: 50;

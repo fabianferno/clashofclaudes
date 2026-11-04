@@ -69,7 +69,7 @@ import { agents, privacy, site, villageNotes } from '../data/site';
               <div><dt>Permission prompts</dt><dd>{a.approve}</dd></div>
             </dl>
             <p class={`card__badge ${a.verified ? 'is-verified' : 'is-pending'}`}>
-              {a.verified ? 'Checked against real runs' : 'Built from the docs. Help us confirm it'}
+              {a.verified ? `Checked against real ${a.command} runs` : `Built from the ${a.name} docs. Help us confirm it`}
             </p>
           </li>
         ))}

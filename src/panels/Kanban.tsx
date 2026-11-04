@@ -44,7 +44,7 @@ export default function Kanban() {
     if (!wsId) return;
     const t = setInterval(() => setNow(Date.now()), 30_000); // elapsed times are shown in minutes
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
+      if (e.key !== 'Escape' || useApp.getState().settingsOpen) return; // Settings stands over it
       e.preventDefault();
       e.stopPropagation();
       const a = document.activeElement;

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ipc } from '../api/ipc';
+import { useApp } from '../state/store';
 
 export const FIRST_CHECK_MS = 10_000;
 export const CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
@@ -10,7 +11,7 @@ export const CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
  * exists. Every failure is silent here; the backend logs it.
  */
 export default function UpdateToast() {
-  const [available, setAvailable] = useState(false);
+  const available = useApp((s) => s.updateAvailable);
   const [dismissed, setDismissed] = useState(false);
   // 'installing' while the download runs (with its percent once the size is known); 'installed'
   // once it is in place but the app was not restarted (the user cancelled the restart because
@@ -34,7 +35,7 @@ export default function UpdateToast() {
 
   useEffect(() => {
     const check = () => {
-      ipc.checkForUpdate().then((s) => { if (s?.available) setAvailable(true); }).catch(() => {});
+      ipc.checkForUpdate().then((s) => { if (s?.available) useApp.getState().setUpdateAvailable(true); }).catch(() => {});
     };
     let every: ReturnType<typeof setInterval> | undefined;
     const first = setTimeout(() => { check(); every = setInterval(check, CHECK_EVERY_MS); }, FIRST_CHECK_MS);

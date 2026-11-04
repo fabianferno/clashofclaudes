@@ -26,7 +26,7 @@ use sessions::{Emit, ManagerEvent, SessionManager};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 use tauri::ipc::InvokeResponseBody;
-use tauri::menu::{Menu, MenuItem};
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::{AppHandle, Emitter, Manager, Runtime, WindowEvent};
 use tauri_plugin_notification::{NotificationExt, PermissionState};
 
@@ -55,10 +55,12 @@ fn show_note<R: Runtime>(app: &AppHandle<R>, st: &NotifyState, note: notify::Not
     let _ = n.builder().title(note.title).body(note.body).extra("sessionId", session_id).show();
 }
 
-/// Recomputes the dock badge from the live sessions; the dock is only touched on a change.
-fn refresh_badge<R: Runtime>(app: &AppHandle<R>) {
+/// Recomputes the dock badge from the live sessions (none when the setting is off); the dock is
+/// only touched on a change.
+pub(crate) fn refresh_badge<R: Runtime>(app: &AppHandle<R>) {
     let Some(state) = app.try_state::<AppState>() else { return };
-    let n = notify::badge_count(&state.manager.list());
+    let shown = state.data.lock().unwrap_or_else(|e| e.into_inner()).settings.dock_badge;
+    let n = if shown { notify::badge_count(&state.manager.list()) } else { 0 };
     if app.try_state::<NotifyState>().is_some_and(|ns| !ns.badge.changed(n)) {
         return;
     }
@@ -89,12 +91,17 @@ pub fn resolve_data_dir(default: std::path::PathBuf, override_dir: Option<&str>)
 }
 
 const QUIT_MENU_ID: &str = "app-quit";
+const SETTINGS_MENU_ID: &str = "app-settings";
 
-/// The default menu, except Quit: the predefined item terminates the process directly (macOS
-/// `terminate:`) and never raises ExitRequested, so it is swapped for one that calls
-/// `app.exit`, which goes through the exit guard in `run`.
+/// The default menu, plus Settings… (Cmd+,) after About, except Quit: the predefined item
+/// terminates the process directly (macOS `terminate:`) and never raises ExitRequested, so it is
+/// swapped for one that calls `app.exit`, which goes through the exit guard in `run`.
 fn app_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let menu = Menu::default(app)?;
+    if let Some(first) = menu.items()?.first().and_then(|t| t.as_submenu().cloned()) {
+        first.insert(&PredefinedMenuItem::separator(app)?, 1)?;
+        first.insert(&MenuItem::with_id(app, SETTINGS_MENU_ID, "Settings…", true, Some("CmdOrCtrl+,"))?, 2)?;
+    }
     for top in menu.items()? {
         let Some(sub) = top.as_submenu() else { continue };
         for (i, item) in sub.items()?.into_iter().enumerate() {
@@ -159,6 +166,8 @@ pub fn run() {
         .on_menu_event(|app, event| {
             if event.id() == QUIT_MENU_ID {
                 app.exit(0);
+            } else if event.id() == SETTINGS_MENU_ID {
+                let _ = app.emit("open-settings", ());
             }
         })
         .setup(|app| {
@@ -208,16 +217,15 @@ pub fn run() {
                                 .get_webview_window("main")
                                 .is_none_or(|w| w.is_minimized().unwrap_or(true) || !w.is_visible().unwrap_or(false));
                             ns.notifier.set_obscured(obscured);
-                            let name = st
-                                .data
-                                .lock()
-                                .unwrap_or_else(|e| e.into_inner())
-                                .builders
-                                .iter()
-                                .find(|b| &b.id == bid)
-                                .map(|b| b.name.clone())
-                                .unwrap_or_else(|| "Builder".to_string());
-                            if let Some(note) = ns.notifier.on_update(None, &info, &name) {
+                            let (name, settings) = {
+                                let d = st.data.lock().unwrap_or_else(|e| e.into_inner());
+                                let name = d.builders.iter().find(|b| &b.id == bid).map(|b| b.name.clone());
+                                (name.unwrap_or_else(|| "Builder".to_string()), d.settings.clone())
+                            };
+                            // on_update first: it records the state even when the note is not wanted
+                            if let Some(note) = ns.notifier.on_update(None, &info, &name)
+                                && notify::wanted(&settings, &info.state)
+                            {
                                 show_note(&handle, &ns, note, &info.id);
                             }
                         }
@@ -369,6 +377,8 @@ pub fn run() {
             commands::quit_now,
             commands::get_settings,
             commands::set_settings,
+            commands::data_folder,
+            commands::show_data_folder,
             commands::check_for_update,
             commands::install_update,
             commands::restart_for_update,

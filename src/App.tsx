@@ -11,6 +11,7 @@ import UpdateToast from './hud/UpdateToast';
 import SidePanel from './panels/SidePanel';
 import PopOutApp from './panels/PopOutApp';
 import Kanban from './panels/Kanban';
+import SettingsPage from './panels/SettingsPage';
 import { preloadTerminal } from './components/LazyTerminalView';
 import './App.css';
 
@@ -36,6 +37,7 @@ function App() {
       if (useApp.getState().sessions[id]) useApp.getState().setSelection({ kind: 'session', id });
     }));
     keep(ipc.onConfirmQuit((q) => setQuit({ live: q.live, restart: !!q.restart })));
+    keep(ipc.onOpenSettings(() => useApp.getState().setSettingsOpen(true)));
     let stopLayout: (() => void) | null = null;
     ipc.listState()
       .then((s) => {
@@ -69,6 +71,7 @@ function App() {
     <SidePanel />
     <Kanban />
     <PopOutApp />
+    <SettingsPage />
     <UpdateToast />
     <div className="toasts">
       {error && <div className="error" onClick={() => setError(null)}>{error}</div>}

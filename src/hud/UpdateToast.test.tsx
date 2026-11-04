@@ -18,7 +18,7 @@ beforeEach(() => {
   ipc.installUpdate.mockReset().mockResolvedValue(undefined);
   ipc.restartForUpdate.mockReset().mockResolvedValue(undefined);
   ipc.onUpdateProgress.mockReset().mockImplementation((cb: (pct: number | null) => void) => { progress = cb; return Promise.resolve(() => {}); });
-  act(() => useApp.getState().setError(null));
+  act(() => { useApp.getState().setError(null); useApp.getState().setUpdateAvailable(false); });
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 

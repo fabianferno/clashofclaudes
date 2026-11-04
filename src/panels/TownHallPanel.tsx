@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react';
-import { ipc } from '../api/ipc';
+import { useState } from 'react';
 import { useApp } from '../state/store';
 import * as wsActions from '../state/workspaceActions';
 import AgentsStatus from './AgentsStatus';
@@ -16,16 +15,6 @@ export default function TownHallPanel() {
   const [newName, setNewName] = useState<string | null>(null);
   // The name stays until the folder exists: a cancelled picker keeps it for another try.
   const create = async (pick = false) => { if (newName && await wsActions.createFolder(newName, pick)) setNewName(null); };
-  const [updatesEnabled, setUpdatesEnabled] = useState(true);
-  useEffect(() => {
-    let live = true;
-    ipc.getSettings().then((s) => live && setUpdatesEnabled(s.updatesEnabled)).catch(() => {});
-    return () => { live = false; };
-  }, []);
-  const toggleUpdates = (on: boolean) => {
-    setUpdatesEnabled(on);
-    ipc.setSettings({ updatesEnabled: on }).catch((e) => { setUpdatesEnabled(!on); useApp.getState().setError(String(e)); });
-  };
   const all = Object.values(sessions);
   const count = (id: string) => Object.values(sessions).filter((s) => s.workspaceId === id).length;
 
@@ -76,11 +65,10 @@ export default function TownHallPanel() {
       <div className="sp-sec">Agents</div>
       <AgentsStatus />
       <div className="sp-sec">Settings</div>
-      <label className="sp-note" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <input type="checkbox" checked={updatesEnabled} onChange={(e) => toggleUpdates(e.target.checked)} />
-        Check for updates automatically
-      </label>
-      <div className="sp-note">This is the only time the app uses the network: it checks GitHub for signed updates (an update is installed only if its signature matches).</div>
+      <div className="sp-note">Notifications, updates, shortcuts and where your data lives.</div>
+      <div className="sp-btns">
+        <button className="hud-btn grey sm" onClick={() => useApp.getState().setSettingsOpen(true)}>Open Settings</button>
+      </div>
     </>
   );
 }

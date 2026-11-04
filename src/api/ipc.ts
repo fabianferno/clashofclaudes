@@ -83,6 +83,10 @@ export const ipc = {
   quitNow: (restart = false) => invoke<void>('quit_now', { restart }),
   getSettings: () => invoke<Settings>('get_settings'),
   setSettings: (settings: Settings) => invoke<Settings>('set_settings', { settings }),
+  /** The folder holding the app's data. */
+  dataFolder: () => invoke<string>('data_folder'),
+  /** Opens the data folder in Finder. */
+  showDataFolder: () => invoke<void>('show_data_folder'),
   /** Rejects with "disabled" (no network call made) in debug builds, with the placeholder key, or when updates are off. */
   checkForUpdate: () => invoke<UpdateStatus>('check_for_update'),
   /** Downloads and installs the pending update; the backend then asks (if sessions run) before restarting. */
@@ -113,4 +117,7 @@ export const ipc = {
     listen<{ id: string }>('select-session', (e) => cb(e.payload.id)),
   onConfirmQuit: (cb: (q: ConfirmQuit) => void): Promise<UnlistenFn> =>
     listen<ConfirmQuit>('confirm-quit', (e) => cb(e.payload)),
+  /** Settings… (Cmd+,) was chosen in the app menu. */
+  onOpenSettings: (cb: () => void): Promise<UnlistenFn> =>
+    listen('open-settings', () => cb()),
 };

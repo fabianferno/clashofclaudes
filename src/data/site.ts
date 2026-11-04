@@ -79,6 +79,15 @@ export const agents: {
   },
 ];
 
+// The agents section: each agent reports to the village. A sample of what each might say, in the
+// app's own states (illustrative, matching the sample village in the screenshots).
+export const reports: { agent: AgentKey; name: string; status: 'needs' | 'work' | 'done' | 'stuck'; label: string; text: string }[] = [
+  { agent: 'claude', name: 'Claude Code', status: 'needs', label: 'Needs you', text: 'Allow Bash: pnpm prisma migrate deploy?' },
+  { agent: 'codex', name: 'Codex', status: 'work', label: 'Working', text: 'Rate-limiting the webhook route. 5 steps in.' },
+  { agent: 'antigravity', name: 'Antigravity CLI', status: 'done', label: 'Finished', text: 'Docs updated in 31 tool steps.' },
+  { agent: 'opencode', name: 'OpenCode', status: 'stuck', label: 'Stuck', text: 'Exited with an error. Open its terminal?' },
+];
+
 // The signature stage: one session, start to finish. `state` drives the stage.
 export const chapters = [
   {

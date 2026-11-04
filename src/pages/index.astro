@@ -3,7 +3,8 @@ import Base from '../layouts/Base.astro';
 import HeroScene from '../components/HeroScene.astro';
 import SessionStage from '../components/SessionStage.astro';
 import DownloadButton from '../components/DownloadButton.astro';
-import Builder from '../components/Builder.astro';
+import AgentNetwork from '../components/AgentNetwork.astro';
+import AgentLogo from '../components/AgentLogo.astro';
 import TreeLine from '../components/TreeLine.astro';
 import { agents, faq, privacy, site, tour, villageNotes } from '../data/site';
 ---
@@ -53,33 +54,28 @@ import { agents, faq, privacy, site, tour, villageNotes } from '../data/site';
       <div class="roster__head">
         <h2 class="title" id="builders-title" data-split="lines">Bring the agents you already use</h2>
         <p class="roster__lede">
-          The app runs the agent CLIs you have installed and signed in to, with your own logins. It
-          never installs agents or touches your API keys. The Town Hall shows which ones it found.
+          The app runs the agent CLIs you have installed and signed in to, with your own logins. Each
+          one reports to the village as it works. It never installs agents or touches your API keys.
         </p>
       </div>
-      <ul class="cards">
+      <AgentNetwork />
+      <ul class="agents">
         {agents.map((a, i) => (
-          <li class={`card card--${a.key}`} data-reveal="up" data-delay={(i * 0.06).toFixed(2)}>
-            <div class="card__tile" aria-hidden="true">
-              <Builder sheet={a.builder} pose="idle" class="card__builder" />
-              <span class="card__rank">{a.rank}</span>
-            </div>
-            <h3 class="card__name">{a.name}</h3>
-            <p class="card__cmd"><code>{a.command}</code></p>
-            <dl class="card__facts">
-              <div><dt>The village shows</dt><dd>{a.reports}</dd></div>
-              <div><dt>Permission prompts</dt><dd>{a.approve}</dd></div>
-            </dl>
-            <p class={`card__badge ${a.verified ? 'is-verified' : 'is-pending'}`}>
+          <li class="agents__item" data-reveal="up" data-delay={(i * 0.06).toFixed(2)}>
+            <div class="agents__name"><AgentLogo kind={a.key} class="agents__logo" /><h3>{a.name}</h3> <code>{a.command}</code></div>
+            <p><b>The village shows</b> {a.reports}</p>
+            <p><b>Permission prompts</b> {a.approve}</p>
+            <p class={`agents__badge ${a.verified ? 'is-verified' : 'is-pending'}`}>
               {a.verified ? `Checked against real ${a.command} runs` : `Built from the ${a.name} docs. Help us confirm it`}
             </p>
           </li>
         ))}
+        <li class="agents__item" data-reveal="up" data-delay="0.24">
+          <div class="agents__name"><AgentLogo kind="custom" class="agents__logo" /><h3>Any command</h3></div>
+          <p><b>The village shows</b> Working while it prints, finished after it goes quiet, and stuck if it exits with an error or stays silent too long.</p>
+          <p><b>Permission prompts</b> Whatever it asks, you answer in the terminal it runs in.</p>
+        </li>
       </ul>
-      <p class="roster__custom">
-        <strong>Any other command works too.</strong> It counts as working while it prints, finished
-        after it goes quiet, and stuck if it exits with an error or stays silent too long.
-      </p>
     </div>
   </section>
 

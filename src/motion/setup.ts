@@ -5,6 +5,7 @@ import { ease, onPage, onScroll, setTransition } from '../engine';
 import { startSession } from './session';
 import { startTour } from './tour';
 import { startHero } from './hero';
+import { startAgents } from './agents';
 import { site } from '../data/site';
 
 export function setupMotion() {
@@ -32,6 +33,7 @@ export function setupMotion() {
   startSession();
   startTour();
   startHero();
+  startAgents();
   toc();
   menu();
   version();

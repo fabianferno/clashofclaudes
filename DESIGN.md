@@ -273,3 +273,15 @@ Phones keep the natural flow: four agent cards and nine questions do not fit on 
 - **Margins:** `--gutter` (the page margin) is now `max(clamp(1.375rem, 5.5vw, 7rem), (100vw - 1280px) / 2)`,
   so content keeps clear of the edges and never runs wider than 1280px. Column gaps are a separate,
   tighter `--col-gap`.
+
+## Agents as a network (2026-11-05, owner request, after october.dev's "agents talk" section)
+
+The agents section is now a graph: the app's icon ("Your village") in the middle, the four agents'
+real marks around it on parchment tiles (`AgentLogo.astro`, the same marks and tiles as the app's
+`src/agentMarks.ts`), joined by dotted lines. `src/motion/agents.ts` plays one report at a time:
+the agent's bubble opens with a state in the app's words (needs you, working, finished, stuck),
+a gold dot travels its line, the village icon takes it with a bump. It loops while the section is
+on screen. Unlike the reference, agents do not talk to each other here: the app does not do that,
+so each one reports to the village. Under reduced motion the graph is still and every bubble stays
+open (phones hide them, since they would stack). The facts per agent sit under the graph as a
+five-column list, the fifth being "Any command".

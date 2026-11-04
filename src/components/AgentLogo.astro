@@ -1,0 +1,43 @@
+---
+// The agent as an app icon, as the app draws it (src/panels/AgentLogo.tsx there): its mark on a
+// rounded, shaded tile. Decorative: the text beside it names the agent.
+import { ANTIGRAVITY_COLOR, MARK_FILL_RULE, MARK_GRADIENT, MARK_PATHS, PROMPT_GLYPH, TILES, type AgentKind } from '../data/agentMarks';
+interface Props { kind: AgentKind; class?: string }
+const { kind, class: cls = '' } = Astro.props;
+const uid = `al-${kind}-${Math.random().toString(36).slice(2, 8)}`;
+const t = TILES[kind];
+const fg = t.fg === 'gradient' ? `url(#${uid}-mark)` : t.fg;
+const path = MARK_PATHS[kind] ?? null;
+---
+<svg class:list={['agent-logo', cls]} viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+  <defs>
+    <linearGradient id={`${uid}-bg`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color={t.top} /><stop offset="1" stop-color={t.bottom} /></linearGradient>
+    <linearGradient id={`${uid}-mark`} x1="0" y1="0" x2="1" y2="1">{MARK_GRADIENT.map(([o, c]) => <stop offset={o} stop-color={c} />)}</linearGradient>
+    <linearGradient id={`${uid}-gloss`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0.35" /><stop offset="0.5" stop-color="#fff" stop-opacity="0" /></linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="14" fill={`url(#${uid}-bg)`} />
+  <g transform="translate(16 16) scale(1.333)">
+    {kind === 'antigravity' && path ? (
+      <>
+        <defs>
+          <mask id={`${uid}-agy`} maskUnits="userSpaceOnUse" x="0" y="1" width="24" height="23"><path d={path} fill="#fff" fill-rule="evenodd" /></mask>
+          {ANTIGRAVITY_COLOR.map((b, i) => (
+            <filter id={`${uid}-agy${i}`} filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB" x={b.box[0]} y={b.box[1]} width={b.box[2]} height={b.box[3]}>
+              <feGaussianBlur stdDeviation={b.blur} />
+            </filter>
+          ))}
+        </defs>
+        <g mask={`url(#${uid}-agy)`}>{ANTIGRAVITY_COLOR.map((b, i) => <path d={b.d} fill={b.fill} filter={`url(#${uid}-agy${i})`} />)}</g>
+      </>
+    ) : path ? (
+      <path d={path} fill={fg} fill-rule={MARK_FILL_RULE[kind]} />
+    ) : (
+      <>
+        <path d={PROMPT_GLYPH[0]} fill="none" stroke={fg} stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" />
+        <path d={PROMPT_GLYPH[1]} stroke={fg} stroke-width="2.6" stroke-linecap="round" />
+      </>
+    )}
+  </g>
+  <rect x="2" y="2" width="60" height="60" rx="14" fill={`url(#${uid}-gloss)`} />
+  <rect x="2.5" y="2.5" width="59" height="59" rx="13.5" fill="none" stroke="#000" stroke-opacity="0.18" />
+</svg>

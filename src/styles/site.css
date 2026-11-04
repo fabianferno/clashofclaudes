@@ -338,43 +338,59 @@ html.motion .fl__bob { animation: float var(--fd, 7s) ease-in-out var(--fdl, 0s)
 .roster { position: relative; background: var(--forest); color: var(--parchment); padding-bottom: calc(var(--u) * 8); }
 .roster__trees { position: absolute; bottom: 100%; left: 0; }
 .roster__inner { padding: calc(var(--u) * 8) var(--gutter) 0; }
-.roster__head { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: var(--col-gap); row-gap: 1.2rem; margin-bottom: calc(var(--u) * 6); }
-.roster__head .title { grid-column: 1 / span 7; }
-.roster__lede { grid-column: 8 / -1; align-self: end; color: var(--muted-on-forest); font-size: var(--t-body); }
-.cards { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--col-gap); }
-.card {
-  --tone: var(--agent-claude);
-  position: relative; display: grid; grid-template-rows: auto auto auto 1fr auto; align-content: start; gap: 0.55rem;
-  padding: 0 1.25rem 1.25rem; background: var(--parchment); color: var(--ink);
-  border-radius: var(--radius); overflow: clip;
-  box-shadow: 0 1px 0 rgb(255 255 255 / 0.4) inset, 0 22px 40px -24px rgb(0 0 0 / 0.7);
+.roster__head { display: grid; justify-items: center; text-align: center; row-gap: 1rem; margin-bottom: calc(var(--u) * 3); }
+.roster__lede { max-width: 40rem; color: var(--muted-on-forest); font-size: var(--t-body); }
+
+/* The network: the agents' marks around the village icon (AgentNetwork.astro, src/motion/agents.ts). */
+.net { --tile: clamp(3.25rem, 2.4rem + 2.2vw, 4.75rem); position: relative; height: clamp(16rem, 36svh, 24rem); margin-inline: auto; max-width: 64rem; }
+.net__lines { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.net__lines line { stroke: var(--parchment); stroke-opacity: 0.3; stroke-width: 2; stroke-dasharray: 0.1 7; stroke-linecap: round; transition: stroke 0.4s, stroke-opacity 0.4s; }
+.net__lines line.is-on { stroke: var(--gold); stroke-opacity: 0.9; }
+.net__node, .net__hub { position: absolute; left: var(--x); top: var(--y); display: grid; justify-items: center; gap: 0.45rem; translate: -50% calc(var(--tile) / -2); z-index: 2; }
+.net__hub { --x: var(--hx); --y: var(--hy); --tile-s: 1.35; }
+.net__tile {
+  display: grid; place-items: center; width: var(--tile); aspect-ratio: 1; padding: 0.4rem;
+  background: var(--parchment); border-radius: 22%;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.25), 0 14px 26px -12px rgb(0 0 0 / 0.7);
 }
-.card--codex { --tone: var(--agent-codex); }
-.card--antigravity { --tone: var(--agent-antigravity); }
-.card--opencode { --tone: var(--agent-opencode); }
-.card__tile {
-  position: relative; margin: 0 -1.25rem 0.6rem; height: 9.5rem; display: grid; place-items: end center; padding-bottom: 1.1rem;
-  background:
-    radial-gradient(48% 22% at 50% 88%, rgb(24 33 15 / 0.25), transparent 70%),
-    linear-gradient(var(--tone), color-mix(in oklab, var(--tone), #000 25%));
+.net__tile > * { width: 100%; height: 100%; }
+.net__tile--hub { width: calc(var(--tile) * 1.35); padding: 0.45rem; background: var(--gold); }
+.net__tile--hub img { border-radius: 20%; }
+.net__hub { translate: -50% calc(var(--tile) * -0.675); }
+.net__name { position: relative; z-index: 2; padding: 0.05rem 0.4rem; border-radius: 6px; background: var(--forest); font-size: var(--t-xs); font-weight: 600; color: var(--muted-on-forest); white-space: nowrap; }
+.net__hub .net__name { color: var(--gold); font-weight: 700; }
+.net__trip { position: absolute; inset: 0; pointer-events: none; opacity: 0; z-index: 1; }
+.net__trip i { position: absolute; left: var(--x); top: var(--y); width: 0.7rem; height: 0.7rem; margin: -0.35rem 0 0 -0.35rem; border-radius: 50%; background: var(--gold); box-shadow: 0 0 0 4px rgb(255 197 58 / 0.25), 0 0 16px 4px rgb(255 197 58 / 0.5); }
+/* Bubbles open beside their agent, on the side with room. Hidden until the motion plays them. */
+.net__say { position: absolute; left: var(--x); top: var(--y); z-index: 3; width: max-content; max-width: 16rem; pointer-events: none; }
+.net__say--up { translate: -50% calc(-100% - var(--tile) / 2 - 0.7rem); }
+.net__say--left { translate: calc(-100% - var(--tile) / 2 - 1rem) -50%; }
+.net__say--right { translate: calc(var(--tile) / 2 + 1rem) -50%; }
+.net__bubble {
+  padding: 0.6rem 0.85rem 0.65rem; border-radius: 12px; background: var(--parchment); color: var(--ink); text-align: left;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.2), 0 18px 30px -14px rgb(0 0 0 / 0.7);
 }
-.card__builder { width: 5.4rem; transition: translate 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
-@media (hover: hover) {
-  .card:hover .card__builder { background-position-x: calc(500% / 6); translate: 0 -0.6rem; }
-}
-.card__rank { position: absolute; left: 50%; bottom: 0.55rem; translate: -50% 0; font-size: var(--t-xs); font-weight: 700; line-height: 1.3; padding: 0.05rem 0.55rem; border-radius: 999px; background: rgb(24 33 15 / 0.85); color: var(--parchment); }
-.card__name { font-family: var(--f-display); font-size: 1.6rem; line-height: 1; }
-.card__cmd { margin-top: -0.2rem; font-size: var(--t-s); color: var(--muted-on-parchment); }
-.card__facts { display: grid; gap: 0.7rem; font-size: var(--t-s); line-height: 1.45; margin-top: 0.3rem; }
-.card__facts dt { font-weight: 700; }
-.card__facts div + div { padding-top: 0.7rem; border-top: 1px solid rgb(24 33 15 / 0.12); }
-.card__facts dd { margin: 0; color: var(--muted-on-parchment); }
-.card__badge { display: flex; gap: 0.5rem; align-items: baseline; margin-top: 0.6rem; font-size: var(--t-xs); font-weight: 600; line-height: 1.4; color: var(--muted-on-parchment); }
-.card__badge::before { content: ''; flex: none; width: 0.55rem; height: 0.55rem; border-radius: 50%; translate: 0 -0.05rem; }
-.card__badge.is-verified::before { background: #3f8f1f; }
-.card__badge.is-pending::before { background: var(--gold-deep); }
-.roster__custom { margin-top: calc(var(--u) * 4); max-width: 46rem; color: var(--muted-on-forest); }
-.roster__custom strong { color: var(--parchment); }
+/* With motion the reports play one at a time; without it every bubble stays open beside its agent. */
+html.motion .net__bubble { visibility: hidden; }
+.net__who { display: flex; align-items: center; gap: 0.4rem; font-size: var(--t-xs); font-weight: 700; }
+.net__who span { font-weight: 600; color: var(--muted-on-parchment); }
+.net__dot { width: 0.55rem; height: 0.55rem; border-radius: 50%; flex: none; }
+.net__dot--needs { background: var(--alert); } .net__dot--work { background: var(--gold-deep); }
+.net__dot--done { background: #3f8f1f; } .net__dot--stuck { background: #b4532a; }
+.net__text { margin-top: 0.15rem; font-size: var(--t-s); line-height: 1.35; }
+
+/* The facts per agent, under the graph. */
+.agents { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--col-gap); margin-top: calc(var(--u) * 3); }
+.agents__item { display: grid; align-content: start; gap: 0.45rem; padding-top: 1rem; border-top: 1px solid rgb(247 234 208 / 0.2); font-size: var(--t-s); line-height: 1.45; color: var(--muted-on-forest); }
+.agents__item b { color: var(--parchment); font-weight: 700; }
+.agents__name { display: flex; align-items: center; gap: 0.55rem; flex-wrap: wrap; color: var(--parchment); line-height: 1.2; }
+.agents__name h3 { font-size: var(--t-body); font-weight: 700; }
+.agents__name code { font-size: var(--t-xs); font-weight: 500; color: var(--muted-on-forest); }
+.agents__logo { width: 1.6rem; height: 1.6rem; flex: none; }
+.agents__badge { display: flex; gap: 0.5rem; align-items: baseline; font-size: var(--t-xs); font-weight: 600; }
+.agents__badge::before { content: ''; flex: none; width: 0.55rem; height: 0.55rem; border-radius: 50%; translate: 0 -0.05rem; }
+.agents__badge.is-verified::before { background: #6cc24a; }
+.agents__badge.is-pending::before { background: var(--gold); }
 
 /* ---------- Tour: a camera over the real window (signature two, src/motion/tour.ts) ---------- */
 .tour { position: relative; background: var(--meadow-deep); color: var(--parchment); border-top: var(--stroke) solid var(--ink); }
@@ -599,12 +615,19 @@ html.motion .drop-in { animation: drop-in 0.9s cubic-bezier(0.34, 1.56, 0.64, 1)
 
 /* ---------- Responsive ---------- */
 @media (max-width: 1100px) {
-  .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .agents { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 1.75rem; }
   .board__notes { grid-template-columns: 1fr 1fr; }
   .tour__copy { grid-column: 1 / span 5; }
   .tour__frame { grid-column: 6 / -1; }
 }
 @media (max-width: 860px) {
+  .agents { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 1.5rem; }
+  .agents__item:last-child { grid-column: 1 / -1; }
+  /* Phones: one bubble at a time, under the graph instead of beside its agent. */
+  .net { height: 16rem; margin: 2rem auto 8.5rem; --tile: 3rem; }
+  .net__say, .net__say--up, .net__say--left, .net__say--right { left: 50%; top: 100%; translate: -50% 1.6rem; max-width: min(20rem, 90%); }
+  .net__name { font-size: 0.72rem; }
+  html:not(.motion) .net__say { display: none; } /* they would stack in one spot */
   /* Phones: the copy sits high, a few pieces of the village line the bottom of the screen. */
   .hero { place-items: start center; padding-top: calc(var(--u) * 13); padding-bottom: max(13rem, 30svh); }
   .fl { display: none; }
@@ -625,7 +648,6 @@ html.motion .drop-in { animation: drop-in 0.9s cubic-bezier(0.34, 1.56, 0.64, 1)
   .pill--steps { display: none; }
   .chapter { min-height: 0; align-content: start; padding-block: 1.4rem 0; opacity: 0.55; gap: 0.5rem; }
   .chapter__title { font-size: 1.9rem; }
-  .roster__head .title, .roster__lede { grid-column: 1 / -1; }
   .privacy__head, .facts { grid-column: 1 / -1; }
   .beta__main, .beta__panel { grid-column: 1 / -1; }
   .foot__big { grid-column: 1 / -1; }
@@ -651,7 +673,7 @@ html.motion .drop-in { animation: drop-in 0.9s cubic-bezier(0.34, 1.56, 0.64, 1)
   .doc__body { grid-column: 1 / -1; }
 }
 @media (max-width: 600px) {
-  .cards { grid-template-columns: 1fr; }
+  .agents { grid-template-columns: 1fr; }
   .facts { grid-template-columns: 1fr; }
   .board__notes { grid-template-columns: 1fr; }
   .btn { font-size: 1.15rem; padding-inline: 1.3rem; }
@@ -686,16 +708,12 @@ html.motion .drop-in { animation: drop-in 0.9s cubic-bezier(0.34, 1.56, 0.64, 1)
   /* Agents: one-line title beside the lede, shorter tiles. */
   .roster { min-height: 100svh; display: grid; align-content: center; padding-bottom: var(--fit-bottom); }
   .roster__inner { padding-top: var(--fit-top); }
-  .roster__head { margin-bottom: clamp(1.5rem, 4svh, 2.75rem); align-items: end; }
+  .roster__head { margin-bottom: clamp(0.75rem, 2.5svh, 2rem); row-gap: 0.6rem; }
   .roster__head .title { font-size: min(var(--t-l), 6svh); }
   .roster__lede { font-size: var(--t-s); }
-  .card { gap: 0.45rem; }
-  .card__tile { height: clamp(5.5rem, 13svh, 8rem); padding-bottom: 0.9rem; }
-  .card__builder { width: clamp(3.6rem, 9svh, 5rem); }
-  .card__name { font-size: 1.4rem; }
-  .card__facts { gap: 0.55rem; }
-  .card__facts div + div { padding-top: 0.55rem; }
-  .roster__custom { margin-top: clamp(1.25rem, 3.5svh, 2.25rem); font-size: var(--t-s); }
+  .agents { margin-top: clamp(1rem, 3svh, 2.25rem); }
+  .net { height: clamp(13rem, 31svh, 24rem); }
+  .agents__item { gap: 0.35rem; font-size: min(var(--t-s), 1.85svh); }
 
   /* Kanban: smaller title, the shot capped by what height is left. */
   .board { row-gap: clamp(1.5rem, 4svh, 3rem); }

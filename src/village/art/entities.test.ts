@@ -220,3 +220,20 @@ test('a hammer stroke holds the hammer up, swings it down fast and rests on the 
   expect(at(STROKE + 0.6)).toBe('hammer2');
   expect(at(0.6, 0.5)).not.toBe(at(0.6)); // builders out of step
 });
+
+describe('ground bake', () => {
+  it('lays no solid fill, so the meadow behind shows past the village diamond', () => {
+    const b = { x0: -14, y0: -14, w: 29, h: 29 };
+    const fills: Array<[number, number, number, number]> = [];
+    const proto = CanvasRenderingContext2D.prototype;
+    const real = proto.fillRect;
+    proto.fillRect = function (x: number, y: number, w: number, h: number) { fills.push([x, y, w, h]); return real.call(this, x, y, w, h); };
+    try {
+      drawGround(b, [], 7);
+    } finally {
+      proto.fillRect = real;
+    }
+    const { w, h } = groundBakeSize(b);
+    expect(fills.filter(([, , fw, fh]) => fw >= w * 0.5 && fh >= h * 0.5)).toEqual([]);
+  });
+});

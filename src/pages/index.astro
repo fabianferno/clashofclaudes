@@ -1,0 +1,134 @@
+---
+import Base from '../layouts/Base.astro';
+import HeroScene from '../components/HeroScene.astro';
+import SessionStage from '../components/SessionStage.astro';
+import DownloadButton from '../components/DownloadButton.astro';
+import Builder from '../components/Builder.astro';
+import TreeLine from '../components/TreeLine.astro';
+import { agents, privacy, site, villageNotes } from '../data/site';
+---
+<Base>
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="hero__copy">
+      <h1 class="title hero__title" id="hero-title" data-split="lines" data-intro>Run all your coding agents from one village.</h1>
+      <p class="hero__lede" data-reveal="up" data-intro data-delay="0.25">
+        Claude Code, Codex, Antigravity CLI and OpenCode sessions become builders in a little
+        isometric town on your Mac. See who is working, who needs you and who shipped, without
+        clicking through terminal tabs.
+      </p>
+      <div data-reveal="up" data-intro data-delay="0.4">
+        <DownloadButton />
+        <p class="hero__more"><a class="ulink" href="/beta/">How the beta works</a></p>
+      </div>
+    </div>
+    <div class="hero__scene">
+      <HeroScene />
+    </div>
+  </section>
+
+  <section class="statement" aria-labelledby="why-title">
+    <h2 class="statement__title" id="why-title" data-split="lines">Four agents in four repos look exactly like twelve terminal tabs.</h2>
+    <div class="statement__body" data-reveal="up">
+      <p>One is stuck on a permission prompt. One finished ten minutes ago. One is still thinking. You find out by clicking through all of them.</p>
+      <p>In the village the answer is on screen: a builder hammering away is working, a red “!” is waiting for you, a medal means it shipped. The real terminal is always one click away.</p>
+    </div>
+  </section>
+
+  <SessionStage />
+
+  <section class="roster" id="builders" aria-labelledby="builders-title">
+    <TreeLine class="roster__trees" seed={3} />
+    <div class="roster__inner">
+      <div class="roster__head">
+        <h2 class="title" id="builders-title" data-split="lines">Bring the agents you already use</h2>
+        <p class="roster__lede">
+          The app runs the agent CLIs you have installed and signed in to, with your own logins. It
+          never installs agents or touches your API keys. The Town Hall shows which ones it found.
+        </p>
+      </div>
+      <ul class="cards">
+        {agents.map((a, i) => (
+          <li class={`card card--${a.key}`} data-reveal="up" data-delay={(i * 0.06).toFixed(2)}>
+            <div class="card__tile" aria-hidden="true">
+              <Builder sheet={a.builder} pose="idle" class="card__builder" />
+            </div>
+            <p class="card__rank" aria-hidden="true">{a.rank}</p>
+            <h3 class="card__name">{a.name}</h3>
+            <p class="card__cmd"><code>{a.command}</code></p>
+            <dl class="card__facts">
+              <div><dt>The village shows</dt><dd>{a.reports}</dd></div>
+              <div><dt>Permission prompts</dt><dd>{a.approve}</dd></div>
+            </dl>
+            <p class={`card__badge ${a.verified ? 'is-verified' : 'is-pending'}`}>
+              {a.verified ? 'Checked against real runs' : 'Built from the docs. Help us confirm it'}
+            </p>
+          </li>
+        ))}
+      </ul>
+      <p class="roster__custom">
+        <strong>Any other command works too.</strong> It counts as working while it prints, finished
+        after it goes quiet, and stuck if it exits with an error or stays silent too long.
+      </p>
+    </div>
+  </section>
+
+  <section class="village" aria-labelledby="village-title">
+    <figure class="village__shot" data-reveal="clip">
+      <picture>
+        <source media="(max-width: 860px)" srcset="/img/village-820.webp" />
+        <img src="/img/village-1600.webp" width="1600" height="960" loading="lazy" decoding="async"
+          alt="The Clash of Claudes window: five walled compounds around a red-roofed Town Hall in a clearing ringed by pine forest, a roster of six builders along the bottom, and Builders busy and Shipped today counters at the top right." />
+      </picture>
+      <figcaption>A real village: five workspaces, six builders resting between tasks.</figcaption>
+    </figure>
+    <div class="village__notes">
+      <h2 class="title village__title" id="village-title" data-split="lines">A whole town of work, at a glance</h2>
+      <ul>
+        {villageNotes.map((n) => (
+          <li data-reveal="up"><h3>{n.title}</h3><p>{n.text}</p></li>
+        ))}
+      </ul>
+    </div>
+  </section>
+
+  <section class="privacy" aria-labelledby="privacy-title">
+    <div class="privacy__head">
+      <h2 class="privacy__title" id="privacy-title" data-split="lines">Your agents’ work stays on your Mac.</h2>
+      <p><a class="ulink" href="/privacy/">Everything the app does and never does</a></p>
+    </div>
+    <ul class="facts">
+      {privacy.map((p) => (
+        <li data-reveal="up"><h3>{p.title}</h3><p>{p.text}</p></li>
+      ))}
+    </ul>
+  </section>
+
+  <section class="beta" id="beta" aria-labelledby="beta-title">
+    <div class="beta__main">
+      <h2 class="title" id="beta-title" data-split="lines">Join the beta</h2>
+      <p class="beta__lede">You are getting this early. Things will break, and what you find decides what gets built next.</p>
+      <ol class="steps">
+        <li data-reveal="place"><span class="steps__n" aria-hidden="true">1</span><span><strong>Download</strong> the disk image.</span></li>
+        <li data-reveal="place" data-delay="0.08"><span class="steps__n" aria-hidden="true">2</span><span><strong>Drag</strong> Clash of Claudes onto Applications.</span></li>
+        <li data-reveal="place" data-delay="0.16"><span class="steps__n" aria-hidden="true">3</span><span><strong>Launch</strong> it. It is signed and notarized, so it opens like any other app.</span></li>
+      </ol>
+      <DownloadButton label="Download the beta" />
+    </div>
+    <aside class="panel beta__panel" aria-labelledby="feedback-title" data-reveal="up">
+      <h3 id="feedback-title">Send what you find</h3>
+      <p>Bugs and ideas go straight from the app. You see the whole report before it is sent.</p>
+      <ul class="menu-paths">
+        <li><kbd>Help</kbd><span aria-label="then">›</span><kbd>Report a Bug…</kbd></li>
+        <li><kbd>Help</kbd><span aria-label="then">›</span><kbd>Request a Feature…</kbd></li>
+        <li><kbd>Settings</kbd><span aria-label="then">›</span><kbd>Beta feedback</kbd></li>
+      </ul>
+      <h3>It keeps itself current</h3>
+      <p>New beta builds install themselves, so you are always testing the latest one.</p>
+      <h3>You will need</h3>
+      <ul class="needs">
+        <li>{site.requirements}.</li>
+        <li>At least one agent CLI installed and signed in.</li>
+      </ul>
+    </aside>
+  </section>
+</Base>

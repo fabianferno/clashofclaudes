@@ -1,0 +1,55 @@
+---
+import Base from '../../layouts/Base.astro';
+import Builder from '../../components/Builder.astro';
+---
+<Base title="Privacy" description="What Clash of Claudes does on your Mac: no agent data leaves your machine, your agent configuration is never edited, and status stays on localhost.">
+  <section class="page-hero" aria-labelledby="page-title">
+    <h1 class="title" id="page-title" data-split="lines" data-intro>What stays on your Mac</h1>
+    <p class="page-hero__lede" data-reveal="up" data-intro data-delay="0.2">Short version: all of it. Here is exactly what the app touches, what it sends, and what it never does.</p>
+    <div class="page-hero__art" aria-hidden="true" data-reveal="place" data-intro data-delay="0.3">
+      <img src="/img/tent-codex.webp" alt="" width="360" height="330" />
+      <Builder sheet="craftsman-codex" pose="idle" />
+    </div>
+  </section>
+  <div class="doc">
+    <nav class="doc__toc" aria-label="On this page">
+      <p>On this page</p>
+      <ol>
+        <li><a href="#network">Network</a></li>
+        <li><a href="#config">Your agent configuration</a></li>
+        <li><a href="#status">How status works</a></li>
+        <li><a href="#notifications">Notifications</a></li>
+        <li><a href="#site">This website</a></li>
+      </ol>
+    </nav>
+    <div class="doc__body">
+      <section id="network" aria-labelledby="network-h">
+        <h2 id="network-h">Network</h2>
+        <p>Agent output, prompts, file names and folders never leave your machine. The app itself makes no network connections except two:</p>
+        <ul>
+          <li><strong>The update check.</strong> One request to see whether a newer beta exists. Turn it off in Settings.</li>
+          <li><strong>Reports you choose to send</strong> from Help › Report a Bug…, Help › Request a Feature… or Settings › Beta feedback. A report holds what you type, the app, macOS and agent versions, counts of workspaces and sessions, and the last error the app showed. Never workspace names or tasks. A screenshot is included only if you tick it, and you see everything before sending.</li>
+        </ul>
+        <p>Your agents still talk to their own services the way they always do, with your own logins. The app does not sit in between.</p>
+      </section>
+      <section id="config" aria-labelledby="config-h">
+        <h2 id="config-h">Your agent configuration</h2>
+        <p>The app never edits your agents’ own configuration: nothing under <code>~/.claude</code>, <code>~/.codex</code>, <code>~/.gemini</code> or <code>~/.config/opencode</code>, and nothing in a project’s <code>.claude</code>, <code>.codex</code>, <code>.gemini</code> or <code>.opencode</code> folder.</p>
+        <p>To receive status events it hands each session a private settings file kept in the app’s own data folder, <code>~/Library/Application Support/dev.clashofclaudes.app/sessions/</code>, and deletes it when the session closes.</p>
+        <p>To resume an Antigravity session the app reads, and never writes, <code>~/.gemini/antigravity-cli/history.jsonl</code>.</p>
+      </section>
+      <section id="status" aria-labelledby="status-h">
+        <h2 id="status-h">How status works</h2>
+        <p>Agents report working, needs you and finished to a small server that listens only on your Mac (localhost), protected by a random token for each session. Nothing outside your machine can reach it.</p>
+      </section>
+      <section id="notifications" aria-labelledby="notifications-h">
+        <h2 id="notifications-h">Notifications</h2>
+        <p>When the app is in the background it can show a macOS notification when a session needs you or finishes. The title is the builder’s name and the body says “needs you” or “finished”. Notifications never include your task text or terminal output.</p>
+      </section>
+      <section id="site" aria-labelledby="site-h">
+        <h2 id="site-h">This website</h2>
+        <p>No cookies, no analytics, no trackers. The download buttons ask GitHub’s public API for the latest version number; that is the only request this site makes to anyone else.</p>
+      </section>
+    </div>
+  </div>
+</Base>

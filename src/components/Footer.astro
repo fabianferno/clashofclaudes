@@ -1,0 +1,36 @@
+---
+import { site } from '../data/site';
+import TreeLine from './TreeLine.astro';
+import DownloadButton from './DownloadButton.astro';
+import Builder from './Builder.astro';
+---
+<footer class="foot">
+  <TreeLine class="foot__trees" seed={5} />
+  <div class="foot__inner">
+    <div class="foot__finale">
+      <h2 class="foot__big title">Raise your village.</h2>
+      <DownloadButton />
+      <div class="foot__crew" aria-hidden="true">
+        <Builder sheet="craftsman-opencode" pose="cheer" />
+        <Builder sheet="master-claude" pose="hammer" />
+        <Builder sheet="apprentice-antigravity" pose="walk" />
+        <Builder sheet="craftsman-codex" pose="idle" />
+      </div>
+    </div>
+    <div class="foot__cols">
+      <nav aria-label="Footer">
+        <ul class="foot__links">
+          <li><a class="ulink" href="/beta/">Beta guide</a></li>
+          <li><a class="ulink" href="/privacy/">Privacy</a></li>
+          <li><a class="ulink" href={site.releases}>All releases</a></li>
+        </ul>
+      </nav>
+      <p class="foot__note">
+        Clash of Claudes is an independent app. It is not made by, affiliated with or endorsed by
+        Anthropic, OpenAI, Google or the OpenCode team. Claude Code, Codex, Antigravity and OpenCode
+        are names of their respective owners.
+      </p>
+      <p class="foot__copy">© 2026 Clash of Claudes. Made for people who run too many agents.</p>
+    </div>
+  </div>
+</footer>

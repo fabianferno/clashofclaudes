@@ -1,0 +1,43 @@
+---
+// The signature: one session, start to finish. Chapters scroll on the left; the sticky stage on
+// the right follows the chapter in view (src/motion/session.ts sets data-state on the stage).
+import Builder from './Builder.astro';
+import { chapters } from '../data/site';
+---
+<section class="session" id="session" aria-labelledby="session-title">
+  <div class="session__head">
+    <h2 class="title session__title" id="session-title" data-split="lines">One session, start to finish</h2>
+    <p class="session__lede">Every agent session is a builder. This is what one of them looks like from the village while it works.</p>
+  </div>
+  <div class="session__body">
+    <div class="session__stage-wrap">
+      <figure class="stage" data-stage data-state="finished" aria-label="A Claude Code builder at its tent">
+        <div class="stage__hud" aria-hidden="true">
+          <span class="pill pill--status"><span class="pill__dot"></span><span data-stage-status>Finished</span></span>
+          <span class="pill pill--steps"><span data-stage-steps>23</span>&nbsp;tool steps</span>
+          <span class="pill pill--shipped">Shipped today <b data-stage-shipped>1</b></span>
+        </div>
+        <div class="stage__plot" aria-hidden="true">
+          <img class="stage__tent stage__tent--base" src="/img/tent-foundation.webp" alt="" width="360" height="330" loading="lazy" decoding="async" />
+          <img class="stage__tent stage__tent--done" src="/img/tent-claude.webp" alt="" width="360" height="330" loading="lazy" decoding="async" />
+          <img class="stage__puff" src="/img/puff.webp" alt="" width="80" height="80" loading="lazy" />
+          <div class="stage__unit">
+            <img class="stage__bubble" src="/img/bubble-needs.webp" alt="" width="120" height="120" loading="lazy" />
+            <img class="stage__ribbon" src="/img/ribbon.webp" alt="" width="140" height="140" loading="lazy" />
+            <Builder sheet="master-claude" pose="idle" class="stage__builder" />
+          </div>
+        </div>
+        <figcaption class="stage__caption" data-stage-caption>The tent stands and the builder cheers: the session finished.</figcaption>
+      </figure>
+    </div>
+    <ol class="chapters">
+      {chapters.map((c, i) => (
+        <li class="chapter" data-chapter={c.state} data-status={c.status}>
+          <p class="chapter__step" aria-hidden="true">{i + 1} of {chapters.length}</p>
+          <h3 class="chapter__title">{c.title}</h3>
+          <p class="chapter__text">{c.text}</p>
+        </li>
+      ))}
+    </ol>
+  </div>
+</section>

@@ -1,0 +1,77 @@
+@font-face {
+  font-family: 'Lilita One';
+  src: url('/fonts/lilita-one-latin.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Host Grotesk';
+  src: url('/fonts/host-grotesk-400_700-normal.woff2') format('woff2');
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+/* Metric-matched fallback so the swap to Host Grotesk does not shift layout. */
+@font-face {
+  font-family: 'Host Fallback';
+  src: local('Arial');
+  size-adjust: 101%;
+  ascent-override: 96%;
+  descent-override: 26%;
+}
+
+:root {
+  /* Palette: sampled from the game art (see DESIGN.md). */
+  --meadow: #5d9a35;
+  --meadow-lit: #7cb64a;
+  --meadow-deep: #37701d;
+  --forest: #11301a;
+  --forest-2: #1a4426;
+  --ink: #18210f;
+  --parchment: #f7ead0;
+  --parchment-2: #efdcb4;
+  --gold: #ffc53a;
+  --gold-deep: #e9a514;
+  --alert: #e2453a;
+  --muted-on-parchment: #5a4d33;
+  --muted-on-forest: #c4d3b5;
+
+  --agent-claude: #d97757;
+  --agent-codex: #3a3a40;
+  --agent-antigravity: #4f7cf0;
+  --agent-opencode: #33a889;
+
+  /* Engine contract names */
+  --c-bg: var(--meadow);
+  --c-fg: var(--ink);
+  --c-muted: var(--muted-on-parchment);
+  --c-line: rgb(24 33 15 / 0.16);
+  --c-accent: var(--gold);
+  --c-curtain: var(--forest);
+
+  --f-display: 'Lilita One', 'Arial Rounded MT Bold', system-ui, sans-serif;
+  --f-body: 'Host Grotesk', 'Host Fallback', system-ui, sans-serif;
+  --f-mono: ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --t-mega: clamp(3rem, 1.1rem + 6.4vw, 7.25rem);
+  --t-xl: clamp(2.4rem, 1.3rem + 4vw, 5rem);
+  --t-l: clamp(1.7rem, 1.25rem + 1.7vw, 2.75rem);
+  --t-m: clamp(1.2rem, 1.08rem + 0.5vw, 1.5rem);
+  --t-body: clamp(1.0625rem, 1rem + 0.2vw, 1.125rem);
+  --t-s: 0.9375rem;
+  --t-xs: 0.8125rem;
+
+  --u: clamp(0.5rem, 0.35rem + 0.6vw, 1rem);
+  --gutter: clamp(1rem, 0.5rem + 2vw, 2.75rem);
+  --maxw: 1440px;
+
+  /* Shape: the game UI rule. */
+  --radius: 14px;
+  --stroke: 3px;
+  --lip: 4px;
+
+  --z-content: 1;
+  --z-header: 50;
+  --z-curtain: 90;
+}

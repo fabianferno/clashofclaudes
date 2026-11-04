@@ -1,0 +1,17 @@
+---
+import { site } from '../data/site';
+interface Props { label?: string; size?: 'l' | 'm'; class?: string; meta?: boolean }
+const { label = 'Download for Mac', size = 'l', class: cls = '', meta = true } = Astro.props;
+---
+<div class:list={['dl', `dl--${size}`, cls]}>
+  <a class="btn btn--gold" href={site.download} data-download>
+    <svg class="btn__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 20h16" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span>{label}</span>
+  </a>
+  {meta && (
+    <p class="dl__meta">
+      <span>{site.requirements}.</span>
+      <span class="dl__version" data-version hidden></span>
+    </p>
+  )}
+</div>

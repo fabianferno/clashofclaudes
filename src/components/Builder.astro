@@ -1,0 +1,8 @@
+---
+// One builder from the app's sprite sheets (7 frames: idle, walk, walk, hammer up, hammer down,
+// cheer, back). `pose` picks a static frame or a loop; loops are CSS steps() and stop under
+// reduced motion (they rest on the idle frame).
+interface Props { sheet: string; pose?: 'idle' | 'hammer' | 'walk' | 'cheer' | 'back'; class?: string; style?: string }
+const { sheet, pose = 'idle', class: cls = '', style = '' } = Astro.props;
+---
+<span class:list={['builder', `builder--${pose}`, cls]} style={`--sheet:url(/img/builder-${sheet}.webp);${style}`} aria-hidden="true"></span>

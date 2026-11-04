@@ -1,0 +1,96 @@
+---
+import Base from '../../layouts/Base.astro';
+import Builder from '../../components/Builder.astro';
+import DownloadButton from '../../components/DownloadButton.astro';
+import { site } from '../../data/site';
+const toc = [
+  ['install', 'Install'],
+  ['before', 'Before you start'],
+  ['first-run', 'Your first village'],
+  ['feedback', 'Sending feedback'],
+  ['updates', 'Updates'],
+  ['limits', 'Known limits'],
+];
+---
+<Base title="Beta guide" description="How to install the Clash of Claudes beta on your Mac, set up your first village, send bugs and ideas from inside the app, and what is still rough.">
+  <section class="page-hero" aria-labelledby="page-title">
+    <h1 class="title" id="page-title" data-split="lines" data-intro>Beta guide</h1>
+    <p class="page-hero__lede" data-reveal="up" data-intro data-delay="0.2">Everything you need to go from download to a working village in a few minutes, and how to tell us what broke.</p>
+    <div class="page-hero__art" aria-hidden="true" data-reveal="place" data-intro data-delay="0.3">
+      <img src="/img/tent-foundation.webp" alt="" width="360" height="330" />
+      <Builder sheet="craftsman-opencode" pose="hammer" />
+    </div>
+  </section>
+  <div class="doc">
+    <nav class="doc__toc" aria-label="On this page">
+      <p>On this page</p>
+      <ol>{toc.map(([id, label]) => <li><a href={`#${id}`}>{label}</a></li>)}</ol>
+    </nav>
+    <div class="doc__body">
+      <section id="install" aria-labelledby="install-h">
+        <h2 id="install-h">Install</h2>
+        <ol class="steps">
+          <li><span class="steps__n" aria-hidden="true">1</span><span><strong>Download</strong> <code>Clash-of-Claudes.dmg</code>. It is one universal build for Apple Silicon and Intel.</span></li>
+          <li><span class="steps__n" aria-hidden="true">2</span><span><strong>Open</strong> the disk image and drag Clash of Claudes onto Applications.</span></li>
+          <li><span class="steps__n" aria-hidden="true">3</span><span><strong>Launch</strong> it from Applications or Spotlight.</span></li>
+        </ol>
+        <p>The app is signed with a Developer ID and notarized by Apple, so macOS opens it like any other downloaded app. The first launch may ask you to confirm that you want to open something from the internet. That is expected.</p>
+        <DownloadButton />
+        <p>Older builds are on the <a href={site.releases}>releases page</a>.</p>
+      </section>
+
+      <section id="before" aria-labelledby="before-h">
+        <h2 id="before-h">Before you start</h2>
+        <ul>
+          <li>{site.requirements}.</li>
+          <li>At least one agent CLI installed and signed in: Claude Code (<code>claude</code>), Codex (<code>codex</code>), Antigravity CLI (<code>agy</code>) or OpenCode (<code>opencode</code>). Any other command works as a custom builder.</li>
+        </ul>
+        <p class="note">The app does not install agents, log in for you or manage API keys. Each agent uses the login you already set up for it. Open the Town Hall to see which CLIs were found, their versions, and a copyable install command for the missing ones.</p>
+      </section>
+
+      <section id="first-run" aria-labelledby="first-h">
+        <h2 id="first-h">Your first village</h2>
+        <p>The first launch asks what to call you; the Town Hall’s plate then carries your name. It also offers a two-minute tour on a sample compound that exists only in memory: you raise it, start a sample session, answer its permission prompt, review it and close it. No files change and no agents run. Skip it any time, or replay it from Settings.</p>
+        <ul>
+          <li><strong>Open workspace</strong> and pick a project folder. It becomes a walled compound around the Town Hall.</li>
+          <li>Click the compound, then <strong>+ New session</strong>. Pick a builder, an agent, and optionally a model, effort and first task. The agent starts in a real terminal in that folder.</li>
+          <li>Click any builder or tent for its live terminal in the side panel. Pop it out for a larger view, or use <strong>+ Terminal</strong> for a plain shell.</li>
+        </ul>
+        <p>macOS may ask whether Clash of Claudes can read your Downloads, Desktop or Documents folder. That is an agent or terminal inside the app asking, the same prompt any terminal app shows. Allow it for folders that hold your workspaces.</p>
+      </section>
+
+      <section id="feedback" aria-labelledby="feedback-h">
+        <h2 id="feedback-h">Sending feedback</h2>
+        <p>Everything goes from inside the app, so we get the details that matter without you digging for them.</p>
+        <ul class="menu-paths">
+          <li><kbd>Help</kbd><span aria-label="then">›</span><kbd>Report a Bug…</kbd></li>
+          <li><kbd>Help</kbd><span aria-label="then">›</span><kbd>Request a Feature…</kbd></li>
+          <li><kbd>Settings</kbd><span aria-label="then">›</span><kbd>Beta feedback</kbd></li>
+        </ul>
+        <p>A report holds what you type, plus app and system details: app, macOS and agent versions, how many workspaces and sessions you have, and the last error the app showed. Never workspace names or tasks. A screenshot is attached only if you tick the box. You see all of it before it is sent.</p>
+        <h3>What helps most</h3>
+        <ul>
+          <li>Which agent the builder was running, and what it was doing.</li>
+          <li>What you expected to see in the village, and what you saw instead.</li>
+          <li>For Codex and OpenCode: whether working, needs you and finished matched what the terminal showed.</li>
+        </ul>
+      </section>
+
+      <section id="updates" aria-labelledby="updates-h">
+        <h2 id="updates-h">Updates</h2>
+        <p>The app checks for new beta builds and updates itself, so you are always on the latest one. The check is the only network call it makes on its own, and you can turn it off in Settings (the gear at the top right, or <kbd>⌘</kbd> <kbd>,</kbd>).</p>
+      </section>
+
+      <section id="limits" aria-labelledby="limits-h">
+        <h2 id="limits-h">Known limits</h2>
+        <ul>
+          <li>Mac only for now.</li>
+          <li>Claude Code and Antigravity CLI were checked against real runs. Codex and OpenCode support was written from their documentation and still needs real-world confirmation. If one misbehaves, the terminal always works.</li>
+          <li>Allow and deny from the village work for Claude Code and Antigravity CLI. For Codex and OpenCode, answer in the terminal.</li>
+          <li>In sessions started from the app, Codex’s <code>notify</code> and <code>developer_instructions</code> settings are overridden on the command line. Your <code>~/.codex/config.toml</code> is never edited.</li>
+          <li>Quitting stops your sessions (the app asks first). They come back paused. Resume continues Claude Code, Codex and Antigravity on their own conversation; OpenCode and custom commands start fresh in the same folder.</li>
+        </ul>
+      </section>
+    </div>
+  </div>
+</Base>

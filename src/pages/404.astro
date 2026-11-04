@@ -1,0 +1,19 @@
+---
+import Base from '../layouts/Base.astro';
+import Builder from '../components/Builder.astro';
+---
+<Base title="Nothing built here" description="This address is an empty plot in the village. Head back to the Town Hall to download the Clash of Claudes beta." noindex>
+  <section class="lost" aria-labelledby="lost-title">
+    <div class="lost__inner">
+      <div class="lost__plot" aria-hidden="true" data-reveal="place" data-intro>
+        <img src="/img/tent-foundation.webp" alt="" width="360" height="330" />
+        <Builder sheet="apprentice-antigravity" pose="back" />
+      </div>
+      <h1 class="title" id="lost-title" data-split="lines" data-intro>This plot is still empty</h1>
+      <p data-reveal="up" data-intro data-delay="0.2">Nothing has been built at this address. Even the builder is looking somewhere else.</p>
+      <div data-reveal="up" data-intro data-delay="0.3">
+        <a class="btn btn--gold" href="/">Back to the village</a>
+      </div>
+    </div>
+  </section>
+</Base>

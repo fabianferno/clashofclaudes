@@ -110,27 +110,33 @@ export default function BugReportDialog() {
           <button type="button" className="agent-dialog-x" aria-label="Close" onClick={close}>×</button>
         </header>
         {sent ? (
-          <>
+          <div className="bug-done" role="status">
+            <div className="bug-done-badge" aria-hidden="true">✓</div>
             <p className="bug-sent">Sent. Thank you!</p>
-            <div className="sp-btns bug-btns"><button type="button" className="hud-btn blue sm" onClick={close}>Close</button></div>
-          </>
+            <p className="sp-d">The developers will read it in Discord{contact.trim() ? ", and may reply to you there." : "."}</p>
+            <div className="sp-btns bug-btns bug-btns-center"><button type="button" className="hud-btn blue sm" autoFocus onClick={close}>Close</button></div>
+          </div>
         ) : (
-          <form onSubmit={(e) => { e.preventDefault(); void send(); }}>
+          <form onSubmit={(e) => { e.preventDefault(); void send(); }}
+            onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void send(); } }}>
             {info && !info.enabled && <div className="panel-warn">This build can't send bug reports.</div>}
             <label className="bug-field">
-              <span className="sp-sec">What happened?</span>
+              <span className="sp-sec">What happened? <b className="bug-req">required</b></span>
               <textarea autoFocus rows={5} value={text} onChange={(e) => setText(e.target.value)}
                 placeholder="What you did, what you expected, and what happened instead." />
             </label>
             <label className="bug-field">
-              <span className="sp-sec">How can we reach you? (optional)</span>
+              <span className="sp-sec">How can we reach you? <i className="bug-opt">optional</i></span>
               <input value={contact} onChange={(e) => setContact(e.target.value)} placeholder="Discord name or email" />
             </label>
             {shot && (
               <label className="bug-shot">
                 <input type="checkbox" checked={attach} onChange={(e) => setAttach(e.target.checked)} />
                 <img src={`data:image/jpeg;base64,${shot}`} alt="The window when you opened this" />
-                <span className="sp-d">Attach this screenshot. It shows your village, so check it holds nothing private.</span>
+                <span className="bug-shot-text">
+                  <span className="sp-t">Attach a screenshot</span>
+                  <span className="sp-d">It shows your village, so check it holds nothing private.</span>
+                </span>
               </label>
             )}
             <details className="bug-details">
@@ -142,6 +148,7 @@ export default function BugReportDialog() {
             {err && <div className="panel-warn">{err}</div>}
             <div className="sp-btns bug-btns">
               <button type="button" className="hud-btn grey sm" onClick={close}>Cancel</button>
+              <span className="sp-d bug-hint">⌘↵ to send</span>
               <button type="submit" className="hud-btn blue sm" disabled={!text.trim() || sending || !info?.enabled}>{sending ? 'Sending…' : 'Send report'}</button>
             </div>
           </form>

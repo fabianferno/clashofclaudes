@@ -42,7 +42,7 @@ function App() {
     }));
     keep(ipc.onConfirmQuit((q) => setQuit({ live: q.live, restart: !!q.restart })));
     keep(ipc.onOpenSettings(() => useApp.getState().setSettingsOpen(true)));
-    keep(ipc.onOpenBugReport(() => void openBugReport()));
+    keep(ipc.onOpenBugReport((kind) => void openBugReport(kind)));
     let stopLayout: (() => void) | null = null;
     ipc.listState()
       .then((s) => {

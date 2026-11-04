@@ -94,8 +94,9 @@ pub fn resolve_data_dir(default: std::path::PathBuf, override_dir: Option<&str>)
 const QUIT_MENU_ID: &str = "app-quit";
 const SETTINGS_MENU_ID: &str = "app-settings";
 const BUG_MENU_ID: &str = "app-report-bug";
+const FEATURE_MENU_ID: &str = "app-request-feature";
 
-/// The default menu, plus Settings… (Cmd+,) after About and Report a Bug… in Help, except Quit: the predefined item
+/// The default menu, plus Settings… (Cmd+,) after About and Report a Bug… / Request a Feature… in Help, except Quit: the predefined item
 /// terminates the process directly (macOS `terminate:`) and never raises ExitRequested, so it is
 /// swapped for one that calls `app.exit`, which goes through the exit guard in `run`.
 fn app_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
@@ -109,6 +110,7 @@ fn app_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
             && sub.text()? == "Help"
         {
             sub.append(&MenuItem::with_id(app, BUG_MENU_ID, "Report a Bug…", true, None::<&str>)?)?;
+            sub.append(&MenuItem::with_id(app, FEATURE_MENU_ID, "Request a Feature…", true, None::<&str>)?)?;
         }
     }
     for top in menu.items()? {
@@ -178,7 +180,9 @@ pub fn run() {
             } else if event.id() == SETTINGS_MENU_ID {
                 let _ = app.emit("open-settings", ());
             } else if event.id() == BUG_MENU_ID {
-                let _ = app.emit("open-bug-report", ());
+                let _ = app.emit("open-bug-report", "bug");
+            } else if event.id() == FEATURE_MENU_ID {
+                let _ = app.emit("open-bug-report", "feature");
             }
         })
         .setup(|app| {

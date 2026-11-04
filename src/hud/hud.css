@@ -61,6 +61,7 @@
 .hud-stats { position: fixed; top: 14px; left: 0; z-index: 3; display: flex; gap: 34px; justify-content: center; pointer-events: none; transition: right .2s; }
 .hud-stats > * { pointer-events: auto; }
 .hud-stats .hud-resource-trough { width: 190px; }
+.hud-stats-off { display: none; }
 .hud-res > *, .hud-res-col > * { pointer-events: auto; }
 .hud-res-col { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; pointer-events: none; }
 

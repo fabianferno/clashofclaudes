@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useApp, type Selection } from '../state/store';
 import { badgeOf, idleOf, liveAgentSessions, msToNextMidnight, startOfToday, type BadgeState } from './hudState';
-import { RES_MARGIN, panelInset } from './layout';
+import { RES_MARGIN, STATS_GAP, panelInset, statsPlacement, type StatsPlacement } from './layout';
 import ResourceBars from './ResourceBars';
 import BuilderAvatar from './BuilderAvatar';
 import './hud.css';
@@ -38,14 +38,61 @@ export default function TopBar() {
     return { live, byState };
   }, [builders, sessionMap]);
 
+  // The stats sit centred between the Village level block and the resource column, or under the
+  // resource bars when the window (less the panel) leaves no room for them in between.
+  const player = useRef<HTMLDivElement>(null);
+  const res = useRef<HTMLDivElement>(null);
+  const statsBox = useRef<HTMLDivElement>(null);
+  const [place, setPlace] = useState<StatsPlacement>({ mode: 'center', left: 0, right: panelInset(panelOpen) });
+  useLayoutEffect(() => {
+    const measure = () => {
+      const p = player.current, r = res.current, s = statsBox.current;
+      if (!p || !r || !s) return;
+      // wherever the stats are now (the band or the column), so a placement never undoes itself
+      const stats = [...s.querySelectorAll<HTMLElement>('.hud-stat'), ...r.querySelectorAll<HTMLElement>('.hud-stat')];
+      const rowWidth = stats.reduce((w, el) => w + el.offsetWidth, 0) + STATS_GAP * Math.max(0, stats.length - 1);
+      // the column as its resource bars make it, without the stats it may hold
+      const bars = Array.from(r.querySelectorAll<HTMLElement>('.hud-resource:not(.hud-stat)'));
+      const resWidth = bars.length ? Math.max(...bars.map((b) => b.offsetWidth)) : 0;
+      // the column's right offset as set (not as measured mid-transition)
+      const next = statsPlacement(window.innerWidth, p.getBoundingClientRect().right, panelInset(panelOpen) + RES_MARGIN, resWidth, rowWidth);
+      setPlace((cur) => (JSON.stringify(cur) === JSON.stringify(next) ? cur : next));
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    for (const el of [player.current, res.current]) if (el && ro) ro.observe(el);
+    return () => { window.removeEventListener('resize', measure); ro?.disconnect(); };
+  }, [panelOpen]);
+
   const midnight = startOfToday();
   const today = stats.recentShips.filter((t) => t >= midnight).length;
   const busy = new Set(live.map((s) => (s.kind as { builderId: string }).builderId)).size;
+  const statsEls = (
+    <>
+          <div className="hud-resource hud-stat">
+            <span className="hud-resource-trough">
+              <span className="hud-resource-sub">Builders busy</span>
+              <b className="ol">{busy} / {builders.length}</b>
+            </span>
+            <span className="hud-drop hud-stat-ico hud-stat-builder" aria-hidden="true">
+              <BuilderAvatar agent={builders[0]?.agent ?? 'claude'} model={builders[0]?.model ?? null} effort={builders[0]?.effort ?? null} size={34} />
+            </span>
+          </div>
+          <div className="hud-resource hud-stat">
+            <span className="hud-resource-trough">
+              <span className="hud-resource-sub">Shipped today</span>
+              <b className="ol" data-testid="shipped-today">{today}</b>
+            </span>
+            <img className="hud-drop hud-stat-ico" src="/assets/village/ui/ribbon.png" alt="" aria-hidden="true" />
+          </div>
+    </>
+  );
 
   return (
     <>
       <div id="topbar" className="hud-topbar">
-        <div className="hud-player">
+        <div className="hud-player" ref={player}>
           <div className="hud-shield" data-testid="village-level" title="Village level: sessions shipped">
             <span className="ol-lg">{stats.shippedTotal}</span>
           </div>
@@ -69,28 +116,15 @@ export default function TopBar() {
           })}
         </div>
       </div>
-      <div id="resources" className="hud-res" style={{ right: panelInset(panelOpen) + RES_MARGIN }}>
+      <div id="resources" ref={res} className="hud-res" style={{ right: panelInset(panelOpen) + RES_MARGIN }}>
         <div className="hud-res-col">
           <ResourceBars />
+          {place.mode === 'column' && statsEls}
         </div>
       </div>
-      <div id="stats" className="hud-stats" style={{ right: panelInset(panelOpen) }}>
-          <div className="hud-resource hud-stat">
-            <span className="hud-resource-trough">
-              <span className="hud-resource-sub">Builders busy</span>
-              <b className="ol">{busy} / {builders.length}</b>
-            </span>
-            <span className="hud-drop hud-stat-ico hud-stat-builder" aria-hidden="true">
-              <BuilderAvatar agent={builders[0]?.agent ?? 'claude'} model={builders[0]?.model ?? null} effort={builders[0]?.effort ?? null} size={34} />
-            </span>
-          </div>
-          <div className="hud-resource hud-stat">
-            <span className="hud-resource-trough">
-              <span className="hud-resource-sub">Shipped today</span>
-              <b className="ol" data-testid="shipped-today">{today}</b>
-            </span>
-            <img className="hud-drop hud-stat-ico" src="/assets/village/ui/ribbon.png" alt="" aria-hidden="true" />
-          </div>
+      <div id="stats" ref={statsBox} className={`hud-stats${place.mode === 'column' ? ' hud-stats-off' : ''}`} data-placement={place.mode}
+        style={place.mode === 'center' ? { left: place.left, right: place.right } : undefined}>
+        {place.mode === 'center' && statsEls}
       </div>
       <button className="hud-btn grey hud-gear" aria-label="Settings" title="Settings (⌘,)" data-testid="settings-button"
         onClick={() => useApp.getState().setSettingsOpen(true)}>

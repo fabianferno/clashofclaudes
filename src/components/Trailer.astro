@@ -1,0 +1,22 @@
+---
+// The 43-second ad, cut from the real app (made with the brag skill in the app repo's brag-output/).
+// It waits on its poster until asked: the gold button plays it with sound and hands over to the
+// native controls (src/motion/trailer.ts). Nothing downloads until then.
+---
+<section class="trailer" id="ad" aria-labelledby="trailer-title">
+  <div class="trailer__head">
+    <h2 class="title trailer__title" id="trailer-title" data-split="lines">The village in 43 seconds</h2>
+    <p class="trailer__lede" data-reveal="up">Builders hammering, a red “!” when one needs you, elixir for your token limits, minions, rune stones and a house that levels up. All footage is the real app.</p>
+  </div>
+  <figure class="trailer__frame" data-reveal="up" data-trailer>
+    <video class="trailer__video" src="/video/clash-of-claudes-ad.mp4" poster="/video/clash-of-claudes-ad.jpg"
+      width="1920" height="1080" preload="none" playsinline
+      aria-label="Clash of Claudes ad: builders at work in the village, then each feature in turn"></video>
+    <button class="trailer__play" type="button" data-trailer-play>
+      <span class="trailer__pill">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+        Play the ad <small>0:43 · sound on</small>
+      </span>
+    </button>
+  </figure>
+</section>

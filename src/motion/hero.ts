@@ -1,9 +1,9 @@
 // Small life around the edges, all on the GSAP clock:
-// - the hero's floating village drifts against the pointer in three depth layers (desktop pointer only);
+// - the hero's floating village moves in three depth layers: parallax on scroll, and against the pointer on a desktop;
 // - the Kanban screenshot stands up from the table as it scrolls in;
 // - a click anywhere kicks up a puff of dust, the same puff a finished tent makes.
 import { gsap } from 'gsap';
-import { isTouch, onPage, prefersReducedMotion } from '../engine';
+import { isTouch, onPage, prefersReducedMotion, scrollState } from '../engine';
 
 export function startHero() {
   onPage(() => {
@@ -11,9 +11,12 @@ export function startHero() {
     const cleanups: (() => void)[] = [];
 
     const field = document.querySelector<HTMLElement>('[data-hero-field]');
-    if (field && !isTouch()) {
-      // Each depth layer slides against the pointer by its depth, so the village has parallax.
+    if (field) {
+      // Each depth layer moves by its depth, so the village has parallax: on scroll the far trees
+      // lag behind the page and the builders run ahead of it; on a desktop pointer every layer
+      // also slides against the pointer.
       const layers = [...field.querySelectorAll<HTMLElement>('[data-depth]')].map((el) => ({ el, depth: +el.dataset.depth! }));
+      const pointer = !isTouch();
       const tilt = { x: 0, y: 0 };
       const target = { x: 0, y: 0 };
       const move = (e: PointerEvent) => {
@@ -21,12 +24,15 @@ export function startHero() {
         target.y = e.clientY / window.innerHeight - 0.5;
       };
       const tick = () => {
-        if (window.scrollY > window.innerHeight) return;
+        const y = scrollState().y;
+        if (y > window.innerHeight * 1.2) return;
         tilt.x += (target.x - tilt.x) * 0.05;
         tilt.y += (target.y - tilt.y) * 0.05;
-        for (const l of layers) gsap.set(l.el, { x: -tilt.x * l.depth * 34, y: -tilt.y * l.depth * 22 });
+        for (const l of layers) {
+          gsap.set(l.el, { x: -tilt.x * l.depth * 34, y: -tilt.y * l.depth * 22 + y * 0.55 * (1 - l.depth) });
+        }
       };
-      window.addEventListener('pointermove', move, { passive: true });
+      if (pointer) window.addEventListener('pointermove', move, { passive: true });
       gsap.ticker.add(tick);
       cleanups.push(() => { window.removeEventListener('pointermove', move); gsap.ticker.remove(tick); });
     }

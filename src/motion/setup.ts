@@ -6,6 +6,7 @@ import { startSession } from './session';
 import { startTour } from './tour';
 import { startHero } from './hero';
 import { startAgents } from './agents';
+import { startTrailer } from './trailer';
 import { site } from '../data/site';
 
 export function setupMotion() {
@@ -34,6 +35,7 @@ export function setupMotion() {
   startTour();
   startHero();
   startAgents();
+  startTrailer();
   toc();
   menu();
   version();

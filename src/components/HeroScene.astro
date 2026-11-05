@@ -3,7 +3,7 @@
 // draws them today (a house per workspace, the agent's tent, its builder in a state).
 // Each piece is placed by its feet: x and y are percentages of the hero, s its width in a unit that
 // follows the smaller of the screen's width and height, so nothing grows into the text on a short
-// screen. Three depth layers drift against the pointer (src/motion/hero.ts); each piece bobs on its
+// screen. Three depth layers move with scroll and the pointer (src/motion/hero.ts); each piece bobs on its
 // own slow cycle. Phones show only the pieces that have an `m` placement, along the bottom.
 import Builder from './Builder.astro';
 import RisingTent from './RisingTent.astro';

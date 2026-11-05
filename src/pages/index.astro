@@ -6,6 +6,7 @@ import DownloadButton from '../components/DownloadButton.astro';
 import AgentNetwork from '../components/AgentNetwork.astro';
 import AgentLogo from '../components/AgentLogo.astro';
 import TreeLine from '../components/TreeLine.astro';
+import Trailer from '../components/Trailer.astro';
 import { agents, faq, privacy, site, tour, villageNotes } from '../data/site';
 ---
 <Base description="A Mac app that runs Claude Code, Codex, Antigravity CLI and OpenCode as builders in a village: see who is working, who needs you, who shipped.">
@@ -45,6 +46,8 @@ import { agents, faq, privacy, site, tour, villageNotes } from '../data/site';
       <p>In the village the answer is on screen: a builder hammering away is working, a red “!” is waiting for you, a medal means it shipped. The real terminal is always one click away.</p>
     </div>
   </section>
+
+  <Trailer />
 
   <SessionStage />
 

@@ -249,6 +249,41 @@ html.motion .fl__bob { animation: float var(--fd, 7s) ease-in-out var(--fdl, 0s)
 .statement__body { grid-column: 5 / span 6; grid-row: 2; display: grid; gap: 1.1rem; font-size: var(--t-m); line-height: 1.5; }
 .statement__body p:last-child { color: var(--muted-on-parchment); }
 
+/* ---------- The ad (Trailer.astro) ---------- */
+.trailer {
+  display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: var(--col-gap); row-gap: calc(var(--u) * 4);
+  padding: calc(var(--u) * 12) var(--gutter) calc(var(--u) * 12);
+  background: radial-gradient(70% 60% at 50% 60%, #1d4a26, transparent 75%), var(--forest); color: var(--parchment);
+  border-top: var(--stroke) solid var(--ink);
+}
+.trailer__head { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; row-gap: 1rem; align-items: end; }
+.trailer__title { grid-column: 1 / span 6; font-size: var(--t-xl); color: var(--parchment); }
+.trailer__lede { grid-column: 7 / span 6; font-size: var(--t-m); line-height: 1.5; font-weight: 500; color: var(--muted-on-forest); }
+.trailer__frame {
+  grid-column: 1 / -1; position: relative; aspect-ratio: 16 / 9; overflow: hidden;
+  border: var(--stroke) solid var(--ink); border-radius: var(--radius); background: #0b1f10;
+  box-shadow: 0 var(--lip) 0 var(--ink), 0 40px 80px -40px rgb(0 0 0 / 0.8);
+}
+.trailer__video { display: block; width: 100%; height: 100%; object-fit: cover; }
+/* The whole poster is the button; its label sits in a corner, clear of the logo on the poster. */
+.trailer__play {
+  position: absolute; inset: 0; display: flex; align-items: end; justify-content: start; padding: clamp(0.9rem, 2.5%, 1.75rem);
+  border: 0; background: linear-gradient(transparent 55%, rgb(8 22 10 / 0.5)); cursor: pointer;
+}
+.trailer__pill {
+  display: inline-flex; align-items: center; gap: 0.6rem; padding: 0.7rem 1.3rem 0.65rem 0.8rem;
+  border: var(--stroke) solid var(--ink); border-radius: 999px; background: var(--gold); color: var(--ink);
+  font-family: var(--f-display); font-size: var(--t-m); line-height: 1;
+  box-shadow: 0 var(--lip) 0 var(--ink), inset 0 -0.3rem 0 rgb(0 0 0 / 0.14), inset 0 0.22rem 0 rgb(255 255 255 / 0.45);
+  transition: translate 0.25s, background-color 0.25s;
+}
+.trailer__pill svg { width: 1.5em; height: 1.5em; padding: 0.3em 0.25em 0.3em 0.35em; border-radius: 50%; background: var(--ink); color: var(--gold); }
+.trailer__pill small { font-family: var(--f-body); font-size: var(--t-xs); font-weight: 700; opacity: 0.7; }
+@media (hover: hover) { .trailer__play:hover .trailer__pill { translate: 0 -4px; background-color: #ffd257; } }
+.trailer__play:focus-visible { outline: none; }
+.trailer__play:focus-visible .trailer__pill { outline: 3px solid var(--gold); outline-offset: 5px; }
+.trailer__frame.is-playing .trailer__play { display: none; }
+
 /* ---------- Session stage (signature) ---------- */
 .session {
   position: relative;
@@ -634,6 +669,10 @@ html.motion .drop-in { animation: drop-in 0.9s cubic-bezier(0.34, 1.56, 0.64, 1)
   .fl.fl--m { display: block; --x: var(--mx); --y: var(--my); --s: var(--ms); --unit: 1vw; }
   .hero__lede { font-size: var(--t-body); }
   .statement__title, .statement__body { grid-column: 1 / -1; }
+  .trailer__title, .trailer__lede { grid-column: 1 / -1; }
+  .trailer__play { padding: 0.6rem; align-items: start; background: none; }
+  .trailer__pill { font-size: 0.95rem; padding: 0.4rem 0.8rem 0.35rem 0.4rem; gap: 0.4rem; box-shadow: 0 3px 0 var(--ink); }
+  .trailer__pill small { display: none; }
   .statement__art { display: none; }
   .statement__body { grid-row: auto; }
   .session__body { display: flex; flex-direction: column; }
@@ -691,7 +730,7 @@ html.motion .drop-in { animation: drop-in 0.9s cubic-bezier(0.34, 1.56, 0.64, 1)
     --fit-bottom: clamp(1.75rem, 5svh, 3.5rem);
     --t-fit: min(var(--t-xl), 8.5svh);           /* section titles */
   }
-  .hero, .statement, .board, .privacy, .faq, .beta {
+  .hero, .statement, .trailer, .board, .privacy, .faq, .beta {
     min-height: 100svh; align-content: center;
     padding-top: var(--fit-top); padding-bottom: var(--fit-bottom);
   }
@@ -703,6 +742,12 @@ html.motion .drop-in { animation: drop-in 0.9s cubic-bezier(0.34, 1.56, 0.64, 1)
   .hero__more { margin-top: 0.4rem; }
 
   .statement { row-gap: clamp(1.5rem, 5svh, 3.5rem); }
+
+  /* The ad: the player is capped by what height is left under the heading. */
+  .trailer { row-gap: clamp(1.25rem, 3.5svh, 2.5rem); }
+  .trailer__title { font-size: min(var(--t-l), 6.5svh); }
+  .trailer__lede { font-size: min(var(--t-m), 2.2svh); }
+  .trailer__frame { justify-self: center; width: min(100%, calc((100svh - var(--fit-top) - var(--fit-bottom) - 12rem) * 16 / 9)); }
   .statement__title, .privacy__title, .faq__title { font-size: var(--t-fit); }
 
   /* Agents: one-line title beside the lede, shorter tiles. */

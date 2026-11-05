@@ -1,5 +1,12 @@
 import type { Compound, Tile } from '../api/types';
-import { HOUSE, STRUCT, gateInside, gateSide } from './layout';
+import { EDGE_PAD, HOUSE, STRUCT, gateInside, gateSide } from './layout';
+
+/**
+ * Ground kept around every structure before the wall: room for the builder standing beside it and for
+ * the art (tent poles, rune glow) to read clear of the fence. Matches `EDGE_PAD`, so a structure at the
+ * edge of the compound rect still gets it.
+ */
+const STRUCT_GROUND = EDGE_PAD;
 
 /**
  * A wall tile and the neighbouring wall tiles it joins, in `nesw` order: n is y-1, e is x+1, s is
@@ -32,8 +39,8 @@ export function seedOf(id: string): number {
 
 /**
  * The compound's walled ground, which grows with use instead of filling its reserved rect: a ring
- * around the house, a lane from the gate to it, room around every structure (and a lane to the
- * house), plus `2 + level` (at most 6) random bulges; then notches are filled so the outline stays smooth.
+ * around the house, a lane from the gate to it, two tiles of room around every structure (and a lane
+ * to the house), plus `2 + level` (at most 6) random bulges; then notches are filled so the outline stays smooth.
  * Always inside the compound rect, so the rect still reserves the space (walls sit on its ring at
  * most) and the gate tile from `gateTile` is always a wall tile with ground behind it.
  */
@@ -59,7 +66,7 @@ export function enclosure(c: Compound, spots: Tile[], level: number, seed: numbe
   const side = gateSide(c);
   lane(gateInside(c), side === 'w' || side === 'e');
   for (const s of spots) {
-    box(s.x, s.y, STRUCT, STRUCT, 1);
+    box(s.x, s.y, STRUCT, STRUCT, STRUCT_GROUND);
     lane(s, true);
   }
 

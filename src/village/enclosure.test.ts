@@ -45,6 +45,19 @@ describe('enclosure', () => {
     expect(e.inside.has(key(gateOutside(c))) || walls.has(key(gateOutside(c)))).toBe(false);
   });
 
+  it('keeps two tiles of ground between every structure and the wall, so builders and art stay off it', () => {
+    for (const n of [1, 4, 9]) {
+      const { c, spots } = grown(n);
+      const e = enclosure(c, spots, 0, seedOf('w'));
+      for (const s of spots) {
+        for (const w of e.walls) {
+          const d = Math.max(s.x - w.x, w.x - (s.x + STRUCT - 1), s.y - w.y, w.y - (s.y + STRUCT - 1));
+          expect(d).toBeGreaterThan(2);
+        }
+      }
+    }
+  });
+
   it('closes the ring: every ground tile is surrounded by ground or wall', () => {
     const { c, spots } = grown(5);
     const e = enclosure(c, spots, 3, seedOf('x'));

@@ -1,0 +1,38 @@
+---
+// The feature reel, the ad's beats as a scroll story: the beats scroll on the left while a sticky
+// frame on the right plays each one's loop of real app footage (src/motion/reel.ts). Phones pin the
+// frame under the HUD and scroll the beats beneath it. Clips load only when their beat comes up.
+import { reel } from '../data/site';
+
+const gold = (t: string) => t.split('*').map((part, i) => (i % 2 ? `<span class="reel__gold">${part}</span>` : part)).join('');
+---
+<section class="reel" id="features" aria-labelledby="reel-title" data-reel>
+  <div class="reel__head">
+    <h2 class="title reel__title" id="reel-title" data-split="lines">Your coding agents, as a village</h2>
+    <p class="reel__lede" data-reveal="up">Everything below is the real app, recorded frame by frame.</p>
+  </div>
+  <div class="reel__body">
+    <ol class="reel__beats">
+      {reel.map((b, i) => (
+        <li class="reel__beat" data-beat={i}>
+          <h3 class="reel__name" set:html={gold(b.title)} />
+          <p>{b.text}</p>
+        </li>
+      ))}
+    </ol>
+    <div class="reel__stick">
+      <div class="reel__frame" aria-hidden="true">
+        {reel.map((b, i) => (
+          <div class:list={['reel__slide', { 'is-on': i === 0 }]} data-slide={i}>
+            {b.clip === 'kanban'
+              ? <div class="reel__kanban"><img src="/img/kanban-2000.webp" alt="" width="2000" height="451" loading="lazy" decoding="async" /></div>
+              : <video src={`/reel/${b.clip}.mp4`} poster={`/reel/${b.clip}.jpg`} width="1280" height="720" muted loop playsinline preload="none"></video>}
+          </div>
+        ))}
+      </div>
+      <ol class="reel__pips" aria-hidden="true">
+        {reel.map((_, i) => <li class:list={{ 'is-on': i === 0 }} data-pip={i}></li>)}
+      </ol>
+    </div>
+  </div>
+</section>

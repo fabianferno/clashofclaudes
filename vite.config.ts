@@ -7,7 +7,7 @@ const host = process.env.TAURI_DEV_HOST;
 // https://vite.dev/config/
 export default defineConfig(() => ({
   plugins: [react()],
-  test: { environment: "jsdom", globals: true, setupFiles: ["./vitest.setup.ts"], exclude: ["**/node_modules/**", "scripts/**", "src-tauri/**"] },
+  test: { environment: "jsdom", globals: true, setupFiles: ["./vitest.setup.ts"], exclude: ["**/node_modules/**", "scripts/**", "src-tauri/**", "site/**"] },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
@@ -27,8 +27,8 @@ export default defineConfig(() => ({
         }
       : undefined,
     watch: {
-      // 3. tell Vite to ignore watching `src-tauri`
-      ignored: ["**/src-tauri/**"],
+      // 3. tell Vite to ignore watching `src-tauri` (and the landing site, its own Astro project)
+      ignored: ["**/src-tauri/**", "**/site/**"],
     },
   },
 }));

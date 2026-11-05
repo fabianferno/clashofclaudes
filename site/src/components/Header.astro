@@ -1,0 +1,43 @@
+---
+import { nav, site } from '../data/site';
+const path = Astro.url.pathname;
+const current = (href: string) => (!href.includes('#') && path.startsWith(href) ? 'page' : undefined);
+---
+<header class="hud" data-hud>
+  <a class="hud__brand" href="/">
+    <img src="/img/icon-160.webp" alt="" width="40" height="40" />
+    <span class="hud__name">Clash of Claudes</span>
+    <span class="hud__beta">Beta</span>
+  </a>
+  <nav class="hud__nav" aria-label="Main">
+    <ul>
+      {nav.map((n) => (
+        <li>
+          <a href={n.href} aria-current={current(n.href)}>
+            <span class="roll" data-label={n.label}><span>{n.label}</span></span>
+          </a>
+        </li>
+      ))}
+    </ul>
+  </nav>
+  <a class="btn btn--gold btn--s hud__dl" href={site.download} data-download>
+    <svg class="btn__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 20h16" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span>Download</span>
+  </a>
+  <button class="hud__menu" type="button" aria-expanded="false" aria-controls="menu" data-menu-toggle>
+    <span class="hud__menu-label">Menu</span>
+  </button>
+  <div class="menu" id="menu" hidden data-menu>
+    <nav aria-label="Menu">
+      <ul>
+        {nav.map((n, i) => (
+          <li style={`--i:${i}`}><a href={n.href} aria-current={current(n.href)}>{n.label}</a></li>
+        ))}
+      </ul>
+    </nav>
+    <a class="btn btn--gold" href={site.download} data-download>
+      <svg class="btn__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 20h16" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>Download for Mac</span>
+    </a>
+  </div>
+</header>

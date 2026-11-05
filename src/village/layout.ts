@@ -179,8 +179,11 @@ export function canPlace(c: Compound, taken: Tile[], at: Tile, size: number): bo
 
 /** Clear tiles a new structure keeps from the house and every other structure: room to stand and work. */
 export const STRUCT_PAD = 2;
-/** Clear tiles a new structure keeps from the compound's edge, so the wall never presses on it. */
-export const EDGE_PAD = 1;
+/**
+ * Clear tiles a new structure keeps from the compound's edge, so the wall never presses on it: the
+ * builder stands on the first, and the second keeps the fence off the art (see `enclosure`).
+ */
+export const EDGE_PAD = 2;
 
 /**
  * Free spot nearest the house centre, STRUCT_PAD clear of the house and every structure and EDGE_PAD

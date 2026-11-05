@@ -4,7 +4,7 @@ import { create } from 'zustand';
 export interface FoundUpdate { version: string | null; notes: string | null }
 import { ipc } from '../api/ipc';
 import type { AgentInfo, AgentKind, AgentQuota, AppPreview, Todo, Builder, CloseOutcome, Compound, ListState, SessionInfo, SessionState, Settings, Stats, Tile, Workspace, ReportKind } from '../api/types';
-import { HOUSE, STRUCT, canPlace, compoundFits, gapBetween, placeCompound, shiftCompound, spotFor, wallRect } from '../village/layout';
+import { HOUSE, STRUCT, canPlace, compoundFits, gapBetween, placeCompound, shiftCompound, spotFor, tidySpots, wallRect } from '../village/layout';
 import { collectorFits, collectorTiles, shownCollectors } from '../village/quota';
 
 export type Selection =
@@ -27,6 +27,11 @@ export interface VillageActions {
   ensureSpot: (sessionId: string, onError?: (e: unknown) => void) => Promise<Tile>;
   /** A board's spot (see `boardItems`), found the same way; null when the board went away first. */
   ensureBoardSpot: (key: string, onError?: (e: unknown) => void) => Promise<Tile | null>;
+  /**
+   * Space out the workspace's tents, rune stones and boards to the padding new ones get (see `tidySpots`),
+   * growing its compound if they no longer fit. Resolves to how many were moved to new spots.
+   */
+  tidy: (wsId: string) => Promise<number>;
   /**
    * Persist a move to `at`: a structure (session), a compound's house within its walls (workspace),
    * a whole compound (`at` its new interior origin) or a collector; false (and no ipc) when blocked.
@@ -535,8 +540,28 @@ function villageActions(get: () => AppState): VillageActions {
     return spot;
   };
 
+  const tidy = async (wsId: string): Promise<number> => {
+    const st = get();
+    const c = st.workspaces.find((w) => w.id === wsId)?.compound;
+    if (!c) return 0;
+    const mates = Object.values(st.sessions).filter((x) => x.workspaceId === wsId && x.spot);
+    const boards = Object.keys(st.boardSpots).filter((k) => k.startsWith(`${wsId}:`));
+    const all = st.workspaces.flatMap((w) => (w.compound ? [w.compound] : []));
+    const r = tidySpots(c, all, [...mates.map((x) => x.spot!), ...boards.map((k) => st.boardSpots[k])]);
+    if (r.compound !== c) get().updateWorkspace(await ipc.setCompound(wsId, r.compound));
+    for (const [i, m] of mates.entries()) {
+      const t = r.spots[i];
+      if (t.x !== m.spot!.x || t.y !== m.spot!.y) get().upsertSession(await ipc.setSessionSpot(m.id, t));
+    }
+    const spots = { ...get().boardSpots };
+    boards.forEach((k, i) => { if (spots[k]) spots[k] = r.spots[mates.length + i]; });
+    get().setBoardSpots(spots);
+    return r.moved;
+  };
+
   return {
     ensureCompound: (wsId) => serial(() => compoundOf(wsId)),
+    tidy: (wsId) => serial(() => tidy(wsId)),
     ensureSpot: (sessionId, onError) => serial(() => spotOf(sessionId, onError ?? ((e) => get().setError(String(e))))),
     ensureBoardSpot: (key, onError) => serial(() => boardSpotOf(key, onError ?? ((e) => get().setError(String(e))))),
     commitMove: (target, at, onError) => serial(async () => {

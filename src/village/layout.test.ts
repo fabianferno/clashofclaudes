@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Compound, Tile } from '../api/types';
 import {
   EDGE_PAD, GAP, GROW, HALL, HOUSE, START, STRUCT, STRUCT_PAD, Rect, assertNoCollisions, canPlace, expand,
-  findSpot, gapBetween, gateInside, gateOutside, gateSide, gateTile, placeCompound, roadPath, spotFor, wallRect,
+  findSpot, gapBetween, gateInside, gateOutside, gateSide, gateTile, padded, placeCompound, roadPath, spotFor, tidySpots, wallRect,
 } from './layout';
 
 const sq = (t: Tile, s: number): Rect => ({ x0: t.x, y0: t.y, w: s, h: s });
@@ -65,6 +65,51 @@ describe('findSpot', () => {
     const r = spotFor(c, [c], taken);
     expect(r.expanded).toBe(true);
     for (const o of taken) expect(gapBetween(sq(r.spot, STRUCT), sq(o, STRUCT))).toBeGreaterThanOrEqual(STRUCT_PAD);
+  });
+});
+
+describe('tidySpots', () => {
+  const allPadded = (c: Compound, spots: Tile[]) => spots.every((t, i) => padded(c, spots.filter((_, j) => j !== i), t));
+
+  it('spaces out structures packed against each other and the house, growing the compound', () => {
+    const c = placeCompound([]);
+    // packed the old way: touching the house and each other in a row
+    const packed: Tile[] = [0, 2, 4, 6].map((d) => ({ x: c.x0 + d, y: c.house.y === c.y0 ? c.y0 + HOUSE : c.y0 }));
+    expect(allPadded(c, packed)).toBe(false);
+    const r = tidySpots(c, [c], packed);
+    expect(r.spots).toHaveLength(4);
+    expect(allPadded(r.compound, r.spots)).toBe(true);
+    expect(r.moved).toBeGreaterThan(0);
+    expect(r.compound.w * r.compound.h).toBeGreaterThan(c.w * c.h);
+  });
+
+  it('leaves an already padded village alone', () => {
+    const c = placeCompound([]);
+    const taken: Tile[] = [];
+    for (let s = findSpot(c, taken); s; s = findSpot(c, taken)) taken.push(s);
+    const r = tidySpots(c, [c], taken);
+    expect(r.moved).toBe(0);
+    expect(r.spots).toEqual(taken);
+    expect(r.compound).toBe(c);
+  });
+
+  it('keeps the spot nearest the house and moves the one crowding it', () => {
+    const c = placeCompound([]);
+    const near = findSpot(c, [])!;
+    const crowd = { x: near.x + STRUCT, y: near.y };
+    const r = tidySpots(c, [c], [crowd, near]);
+    expect(r.spots[1]).toEqual(near);
+    expect(r.spots[0]).not.toEqual(crowd);
+    expect(r.moved).toBe(1);
+  });
+
+  it('moves every spot with a relocated compound', () => {
+    const all = placeN(4);
+    const c = all[0];
+    const packed: Tile[] = Array.from({ length: 8 }, (_, i) => ({ x: c.x0 + (i % 4) * 2, y: c.y0 + 5 + Math.floor(i / 4) * 2 }));
+    const r = tidySpots(c, all, packed);
+    expect(allPadded(r.compound, r.spots)).toBe(true);
+    assertNoCollisions([r.compound, ...all.slice(1)]);
   });
 });
 

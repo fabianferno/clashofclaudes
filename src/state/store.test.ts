@@ -3,7 +3,7 @@ import type { CloseOutcome } from '../api/types';
 import { autoLayout, boardItems, boardKey, browserUrl, moveValid, useApp, sessionsByWorkspace, idleBuilders, stateLabel } from './store';
 import type { AppPreview, Builder, Compound, SessionInfo, SessionState, Tile, Workspace } from '../api/types';
 import { ipc } from '../api/ipc';
-import { GAP, assertNoCollisions, findSpot, placeCompound, shiftCompound, spotFor } from '../village/layout';
+import { GAP, assertNoCollisions, findSpot, padded, placeCompound, shiftCompound, spotFor } from '../village/layout';
 
 vi.mock('../api/ipc', () => ({ ipc: { setCompound: vi.fn(), setSessionSpot: vi.fn(), setCollectorSpot: vi.fn(), moveCompound: vi.fn() } }));
 
@@ -119,6 +119,26 @@ describe('village', () => {
     const t = await v.ensureSpot('t');
     expect(t).not.toEqual(a);
     expect(ipc.setSessionSpot).toHaveBeenCalledTimes(2);
+  });
+
+  it('tidy spaces out packed structures and boards, persisting only the ones that moved', async () => {
+    const c = placeCompound([]);
+    const near = findSpot(c, [])!;
+    useApp.setState({ workspaces: [W('w1', c)] });
+    useApp.getState().upsertSession({ ...sess('a', 'w1', 'b1'), spot: near });
+    useApp.getState().upsertSession({ ...sess('t', 'w1'), spot: { x: near.x + 2, y: near.y } }); // touching a
+    useApp.getState().setBoardSpots({ 'w1:3000': { x: near.x, y: near.y + 2 } }); // touching a too
+    const v = useApp.getState().village;
+    await expect(v.tidy('w1')).resolves.toBe(2);
+    expect(ipc.setSessionSpot).toHaveBeenCalledTimes(1);
+    expect(ipc.setSessionSpot).toHaveBeenCalledWith('t', expect.anything());
+    const st = useApp.getState();
+    const comp = st.workspaces[0].compound!;
+    const spots = [st.sessions.a.spot!, st.sessions.t.spot!, st.boardSpots['w1:3000']];
+    expect(spots[0]).toEqual(near);
+    spots.forEach((t, i) => expect(padded(comp, spots.filter((_, j) => j !== i), t)).toBe(true));
+    await expect(v.tidy('w1')).resolves.toBe(0); // already tidy: nothing moves
+    expect(ipc.setSessionSpot).toHaveBeenCalledTimes(1);
   });
 
   it('autoLayout places live terminals but not ones that already ended', async () => {

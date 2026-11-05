@@ -3,7 +3,7 @@ import { beforeEach, expect, test, vi } from 'vitest';
 const ipc = vi.hoisted(() => ({ getSettings: vi.fn(), setSettings: vi.fn() }));
 vi.mock('../api/ipc', () => ({ ipc }));
 import { useApp } from './store';
-import { DEFAULT_SETTINGS, PLAYER_NAME_MAX, cleanName, loadSettings, saveSettings, townHallTitle } from './settings';
+import { DEFAULT_SETTINGS, PLAYER_NAME_MAX, cleanName, loadSettings, saveSettings, tidyOnce, townHallTitle } from './settings';
 
 beforeEach(() => {
   ipc.getSettings.mockReset();
@@ -57,4 +57,15 @@ test('two saves in a row keep both changes', async () => {
   await Promise.all([saveSettings({ playerName: 'Ada' }), saveSettings({ onboarded: true })]);
   expect(ipc.setSettings).toHaveBeenLastCalledWith({ ...DEFAULT_SETTINGS, playerName: 'Ada', onboarded: true });
   expect(useApp.getState().settings).toMatchObject({ playerName: 'Ada', onboarded: true });
+});
+
+test('an old village is tidied once, then the setting remembers it', async () => {
+  const tidy = vi.fn(async () => 1);
+  const ws = (id: string, compound: boolean) => ({ id, compound: compound ? {} : null });
+  useApp.setState({ settings: DEFAULT_SETTINGS, workspaces: [ws('w1', true), ws('w2', false)] as never, village: { ...useApp.getState().village, tidy } });
+  await tidyOnce(DEFAULT_SETTINGS);
+  expect(tidy.mock.calls).toEqual([['w1']]);
+  expect(ipc.setSettings).toHaveBeenCalledWith(expect.objectContaining({ spotsTidied: true }));
+  await tidyOnce({ ...DEFAULT_SETTINGS, spotsTidied: true });
+  expect(tidy).toHaveBeenCalledTimes(1);
 });

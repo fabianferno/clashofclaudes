@@ -216,12 +216,15 @@ function houseCover(c: Compound, b: Box): number {
 }
 
 /**
- * Whether a structure on `at` reads clearly on screen next to the house and the `taken` ones: the house
- * hides no more than a sliver of it (nor it much of the house), its builder (drawn over the whole
+ * Whether a structure on `at` reads clearly on screen next to the house and the `taken` ones: it keeps
+ * clear of the gate, the house hides no more than a sliver of it (nor it much of the house), its builder (drawn over the whole
  * compound while it works) stands clear of the house and of other structures, no other builder stands
  * over it, and it and no other structure hide each other.
  */
 export function looksClear(c: Compound, taken: readonly Tile[], at: Tile): boolean {
+  // a tile more than the wall's room around the gate, where builders walk in
+  const g = gateTile(c);
+  if (Math.max(at.x - g.x, g.x - (at.x + STRUCT - 1), at.y - g.y, g.y - (at.y + STRUCT - 1)) <= EDGE_PAD + 1) return false;
   const s = structBox(at), b = builderBox(at);
   const behind = at.x + at.y + 2 * STRUCT < c.house.x + c.house.y + 2 * HOUSE;
   if (houseCover(c, s) > (behind ? 0.1 : 0.25) * area(s)) return false;

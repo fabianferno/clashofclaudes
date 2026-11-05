@@ -8,6 +8,10 @@ import TreeLine from '../components/TreeLine.astro';
 import Trailer from '../components/Trailer.astro';
 import Reel from '../components/Reel.astro';
 import { agents, faq, privacy, site } from '../data/site';
+
+// The supported agents under the hero copy. The list runs twice so the strip can loop seamlessly;
+// the second run is hidden from screen readers.
+const marquee = [...agents.map((a) => ({ kind: a.key, name: a.name })), { kind: 'custom' as const, name: 'Any command' }];
 ---
 <Base description="A Mac app that runs Claude Code, Codex, Antigravity CLI and OpenCode as builders in a village: see who is working, who needs you, who shipped.">
   <script slot="head" type="application/ld+json" set:html={JSON.stringify({
@@ -19,10 +23,16 @@ import { agents, faq, privacy, site } from '../data/site';
     <div class="hero__copy">
       <h1 class="title hero__title" id="hero-title" data-split="lines" data-intro>Run all your coding agents from one village.</h1>
       <p class="hero__lede">
-        Claude Code, Codex, Antigravity CLI and OpenCode sessions become builders in a little
-        village on your Mac. See who is working, who needs you and who shipped, without
-        clicking through terminal tabs.
+        Agent sessions become builders in a little village on your Mac. See who is working, who
+        needs you and who shipped, without clicking through terminal tabs.
       </p>
+      <div class="marquee" data-reveal="up" data-intro data-delay="0.1">
+        <ul class="marquee__track" aria-label="Supported agents">
+          {[false, true].map((copy) => marquee.map((m) => (
+            <li class="marquee__item" aria-hidden={copy ? 'true' : undefined}><AgentLogo kind={m.kind} />{m.name}</li>
+          )))}
+        </ul>
+      </div>
       <div class="hero__cta" data-reveal="up" data-intro data-delay="0.15">
         <DownloadButton requirements />
         <p class="hero__more"><a class="ulink" href="/beta/">How the beta works</a></p>

@@ -303,8 +303,12 @@ for the page to follow it, keeping "Bring the agents you already use".
   playing each beat's loop of real app footage (`public/reel/*.mp4`, cut from the ad's raw shots,
   about 5 MB in all, each loaded only when its beat comes up). The Kanban beat pans the real
   screenshot. The active beat is read from live positions on every scroll. Phones pin the frame to
-  the top and scroll the beats under it. Titles keep the ad's gold key word.
+  the top and scroll the beats under it. The section is parchment (owner asked for a change from
+  dark green): ink titles with the ad's key word on a gold band.
 - **Removed:** the statement ("Four agents in four repos..."), the one-session stage, the window
   fly-over tour and the separate Kanban section. Their facts live on in the reel, the agents
   section and the FAQ.
+- **Hero follow-ups:** the lede says "Agent sessions" instead of listing the agents, and a looping
+  strip of the supported agents (logo pills, pauses on hover, still and wrapped under reduced
+  motion) sits under it. The headline is 20% smaller. No "isometric" in visitor-facing copy.
 - `llms.txt` lists the reel beats; the SoftwareApplication `featureList` names the new features.

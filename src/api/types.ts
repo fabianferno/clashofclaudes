@@ -211,6 +211,8 @@ export interface Settings {
   onboarded?: boolean;
   /** Structures placed before they kept their padding have been spaced out once. */
   spotsTidied?: boolean;
+  /** The spacing rules the village was last tidied to (`SPOTS_TIDY`). */
+  spotsTidy?: number;
 }
 
 export interface UpdateStatus {

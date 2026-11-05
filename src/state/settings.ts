@@ -3,7 +3,7 @@ import type { Settings } from '../api/types';
 import { useApp } from './store';
 
 export const DEFAULT_SETTINGS: Settings = {
-  updatesEnabled: true, notifyNeedsYou: true, notifyFinished: true, dockBadge: true, playerName: null, onboarded: false, spotsTidied: false,
+  updatesEnabled: true, notifyNeedsYou: true, notifyFinished: true, dockBadge: true, playerName: null, onboarded: false, spotsTidied: false, spotsTidy: 0,
 };
 
 export { PLAYER_NAME_MAX, cleanName, townHallTitle } from './names';
@@ -38,10 +38,13 @@ export async function saveSettings(patch: Partial<Settings>): Promise<Settings> 
   }
 }
 
-/** A village laid out before structures kept their padding is spaced out once, on the first launch that has `tidy`. */
+/** The spacing rules villages are tidied to: 1 kept padding, 2 also keeps every structure clear on screen (`looksClear`). */
+export const SPOTS_TIDY = 2;
+
+/** A village laid out under older spacing rules is spaced out once, on the first launch with the newer ones. */
 export async function tidyOnce(s: Settings): Promise<void> {
-  if (s.spotsTidied) return;
+  if ((s.spotsTidy ?? 0) >= SPOTS_TIDY) return;
   const st = useApp.getState();
   for (const w of st.workspaces) if (w.compound) await st.village.tidy(w.id);
-  await saveSettings({ spotsTidied: true });
+  await saveSettings({ spotsTidied: true, spotsTidy: SPOTS_TIDY });
 }

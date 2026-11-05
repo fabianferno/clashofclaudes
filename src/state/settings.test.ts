@@ -3,7 +3,7 @@ import { beforeEach, expect, test, vi } from 'vitest';
 const ipc = vi.hoisted(() => ({ getSettings: vi.fn(), setSettings: vi.fn() }));
 vi.mock('../api/ipc', () => ({ ipc }));
 import { useApp } from './store';
-import { DEFAULT_SETTINGS, PLAYER_NAME_MAX, cleanName, loadSettings, saveSettings, tidyOnce, townHallTitle } from './settings';
+import { DEFAULT_SETTINGS, PLAYER_NAME_MAX, SPOTS_TIDY, cleanName, loadSettings, saveSettings, tidyOnce, townHallTitle } from './settings';
 
 beforeEach(() => {
   ipc.getSettings.mockReset();
@@ -65,7 +65,14 @@ test('an old village is tidied once, then the setting remembers it', async () =>
   useApp.setState({ settings: DEFAULT_SETTINGS, workspaces: [ws('w1', true), ws('w2', false)] as never, village: { ...useApp.getState().village, tidy } });
   await tidyOnce(DEFAULT_SETTINGS);
   expect(tidy.mock.calls).toEqual([['w1']]);
-  expect(ipc.setSettings).toHaveBeenCalledWith(expect.objectContaining({ spotsTidied: true }));
-  await tidyOnce({ ...DEFAULT_SETTINGS, spotsTidied: true });
+  expect(ipc.setSettings).toHaveBeenCalledWith(expect.objectContaining({ spotsTidied: true, spotsTidy: SPOTS_TIDY }));
+  await tidyOnce({ ...DEFAULT_SETTINGS, spotsTidied: true, spotsTidy: SPOTS_TIDY });
   expect(tidy).toHaveBeenCalledTimes(1);
+});
+
+test('a village tidied under older spacing rules is tidied again once', async () => {
+  const tidy = vi.fn(async () => 1);
+  useApp.setState({ settings: DEFAULT_SETTINGS, workspaces: [{ id: 'w1', compound: {} }] as never, village: { ...useApp.getState().village, tidy } });
+  await tidyOnce({ ...DEFAULT_SETTINGS, spotsTidied: true }); // tidied before spotsTidy existed
+  expect(tidy.mock.calls).toEqual([['w1']]);
 });

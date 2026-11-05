@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Compound, Tile } from '../api/types';
 import {
   EDGE_PAD, GAP, GROW, HALL, HOUSE, START, STRUCT, STRUCT_PAD, Rect, assertNoCollisions, canPlace, expand,
-  findSpot, gapBetween, gateInside, gateOutside, gateSide, gateTile, padded, placeCompound, roadPath, spotFor, tidySpots, wallRect,
+  findSpot, gapBetween, gateInside, gateOutside, gateSide, gateTile, looksClear, padded, placeCompound, roadPath, spotFor, tidySpots, wallRect,
 } from './layout';
 
 const sq = (t: Tile, s: number): Rect => ({ x0: t.x, y0: t.y, w: s, h: s });
@@ -65,6 +65,46 @@ describe('findSpot', () => {
     const r = spotFor(c, [c], taken);
     expect(r.expanded).toBe(true);
     for (const o of taken) expect(gapBetween(sq(r.spot, STRUCT), sq(o, STRUCT))).toBeGreaterThanOrEqual(STRUCT_PAD);
+  });
+});
+
+describe('looksClear', () => {
+  // a compound with its house in the far corner, so there is room behind it
+  const c: Compound = { x0: 0, y0: 0, w: 14, h: 14, house: { x: 8, y: 8 } };
+
+  it('does not count a spot the house stands in front of as clear', () => {
+    expect(looksClear(c, [], { x: 4, y: 4 })).toBe(false); // straight behind it on screen
+    expect(looksClear(c, [], { x: 2, y: 10 })).toBe(true); // beside it
+  });
+
+  it('places new structures where nothing covers them while there is room', () => {
+    for (const k of placeN(4)) {
+      const taken: Tile[] = [];
+      for (let i = 0; i < 3; i++) { // a fresh compound holds three before it grows, in every direction
+        const s = findSpot(k, taken)!;
+        expect(looksClear(k, taken, s)).toBe(true);
+        taken.push(s);
+      }
+    }
+  });
+
+  it('grows a compound with no clear spot left instead of hiding a structure', () => {
+    for (const k of placeN(4)) {
+      const taken: Tile[] = [];
+      for (let t = findSpot(k, taken); t; t = findSpot(k, taken)) taken.push(t);
+      const r = spotFor(k, [k], taken);
+      expect(r.expanded).toBe(true);
+      const moved = taken.map((t) => ({ x: t.x + r.shift.x, y: t.y + r.shift.y }));
+      expect(looksClear(r.compound, moved, r.spot)).toBe(true);
+    }
+  });
+
+  it('a tidy moves a structure out from behind the house, and only that one', () => {
+    const r = tidySpots(c, [c], [{ x: 2, y: 10 }, { x: 4, y: 4 }]);
+    expect(r.moved).toBe(1);
+    expect(r.spots[0]).toEqual({ x: 2, y: 10 });
+    expect(looksClear(c, [r.spots[0]], r.spots[1])).toBe(true);
+    expect(r.compound).toBe(c);
   });
 });
 

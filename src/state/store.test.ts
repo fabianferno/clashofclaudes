@@ -249,12 +249,13 @@ describe('village', () => {
   });
 
   it('relocation keeps shifting past a failed mate and reports the failure once', async () => {
-    const c: Compound = { x0: 8, y0: -3, w: 10, h: 10, house: { x: 8, y: 4 } };
-    const other: Compound = { x0: 8 + 10 + 1 + GAP + 1, y0: -3, w: 7, h: 7, house: { x: 24, y: 1 } };
+    const c: Compound = { x0: 8, y0: -3, w: 12, h: 12, house: { x: 8, y: 6 } };
+    const other: Compound = { x0: 8 + 12 + 1 + GAP + 1, y0: -3, w: 7, h: 7, house: { x: 26, y: 1 } };
     const taken: Tile[] = [];
     for (let t = findSpot(c, taken); t; t = findSpot(c, taken)) taken.push(t);
     const pre = spotFor(c, [c, other], taken);
     expect(taken.length).toBeGreaterThan(2);
+    expect(pre.shift).not.toEqual({ x: 0, y: 0 }); // hemmed in: the compound has to move
     useApp.setState({ workspaces: [W('w1', c), W('w2', other)] });
     taken.forEach((t, i) => useApp.getState().upsertSession({ ...sess(`s${i}`, 'w1', 'b1'), spot: t }));
     useApp.getState().upsertSession(sess('new', 'w1', 'b1'));

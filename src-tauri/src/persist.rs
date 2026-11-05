@@ -178,6 +178,7 @@ mod tests {
         assert!(!s.updates_enabled && s.notify_needs_you && s.notify_finished && s.dock_badge);
         assert_eq!((s.player_name, s.onboarded), (None, false), "files from before onboarding get the welcome");
         assert!(!s.spots_tidied, "villages from before padding get spaced out once");
+        assert_eq!(s.spots_tidy, 0, "and tidied again to the newest spacing rules");
     }
 
     #[test]

@@ -1,4 +1,5 @@
 import type { Compound, Tile } from '../api/types';
+import { iso } from './iso';
 
 /** Half-open tile rect: [x0, x0+w) x [y0, y0+h). */
 export interface Rect {
@@ -11,7 +12,7 @@ export interface Rect {
 export const HALL: Rect = { x0: -2, y0: -2, w: 5, h: 5 };
 /** Min empty tiles between compound walls and anything else (roads). */
 export const GAP = 4;
-export const START = 10;
+export const START = 12;
 export const GROW = 4;
 export const HOUSE = 3;
 export const STRUCT = 2;
@@ -177,33 +178,86 @@ export function canPlace(c: Compound, taken: Tile[], at: Tile, size: number): bo
   return taken.every((t) => gapBetween(r, sq(t, STRUCT)) >= 0);
 }
 
-/** Clear tiles a new structure keeps from the house and every other structure: room to stand and work. */
-export const STRUCT_PAD = 2;
+/** Clear tiles a new structure keeps from the house and every other structure: room to stand and work, and to walk between. */
+export const STRUCT_PAD = 3;
 /**
  * Clear tiles a new structure keeps from the compound's edge, so the wall never presses on it: the
  * builder stands on the first, and the second keeps the fence off the art (see `enclosure`).
  */
 export const EDGE_PAD = 2;
 
+/** A box on screen in world px (iso): x0..x1 across, y0 (top)..y1. */
+interface Box { x0: number; x1: number; y0: number; y1: number }
+const overlap = (a: Box, b: Box) =>
+  Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0)) * Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0));
+const area = (b: Box) => (b.x1 - b.x0) * (b.y1 - b.y0);
+/** A box drawn up from tile point (x, y): `half` px each side, `up` px tall. */
+const standing = (x: number, y: number, half: number, up: number): Box => {
+  const f = iso(x, y);
+  return { x0: f.x - half, x1: f.x + half, y0: f.y - up, y1: f.y };
+};
+/** A structure's painted body (tent or rune stone), up from its footprint's front corner; measured from the art at half size. */
+const structBox = (t: Tile): Box => standing(t.x + STRUCT, t.y + STRUCT, 75, 120);
+/** Its builder at work, at `standTile`'s first choice (the east side): the figure, feet to hat. */
+const builderBox = (t: Tile): Box => standing(t.x + 2.45, t.y + 1.1, 20, 82);
+/** The house art's outline over every stage, per 10 px row up from its front corner: [height, left, right]. */
+const HOUSE_ROWS: readonly (readonly [number, number, number])[] = [
+  [240, -42, -35], [230, -42, -28], [220, -48, -25], [210, -62, 42], [200, -73, 55], [190, -81, 59], [180, -88, 64],
+  [170, -84, 69], [160, -85, 75], [150, -84, 81], [140, -85, 88], [130, -93, 92], [120, -93, 82], [110, -103, 82],
+  [100, -100, 82], [90, -99, 82], [80, -102, 82], [70, -105, 85], [60, -89, 98], [50, -81, 89], [40, -64, 72],
+  [30, -47, 55], [20, -29, 38], [10, -12, 21],
+];
+/** How much of `b` the house of `c` covers on screen. */
+function houseCover(c: Compound, b: Box): number {
+  const f = iso(c.house.x + HOUSE, c.house.y + HOUSE);
+  let a = 0;
+  for (const [up, l, r] of HOUSE_ROWS) a += overlap(b, { x0: f.x + l, x1: f.x + r, y0: f.y - up - 5, y1: f.y - up + 5 });
+  return a;
+}
+
 /**
- * Free spot nearest the house centre, STRUCT_PAD clear of the house and every structure and EDGE_PAD
- * in from the compound's edge; null when there is none (the compound then grows, see `spotFor`).
+ * Whether a structure on `at` reads clearly on screen next to the house and the `taken` ones: the house
+ * hides no more than a sliver of it (nor it much of the house), its builder (drawn over the whole
+ * compound while it works) stands clear of the house and of other structures, no other builder stands
+ * over it, and it and no other structure hide each other.
  */
-export function findSpot(c: Compound, taken: Tile[]): Tile | null {
+export function looksClear(c: Compound, taken: readonly Tile[], at: Tile): boolean {
+  const s = structBox(at), b = builderBox(at);
+  const behind = at.x + at.y + 2 * STRUCT < c.house.x + c.house.y + 2 * HOUSE;
+  if (houseCover(c, s) > (behind ? 0.1 : 0.25) * area(s)) return false;
+  if (houseCover(c, b) > 0.05 * area(b)) return false;
+  return taken.every((t) => {
+    const ts = structBox(t);
+    return overlap(b, ts) <= 0.1 * area(b) && overlap(builderBox(t), s) <= 0.1 * area(b) && overlap(s, ts) <= 0.1 * area(s);
+  });
+}
+
+/** Free spots in reach of `findSpot` (padded), nearest the house centre first. */
+function freeSpots(c: Compound, taken: Tile[]): Tile[] {
   const occ = [sq(c.house, HOUSE), ...taken.map((t) => sq(t, STRUCT))];
   const hx = c.house.x + HOUSE / 2;
   const hy = c.house.y + HOUSE / 2;
-  let best: Tile | null = null, bestD = Infinity;
+  const out: { t: Tile; d: number }[] = [];
   for (let y = c.y0 + EDGE_PAD; y + STRUCT + EDGE_PAD <= c.y0 + c.h; y++) {
     for (let x = c.x0 + EDGE_PAD; x + STRUCT + EDGE_PAD <= c.x0 + c.w; x++) {
       const r = { x0: x, y0: y, w: STRUCT, h: STRUCT };
       if (occ.some((o) => gapBetween(r, o) < STRUCT_PAD)) continue;
-      const d = (x + STRUCT / 2 - hx) ** 2 + (y + STRUCT / 2 - hy) ** 2;
-      if (d < bestD) { bestD = d; best = { x, y }; }
+      out.push({ t: { x, y }, d: (x + STRUCT / 2 - hx) ** 2 + (y + STRUCT / 2 - hy) ** 2 });
     }
   }
-  return best;
+  return out.sort((a, b) => a.d - b.d || a.t.y - b.t.y || a.t.x - b.t.x).map((o) => o.t);
 }
+
+/**
+ * Free spot nearest the house centre that `looksClear`, STRUCT_PAD clear of the house and every structure
+ * and EDGE_PAD in from the compound's edge; null when there is none (the compound then grows, see `spotFor`).
+ */
+export function findSpot(c: Compound, taken: Tile[]): Tile | null {
+  return freeSpots(c, taken).find((t) => looksClear(c, taken, t)) ?? null;
+}
+
+/** Times `spotFor` grows a compound looking for a clear spot before it settles for any free one. */
+const CLEAR_TRIES = 2;
 
 /**
  * Grow by GROW away from the hall, alternating w/h (w first when w <= h).
@@ -231,7 +285,7 @@ export function expand(c: Compound, all: Compound[]): { compound: Compound; shif
   };
 }
 
-/** Find a spot, expanding (repeatedly if needed) until one exists. `shift` is cumulative. */
+/** Find a spot, expanding (repeatedly if needed) until one exists, clear if a couple of expansions find one. `shift` is cumulative. */
 export function spotFor(
   c: Compound,
   all: Compound[],
@@ -242,8 +296,9 @@ export function spotFor(
   let tk = taken;
   const shift = { x: 0, y: 0 };
   let expanded = false;
-  for (;;) {
-    const spot = findSpot(cur, tk);
+  for (let grown = 0; ; grown++) {
+    // a clear spot, growing for one a couple of times; then any free one (the art may overlap a little)
+    const spot = findSpot(cur, tk) ?? (grown >= CLEAR_TRIES ? freeSpots(cur, tk)[0] : null);
     if (spot) return { compound: cur, spot, expanded, shift };
     const r = expand(cur, [...others, cur]);
     cur = r.compound;
@@ -264,8 +319,9 @@ export function padded(c: Compound, others: Tile[], at: Tile): boolean {
 
 /**
  * `spots` spaced out to `findSpot`'s padding. Nearest the house first, a spot that is padded from the
- * house and the spots kept before it stays; the rest move to free spots, growing the compound when it is
- * full (as `spotFor` does: `shift` is the cumulative translation). Spots come back in the order given.
+ * house and the spots kept before it, and `looksClear`, stays; the rest move to free spots, growing the
+ * compound when it has none (as `spotFor` does: `shift` is the cumulative translation). Spots come back
+ * in the order given; `moved` counts the ones that changed.
  */
 export function tidySpots(
   c: Compound,
@@ -278,12 +334,13 @@ export function tidySpots(
     .sort((a, b) => (spots[a].x - hx) ** 2 + (spots[a].y - hy) ** 2 - ((spots[b].x - hx) ** 2 + (spots[b].y - hy) ** 2));
   const kept: number[] = [];
   const stray: number[] = [];
-  for (const i of order) (padded(c, kept.map((k) => out[k]), out[i]) ? kept : stray).push(i);
+  const at = (ks: number[]) => ks.map((k) => out[k]);
+  for (const i of order) (padded(c, at(kept), out[i]) && looksClear(c, at(kept), out[i]) ? kept : stray).push(i);
   const others = all.filter((o) => !same(o, c));
   let cur = c;
   const shift = { x: 0, y: 0 };
   for (const i of stray) {
-    const r = spotFor(cur, [...others, cur], kept.map((k) => out[k]));
+    const r = spotFor(cur, [...others, cur], at(kept));
     for (const k of kept) out[k] = { x: out[k].x + r.shift.x, y: out[k].y + r.shift.y };
     shift.x += r.shift.x;
     shift.y += r.shift.y;
@@ -291,7 +348,8 @@ export function tidySpots(
     kept.push(i);
     cur = r.compound;
   }
-  return { compound: cur, spots: out, moved: stray.length, shift };
+  const moved = out.filter((t, i) => t.x !== spots[i].x + shift.x || t.y !== spots[i].y + shift.y).length;
+  return { compound: cur, spots: out, moved, shift };
 }
 
 /** Tiles: HALL and every wall rect (unpadded). */

@@ -139,6 +139,9 @@ pub struct Settings {
     /// Structures placed before they kept their padding have been spaced out once (see `tidySpots`).
     #[serde(default)]
     pub spots_tidied: bool,
+    /// The spacing rules the village was last tidied to (`SPOTS_TIDY` in settings.ts); newer rules tidy it again.
+    #[serde(default)]
+    pub spots_tidy: u32,
 }
 
 fn default_true() -> bool {
@@ -183,6 +186,7 @@ impl Default for Settings {
             player_name: None,
             onboarded: false,
             spots_tidied: false,
+            spots_tidy: 0,
         }
     }
 }

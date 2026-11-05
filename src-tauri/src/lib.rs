@@ -20,6 +20,7 @@ pub mod sessions;
 pub mod snapshot;
 pub mod status;
 pub mod updater;
+pub mod usage;
 pub mod xp;
 
 use commands::{AppState, Channels, Removed};
@@ -346,6 +347,12 @@ pub fn run() {
             });
             app.manage(commands::AppsState::default());
             app.manage(snapshot::Snapper::default());
+            let (workspaces, builders) = {
+                let st = app.state::<commands::AppState>();
+                let d = st.data();
+                (d.workspaces.len(), d.builders.len())
+            };
+            usage::track(app.handle(), usage::Event::AppOpened { workspaces, builders });
             spawn_app_scanner(app.handle().clone());
             #[cfg(debug_assertions)]
             {
@@ -434,6 +441,7 @@ pub fn run() {
             commands::data_folder,
             bugreport::bug_report_info,
             bugreport::send_bug_report,
+            usage::track_usage,
             commands::show_data_folder,
             commands::check_for_update,
             commands::install_update,

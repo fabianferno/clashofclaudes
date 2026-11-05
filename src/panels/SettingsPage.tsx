@@ -192,6 +192,9 @@ export default function SettingsPage() {
               <div className="set-note">
                 Your workspaces, builders, tasks and paused sessions are kept on this Mac only. The app never changes your agents' own settings.
               </div>
+              <Toggle label="Share anonymous usage"
+                hint="Counts only: app opens, which agents you start, prompts answered and Kanban opens, with the app and macOS version. Never names, paths, tasks or code."
+                checked={!!settings.shareUsage} onChange={(on) => change({ shareUsage: on })} />
               <div className="set-line">
                 <code className="set-path" title={folder ?? ''}>{folder ?? '…'}</code>
                 <button className="hud-btn grey sm" onClick={() => ipc.showDataFolder().catch((e) => useApp.getState().setError(String(e)))}>Show in Finder</button>

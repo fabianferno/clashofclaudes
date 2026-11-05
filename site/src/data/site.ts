@@ -142,7 +142,7 @@ export const reel: { clip: string; title: string; text: string }[] = [
 export const privacy = [
   {
     title: 'Nothing leaves your Mac',
-    text: 'Agent output, prompts, file names and folders stay on your machine. The only network calls are the update check (you can turn it off) and bug reports you choose to send.',
+    text: 'Agent output, prompts, file names and folders stay on your machine. The only network calls are the update check (you can turn it off), bug reports you choose to send, and anonymous usage counts if you turn them on.',
   },
   {
     title: 'Your agent config is never touched',
@@ -174,7 +174,7 @@ export const faq = [
   },
   {
     q: 'Does it send my code or prompts anywhere?',
-    a: 'No. Agent output, prompts, file names and folders stay on your Mac. The only network calls are the update check, which you can turn off, and bug reports or feature requests you choose to send.',
+    a: 'No. Agent output, prompts, file names and folders stay on your Mac. The only network calls are the update check, which you can turn off, bug reports or feature requests you choose to send, and anonymous usage counts, which are off unless you turn them on.',
   },
   {
     q: 'Will it change my Claude Code, Codex or OpenCode settings?',

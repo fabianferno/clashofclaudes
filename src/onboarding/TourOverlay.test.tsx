@@ -30,6 +30,15 @@ afterEach(async () => {
 });
 
 describe('the welcome', () => {
+  it('offers usage sharing, unticked, and saves the choice', async () => {
+    act(() => startTour());
+    render(<TourOverlay />);
+    const share = screen.getByLabelText(/Share anonymous usage/) as HTMLInputElement;
+    expect(share.checked).toBe(false);
+    await act(async () => { fireEvent.click(share); });
+    expect(ipc.setSettings).toHaveBeenCalledWith(expect.objectContaining({ shareUsage: true }));
+  });
+
   it('asks for a name and shows the hall plate it will make', () => {
     act(() => startTour());
     render(<TourOverlay />);

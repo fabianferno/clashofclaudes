@@ -37,7 +37,7 @@ pub struct AppState {
 }
 
 impl AppState {
-    fn data(&self) -> MutexGuard<'_, AppData> {
+    pub(crate) fn data(&self) -> MutexGuard<'_, AppData> {
         self.data.lock().unwrap_or_else(|e| e.into_inner())
     }
 
@@ -353,7 +353,9 @@ pub async fn start_session(workspace_id: String, builder_id: String, task: Strin
     let ws = find_workspace(&state, &workspace_id)?;
     let builder = state.data().builders.iter().find(|b| b.id == builder_id).cloned().ok_or("unknown builder")?;
     let task = task.trim();
-    state.manager.start_agent(&ws, &builder, (!task.is_empty()).then_some(task), &images).map_err(|e| start_err(&app, &state, &workspace_id, e))
+    let s = state.manager.start_agent(&ws, &builder, (!task.is_empty()).then_some(task), &images).map_err(|e| start_err(&app, &state, &workspace_id, e))?;
+    crate::usage::track(&app, crate::usage::Event::SessionStarted(builder.agent));
+    Ok(s)
 }
 
 /// Saves an image pasted into a task (the raw bytes are the request body) and returns its name.
@@ -386,7 +388,9 @@ pub fn discard_attachments(names: Vec<String>, state: State<'_, AppState>) {
 #[tauri::command]
 pub async fn start_terminal(workspace_id: String, app: AppHandle, state: State<'_, AppState>) -> Result<SessionInfo, String> {
     let ws = find_workspace(&state, &workspace_id)?;
-    state.manager.start_terminal(&ws).map_err(|e| start_err(&app, &state, &workspace_id, e))
+    let s = state.manager.start_terminal(&ws).map_err(|e| start_err(&app, &state, &workspace_id, e))?;
+    crate::usage::track(&app, crate::usage::Event::TerminalStarted);
+    Ok(s)
 }
 
 #[tauri::command]
@@ -400,13 +404,17 @@ pub fn resize_session(id: String, cols: u16, rows: u16, state: State<'_, AppStat
 }
 
 #[tauri::command]
-pub fn approve(id: String, state: State<'_, AppState>) -> Result<(), String> {
-    state.manager.approve(&id).map_err(fmt_err)
+pub fn approve(id: String, app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    state.manager.approve(&id).map_err(fmt_err)?;
+    crate::usage::track(&app, crate::usage::Event::PromptAnswered { allowed: true });
+    Ok(())
 }
 
 #[tauri::command]
-pub fn deny(id: String, state: State<'_, AppState>) -> Result<(), String> {
-    state.manager.deny(&id).map_err(fmt_err)
+pub fn deny(id: String, app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    state.manager.deny(&id).map_err(fmt_err)?;
+    crate::usage::track(&app, crate::usage::Event::PromptAnswered { allowed: false });
+    Ok(())
 }
 
 #[tauri::command]

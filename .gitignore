@@ -6,6 +6,7 @@ dist/
 .gstack/
 .art-unused/
 src-tauri/bug-webhook.txt
+src-tauri/posthog-key.txt
 
 # Vercel CLI link for the landing site (site/)
 .vercel

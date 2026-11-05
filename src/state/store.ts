@@ -379,7 +379,11 @@ export const useApp = create<AppState>((set, get) => ({
   },
   addTodo: (t) => set((st) => ({ todos: [...st.todos.filter((x) => x.id !== t.id), t] })),
   removeTodo: (id) => set((st) => ({ todos: st.todos.filter((x) => x.id !== id) })),
-  setKanban: (kanban) => set({ kanban }),
+  setKanban: (kanban) => {
+    set({ kanban });
+    // a count for the anonymous usage the owner may share; never in the way of opening it
+    if (kanban) try { ipc.trackUsage('kanbanOpened').catch(() => {}); } catch { /* no backend */ }
+  },
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
   setSettings: (settings) => set({ settings }),
   setBugReport: (bugReport) => set({ bugReport }),

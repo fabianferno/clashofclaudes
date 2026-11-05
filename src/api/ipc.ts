@@ -91,6 +91,8 @@ export const ipc = {
   bugReportInfo: () => invoke<BugReportInfo>('bug_report_info'),
   /** Posts the report to the project's Discord. */
   sendBugReport: (report: BugReport) => invoke<void>('send_bug_report', { report }),
+  /** An anonymous usage event the frontend sees; sent only while the owner shares usage. */
+  trackUsage: (event: 'kanbanOpened') => invoke<void>('track_usage', { event }),
   /** Opens the data folder in Finder. */
   showDataFolder: () => invoke<void>('show_data_folder'),
   /** Rejects with "disabled" (no network call made) in debug builds, with the placeholder key, or when updates are off. */

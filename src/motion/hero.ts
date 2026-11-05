@@ -1,6 +1,5 @@
 // Small life around the edges, all on the GSAP clock:
 // - the hero's floating village moves in three depth layers: parallax on scroll, and against the pointer on a desktop;
-// - the Kanban screenshot stands up from the table as it scrolls in;
 // - a click anywhere kicks up a puff of dust, the same puff a finished tent makes.
 import { gsap } from 'gsap';
 import { isTouch, onPage, prefersReducedMotion, scrollState } from '../engine';
@@ -35,14 +34,6 @@ export function startHero() {
       if (pointer) window.addEventListener('pointermove', move, { passive: true });
       gsap.ticker.add(tick);
       cleanups.push(() => { window.removeEventListener('pointermove', move); gsap.ticker.remove(tick); });
-    }
-
-    const board = document.querySelector<HTMLElement>('[data-board]');
-    if (board) {
-      gsap.fromTo(board, { rotateX: 28, scale: 0.9, y: 40 }, {
-        rotateX: 0, scale: 1, y: 0, ease: 'none',
-        scrollTrigger: { trigger: board, start: 'top 95%', end: 'top 40%', scrub: 0.5 },
-      });
     }
 
     const puff = (e: PointerEvent) => {

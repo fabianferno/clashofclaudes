@@ -18,7 +18,7 @@ export const site = {
 };
 
 export const nav = [
-  { href: '/#session', label: 'How it works' },
+  { href: '/#features', label: 'How it works' },
   { href: '/#builders', label: 'Agents' },
   { href: '/#faq', label: 'FAQ' },
   { href: '/beta/', label: 'Beta guide' },
@@ -88,39 +88,55 @@ export const reports: { agent: AgentKey; name: string; status: 'needs' | 'work' 
   { agent: 'opencode', name: 'OpenCode', status: 'stuck', label: 'Stuck', text: 'Exited with an error. Open its terminal?' },
 ];
 
-// The signature stage: one session, start to finish. `state` drives the stage.
-export const chapters = [
+// The feature reel: the ad's beats as a scroll story. Each beat plays a loop of real app footage
+// (public/reel/<clip>.mp4, cut from the ad's raw shots) or, for the Kanban, the real screenshot.
+// In a title, the words between asterisks are set in gold.
+export const reel: { clip: string; title: string; text: string }[] = [
   {
-    state: 'working',
-    title: 'Give it a task',
-    text: 'Pick a builder, an agent and a first task. The agent starts in a real terminal inside that workspace, and its builder walks onto an empty plot and starts hammering.',
-    status: 'Working',
+    clip: 'build',
+    title: 'Every session is a *builder*',
+    text: 'Start Claude Code, Codex, Antigravity CLI or OpenCode in a project and a builder walks onto a plot and starts hammering. The tent rises as the agent works. When the turn is done it stands finished and the builder cheers.',
   },
   {
-    state: 'needs',
-    title: 'It needs you',
-    text: 'The moment an agent stops for a permission prompt, a red "!" pops over its builder. From across the village you can tell which one is waiting.',
-    status: 'Needs you',
+    clip: 'needs',
+    title: 'Needs you? *It shouts.*',
+    text: 'The moment an agent stops for a permission prompt, a red “!” pops over its builder. Allow or deny Claude Code and Antigravity requests right from the village, or click the builder for its live terminal.',
   },
   {
-    state: 'allowed',
-    title: 'Answer without hunting',
-    text: 'Allow or deny a Claude Code or Antigravity request right from the village, or click the builder to open its live terminal in the side panel. Back to work.',
-    status: 'Working',
+    clip: 'outfits',
+    title: 'Dressed by *provider*',
+    text: 'Claude Code builders work in orange, Codex in charcoal, Antigravity in blue and OpenCode in teal, tents included, so you can tell whose work you are looking at from across the village.',
   },
   {
-    state: 'finished',
-    title: 'Shipped',
-    text: 'When the turn is done the tent stands in the agent’s colours, the builder cheers and a medal goes up. If the app is in the background, macOS tells you and the Dock counts what is waiting.',
-    status: 'Finished',
+    clip: 'ranks',
+    title: 'Model = *rank*. Effort = *hammer*.',
+    text: 'The model sets the rank: Apprentice for Haiku, Craftsman for Sonnet, Master for Opus, Legend for Fable. The effort level picks the hammer, from wood to enchanted, and the stars over it.',
   },
-] as const;
-
-export const villageNotes = [
-  { title: 'A compound per workspace', text: 'Open a project folder and it becomes a walled compound around the Town Hall. Its house grows as you ship.' },
-  { title: 'The real terminal, one click away', text: 'Click any builder or tent for its live terminal. Pop it out for a bigger view, or open a plain shell in the same folder.' },
-  { title: 'Ranks and hammers mean something', text: 'The model sets a builder’s rank, from Apprentice to Master. The effort level sets the hammer and its stars.' },
-  { title: 'Quit without losing your place', text: 'Sessions come back paused where they stood. Resume picks Claude Code, Codex and Antigravity up on their own conversation.' },
+  {
+    clip: 'elixir',
+    title: 'Elixir = your *token limits*',
+    text: 'Each agent gets an elixir collector filled with what is left of its weekly or monthly limit, read from the agent itself. Watch it drain while you work and fill back up when the limit resets.',
+  },
+  {
+    clip: 'minions',
+    title: 'Subagents? *Minions.*',
+    text: 'When a Claude Code session spins up subagents, small builders pop out beside it, follow it to the site and hammer along until each one is done.',
+  },
+  {
+    clip: 'stones',
+    title: 'Terminals = *rune stones*',
+    text: 'A plain shell in a workspace stands as a rune stone that glows while a command runs. A local web app running in the workspace gets a board in the compound, showing its page.',
+  },
+  {
+    clip: 'levelup',
+    title: 'Ship tasks. *Level up.*',
+    text: 'Every finished turn earns the workspace XP. Its house grows through five stages as you ship, so your busiest projects stand tallest.',
+  },
+  {
+    clip: 'kanban',
+    title: 'Plan it on the *Kanban*',
+    text: 'Write tasks in To Do and start one when a builder is free. Sessions move across Active, Needs You and Finished on their own, and a permission prompt can be allowed or denied right on its card.',
+  },
 ];
 
 export const privacy = [
@@ -141,16 +157,6 @@ export const privacy = [
     text: 'Notifications say a builder needs you or finished. They never include your task or terminal output.',
   },
 ];
-
-// The fly-over of the real window: each stop is a point on the screenshot (fractions of its width and
-// height), the zoom to hold there, and what it shows. The last stop is the whole window.
-export const tour = [
-  { x: 0.3, y: 0.62, zoom: 2.4, title: 'Someone needs you', text: 'Cyra hit a permission prompt in payments-api. The red plate and the “!” say so from across the village.' },
-  { x: 0.06, y: 0.12, zoom: 2.3, title: 'Counts you can trust', text: 'Building, needs you, ready to review: the top left counts every builder, and each pill jumps to them.' },
-  { x: 0.9, y: 0.1, zoom: 2.3, title: 'Limits before they bite', text: 'Each agent’s usage left this week or month, read from the agent itself, refilling like a potion.' },
-  { x: 0.44, y: 0.92, zoom: 2, title: 'The whole crew', text: 'The roster shows every builder’s rank, stars and state. Click one to open its live terminal.' },
-  { x: 0.5, y: 0.5, zoom: 1, title: 'Your whole town', text: 'Four workspaces, eight builders, one window. This is the app running, not a mockup.' },
-] as const;
 
 // Answers people (and answer engines) look for. Shown on the home page and marked up as FAQPage.
 export const faq = [

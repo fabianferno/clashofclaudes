@@ -1,6 +1,6 @@
 // /llms.txt: a plain summary for AI answer engines (llmstxt.org), built from the same content file.
 import type { APIRoute } from 'astro';
-import { agents, faq, privacy, site } from '../data/site';
+import { agents, faq, privacy, reel, site } from '../data/site';
 
 export const GET: APIRoute = () => {
   const body = `# ${site.name}
@@ -13,6 +13,10 @@ ${site.name} is a macOS desktop app (beta) built by ${site.studio.name} (${site.
 - Requirements: ${site.requirements}, plus at least one agent CLI installed and signed in
 - Release notes: ${site.releases}
 - Contact: DM @${site.maker.handle} on X (${site.maker.x})
+
+## What you see
+
+${reel.map((r) => `- ${r.title.replaceAll('*', '')}: ${r.text}`).join('\n')}
 
 ## Supported agents
 
@@ -29,7 +33,7 @@ ${faq.map((f) => `### ${f.q}\n\n${f.a}`).join('\n\n')}
 
 ## Pages
 
-- [Home](${site.url}/): what the app does, the agents it supports, a tour of the real window, FAQ
+- [Home](${site.url}/): what the app does, a 43-second ad and its features in real footage, the agents it supports, FAQ
 - [Beta guide](${site.url}/beta/): install, first village, sending feedback, updates, known limits
 - [Privacy](${site.url}/privacy/): what the app touches, sends and never does
 

@@ -285,3 +285,26 @@ on screen. Unlike the reference, agents do not talk to each other here: the app 
 so each one reports to the village. Under reduced motion the graph is still and every bubble stays
 open (phones hide them, since they would stack). The facts per agent sit under the graph as a
 five-column list, the fifth being "Any command".
+
+## Shaped like the ad (2026-11-05, owner request)
+
+The owner liked the 43-second ad (made with the brag skill, `brag-output/` in the app repo) and asked
+for the page to follow it, keeping "Bring the agents you already use".
+
+- **Hero:** the ad's hook. The game's "Builders busy 4 / 4" pill, then "All builders busy." and the
+  punchline "Good. They're writing your code." in gold. The lede says what the app is. Links to the
+  ad and the beta guide sit under the download. The floating village keeps its depth layers, now
+  with parallax on scroll as well (far trees lag, builders lead), on phones too.
+- **The ad** follows the hero (`Trailer.astro`): poster with a gold Play label, sound on, native
+  controls, pauses when scrolled away. Nothing downloads until it is played.
+- **Feature reel** (new signature, `Reel.astro`, `src/motion/reel.ts`): the ad's beats as a scroll
+  story. Nine beats on the left (every session is a builder, needs you, outfits, ranks and hammers,
+  elixir, minions, rune stones and boards, levelling up, the Kanban), a sticky frame on the right
+  playing each beat's loop of real app footage (`public/reel/*.mp4`, cut from the ad's raw shots,
+  about 5 MB in all, each loaded only when its beat comes up). The Kanban beat pans the real
+  screenshot. The active beat is read from live positions on every scroll. Phones pin the frame to
+  the top and scroll the beats under it. Titles keep the ad's gold key word.
+- **Removed:** the statement ("Four agents in four repos..."), the one-session stage, the window
+  fly-over tour and the separate Kanban section. Their facts live on in the reel, the agents
+  section and the FAQ.
+- `llms.txt` lists the reel beats; the SoftwareApplication `featureList` names the new features.

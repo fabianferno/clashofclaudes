@@ -2,11 +2,10 @@
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { ease, onPage, onScroll, setTransition } from '../engine';
-import { startSession } from './session';
-import { startTour } from './tour';
 import { startHero } from './hero';
 import { startAgents } from './agents';
 import { startTrailer } from './trailer';
+import { startReel } from './reel';
 import { site } from '../data/site';
 
 export function setupMotion() {
@@ -31,11 +30,10 @@ export function setupMotion() {
     last = y;
   });
 
-  startSession();
-  startTour();
   startHero();
   startAgents();
   startTrailer();
+  startReel();
   toc();
   menu();
   version();

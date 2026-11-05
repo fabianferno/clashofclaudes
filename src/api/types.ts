@@ -213,6 +213,10 @@ export interface Settings {
   spotsTidied?: boolean;
   /** The spacing rules the village was last tidied to (`SPOTS_TIDY`). */
   spotsTidy?: number;
+  /** The owner shares anonymous usage counts (see src-tauri/src/usage.rs). Off until turned on. */
+  shareUsage?: boolean;
+  /** This install's random usage id, made by the backend while sharing is on. */
+  installId?: string | null;
 }
 
 export interface UpdateStatus {

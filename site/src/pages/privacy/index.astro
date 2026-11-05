@@ -32,10 +32,11 @@ import Builder from '../../components/Builder.astro';
     <div class="doc__body">
       <section id="network" aria-labelledby="network-h">
         <h2 id="network-h">Network</h2>
-        <p>Agent output, prompts, file names and folders never leave your machine. The app itself makes no network connections except two:</p>
+        <p>Agent output, prompts, file names and folders never leave your machine. The app itself makes no network connections except these three:</p>
         <ul>
           <li><strong>The update check.</strong> One request to see whether a newer beta exists. Turn it off in Settings.</li>
           <li><strong>Reports you choose to send</strong> from Help › Report a Bug…, Help › Request a Feature… or Settings › Beta feedback. A report holds what you type, the app, macOS and agent versions, counts of workspaces and sessions, and the last error the app showed. Never workspace names or tasks. A screenshot is included only if you tick it, and you see everything before sending.</li>
+          <li><strong>Anonymous usage counts, only if you turn them on</strong> in the welcome or Settings › Data &amp; privacy. They are off until you do. Each count is one of a fixed few: the app opened (with how many workspaces and builders you have), a session started (and which agent), a terminal started, a permission prompt allowed or denied, the Kanban opened. Each carries the app, macOS and chip, and a random id made when you turn sharing on and deleted when you turn it off. Never names, paths, tasks, prompts or output. They go to PostHog’s EU cloud with no profile of you. Turn it off and they stop at once.</li>
         </ul>
         <p>Your agents still talk to their own services the way they always do, with your own logins. The app does not sit in between.</p>
       </section>
@@ -55,7 +56,7 @@ import Builder from '../../components/Builder.astro';
       </section>
       <section id="site" aria-labelledby="site-h">
         <h2 id="site-h">This website</h2>
-        <p>No cookies, no analytics, no trackers. The download buttons ask GitHub’s public API for the latest version number and remember the answer in your browser for an hour. That is the only request this site makes to anyone else.</p>
+        <p>No cookies and no trackers. The site counts page views with Vercel Web Analytics, which sets no cookies and keeps no profile of you: it sees the page, where the visit came from, and the country, browser and device type. The download buttons ask GitHub’s public API for the latest version number and remember the answer in your browser for an hour. Those are the only requests this site makes to anyone else.</p>
       </section>
     </div>
   </div>

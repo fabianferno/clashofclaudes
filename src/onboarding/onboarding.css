@@ -25,6 +25,8 @@
   box-shadow: inset 0 2px 0 rgba(166, 124, 82, .18);
 }
 .tour-name input:focus, .set-name input:focus { border-color: #2f95db; box-shadow: 0 0 0 4px rgba(74, 176, 240, .25); }
+.tour-share { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 14px; text-align: left; font-size: 12px; font-weight: 700; color: var(--sp-ink-soft, #6d5838); cursor: pointer; }
+.tour-share input { margin-top: 1px; width: 16px; height: 16px; flex: none; accent-color: #2f95db; }
 .tour-plate-row { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; margin: 14px 0 16px; }
 .tour-plate-hint { font-size: 12px; font-weight: 800; color: var(--sp-ink-soft, #6d5838); }
 /* the hall's plate, as the village paints it (drawHallPlate) */

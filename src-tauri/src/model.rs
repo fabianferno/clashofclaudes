@@ -142,6 +142,12 @@ pub struct Settings {
     /// The spacing rules the village was last tidied to (`SPOTS_TIDY` in settings.ts); newer rules tidy it again.
     #[serde(default)]
     pub spots_tidy: u32,
+    /// The owner chose to share anonymous usage counts (`usage.rs`). Off until they turn it on.
+    #[serde(default)]
+    pub share_usage: bool,
+    /// A random id for this install's usage counts: made when sharing is turned on, dropped when it is turned off.
+    #[serde(default)]
+    pub install_id: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -158,6 +164,8 @@ impl Settings {
             .player_name
             .map(|n| n.trim().chars().take(PLAYER_NAME_MAX).collect::<String>().trim_end().to_string())
             .filter(|n| !n.is_empty());
+        // a fresh id each time sharing is turned on; none while it is off
+        self.install_id = if self.share_usage { self.install_id.filter(|i| !i.trim().is_empty()).or_else(|| Some(uuid::Uuid::new_v4().to_string())) } else { None };
         self
     }
 }
@@ -165,6 +173,16 @@ impl Settings {
 #[cfg(test)]
 mod settings_tests {
     use super::*;
+
+    #[test]
+    fn sharing_usage_makes_an_install_id_keeps_it_and_turning_it_off_drops_it() {
+        let on = Settings { share_usage: true, ..Settings::default() }.normalized();
+        let id = on.install_id.clone().expect("an id once sharing is on");
+        assert_eq!(id.len(), 36);
+        assert_eq!(on.clone().normalized().install_id, Some(id), "kept while on");
+        assert_eq!(Settings { share_usage: false, ..on }.normalized().install_id, None);
+        assert_eq!(Settings::default().normalized().install_id, None, "off by default");
+    }
 
     #[test]
     fn player_name_is_trimmed_capped_and_blank_dropped() {
@@ -187,6 +205,8 @@ impl Default for Settings {
             onboarded: false,
             spots_tidied: false,
             spots_tidy: 0,
+            share_usage: false,
+            install_id: None,
         }
     }
 }

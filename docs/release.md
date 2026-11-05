@@ -11,6 +11,7 @@ Universal (arm64 + x86_64) macOS 13+ DMG. Signed and notarized when credentials 
    - `NOTARY_PROFILE`: a `notarytool store-credentials` keychain profile; tries `clashofclaudes`, then the team's `typewiser`.
    - `TAURI_SIGNING_PRIVATE_KEY`: the updater key, from `~/.tauri/clashofclaudes.key`, else the login keychain item "Clash of Claudes updater key" (a backup of the same key). **Losing this key means installed apps can never update again**; keep a copy in a password manager.
    - the bug webhook (`COC_BUG_WEBHOOK` or `src-tauri/bug-webhook.txt`); it refuses to ship a build that can't send feedback.
+   - the PostHog project key (`COC_POSTHOG_KEY` or `src-tauri/posthog-key.txt`, the `phc_…` project API key, EU cloud); usage counts are sent only by testers who turn sharing on.
 2. Bumps `version` in `tauri.conf.json`, `package.json`, `Cargo.toml` (+ `Cargo.lock`).
 3. Runs `scripts/release.sh`: universal build, signed; DMG notarized and stapled; updater tarball + `latest.json`; a copy of the DMG named `Clash-of-Claudes.dmg`.
 4. Verifies `codesign`, `stapler validate` and `spctl`; if anything fails the version bump is undone.

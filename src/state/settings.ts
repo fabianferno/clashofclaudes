@@ -3,7 +3,7 @@ import type { Settings } from '../api/types';
 import { useApp } from './store';
 
 export const DEFAULT_SETTINGS: Settings = {
-  updatesEnabled: true, notifyNeedsYou: true, notifyFinished: true, dockBadge: true, playerName: null, onboarded: false, spotsTidied: false, spotsTidy: 0,
+  updatesEnabled: true, notifyNeedsYou: true, notifyFinished: true, dockBadge: true, playerName: null, onboarded: false, spotsTidied: false, spotsTidy: 0, shareUsage: false, installId: null,
 };
 
 export { PLAYER_NAME_MAX, cleanName, townHallTitle } from './names';

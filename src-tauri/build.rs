@@ -11,5 +11,17 @@ fn main() {
     if let Some(url) = url {
         println!("cargo:rustc-env=COC_BUG_WEBHOOK={url}");
     }
+    // The PostHog project key usage counts go to (see `usage.rs`): from COC_POSTHOG_KEY, else from
+    // the git-ignored `posthog-key.txt`. Without either, the build sends no usage.
+    println!("cargo:rerun-if-env-changed=COC_POSTHOG_KEY");
+    println!("cargo:rerun-if-changed=posthog-key.txt");
+    let key = std::env::var("COC_POSTHOG_KEY")
+        .ok()
+        .or_else(|| std::fs::read_to_string("posthog-key.txt").ok())
+        .map(|k| k.trim().to_string())
+        .filter(|k| !k.is_empty());
+    if let Some(key) = key {
+        println!("cargo:rustc-env=COC_POSTHOG_KEY={key}");
+    }
     tauri_build::build()
 }

@@ -5,7 +5,7 @@ import type { AppPreview, Builder, Compound, SessionInfo, SessionState, Tile, Wo
 import { ipc } from '../api/ipc';
 import { GAP, assertNoCollisions, findSpot, padded, placeCompound, shiftCompound, spotFor } from '../village/layout';
 
-vi.mock('../api/ipc', () => ({ ipc: { setCompound: vi.fn(), setSessionSpot: vi.fn(), setCollectorSpot: vi.fn(), moveCompound: vi.fn() } }));
+vi.mock('../api/ipc', () => ({ ipc: { setCompound: vi.fn(), setSessionSpot: vi.fn(), setCollectorSpot: vi.fn(), moveCompound: vi.fn(), trackUsage: vi.fn(async () => {}) } }));
 
 const sess = (id: string, ws: string, builderId?: string, startedAt = 0, state: SessionState = { kind: 'working' }): SessionInfo => ({
   id, workspaceId: ws, kind: builderId ? { kind: 'agent', builderId } : { kind: 'terminal' },
@@ -526,4 +526,13 @@ test('adding a workspace or builder already present by id replaces it, never dup
   useApp.getState().addBuilder({ ...bld('b1'), name: 'Ada' });
   useApp.getState().addBuilder(bld('b2'));
   expect(useApp.getState().builders.map((x) => x.name)).toEqual(['Ada', 'b2']);
+});
+
+test('opening a Kanban counts once for usage; closing it does not', () => {
+  const track = vi.mocked(ipc.trackUsage);
+  track.mockClear();
+  useApp.getState().setKanban('w1');
+  useApp.getState().setKanban(null);
+  expect(track.mock.calls).toEqual([['kanbanOpened']]);
+  expect(useApp.getState().kanban).toBe(null);
 });

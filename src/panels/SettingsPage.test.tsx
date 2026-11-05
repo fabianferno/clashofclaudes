@@ -42,6 +42,15 @@ test('a toggle saves the whole settings', async () => {
   expect(box('When a builder finishes').checked).toBe(false);
 });
 
+test('usage sharing is off until turned on, and turning it on saves it', async () => {
+  render(<SettingsPage />);
+  await screen.findByText('Version 0.1.0');
+  expect(box('Share anonymous usage').checked).toBe(false);
+  await act(async () => { fireEvent.click(box('Share anonymous usage')); });
+  expect(ipc.setSettings).toHaveBeenCalledWith(expect.objectContaining({ shareUsage: true }));
+  expect(box('Share anonymous usage').checked).toBe(true);
+});
+
 test('a failed save puts the toggle back', async () => {
   ipc.setSettings.mockRejectedValueOnce('disk full');
   render(<SettingsPage />);

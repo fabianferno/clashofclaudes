@@ -58,6 +58,7 @@ fi
 [[ -n "$TAURI_SIGNING_PRIVATE_KEY" ]] || die "no updater key at $KEY_FILE or in the keychain; without it installed apps can't update"
 export TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"
 [[ -n "${COC_BUG_WEBHOOK:-}" || -s src-tauri/bug-webhook.txt ]] || die "no bug webhook (COC_BUG_WEBHOOK or src-tauri/bug-webhook.txt): testers couldn't send feedback"
+[[ -n "${COC_POSTHOG_KEY:-}" || -s src-tauri/posthog-key.txt ]] || die "no PostHog key (COC_POSTHOG_KEY or src-tauri/posthog-key.txt): testers who share usage would send nothing"
 
 # 3. notes: the given file, or every commit since the last release
 LAST="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)"

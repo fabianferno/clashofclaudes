@@ -18,9 +18,11 @@ export default function TourOverlay() {
 }
 
 const saveName = (name: string | null) => saveSettings({ playerName: name }).catch((e) => useApp.getState().setError(String(e)));
+const saveSharing = (on: boolean) => saveSettings({ shareUsage: on }).catch((e) => useApp.getState().setError(String(e)));
 
 function Welcome() {
   const saved = useApp((s) => s.settings?.playerName ?? null);
+  const sharing = useApp((s) => !!s.settings?.shareUsage);
   const [draft, setDraft] = useState(saved ?? '');
   const name = cleanName(draft);
   const start = (e: FormEvent) => {
@@ -48,6 +50,10 @@ function Welcome() {
           <span className="tour-plate-hint">Your hall will read</span>
           <span className="tour-plate" data-testid="tour-plate">{townHallTitle(name)}</span>
         </div>
+        <label className="tour-share">
+          <input type="checkbox" checked={sharing} onChange={(e) => void saveSharing(e.target.checked)} />
+          <span>Share anonymous usage to help shape the beta: counts only, never names, paths, tasks or code. Change it in Settings anytime.</span>
+        </label>
         <div className="tour-btns">
           <button type="button" className="tour-skip" onClick={skip}>Skip the tour</button>
           <button type="submit" className="hud-btn green" disabled={!name}>Start the tour</button>

@@ -209,6 +209,8 @@ export interface Settings {
   playerName?: string | null;
   /** The first-run welcome (and its tour) was completed or skipped. */
   onboarded?: boolean;
+  /** Structures placed before they kept their padding have been spaced out once. */
+  spotsTidied?: boolean;
 }
 
 export interface UpdateStatus {

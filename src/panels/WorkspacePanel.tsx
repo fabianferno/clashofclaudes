@@ -21,6 +21,12 @@ export default function WorkspacePanel({ workspaceId }: { workspaceId: string })
   const [confirm, setConfirm] = useState(false);
   const [coloring, setColoring] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [tidied, setTidied] = useState<string | null>(null);
+  useEffect(() => {
+    if (!tidied) return;
+    const t = window.setTimeout(() => setTidied(null), 3000);
+    return () => window.clearTimeout(t);
+  }, [tidied]);
   if (!ws) return null;
 
   const all = sessionsByWorkspace({ sessions: sessionMap }, workspaceId);
@@ -98,10 +104,16 @@ export default function WorkspacePanel({ workspaceId }: { workspaceId: string })
         <button className="hud-btn grey sm" disabled={ws.missing} title={why} onClick={() => guard(() => ipc.openInEditor(ws.path))}>Open in editor</button>
         <button className="hud-btn grey sm" disabled={ws.missing} title={why} onClick={() => guard(() => ipc.openInFinder(ws.path))}>Open in Finder</button>
         <button className="hud-btn blue sm" disabled={ws.missing || !ws.compound} title={why} onClick={() => useApp.getState().requestZoom(workspaceId)}>Focus</button>
+        <button className="hud-btn grey sm" disabled={!ws.compound} title="Space out the tents and rune stones that stand too close"
+          onClick={() => guard(async () => {
+            const n = await st.village.tidy(workspaceId);
+            setTidied(n ? `Moved ${n} ${n === 1 ? 'structure' : 'structures'}` : 'Already tidy');
+          })}>Tidy up</button>
         <button className="hud-btn grey sm sp-color-btn" onClick={() => setColoring(true)}>
           <i className="sp-color-dot" style={{ background: houseColors(ws).roof }} aria-hidden="true" />House colour
         </button>
       </div>
+      {tidied && <div className="sp-d" role="status">{tidied}</div>}
       {coloring && <HouseColorDialog workspaceId={workspaceId} onError={setErr} onClose={() => setColoring(false)} />}
       {addr !== null && (
         <form className="sp-browser-form" onSubmit={(e) => { e.preventDefault(); openBrowser(); }}>

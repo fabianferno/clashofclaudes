@@ -177,6 +177,7 @@ mod tests {
         let s = load(&p).settings;
         assert!(!s.updates_enabled && s.notify_needs_you && s.notify_finished && s.dock_badge);
         assert_eq!((s.player_name, s.onboarded), (None, false), "files from before onboarding get the welcome");
+        assert!(!s.spots_tidied, "villages from before padding get spaced out once");
     }
 
     #[test]
@@ -232,7 +233,7 @@ mod tests {
         save(&p, &d).unwrap();
         let text = std::fs::read_to_string(&p).unwrap();
         assert!(text.contains("\"house\""));
-        assert!(!text.contains("spot"), "session spots are saved with the sessions (sessions.json)");
+        assert!(!text.contains("\"spot\""), "session spots are saved with the sessions (sessions.json)");
         assert_eq!(load(&p), d);
     }
 }

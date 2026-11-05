@@ -16,7 +16,7 @@ import BugReportDialog, { openBugReport } from './panels/BugReport';
 import { preloadTerminal } from './components/LazyTerminalView';
 import TourOverlay from './onboarding/TourOverlay';
 import { startTour } from './onboarding/tour';
-import { loadSettings } from './state/settings';
+import { loadSettings, tidyOnce } from './state/settings';
 import './App.css';
 
 function App() {
@@ -44,12 +44,14 @@ function App() {
     keep(ipc.onOpenSettings(() => useApp.getState().setSettingsOpen(true)));
     keep(ipc.onOpenBugReport((kind) => void openBugReport(kind)));
     let stopLayout: (() => void) | null = null;
+    const settings = loadSettings();
     ipc.listState()
       .then((s) => {
         if (cancelled) return;
         useApp.getState().hydrate(s);
         // Compounds for workspaces without one, spots for sessions without one.
         stopLayout = autoLayout((e) => useApp.getState().setError(String(e)));
+        settings.then((st) => { if (!cancelled) return tidyOnce(st).catch((e) => useApp.getState().setError(String(e))); }, () => {});
       })
       .catch((e) => {
         if (cancelled) return;
@@ -62,7 +64,7 @@ function App() {
     ipc.getApps().then((a) => !cancelled && useApp.getState().setApps(a)).catch(() => {}); // boards come with the next scan
     ipc.detectAgents().then((a) => !cancelled && useApp.getState().setAgents(a)).catch((e) => useApp.getState().setError(String(e)));
     // the welcome (and its tour) until the owner has been through it once; Settings can replay it
-    loadSettings().then((s) => { if (!cancelled && !s.onboarded) startTour(); }).catch(() => {});
+    settings.then((s) => { if (!cancelled && !s.onboarded) startTour(); }).catch(() => {});
     const preload = window.setTimeout(preloadTerminal, 2000); // after the village's first frames
     const stopSnapshots = autoSnapshots();
     return () => { cancelled = true; window.clearTimeout(preload); stopLayout?.(); stopSnapshots(); unlisten.forEach((u) => u()); };

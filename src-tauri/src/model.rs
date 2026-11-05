@@ -136,6 +136,9 @@ pub struct Settings {
     /// The first-run welcome (and its tour) has been completed or skipped.
     #[serde(default)]
     pub onboarded: bool,
+    /// Structures placed before they kept their padding have been spaced out once (see `tidySpots`).
+    #[serde(default)]
+    pub spots_tidied: bool,
 }
 
 fn default_true() -> bool {
@@ -179,6 +182,7 @@ impl Default for Settings {
             dock_badge: true,
             player_name: None,
             onboarded: false,
+            spots_tidied: false,
         }
     }
 }

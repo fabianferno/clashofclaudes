@@ -251,6 +251,46 @@ export function spotFor(
   }
 }
 
+/** Whether a structure on `at` keeps `findSpot`'s padding: EDGE_PAD in from the edge, STRUCT_PAD from the house and `others`. */
+export function padded(c: Compound, others: Tile[], at: Tile): boolean {
+  if (at.x < c.x0 + EDGE_PAD || at.y < c.y0 + EDGE_PAD) return false;
+  if (at.x + STRUCT + EDGE_PAD > c.x0 + c.w || at.y + STRUCT + EDGE_PAD > c.y0 + c.h) return false;
+  const r = sq(at, STRUCT);
+  return gapBetween(r, sq(c.house, HOUSE)) >= STRUCT_PAD && others.every((t) => gapBetween(r, sq(t, STRUCT)) >= STRUCT_PAD);
+}
+
+/**
+ * `spots` spaced out to `findSpot`'s padding. Nearest the house first, a spot that is padded from the
+ * house and the spots kept before it stays; the rest move to free spots, growing the compound when it is
+ * full (as `spotFor` does: `shift` is the cumulative translation). Spots come back in the order given.
+ */
+export function tidySpots(
+  c: Compound,
+  all: Compound[],
+  spots: Tile[],
+): { compound: Compound; spots: Tile[]; moved: number; shift: Tile } {
+  const out = spots.map((t) => ({ ...t }));
+  const hx = c.house.x + HOUSE / 2, hy = c.house.y + HOUSE / 2;
+  const order = spots.map((_, i) => i)
+    .sort((a, b) => (spots[a].x - hx) ** 2 + (spots[a].y - hy) ** 2 - ((spots[b].x - hx) ** 2 + (spots[b].y - hy) ** 2));
+  const kept: number[] = [];
+  const stray: number[] = [];
+  for (const i of order) (padded(c, kept.map((k) => out[k]), out[i]) ? kept : stray).push(i);
+  const others = all.filter((o) => !same(o, c));
+  let cur = c;
+  const shift = { x: 0, y: 0 };
+  for (const i of stray) {
+    const r = spotFor(cur, [...others, cur], kept.map((k) => out[k]));
+    for (const k of kept) out[k] = { x: out[k].x + r.shift.x, y: out[k].y + r.shift.y };
+    shift.x += r.shift.x;
+    shift.y += r.shift.y;
+    out[i] = r.spot;
+    kept.push(i);
+    cur = r.compound;
+  }
+  return { compound: cur, spots: out, moved: stray.length, shift };
+}
+
 /** Tiles: HALL and every wall rect (unpadded). */
 export function villageRect(compounds: Compound[]): Rect {
   let x0 = HALL.x0, y0 = HALL.y0, x1 = HALL.x0 + HALL.w, y1 = HALL.y0 + HALL.h;

@@ -7,7 +7,7 @@ export const GET: APIRoute = () => {
 
 > ${site.description}
 
-${site.name} is a macOS desktop app (beta) built by ${site.studio.name} (${site.studio.url}). It runs coding agent CLIs in real terminals and shows each session as a builder in an isometric village: each project folder is a walled compound around the Town Hall. Hammering means working, a red "!" means the agent is waiting on a permission prompt, a medal means it finished.
+${site.name} is a macOS desktop app (beta) built by ${site.studio.name} (${site.studio.url}). It runs coding agent CLIs in real terminals and shows each session as a builder in a village: each project folder is a walled compound around the Town Hall. Hammering means working, a red "!" means the agent is waiting on a permission prompt, a medal means it finished.
 
 - Download (signed and notarized DMG): ${site.download}
 - Requirements: ${site.requirements}, plus at least one agent CLI installed and signed in

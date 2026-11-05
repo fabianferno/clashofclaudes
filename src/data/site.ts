@@ -162,7 +162,7 @@ export const privacy = [
 export const faq = [
   {
     q: 'What is Clash of Claudes?',
-    a: 'A Mac app that runs your coding agent sessions (Claude Code, Codex, Antigravity CLI, OpenCode or any command) and shows each one as a builder in an isometric village. Each project folder is a walled compound. You can see at a glance which agents are working, which need your approval and which have finished.',
+    a: 'A Mac app that runs your coding agent sessions (Claude Code, Codex, Antigravity CLI, OpenCode or any command) and shows each one as a builder in a village. Each project folder is a walled compound. You can see at a glance which agents are working, which need your approval and which have finished.',
   },
   {
     q: 'How do I run several Claude Code sessions at once without losing track?',

@@ -7,8 +7,12 @@ Design record and decisions: `DESIGN.md`. All copy and links: `src/data/site.ts`
 pnpm install
 pnpm build            # needs Node >= 22.23.4 (Astro 7)
 pnpm preview          # serves dist/
-vercel --prod         # project "clashofclaudes", served at https://clashofclaudes.crevn.xyz (and the old clashofclaudes.vercel.app)
 ```
+
+Deploys: every push to `main` in the app repo builds this folder on Vercel (project `clashofclaudes`,
+Root Directory `site`, served at https://clashofclaudes.crevn.xyz). Pushes that change nothing under
+`site/` skip the build. Other branches get preview URLs. For a manual deploy, run `vercel --prod`
+from the repo root, not from `site/`.
 
 - Images are built from the app's art by `node scripts/assets.mjs [path/to/app]` and committed.
 - `node scripts/og.mjs http://127.0.0.1:4321/` re-renders `public/og.png` from the running hero.

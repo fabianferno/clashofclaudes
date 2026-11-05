@@ -87,7 +87,7 @@ node --test scripts/*.test.mjs
 
 Design and plans are in `docs/superpowers/`. Verification results and the owner checklist are in `docs/verification/plan-3-v1.md`.
 
-The landing site (https://clashofclaudes.crevn.xyz) is its own Astro project in `site/`, with its own `pnpm install`. Deploy it from there with `vercel --prod`; its design record is `site/DESIGN.md`.
+The landing site (https://clashofclaudes.crevn.xyz) is its own Astro project in `site/`, with its own `pnpm install`. Pushing to `main` deploys it on Vercel whenever something under `site/` changed; its design record is `site/DESIGN.md`.
 
 ## Contributing
 

@@ -1,0 +1,6 @@
+# vercel --prod from the repo root uploads only the landing site (the project builds site/)
+/*
+!/site
+/site/node_modules
+/site/dist
+/site/.astro

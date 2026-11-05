@@ -291,10 +291,10 @@ five-column list, the fifth being "Any command".
 The owner liked the 43-second ad (made with the brag skill, `brag-output/` in the app repo) and asked
 for the page to follow it, keeping "Bring the agents you already use".
 
-- **Hero:** the ad's hook. The game's "Builders busy 4 / 4" pill, then "All builders busy." and the
-  punchline "Good. They're writing your code." in gold. The lede says what the app is. Links to the
-  ad and the beta guide sit under the download. The floating village keeps its depth layers, now
-  with parallax on scroll as well (far trees lag, builders lead), on phones too.
+- **Hero:** the copy stays as it was ("Run all your coding agents from one village."); the owner
+  tried the ad's "All builders busy." hook there and asked for the original text back. The floating
+  village keeps its depth layers, now with parallax on scroll as well (far trees lag, builders
+  lead), on phones too.
 - **The ad** follows the hero (`Trailer.astro`): poster with a gold Play label, sound on, native
   controls, pauses when scrolled away. Nothing downloads until it is played.
 - **Feature reel** (new signature, `Reel.astro`, `src/motion/reel.ts`): the ad's beats as a scroll

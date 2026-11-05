@@ -12,7 +12,7 @@ await page.addStyleTag({ content: `
   .hero__title { font-size: 68px !important; }
   .hero__lede { font-size: 19px !important; max-width: 30rem; }
   .hero__copy { gap: 18px !important; }
-  .hero__more, .dl__meta { display: none !important; }
+  .hero__more, .dl__meta, .marquee { display: none !important; }
   .hero__scene { margin-top: 10px; }
   .btn { pointer-events: none; }
 ` });

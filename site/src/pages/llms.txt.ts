@@ -16,7 +16,7 @@ ${site.name} is a macOS desktop app (beta) built by ${site.studio.name} (${site.
 
 ## What you see
 
-${reel.map((r) => `- ${r.title.replaceAll('*', '')}: ${r.text}`).join('\n')}
+${reel.map((r) => `- ${r.title.replaceAll('*', '')} — ${r.text}`).join('\n')}
 
 ## Supported agents
 

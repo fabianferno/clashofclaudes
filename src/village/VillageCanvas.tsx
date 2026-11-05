@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { openUrl } from '@tauri-apps/plugin-opener';
+import { ipc } from '../api/ipc';
 import { boardItems, moveValid, useApp, type AppState } from '../state/store';
 import ZoomControls from '../hud/ZoomControls';
 import { PANEL_W } from './camera';
@@ -80,6 +81,8 @@ export default function VillageCanvas({ onError }: { onError?: (e: unknown) => v
       onMove: (t, at) => useApp.getState().village.commitMove(t, at, onError),
       onClosedConsumed: (id) => useApp.getState().consumeClosed(id),
       onBuilderAssign: (builderId, id) => useApp.getState().setSelection({ kind: 'workspace', id, builder: builderId }),
+      // a tap under the finger as the held builder crosses into a workspace; nothing to tell the owner if it fails
+      onBuilderOver: () => { ipc.haptic().catch(() => {}); },
       panelWidth: () => (useApp.getState().panelOpen ? PANEL_W : 0),
       // a page that refuses framing would pop out blank: that one goes to the browser
       onOpenApp: (b) => {

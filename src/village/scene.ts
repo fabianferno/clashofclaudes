@@ -416,6 +416,8 @@ export interface SceneOptions {
   onBlockedDrop?: (at: Tile) => void;
   /** An idle builder was dropped on a workspace: offer to start a session there with it. */
   onBuilderAssign?: (builderId: string, workspaceId: string) => void;
+  /** A builder being dragged just came over a workspace it could be dropped on. */
+  onBuilderOver?: (workspaceId: string) => void;
   /** The scene has played (or given up on) the close outcome for this session id. */
   onClosedConsumed?: (sessionId: string) => void;
   /** An app board was clicked: open its app. */
@@ -1436,7 +1438,11 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       // the feet stay under the grab point, the figure lifted above the tile it would land on
       const at = toGrid(w.x + bd.grab.x, w.y + bd.grab.y + HELD_LIFT);
       v.held = at;
+      const was = bd.drop;
       bd.drop = dropOf(at, lastState.workspaces, collectorCorners(), idleBuilder(bd.id));
+      if (bd.drop.kind === 'assign' && (was.kind !== 'assign' || was.workspaceId !== bd.drop.workspaceId)) {
+        opts.onBuilderOver?.(bd.drop.workspaceId);
+      }
       drawDrop(at, bd.drop);
       return;
     }

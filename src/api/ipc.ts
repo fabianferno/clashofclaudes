@@ -78,6 +78,8 @@ export const ipc = {
     invoke<Partial<Record<AgentKind, Tile>>>('set_collector_spot', { agent, spot }),
   openInEditor: (path: string) => invoke<void>('open_in_editor', { path }),
   openInFinder: (path: string) => invoke<void>('open_in_finder', { path }),
+  /** A Force Touch trackpad tap (nothing with a mouse or off macOS). */
+  haptic: () => invoke<void>('haptic'),
   reviewSession: (id: string) => invoke<Review>('review_session', { id }),
   detachSession: (id: string) => invoke<void>('detach_session', { id }),
   /** The terminal finished writing output up to stream position `offset`; lets the next frame through. */

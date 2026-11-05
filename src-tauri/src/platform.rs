@@ -22,6 +22,17 @@ pub fn which(program: &str) -> Option<PathBuf> {
         .find(is_exec)
 }
 
+/// A firm tap from a Force Touch trackpad (AppKit's "level change", the strongest of its patterns).
+/// Felt only while a finger rests on such a trackpad; a no-op with a mouse.
+#[cfg(target_os = "macos")]
+pub fn haptic_tap() {
+    use objc2_app_kit::{NSHapticFeedbackManager, NSHapticFeedbackPattern, NSHapticFeedbackPerformanceTime, NSHapticFeedbackPerformer};
+    NSHapticFeedbackManager::defaultPerformer()
+        .performFeedbackPattern_performanceTime(NSHapticFeedbackPattern::LevelChange, NSHapticFeedbackPerformanceTime::Now);
+}
+#[cfg(not(target_os = "macos"))]
+pub fn haptic_tap() {}
+
 /// Signals the process group led by `pgid` (a PTY child is a session leader, so its
 /// pgid is its pid), reaching grandchildren such as the commands a shell forked.
 fn signal_group(pgid: u32, sig: libc::c_int) -> std::io::Result<()> {

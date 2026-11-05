@@ -431,6 +431,7 @@ pub fn run() {
             commands::refresh_quotas,
             commands::open_in_editor,
             commands::open_in_finder,
+            commands::haptic,
             commands::review_session,
             commands::attach_session,
             commands::detach_session,

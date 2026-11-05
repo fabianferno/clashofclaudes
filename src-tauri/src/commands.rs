@@ -710,6 +710,12 @@ pub fn open_in_finder(path: String, app: AppHandle) -> Result<(), String> {
     app.opener().open_path(path, None::<&str>).map_err(|e| e.to_string())
 }
 
+/// A trackpad tap as a dragged builder comes over a workspace. Sync, so it runs on the main thread.
+#[tauri::command]
+pub fn haptic() {
+    crate::platform::haptic_tap();
+}
+
 #[tauri::command]
 pub async fn review_session(id: String, state: State<'_, AppState>) -> Result<Review, String> {
     state.manager.review(&id).map_err(fmt_err)

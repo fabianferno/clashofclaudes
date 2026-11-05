@@ -1,0 +1,41 @@
+---
+// A row of pine silhouettes: the forest ring around the village. Deterministic (seeded) so
+// every build draws the same skyline. Used on the curtain, the forest sections and the footer.
+interface Props { class?: string; seed?: number; flip?: boolean }
+const { class: cls = '', seed = 7, flip = false } = Astro.props;
+let s = seed;
+const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+const W = 1440, H = 120;
+// Each pine is its own closed polygon (three tiers); a base band joins them.
+let d = `M-40 ${H - 10} L${W + 40} ${H - 10} L${W + 40} ${H} L-40 ${H} Z `;
+let x = -30;
+while (x < W + 30) {
+  const w = 30 + rnd() * 44;
+  const h = 44 + rnd() * 72;
+  const cx = x + w / 2;
+  const top = H - h;
+  const pts: [number, number][] = [[cx, top]];
+  const tiers = [0.36, 0.66, 0.92];
+  tiers.forEach((f, i) => {
+    const half = (w / 2) * (0.5 + 0.5 * (i + 1) / 3);
+    pts.push([cx + half, top + h * f]);
+    if (i < 2) pts.push([cx + half * 0.45, top + h * f - 2]);
+  });
+  pts.push([cx + w * 0.07, H], [cx - w * 0.07, H]);
+  [...tiers].reverse().forEach((f, j) => {
+    const i = 2 - j;
+    const half = (w / 2) * (0.5 + 0.5 * (i + 1) / 3);
+    if (i < 2) pts.push([cx - half * 0.45, top + h * f - 2]);
+    pts.push([cx - half, top + h * f]);
+  });
+  d += 'M' + pts.map(([a, b]) => `${a.toFixed(1)} ${b.toFixed(1)}`).join(' L') + ' Z ';
+  x += w * (0.5 + rnd() * 0.4);
+}
+---
+<svg class:list={['treeline', cls, { 'treeline--flip': flip }]} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMax slice" aria-hidden="true" focusable="false">
+  <path d={d} fill="currentColor" />
+</svg>
+<style>
+  .treeline { display: block; width: 100%; height: clamp(56px, 7vw, 120px); color: var(--forest); }
+  .treeline--flip { transform: scaleY(-1); }
+</style>

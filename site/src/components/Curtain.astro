@@ -1,0 +1,16 @@
+---
+import TreeLine from './TreeLine.astro';
+---
+<div id="curtain" transition:persist="curtain" aria-hidden="true">
+  <div class="curtain__panel">
+    <TreeLine class="curtain__edge curtain__edge--top" seed={11} />
+    <TreeLine class="curtain__edge curtain__edge--bottom" seed={23} flip />
+    <img class="curtain__mark" src="/img/icon-160.webp" alt="" width="80" height="80" />
+  </div>
+</div>
+<style is:global>
+  .curtain__edge { position: absolute; left: 0; right: 0; }
+  .curtain__edge--top { bottom: calc(100% - 1px); }
+  .curtain__edge--bottom { top: calc(100% - 1px); }
+  .curtain__mark { position: absolute; left: 50%; top: 50%; width: 80px; translate: -50% -50%; border-radius: 20px; }
+</style>

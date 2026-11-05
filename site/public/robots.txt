@@ -1,0 +1,6 @@
+# Everyone is welcome, search engines and AI answer engines alike.
+User-agent: *
+Allow: /
+Disallow: /404
+
+Sitemap: https://clashofclaudes.crevn.xyz/sitemap-index.xml

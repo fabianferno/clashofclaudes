@@ -12,7 +12,8 @@ export type InstallOption = { cmd: string; label?: string };
  * How to set each agent up: install, then sign in. Display only: the app never runs these.
  * The first install option is the vendor's recommended one; the rest are alternatives.
  * Sources: code.claude.com/docs (Claude Code), github.com/openai/codex (Codex),
- * antigravity.google/docs (Antigravity CLI), opencode.ai (OpenCode).
+ * antigravity.google/docs (Antigravity CLI), opencode.ai (OpenCode), Grok Build's bundled user guide
+ * (~/.grok/docs/user-guide/01-getting-started.md, 02-authentication.md).
  */
 export const SETUP: Partial<Record<AgentKind, { install?: InstallOption[]; installNote?: string; signIn?: string; signInNote?: string; note?: string }>> = {
   claude: {
@@ -37,6 +38,12 @@ export const SETUP: Partial<Record<AgentKind, { install?: InstallOption[]; insta
     installNote: 'Puts agy in ~/.local/bin. More at antigravity.google/docs. It replaced Gemini CLI.',
     signIn: 'agy',
     signInNote: 'Run it once in a terminal and sign in with Google.',
+  },
+  grok: {
+    install: [{ cmd: 'curl -fsSL https://x.ai/cli/install.sh | bash' }],
+    installNote: 'Puts grok in ~/.grok/bin. Update it later with grok update.',
+    signIn: 'grok login',
+    signInNote: 'Opens a browser to sign in with your Grok account. Or set XAI_API_KEY.',
   },
 };
 

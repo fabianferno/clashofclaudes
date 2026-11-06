@@ -20,8 +20,15 @@ test('two logos on one page keep their masks and filters apart', () => {
   expect(new Set(ids).size).toBe(ids.length);
 });
 
-test('Codex and Antigravity marks are filled even-odd, as their sources are', () => {
-  expect(MARK_FILL_RULE).toMatchObject({ codex: 'evenodd', antigravity: 'evenodd' });
+test('Grok wears its own mark, white on a black tile', () => {
+  const { container } = render(<AgentLogo kind="grok" />);
+  expect(MARK_PATHS.grok).toMatch(/^M9\.27 15\.29/); // Lobe Icons' grok mark, not a stand-in
+  const mark = container.querySelector(`path[d="${MARK_PATHS.grok}"]`)!;
+  expect(mark.getAttribute('fill')).toBe('#FFFFFF');
+});
+
+test('Codex, Antigravity and Grok marks are filled even-odd, as their sources are', () => {
+  expect(MARK_FILL_RULE).toMatchObject({ codex: 'evenodd', antigravity: 'evenodd', grok: 'evenodd' });
   const { container } = render(<AgentLogo kind="codex" />);
   expect(container.querySelector('g > path')!.getAttribute('fill-rule')).toBe('evenodd');
 });

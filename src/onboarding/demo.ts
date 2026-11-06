@@ -114,7 +114,7 @@ function banner(builder: Builder | undefined, task: string): string {
     + `${PROMPT}${task}\n\n`;
 }
 
-const agentName = (k: AgentKind) => ({ claude: 'Claude Code', codex: 'Codex', antigravity: 'Antigravity', opencode: 'OpenCode', custom: 'Custom' })[k];
+const agentName = (k: AgentKind) => ({ claude: 'Claude Code', codex: 'Codex', antigravity: 'Antigravity', opencode: 'OpenCode', grok: 'Grok Build', custom: 'Custom' })[k];
 
 const ASK = `\n${A.yellow}╭─ Permission ─────────────────────────────╮${A.reset}\n`
   + `${A.yellow}│${A.reset} ${A.bold}Bash command${A.reset}: npm test\n`

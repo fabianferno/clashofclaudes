@@ -3,6 +3,7 @@ pub mod antigravity;
 pub mod claude;
 pub mod codex;
 pub mod generic;
+pub mod grok;
 pub mod opencode;
 
 use crate::model::AgentKind;
@@ -18,6 +19,7 @@ pub use antigravity::AntigravityAdapter;
 pub use claude::ClaudeAdapter;
 pub use codex::CodexAdapter;
 pub use generic::CustomAdapter;
+pub use grok::GrokAdapter;
 pub use opencode::OpenCodeAdapter;
 
 /// A model as the picker offers it: the id passed to the agent, the name shown, and the efforts
@@ -188,9 +190,9 @@ pub trait AgentAdapter: Send + Sync {
     fn conversation_of(&self, _body: &serde_json::Value) -> Option<String> {
         None
     }
-    /// For agents whose hooks don't name it: looks up (on disk, read only) the conversation of a
-    /// session in `cwd` started at `since_ms`. Runs off the sessions lock after each turn.
-    fn find_conversation(&self, _cwd: &Path, _since_ms: i64) -> Option<String> {
+    /// For agents whose hooks don't name it: looks up (on disk, read only) the conversation of
+    /// session `session_id` in `cwd` started at `since_ms`. Runs off the sessions lock after each turn.
+    fn find_conversation(&self, _cwd: &Path, _since_ms: i64, _session_id: &str) -> Option<String> {
         None
     }
 }
@@ -206,6 +208,7 @@ impl AdapterRegistry {
             Arc::new(CodexAdapter),
             Arc::new(AntigravityAdapter),
             Arc::new(OpenCodeAdapter),
+            Arc::new(GrokAdapter),
             Arc::new(CustomAdapter),
         ];
         Self { adapters }
@@ -315,6 +318,8 @@ mod tests {
         assert_eq!(codex[codex.len() - 4..], ["--image=/d/images/image-1.png", "--image=/d/images/image-2.png", "--", "t"]);
         let agy = AntigravityAdapter.launch(&req).unwrap().args;
         assert_eq!(agy[0], "--add-dir=/d/images");
+        let grok = GrokAdapter.launch(&req).unwrap().args;
+        assert_eq!(grok[grok.len() - 3..], ["--add-dir=/d/images", "--", "t"]);
     }
 
     #[test]
@@ -378,6 +383,7 @@ mod tests {
         assert!(r.get(AgentKind::Codex).is_some());
         assert!(r.get(AgentKind::OpenCode).is_some());
         assert!(r.get(AgentKind::Antigravity).is_some());
+        assert!(r.get(AgentKind::Grok).is_some());
         assert!(r.get(AgentKind::Claude).is_some());
         assert!(r.get(AgentKind::Custom).is_some());
     }

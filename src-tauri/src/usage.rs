@@ -38,6 +38,7 @@ fn agent_name(a: &AgentKind) -> &'static str {
         AgentKind::Codex => "codex",
         AgentKind::Antigravity => "antigravity",
         AgentKind::OpenCode => "opencode",
+        AgentKind::Grok => "grok",
         AgentKind::Custom => "custom",
     }
 }

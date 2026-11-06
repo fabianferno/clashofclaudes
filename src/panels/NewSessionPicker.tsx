@@ -42,6 +42,8 @@ export function commandPreview(
     }
     case 'antigravity':
       return join(['agy', model && `--model=${model}`, images > 0 && '--add-dir=…', t && `--prompt-interactive=${t}`]);
+    case 'grok':
+      return join(['grok …', model && `--model=${model}`, effort && `--reasoning-effort=${effort}`, images > 0 && '--add-dir=…', t && `-- ${t}`]);
   }
 }
 

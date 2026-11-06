@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import type { AgentInfo, AgentKind } from '../api/types';
 import AgentLogo from './AgentLogo';
+import AgentSetupDialog from './AgentSetupDialog';
 
 /** A tile-sized name: no parenthetical and no trailing "CLI" ("Antigravity CLI" → "Antigravity"). */
 export const shortAgentLabel = (a: Pick<AgentInfo, 'kind' | 'label'>) =>
@@ -7,12 +9,15 @@ export const shortAgentLabel = (a: Pick<AgentInfo, 'kind' | 'label'>) =>
 
 /**
  * The agent as a row of app-icon buttons (a radio group, like the Town Hall's agents). With
- * `installedOnly`, agents that are not installed are greyed out and point to the Town Hall.
+ * `installedOnly`, agents that are not installed are greyed out and cannot be picked; a click
+ * opens their install steps instead (the same dialog as the Town Hall's).
  * A disabled group (a fieldset) disables every button.
  */
 export default function AgentPicker({ agents, value, onChange, disabled = false, installedOnly = false }: {
   agents: AgentInfo[]; value: AgentKind; onChange: (k: AgentKind) => void; disabled?: boolean; installedOnly?: boolean;
 }) {
+  const [setupFor, setSetupFor] = useState<AgentKind | null>(null);
+  const setupAgent = agents.find((a) => a.kind === setupFor);
   return (
     <div className="sp-field">
       <span>Agent</span>
@@ -21,10 +26,11 @@ export default function AgentPicker({ agents, value, onChange, disabled = false,
           const ok = !installedOnly || a.installed || a.kind === 'custom';
           const on = a.kind === value;
           return (
-            <button key={a.kind} type="button" role="radio" aria-checked={on} disabled={!ok}
-              aria-label={ok ? a.label : `${a.label} — Not installed — see Town Hall`}
-              title={ok ? a.label : `${a.label} is not installed: set it up in the Town Hall`}
-              className={`agent-pick-btn${on ? ' on' : ''}`} onClick={() => onChange(a.kind)}>
+            <button key={a.kind} type="button" role="radio" aria-checked={on} aria-disabled={!ok || undefined}
+              aria-label={ok ? a.label : `${a.label} — Not installed — how to install`}
+              title={ok ? a.label : `${a.label} is not installed: click for how to install it`}
+              className={`agent-pick-btn${on ? ' on' : ''}${ok ? '' : ' missing'}`}
+              onClick={() => (ok ? onChange(a.kind) : setSetupFor(a.kind))}>
               <span className="agent-pick-icon"><AgentLogo kind={a.kind} size={42} framed /></span>
               <span className="agent-pick-name">{shortAgentLabel(a)}</span>
               {on && <span className="agent-pick-badge ok" aria-hidden="true">✓</span>}
@@ -33,6 +39,7 @@ export default function AgentPicker({ agents, value, onChange, disabled = false,
           );
         })}
       </fieldset>
+      {setupAgent && <AgentSetupDialog agent={setupAgent} onClose={() => setSetupFor(null)} />}
     </div>
   );
 }

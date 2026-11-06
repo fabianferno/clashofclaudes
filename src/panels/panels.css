@@ -108,9 +108,11 @@
   background: linear-gradient(#ffe270 0%, #ffc61a 48%, #f0a400 52%, #e89b00 100%);
   box-shadow: inset 0 3px 0 rgba(255,255,255,.55), inset 0 -3px 0 rgba(0,0,0,.18), 0 4px 0 var(--hud-out), 0 0 0 4px rgba(255, 207, 51, .35);
 }
-.agent-pick-btn:disabled { cursor: not-allowed; background: linear-gradient(#ebe3d2, #d9cdb4); }
-.agent-pick-btn:disabled .agent-logo { filter: grayscale(1); opacity: .5; }
-.agent-pick-btn:disabled .agent-pick-name { color: #9c8d74; }
+/* not installed: greyed out; a click opens its install steps */
+.agent-pick-btn.missing { cursor: pointer; background: linear-gradient(#ebe3d2, #d9cdb4); }
+.agent-pick-btn.missing .agent-logo { filter: grayscale(1); opacity: .5; }
+.agent-pick-btn.missing .agent-pick-name { color: #9c8d74; }
+.agent-pick-btn.missing:hover:not(:disabled) .agent-logo { opacity: .75; }
 .agent-pick:disabled .agent-pick-btn { cursor: default; opacity: .6; transform: none; }
 .agent-pick-icon { line-height: 0; filter: drop-shadow(0 3px 0 rgba(29, 19, 11, .55)); }
 .agent-pick-name { font: 400 13px/1.1 'Lilita One', sans-serif; color: #3d2f22; letter-spacing: .3px; text-align: center; }
@@ -133,6 +135,7 @@
 .agent-dialog p { margin: 4px 0; }
 .agent-ok { color: #2f7d17; }
 .agent-missing { color: #a3382c; }
+.agent-install-opt + .agent-install-opt { margin-top: 8px; }
 .agent-cmd { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
 .agent-cmd code { flex: 1; min-width: 0; padding: 5px 8px; background: #2b2018; color: #f3e7cc; border-radius: 8px; font-size: 12px; word-break: break-all; user-select: all; }
 .agent-note { margin: 10px 0 0; }

@@ -87,13 +87,26 @@ test('picker_disables_uninstalled', () => {
   const opt = (name: RegExp) => screen.getByRole('radio', { name }) as HTMLButtonElement;
   expect(opt(/^Claude Code$/).disabled).toBe(false);
   expect(opt(/^Custom command$/).disabled).toBe(false);
-  expect(opt(/^Codex/).disabled).toBe(true);
-  expect(opt(/^Codex/).getAttribute('aria-label')).toBe('Codex — Not installed — see Town Hall');
+  expect(opt(/^Codex/).getAttribute('aria-disabled')).toBe('true');
+  expect(opt(/^Codex/).getAttribute('aria-label')).toBe('Codex — Not installed — how to install');
   expect(screen.getByTestId('agent-logo-codex')).toBeTruthy(); // app-icon buttons, as in the Town Hall
   // The agents list (install commands, Re-check) lives in the Town Hall only.
   expect(screen.queryByTestId('agents-status')).toBeNull();
   // the default never lands on an uninstalled agent
   expect(screen.getByRole('radio', { checked: true }).getAttribute('aria-label')).toBe('Claude Code');
+});
+
+test('clicking an agent that is not installed shows how to install it, without picking it', () => {
+  setup({ agents: [claude, codex, custom] });
+  render(<NewSessionPicker workspaceId="w" />);
+  fireEvent.click(screen.getByRole('radio', { name: /^Codex/ }));
+  const dialog = screen.getByRole('dialog', { name: 'Codex' });
+  expect(dialog.textContent).toContain('Not installed');
+  expect(dialog.textContent).toContain('npm i -g @openai/codex');
+  expect(dialog.textContent).toContain('brew install --cask codex');
+  expect(screen.getByRole('radio', { checked: true }).getAttribute('aria-label')).toBe('Claude Code');
+  fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+  expect(screen.queryByRole('dialog')).toBeNull();
 });
 
 test('agent default follows agents detected after mount until the user picks', () => {
@@ -286,7 +299,7 @@ test('the chosen agent wears a check; one not installed a plus', () => {
   const { container } = render(<NewSessionPicker workspaceId="w" />);
   const btn = (name: RegExp) => screen.getByRole('radio', { name }) as HTMLButtonElement;
   expect(btn(/^Claude Code$/).querySelector('.agent-pick-badge.ok')).toBeTruthy();
-  expect(btn(/^Codex/).disabled).toBe(true);
+  expect(btn(/^Codex/).getAttribute('aria-disabled')).toBe('true');
   expect(btn(/^Codex/).querySelector('.agent-pick-badge.todo')).toBeTruthy();
   expect(container.querySelectorAll('.agent-pick-badge.ok')).toHaveLength(1);
 });

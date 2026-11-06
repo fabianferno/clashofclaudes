@@ -102,10 +102,26 @@ test('Copied reads back to Copy after a moment', async () => {
   } finally { vi.useRealTimers(); }
 });
 
-test('Antigravity setup points to its docs and the agy sign-in', () => {
+test('Antigravity setup gives its install script and the agy sign-in', () => {
   render(<AgentsStatus />);
   fireEvent.click(tile('antigravity'));
-  expect(screen.getByRole('dialog', { name: 'Antigravity CLI' }).textContent).toContain('antigravity.google/docs/cli');
+  expect(screen.getByRole('dialog', { name: 'Antigravity CLI' }).textContent).toContain('antigravity.google/docs');
+  expect(screen.getByText('curl -fsSL https://antigravity.google/cli/install.sh | bash')).toBeTruthy();
   expect(screen.getByText('agy')).toBeTruthy();
   expect(screen.queryByText(/npm i -g/)).toBeNull();
+});
+
+test('Claude Code setup leads with the native installer, with Homebrew and npm as alternatives', () => {
+  act(() => useApp.setState({ agents: [{ ...base, installed: false, version: null }] }));
+  render(<AgentsStatus />);
+  fireEvent.click(tile('claude'));
+  const codes = [...screen.getByRole('dialog').querySelectorAll('code')].map((c) => c.textContent);
+  expect(codes).toEqual([
+    'curl -fsSL https://claude.ai/install.sh | bash',
+    'brew install --cask claude-code',
+    'npm i -g @anthropic-ai/claude-code',
+    'claude',
+  ]);
+  fireEvent.click(screen.getAllByRole('button', { name: 'Copy' })[1]);
+  expect(writeText).toHaveBeenCalledWith('brew install --cask claude-code');
 });

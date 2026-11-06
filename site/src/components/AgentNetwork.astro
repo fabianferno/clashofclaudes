@@ -13,8 +13,9 @@ const layout: Partial<Record<string, { x: number; y: number; side: Side }>> = {
   antigravity: { x: 70, y: 16, side: 'right' },
   claude: { x: 11, y: 70, side: 'up' },
   opencode: { x: 89, y: 70, side: 'up' },
+  grok: { x: 50, y: 100, side: 'right' },
 };
-const hub = { x: 50, y: 50 };
+const hub = { x: 50, y: 42 };
 const nodes = reports.flatMap((r) => (layout[r.agent] ? [{ ...r, ...layout[r.agent]! }] : []));
 ---
 <div class="net" data-net aria-hidden="true" style={`--hx:${hub.x}%;--hy:${hub.y}%`}>

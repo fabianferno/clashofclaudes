@@ -51,7 +51,7 @@ const toc = [
         <h2 id="before-h">Before you start</h2>
         <ul>
           <li>{site.requirements}.</li>
-          <li>At least one agent CLI installed and signed in: Claude Code (<code>claude</code>), Codex (<code>codex</code>), Antigravity CLI (<code>agy</code>) or OpenCode (<code>opencode</code>). Any other command works as a custom builder.</li>
+          <li>At least one agent CLI installed and signed in: Claude Code (<code>claude</code>), Codex (<code>codex</code>), Antigravity CLI (<code>agy</code>), OpenCode (<code>opencode</code>) or Grok Build (<code>grok</code>). Any other command works as a custom builder.</li>
         </ul>
         <p class="note">The app does not install agents, log in for you or manage API keys. Each agent uses the login you already set up for it. Open the Town Hall to see which CLIs were found, their versions, and a copyable install command for the missing ones.</p>
       </section>
@@ -80,7 +80,7 @@ const toc = [
         <ul>
           <li>Which agent the builder was running, and what it was doing.</li>
           <li>What you expected to see in the village, and what you saw instead.</li>
-          <li>For Codex and OpenCode: whether working, needs you and finished matched what the terminal showed.</li>
+          <li>For Codex, OpenCode and Grok Build: whether working, needs you and finished matched what the terminal showed.</li>
         </ul>
       </section>
 
@@ -93,10 +93,10 @@ const toc = [
         <h2 id="limits-h">Known limits</h2>
         <ul>
           <li>Mac only for now.</li>
-          <li>Claude Code and Antigravity CLI were checked against real runs. Codex and OpenCode support was written from their documentation and still needs real-world confirmation. If one misbehaves, the terminal always works.</li>
-          <li>Allow and deny from the village work for Claude Code and Antigravity CLI. For Codex and OpenCode, answer in the terminal.</li>
+          <li>Claude Code and Antigravity CLI were checked against real runs. Grok Build’s status reports were checked against a real grok, but not yet a full turn. Codex and OpenCode support was written from their documentation and still needs real-world confirmation. If one misbehaves, the terminal always works.</li>
+          <li>Allow and deny from the village work for Claude Code and Antigravity CLI. For Codex, OpenCode and Grok Build, answer in the terminal.</li>
           <li>In sessions started from the app, Codex’s <code>notify</code> and <code>developer_instructions</code> settings are overridden on the command line. Your <code>~/.codex/config.toml</code> is never edited.</li>
-          <li>Quitting stops your sessions (the app asks first). They come back paused. Resume continues Claude Code, Codex and Antigravity on their own conversation; OpenCode and custom commands start fresh in the same folder.</li>
+          <li>Quitting stops your sessions (the app asks first). They come back paused. Resume continues Claude Code, Codex, Antigravity and Grok Build on their own conversation; OpenCode and custom commands start fresh in the same folder.</li>
         </ul>
       </section>
     </div>

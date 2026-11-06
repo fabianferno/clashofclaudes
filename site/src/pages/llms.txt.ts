@@ -37,7 +37,7 @@ ${faq.map((f) => `### ${f.q}\n\n${f.a}`).join('\n\n')}
 - [Beta guide](${site.url}/beta/): install, first village, sending feedback, updates, known limits
 - [Privacy](${site.url}/privacy/): what the app touches, sends and never does
 
-Not affiliated with Anthropic, OpenAI, Google or the OpenCode team.
+Not affiliated with Anthropic, OpenAI, Google, xAI or the OpenCode team.
 `;
   return new Response(body, { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
 };

@@ -7,7 +7,7 @@ export const site = {
   tagline: 'Run all your coding agents from one village',
   url: 'https://clashofclaudes.crevn.xyz',
   description:
-    'A Mac app that turns Claude Code, Codex, Antigravity CLI and OpenCode sessions into builders in a cozy village. See who is working, who needs you, who shipped.',
+    'A Mac app that turns Claude Code, Codex, Antigravity CLI, OpenCode and Grok Build sessions into builders in a cozy village. See who is working, who needs you, who shipped.',
   download: 'https://github.com/fabianferno/clashofclaudes-releases/releases/latest/download/Clash-of-Claudes.dmg',
   releases: 'https://github.com/fabianferno/clashofclaudes-releases/releases',
   latestApi: 'https://api.github.com/repos/fabianferno/clashofclaudes-releases/releases/latest',
@@ -25,7 +25,7 @@ export const nav = [
   { href: '/privacy/', label: 'Privacy' },
 ];
 
-export type AgentKey = 'claude' | 'codex' | 'antigravity' | 'opencode';
+export type AgentKey = 'claude' | 'codex' | 'antigravity' | 'opencode' | 'grok';
 
 export const agents: {
   key: AgentKey;
@@ -77,6 +77,16 @@ export const agents: {
     approve: 'Answer in its terminal, one click from the builder.',
     verified: false,
   },
+  {
+    key: 'grok',
+    name: 'Grok Build',
+    command: 'grok',
+    builder: 'master-grok',
+    rank: 'Master',
+    reports: 'Working, needs you (its trust screen too), finished, and failed with Grok’s own reason, read from what grok prints. No settings files at all.',
+    approve: 'Answer in its terminal. The red “!” still tells you when.',
+    verified: false,
+  },
 ];
 
 // The agents section: each agent reports to the village. A sample of what each might say, in the
@@ -86,6 +96,7 @@ export const reports: { agent: AgentKey; name: string; status: 'needs' | 'work' 
   { agent: 'codex', name: 'Codex', status: 'work', label: 'Working', text: 'Rate-limiting the webhook route. 5 steps in.' },
   { agent: 'antigravity', name: 'Antigravity CLI', status: 'done', label: 'Finished', text: 'Docs updated in 31 tool steps.' },
   { agent: 'opencode', name: 'OpenCode', status: 'stuck', label: 'Stuck', text: 'Exited with an error. Open its terminal?' },
+  { agent: 'grok', name: 'Grok Build', status: 'work', label: 'Working', text: 'Writing tests for the parser. 12 steps in.' },
 ];
 
 // The feature reel: the ad's beats as a scroll story. Each beat plays a loop of real app footage
@@ -95,7 +106,7 @@ export const reel: { clip: string; title: string; text: string }[] = [
   {
     clip: 'build',
     title: 'Every session is a *builder*',
-    text: 'Start Claude Code, Codex, Antigravity CLI or OpenCode in a project and a builder walks onto a plot and starts hammering. The tent rises as the agent works. When the turn is done it stands finished and the builder cheers.',
+    text: 'Start Claude Code, Codex, Antigravity CLI, OpenCode or Grok Build in a project and a builder walks onto a plot and starts hammering. The tent rises as the agent works. When the turn is done it stands finished and the builder cheers.',
   },
   {
     clip: 'needs',
@@ -105,7 +116,7 @@ export const reel: { clip: string; title: string; text: string }[] = [
   {
     clip: 'outfits',
     title: 'Dressed by *provider*',
-    text: 'Claude Code builders work in orange, Codex in charcoal, Antigravity in blue and OpenCode in teal, tents included, so you can tell whose work you are looking at from across the village.',
+    text: 'Claude Code builders work in orange, Codex in white, Antigravity in blue, OpenCode in teal and Grok Build in black, tents included, so you can tell whose work you are looking at from across the village.',
   },
   {
     clip: 'ranks',
@@ -146,7 +157,7 @@ export const privacy = [
   },
   {
     title: 'Your agent config is never touched',
-    text: 'Nothing under ~/.claude, ~/.codex, ~/.gemini or ~/.config/opencode is ever edited. Each session gets a private settings file in the app’s own folder, deleted when it closes.',
+    text: 'Nothing under ~/.claude, ~/.codex, ~/.gemini, ~/.config/opencode or ~/.grok is ever edited. Each session gets a private settings file in the app’s own folder, deleted when it closes.',
   },
   {
     title: 'Status stays on localhost',
@@ -162,7 +173,7 @@ export const privacy = [
 export const faq = [
   {
     q: 'What is Clash of Claudes?',
-    a: 'A Mac app that runs your coding agent sessions (Claude Code, Codex, Antigravity CLI, OpenCode or any command) and shows each one as a builder in a village. Each project folder is a walled compound. You can see at a glance which agents are working, which need your approval and which have finished.',
+    a: 'A Mac app that runs your coding agent sessions (Claude Code, Codex, Antigravity CLI, OpenCode, Grok Build or any command) and shows each one as a builder in a village. Each project folder is a walled compound. You can see at a glance which agents are working, which need your approval and which have finished.',
   },
   {
     q: 'How do I run several Claude Code sessions at once without losing track?',
@@ -170,15 +181,15 @@ export const faq = [
   },
   {
     q: 'Which coding agents does it support?',
-    a: 'Claude Code and Antigravity CLI are checked against real runs, including allowing or denying permission prompts from the village. Codex and OpenCode are supported from their documentation and testers are helping confirm them. Any other command also works: it counts as working while it prints and finished once it goes quiet.',
+    a: 'Claude Code and Antigravity CLI are checked against real runs, including allowing or denying permission prompts from the village. Grok Build’s status reports were checked against a real grok; Codex, OpenCode and the rest of Grok Build are supported from their documentation and testers are helping confirm them. Any other command also works: it counts as working while it prints and finished once it goes quiet.',
   },
   {
     q: 'Does it send my code or prompts anywhere?',
     a: 'No. Agent output, prompts, file names and folders stay on your Mac. The only network calls are the update check, which you can turn off, bug reports or feature requests you choose to send, and anonymous usage counts, which are off unless you turn them on.',
   },
   {
-    q: 'Will it change my Claude Code, Codex or OpenCode settings?',
-    a: 'No. Nothing under ~/.claude, ~/.codex, ~/.gemini or ~/.config/opencode is edited. Each session gets a private settings file in the app’s own folder, deleted when the session closes. It uses the CLIs and logins you already have.',
+    q: 'Will it change my Claude Code, Codex, OpenCode or Grok Build settings?',
+    a: 'No. Nothing under ~/.claude, ~/.codex, ~/.gemini, ~/.config/opencode or ~/.grok is edited. Each session gets a private settings file in the app’s own folder, deleted when the session closes. It uses the CLIs and logins you already have.',
   },
   {
     q: 'What do I need to run it?',
@@ -193,7 +204,7 @@ export const faq = [
     a: 'From the app: Help › Report a Bug… or Help › Request a Feature…, or the Beta feedback card in Settings. Nothing is sent until you read it and press Send. For anything else, send Fabian a DM on X.',
   },
   {
-    q: 'Is it made by Anthropic, OpenAI or Google?',
-    a: 'No. Clash of Claudes is an independent app built by Crevn. It is not affiliated with or endorsed by Anthropic, OpenAI, Google or the OpenCode team.',
+    q: 'Is it made by Anthropic, OpenAI, Google or xAI?',
+    a: 'No. Clash of Claudes is an independent app built by Crevn. It is not affiliated with or endorsed by Anthropic, OpenAI, Google, xAI or the OpenCode team.',
   },
 ] as const;

@@ -13,7 +13,7 @@ const webp = (img, name, q = 82) => img.webp({ quality: q, alphaQuality: 90, eff
 // Builders: 7 frames of 220x260 (idle, walk, walk, hammer up, hammer down, cheer, back).
 // Re-pack each frame as a tight 130x172 cell so the CSS sprite stays small.
 const FX = 50, FY = 40, FW = 130, FH = 172;
-const builders = ['master-claude', 'craftsman-codex', 'apprentice-antigravity', 'craftsman-opencode'];
+const builders = ['master-claude', 'craftsman-codex', 'apprentice-antigravity', 'craftsman-opencode', 'master-grok'];
 for (const b of builders) {
   const src = `${V}sheets/builder-${b}.png`;
   const comps = [];
@@ -26,7 +26,7 @@ for (const b of builders) {
 // Tents share one box so the foundation and the finished tent line up exactly.
 const tent = { left: 40, top: 100, width: 360, height: 330 };
 await webp(sharp(`${V}structures/structure-foundation.png`).extract(tent), 'tent-foundation.webp');
-for (const a of ['claude', 'codex', 'antigravity', 'opencode']) {
+for (const a of ['claude', 'codex', 'antigravity', 'opencode', 'grok']) {
   await webp(sharp(`${V}structures/structure-complete-${a}.png`).extract(tent), `tent-${a}.webp`);
 }
 await webp(sharp(`${V}buildings/hall.png`).extract({ left: 130, top: 0, width: 500, height: 570 }), 'hall.webp');

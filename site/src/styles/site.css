@@ -335,7 +335,7 @@ html.motion .reel__slide.is-on .reel__kanban img { animation: kanban-pan 9s ease
 .roster__lede { max-width: 40rem; color: var(--muted-on-forest); font-size: var(--t-body); }
 
 /* The network: the agents' marks around the village icon (AgentNetwork.astro, src/motion/agents.ts). */
-.net { --tile: clamp(3.25rem, 2.4rem + 2.2vw, 4.75rem); position: relative; height: clamp(16rem, 36svh, 24rem); margin-inline: auto; max-width: 64rem; }
+.net { --tile: clamp(3.25rem, 2.4rem + 2.2vw, 4.75rem); position: relative; height: clamp(16rem, 36svh, 24rem); margin: 0 auto calc(var(--tile) / 2 + 2.5rem); max-width: 64rem; } /* room under the bottom node */
 .net__lines { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .net__lines line { stroke: var(--parchment); stroke-opacity: 0.3; stroke-width: 2; stroke-dasharray: 0.1 7; stroke-linecap: round; transition: stroke 0.4s, stroke-opacity 0.4s; }
 .net__lines line.is-on { stroke: var(--gold); stroke-opacity: 0.9; }
@@ -373,7 +373,7 @@ html.motion .net__bubble { visibility: hidden; }
 .net__text { margin-top: 0.15rem; font-size: var(--t-s); line-height: 1.35; }
 
 /* The facts per agent, under the graph. */
-.agents { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--col-gap); margin-top: calc(var(--u) * 3); }
+.agents { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.75rem var(--col-gap); margin-top: calc(var(--u) * 3); }
 .agents__item { display: grid; align-content: start; gap: 0.45rem; padding-top: 1rem; border-top: 1px solid rgb(247 234 208 / 0.2); font-size: var(--t-s); line-height: 1.45; color: var(--muted-on-forest); }
 .agents__item b { color: var(--parchment); font-weight: 700; }
 .agents__name { display: flex; align-items: center; gap: 0.55rem; flex-wrap: wrap; color: var(--parchment); line-height: 1.2; }
@@ -553,15 +553,12 @@ html.motion .drop-in { animation: drop-in 0.9s cubic-bezier(0.34, 1.56, 0.64, 1)
 .lost p { font-size: var(--t-m); font-weight: 500; }
 
 /* ---------- Responsive ---------- */
-@media (max-width: 1100px) {
-  .agents { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 1.75rem; }
-}
 @media (max-width: 860px) {
   .agents { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 1.5rem; }
-  .agents__item:last-child { grid-column: 1 / -1; }
   /* Phones: one bubble at a time, under the graph instead of beside its agent. */
-  .net { height: 16rem; margin: 2rem auto 8.5rem; --tile: 3rem; }
-  .net__say, .net__say--up, .net__say--left, .net__say--right { left: 50%; top: 100%; translate: -50% 1.6rem; max-width: min(20rem, 90%); }
+  .net { height: 16rem; margin: 2rem auto 11rem; --tile: 3rem; }
+  /* below the bottom node (Grok Build) and its name */
+  .net__say, .net__say--up, .net__say--left, .net__say--right { left: 50%; top: 100%; translate: -50% calc(var(--tile) / 2 + 2.6rem); max-width: min(20rem, 90%); }
   .net__name { font-size: 0.72rem; }
   html:not(.motion) .net__say { display: none; } /* they would stack in one spot */
   /* Phones: the copy sits high, a few pieces of the village line the bottom of the screen. */

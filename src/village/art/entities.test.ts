@@ -168,7 +168,8 @@ describe('palette', () => {
       body: '#8d8a83', roof: '#7d7a74', wall: '#e4ded2', dark: '#4f4c47', hat: '#efeae0',
     });
     expect(PALETTE.claude).toMatchObject({ body: '#d97757', roof: '#d4683f', wall: '#f3e2c4' });
-    expect(PALETTE.codex).toMatchObject({ body: '#3a3a40', roof: '#4a4d57', wall: '#cfccc5' });
+    expect(PALETTE.codex).toMatchObject({ body: '#e6e3dc', roof: '#d9d6cf', wall: '#f2efe8' });
+    expect(PALETTE.grok).toMatchObject({ body: '#3a3a40', roof: '#4a4d57', wall: '#cfccc5' });
     expect(PALETTE.antigravity).toMatchObject({ body: '#4f7cf0', roof: '#4f7cf0', wall: '#eef1f8' });
     expect(PALETTE.opencode).toMatchObject({ body: '#33a889', roof: '#2f9a7e', wall: '#dcbf92' });
   });

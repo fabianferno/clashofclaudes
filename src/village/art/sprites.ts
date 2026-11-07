@@ -18,7 +18,7 @@ type Strip = 0 | 1 | 2;
 const stripOf = (cls: ClassTier): Strip => (cls === 3 ? 2 : cls);
 /** How much bigger a Legend stands than a Master (about the feet). */
 export const LEGEND_SCALE = 1.08;
-const AGENTS: AgentKind[] = ['claude', 'codex', 'antigravity', 'opencode', 'custom'];
+const AGENTS: AgentKind[] = ['claude', 'codex', 'antigravity', 'opencode', 'grok', 'custom'];
 /** The frames of a class's strip, in order. The kit's second hammer frame (hammer on the other shoulder, mid-stride) is unused: see `paintedBuilder`. */
 const STRIP = ['idle', 'walk0', 'walk1', 'hammer0', 'kitHammer1', 'cheer', 'sad'] as const;
 type BuilderPose = 'idle' | 'walk0' | 'walk1' | 'hammer0' | 'hammer1' | 'hammer2' | 'cheer' | 'sad';

@@ -89,7 +89,7 @@ impl AgentAdapter for AntigravityAdapter {
         let env = vec![("AGY_CLI_OSC7501".to_string(), "on".to_string())];
         Ok(LaunchSpec { program: "agy".into(), args, env, cwd: req.cwd.to_path_buf() })
     }
-    fn find_conversation(&self, cwd: &Path, since_ms: i64) -> Option<String> {
+    fn find_conversation(&self, cwd: &Path, since_ms: i64, _session_id: &str) -> Option<String> {
         let home = PathBuf::from(std::env::var_os("HOME")?);
         conversation_in_history(&std::fs::read(home.join(HISTORY)).ok()?, cwd, since_ms)
     }

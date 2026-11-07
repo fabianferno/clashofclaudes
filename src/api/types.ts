@@ -1,4 +1,4 @@
-export type AgentKind = 'claude' | 'codex' | 'antigravity' | 'opencode' | 'custom';
+export type AgentKind = 'claude' | 'codex' | 'antigravity' | 'opencode' | 'grok' | 'custom';
 
 export interface Tile {
   x: number;

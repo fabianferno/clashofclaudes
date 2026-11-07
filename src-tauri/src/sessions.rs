@@ -3,7 +3,7 @@ use crate::adapters::{task_with_images, terminal_launch, terminal_policy, Adapte
 use crate::attachments;
 use crate::git::{self, GitBaseline, Review};
 use crate::hooks::HookServer;
-use crate::osc::Osc7501;
+use crate::osc::{Osc7501, SUPPORT_REPLY};
 use crate::model::{Builder, SessionInfo, SessionKind, SessionState, Subagent, Tile, Workspace, WorktreeInfo};
 use crate::pty::{LaunchSpec, PtyHandle, REAP_POLL};
 use crate::saved::{self, SavedSession};
@@ -85,6 +85,8 @@ struct SessionEntry {
     prompt_seen: Option<&'static str>,
     /// OSC 7501 status-report scanner, for adapters whose agent writes them (`reads_osc_status`).
     osc: Option<Osc7501>,
+    /// An OSC 7501 support query arrived before the PTY handle was recorded; answered then.
+    osc_reply_owed: bool,
     /// The agent's own conversation id, saved so a paused session can resume it.
     conversation: Option<String>,
 }
@@ -112,6 +114,7 @@ impl SessionEntry {
             active_prompt: None,
             prompt_seen: None,
             osc: adapter.as_ref().filter(|a| a.reads_osc_status()).map(|_| Osc7501::default()),
+            osc_reply_owed: false,
             adapter,
             conversation: None,
         }
@@ -542,6 +545,9 @@ impl SessionManager {
         // If it already exited, `handle` just drops below, releasing its fds.
         let stop_now = !e.exited && e.stop_requested; // stop() raced the spawn
         if !e.exited {
+            if std::mem::take(&mut e.osc_reply_owed) {
+                let _ = handle.write(SUPPORT_REPLY);
+            }
             e.pty = Some(handle.clone());
         }
         self.send_updated(e);
@@ -567,7 +573,18 @@ impl SessionManager {
         let mut changed = e.apply(&StatusEvent::Output, now);
         // In-band status reports: the agent's own word, like a hook event.
         let events: Vec<StatusEvent> = match e.osc.as_mut() {
-            Some(p) => p.feed(data).iter().flat_map(|r| p.events(r)).collect(),
+            Some(p) => {
+                let events = p.feed(data).iter().flat_map(|r| p.events(r)).collect();
+                if p.take_queries() > 0 {
+                    // Answered here, before this output reaches the frontend's terminal, so the
+                    // reply beats that terminal's answer to the query's trailing `CSI c`.
+                    match e.pty.as_ref() {
+                        Some(pty) => drop(pty.write(SUPPORT_REPLY)),
+                        None => e.osc_reply_owed = true,
+                    }
+                }
+                events
+            }
             None => vec![],
         };
         if !events.is_empty() {
@@ -1100,7 +1117,7 @@ impl SessionManager {
         let Some(adapter) = e.adapter.clone() else { return };
         let (weak, id, cwd, since) = (self.weak.clone(), e.info.id.clone(), e.workspace_path.clone(), e.info.started_at);
         std::thread::spawn(move || {
-            if let Some(c) = adapter.find_conversation(&cwd, since)
+            if let Some(c) = adapter.find_conversation(&cwd, since, &id)
                 && let Some(m) = weak.upgrade()
             {
                 m.set_conversation(&id, c);
@@ -2036,6 +2053,32 @@ mod tests {
         // After a report, silence no longer reads as "Waiting in the terminal".
         fx.mgr.tick(info(&fx, &s.id).started_at + 120_000);
         assert_eq!(state(&fx, &s.id), SessionState::Finished);
+    }
+
+    #[test]
+    fn grok_reports_once_the_session_answers_its_support_query() {
+        let fx = fixture();
+        let b = Builder { id: "b1".into(), name: "b1".into(), agent: AgentKind::Grok, model: None, effort: None, custom_command: None };
+        // As Grok 1.0.77 starts under `program_status = "auto"`: the query, then `CSI c`; it
+        // reports only if the 7501 reply (ESC ] 7501 ; ? ESC \, 10 bytes) comes back.
+        let script = r#"stty -icanon -icrnl -echo min 1
+printf '\033]7501;?\033\\\033[c'
+[ "$(dd bs=1 count=10 2>/dev/null | od -An -tx1 | tr -d ' \n')" = 1b5d373530313b3f1b5c ] || exit 3
+printf '\033]7501;state=blocked:kind=question:app=grok:msg=UGljayBvbmU=\033\\'
+dd bs=1 count=1 2>/dev/null >/dev/null
+printf '\033]7501;state=working:app=grok\033\\\033]7501;state=done:id=s1/sub:app=grok\033\\'
+dd bs=1 count=1 2>/dev/null >/dev/null
+printf '\033]7501;state=done:app=grok\033\\'; sleep 5"#;
+        let spec = LaunchSpec { program: "/bin/sh".into(), args: vec!["-c".into(), script.into()], env: vec![], cwd: fx.ws.path.clone() };
+        let s = fx.mgr.start_with_spec(&fx.ws, &b, spec, Arc::new(crate::adapters::GrokAdapter)).unwrap();
+        // Only a report gets here: without the reply the script exits.
+        assert!(wait_until(|| state(&fx, &s.id) == SessionState::NeedsYou { reason: "Pick one".into() }), "got {:?}", state(&fx, &s.id));
+        fx.mgr.write(&s.id, b"1").unwrap();
+        assert!(wait_until(|| state(&fx, &s.id) == SessionState::Working));
+        std::thread::sleep(Duration::from_millis(300));
+        assert_eq!(state(&fx, &s.id), SessionState::Working, "a subagent's `done` is not the session's");
+        fx.mgr.write(&s.id, b"\n").unwrap();
+        assert!(wait_until(|| state(&fx, &s.id) == SessionState::Finished));
     }
 
     #[test]

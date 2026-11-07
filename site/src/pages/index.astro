@@ -13,7 +13,7 @@ import { agents, faq, privacy, site } from '../data/site';
 // the second run is hidden from screen readers.
 const marquee = [...agents.map((a) => ({ kind: a.key, name: a.name })), { kind: 'custom' as const, name: 'Any command' }];
 ---
-<Base description="A Mac app that runs Claude Code, Codex, Antigravity CLI and OpenCode as builders in a village: see who is working, who needs you, who shipped.">
+<Base description="A Mac app that runs Claude Code, Codex, Antigravity CLI, OpenCode and Grok Build as builders in a village: see who is working, who needs you, who shipped.">
   <script slot="head" type="application/ld+json" set:html={JSON.stringify({
     '@context': 'https://schema.org', '@type': 'FAQPage',
     mainEntity: faq.map((f) => ({ '@type': 'Question', name: f.q, acceptedAnswer: { '@type': 'Answer', text: f.a } })),

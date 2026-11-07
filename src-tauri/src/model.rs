@@ -14,6 +14,8 @@ pub enum AgentKind {
     #[serde(alias = "gemini")]
     Antigravity,
     OpenCode,
+    /// Grok Build (xAI).
+    Grok,
     Custom,
 }
 

@@ -26,6 +26,7 @@ describe('look', () => {
     expect(classOf('claude', null)).toBe(1);
     expect(classOf('opencode', 'anthropic/claude-opus-4')).toBe(1);
     expect(classOf('codex', 'anything')).toBe(1);
+    expect(classOf('grok', 'grok-4.7')).toBe(1);
     expect(classOf('custom', null)).toBe(1);
   });
 

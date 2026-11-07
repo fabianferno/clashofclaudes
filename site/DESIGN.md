@@ -6,7 +6,7 @@ below was made without them and is written down here so it can be changed later.
 ## Brief (Phase 0)
 
 - **Subject:** Clash of Claudes, a macOS desktop app (Tauri) that shows every running coding
-  agent session (Claude Code, Codex, Antigravity CLI, OpenCode, or any command) as a builder in
+  agent session (Claude Code, Codex, Antigravity CLI, OpenCode, Grok Build, or any command) as a builder in
   an isometric village. Each workspace is a walled compound; each session a builder raising a
   tent in it.
 - **Audience:** the owner's friends, mostly developers who already run two or more agent CLIs.
@@ -72,8 +72,8 @@ Screenshot:  the hero: the game-title headline beside a living plot with the Tow
 | `gold` (CTA, focus ring) | `#ffc53a` | crowns, pennants, the "finished" medal |
 | `alert` (needs you, used only for that state) | `#e2453a` | the "!" bubble |
 
-Agent colours come from the app (`PALETTE` in `look.ts`): Claude `#d97757`, Codex `#3a3a40`,
-Antigravity `#4f7cf0`, OpenCode `#33a889`. They are used only to tag each agent.
+Agent colours come from the app (`PALETTE` in `look.ts`): Claude `#d97757`, Codex `#e6e3dc`,
+Antigravity `#4f7cf0`, OpenCode `#33a889`, Grok Build `#3a3a40`. They are used only to tag each agent.
 
 ### Type
 

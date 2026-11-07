@@ -2,7 +2,7 @@
 // A tent going up on its foundation, the way the app shows a session at work: the finished tent is
 // revealed from the ground up. `rise` is how far it stands (0 to 1); `building` keeps it climbing
 // in a slow loop while the builder hammers (CSS, off under reduced motion).
-interface Props { agent: 'claude' | 'codex' | 'antigravity' | 'opencode'; rise?: number; building?: boolean; class?: string; style?: string; loading?: 'lazy' | 'eager' }
+interface Props { agent: 'claude' | 'codex' | 'antigravity' | 'opencode' | 'grok'; rise?: number; building?: boolean; class?: string; style?: string; loading?: 'lazy' | 'eager' }
 const { agent, rise = 0.5, building = false, class: cls = '', style = '', loading = 'lazy' } = Astro.props;
 ---
 <span class:list={['rise', { 'rise--building': building }, cls]} style={`--rise:${rise};${style}`} aria-hidden="true">

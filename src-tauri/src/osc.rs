@@ -1,6 +1,7 @@
 //! OSC 7501 program-status reports (`ESC ] 7501 ; state=…:app=…[:kind=…][:msg=…] ST`): agents
-//! that support it (Antigravity CLI with `AGY_CLI_OSC7501=on`) write their state into the
-//! terminal stream, so no hook files are needed. Parsing is lenient: `:` or `;` separate the
+//! that support it (Antigravity CLI with `AGY_CLI_OSC7501=on`; Grok Build once the terminal
+//! answers its support query, see `SUPPORT_REPLY`) write their state into the terminal stream,
+//! so no hook files are needed. Spec: https://www.superlogical.com/rex/docs/build/program-status. Parsing is lenient: `:` or `;` separate the
 //! fields, BEL or ST ends the sequence, unknown keys are ignored, and `msg` is base64 when it
 //! decodes to UTF-8 (raw text otherwise). Sequences may arrive split across reads.
 use crate::status::StatusEvent;
@@ -13,6 +14,10 @@ pub struct StatusReport {
 }
 
 const START: &[u8] = b"\x1b]7501;";
+/// What a supporting terminal answers to the support query `ESC ] 7501 ; ? ST`. Grok Build
+/// (`program_status = "auto"`, its default) reports only after this reply, which must reach it
+/// before the terminal's answer to the `CSI c` it sends right after the query.
+pub const SUPPORT_REPLY: &[u8] = b"\x1b]7501;?\x1b\\";
 /// Longest sequence kept while waiting for its terminator; longer ones are dropped.
 const MAX_SEQ: usize = 8 * 1024;
 
@@ -22,6 +27,8 @@ const MAX_SEQ: usize = 8 * 1024;
 pub struct Osc7501 {
     carry: Vec<u8>,
     in_turn: bool,
+    /// Support queries seen and not yet taken (`take_queries`).
+    queries: usize,
 }
 
 impl Osc7501 {
@@ -43,7 +50,9 @@ impl Osc7501 {
                     let body = String::from_utf8_lossy(&buf[body_at..body_at + len]).into_owned();
                     #[cfg(debug_assertions)]
                     eprintln!("osc7501: {body}");
-                    if let Some(r) = parse_body(&body) {
+                    if body.trim().starts_with('?') {
+                        self.queries += 1;
+                    } else if let Some(r) = parse_body(&body) {
                         out.push(r);
                     }
                     i = body_at + len + skip;
@@ -56,6 +65,13 @@ impl Osc7501 {
                 }
             }
         }
+    }
+}
+
+impl Osc7501 {
+    /// How many support queries arrived since the last call; each wants `SUPPORT_REPLY`.
+    pub fn take_queries(&mut self) -> usize {
+        std::mem::take(&mut self.queries)
     }
 }
 
@@ -72,12 +88,15 @@ fn terminator(b: &[u8]) -> Option<(usize, usize)> {
     })
 }
 
-/// A report from a sequence body; `None` for a support query (`?`) or a body without `state`.
+/// A report from a sequence body; `None` for a support query (`?`), a body without `state`, or
+/// a child record (one with an `id`: Grok reports each subagent and each extra session of its
+/// dashboard as one; only the main record speaks for the session).
 pub fn parse_body(body: &str) -> Option<StatusReport> {
     let (mut state, mut kind, mut msg) = (None, None, None);
     for field in body.split([':', ';']) {
         let Some((k, v)) = field.split_once('=') else { continue };
         match k.trim() {
+            "id" if !v.trim().is_empty() => return None,
             "state" => state = Some(v.trim().to_ascii_lowercase()),
             "kind" => kind = Some(v.trim().to_ascii_lowercase()),
             "msg" | "message" => msg = Some(decode_msg(v.trim())),
@@ -226,6 +245,40 @@ mod tests {
         let mut p = Osc7501::default();
         p.events(&rep("blocked", Some("permission"), Some("Trust this folder?")));
         assert!(p.events(&rep("idle", None, None)).is_empty(), "back at the prompt after the trust menu");
+    }
+
+    #[test]
+    fn support_queries_are_counted_not_reported() {
+        let mut p = Osc7501::default();
+        assert!(p.feed(b"\x1b]7501;?\x1b\\\x1b[c").is_empty());
+        assert_eq!(p.take_queries(), 1);
+        assert_eq!(p.take_queries(), 0, "taken");
+        // split across reads, with a report after it
+        assert!(p.feed(b"\x1b]75").is_empty());
+        assert_eq!(p.feed(b"01;?\x07\x1b]7501;state=idle:app=grok\x07"), vec![rep("idle", None, None)]);
+        assert_eq!(p.take_queries(), 1);
+    }
+
+    #[test]
+    fn child_records_are_ignored() {
+        assert_eq!(parse_body("state=working:id=s1/sub-2:app=grok:title=Rml4IGl0"), None);
+        assert_eq!(parse_body("state=clear:id=s1"), None);
+        assert_eq!(parse_body("state=done:id=:app=grok"), Some(rep("done", None, None)), "empty id is the main record");
+    }
+
+    #[test]
+    fn real_grok_bodies_parse() {
+        // Captured from Grok Build 1.0.77 (trust screen, a turn, and a usage-limit failure).
+        assert_eq!(
+            parse_body("state=blocked:kind=permission:app=grok:msg=VHJ1c3QgdGhpcyBmb2xkZXI/"),
+            Some(rep("blocked", Some("permission"), Some("Trust this folder?")))
+        );
+        assert_eq!(
+            parse_body("state=working:app=grok:msg=V2FpdGluZyBmb3IgcmVzcG9uc2XigKY="),
+            Some(rep("working", None, Some("Waiting for response…")))
+        );
+        let err = parse_body("state=error:app=grok:msg=WW914oCZdmUgcmVhY2hlZCB5b3VyIGZyZWUgR3JvayBCdWlsZCB1c2FnZSBsaW1pdCBmb3Igbm93LiBHZXQgU3VwZXJHcm9rIGZvciBtdWNoIGhpZ2hlciBsaW1pdHMsIG9yIHRyeSBhZ2FpbiBsYXRlcjogaHR0cHM6Ly9ncm9rLmNvbS9zdXBlcmdyb2s/cmVmZXJyZXI9Z3Jvay1idWlsZA==").unwrap();
+        assert!(err.msg.unwrap().starts_with("You’ve reached your free Grok Build usage limit"));
     }
 
     #[test]

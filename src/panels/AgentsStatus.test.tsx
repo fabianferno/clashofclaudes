@@ -13,6 +13,7 @@ const agents: AgentInfo[] = [
   { ...base, kind: 'codex', label: 'Codex', installed: false, version: null },
   { ...base, kind: 'opencode', label: 'OpenCode', installed: false, version: null },
   { ...base, kind: 'antigravity', label: 'Antigravity CLI', installed: false, version: null },
+  { ...base, kind: 'grok', label: 'Grok Build', installed: false, version: null },
   { ...base, kind: 'custom', label: 'Custom command', version: null },
 ];
 const writeText = vi.fn().mockResolvedValue(undefined);
@@ -29,7 +30,7 @@ const tile = (k: string) => screen.getByTestId(`agent-tile-${k}`);
 
 test('agents show as app icons only, marked ready or not set up', () => {
   render(<AgentsStatus />);
-  for (const k of ['claude', 'codex', 'opencode', 'antigravity', 'custom']) expect(screen.getByTestId(`agent-logo-${k}`)).toBeTruthy();
+  for (const k of ['claude', 'codex', 'opencode', 'antigravity', 'grok', 'custom']) expect(screen.getByTestId(`agent-logo-${k}`)).toBeTruthy();
   expect(tile('claude').getAttribute('aria-label')).toBe('Claude Code: ready');
   expect(tile('codex').getAttribute('aria-label')).toBe('Codex: not set up');
   expect(tile('custom').getAttribute('aria-label')).toBe('Custom: ready');
@@ -109,6 +110,15 @@ test('Antigravity setup gives its install script and the agy sign-in', () => {
   expect(screen.getByText('curl -fsSL https://antigravity.google/cli/install.sh | bash')).toBeTruthy();
   expect(screen.getByText('agy')).toBeTruthy();
   expect(screen.queryByText(/npm i -g/)).toBeNull();
+});
+
+test('Grok Build setup gives its install script and grok login', () => {
+  render(<AgentsStatus />);
+  expect(tile('grok').textContent).toBe('+Grok Build');
+  fireEvent.click(tile('grok'));
+  expect(screen.getByRole('dialog', { name: 'Grok Build' })).toBeTruthy();
+  expect(screen.getByText('curl -fsSL https://x.ai/cli/install.sh | bash')).toBeTruthy();
+  expect(screen.getByText('grok login')).toBeTruthy();
 });
 
 test('Claude Code setup leads with the native installer, with Homebrew and npm as alternatives', () => {

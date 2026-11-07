@@ -38,9 +38,10 @@
   --muted-on-forest: #c4d3b5;
 
   --agent-claude: #d97757;
-  --agent-codex: #3a3a40;
+  --agent-codex: #e6e3dc;
   --agent-antigravity: #4f7cf0;
   --agent-opencode: #33a889;
+  --agent-grok: #3a3a40;
 
   /* Engine contract names */
   --c-bg: var(--meadow);

@@ -37,7 +37,7 @@ export function copyOf(id: StepId, c: StepContext): StepCopy {
     case 'hall-panel':
       return {
         title: 'Everything at a glance',
-        body: <>The Town Hall lists your workspaces and builders, and checks which agent CLIs are on this Mac: Claude Code, Codex, Antigravity and OpenCode. Missing one? It shows the command to install it.</>,
+        body: <>The Town Hall lists your workspaces and builders, and checks which agent CLIs are on this Mac: Claude Code, Codex, Antigravity, OpenCode and Grok Build. Missing one? It shows the command to install it.</>,
       };
     case 'workspace':
       return {

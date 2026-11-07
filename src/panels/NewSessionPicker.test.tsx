@@ -54,6 +54,12 @@ test('commandPreview mirrors the Antigravity adapter (effort is part of the mode
   expect(commandPreview(antigravity, 'gemini-3.8-flash-medium', 'high', 'fix it')).toBe('agy --model=gemini-3.8-flash-medium --prompt-interactive="fix it"');
   expect(commandPreview(antigravity)).toBe('agy');
 });
+const grok: AgentInfo = { ...claude, kind: 'grok', label: 'Grok Build', models: ['grok-4.7'], efforts: ['low', 'medium', 'high', 'xhigh'], canApprove: false };
+test('commandPreview mirrors the Grok Build adapter', () => {
+  expect(commandPreview(grok, 'grok-4.7', 'xhigh', 'fix it')).toBe('grok … --model=grok-4.7 --reasoning-effort=xhigh -- "fix it"');
+  expect(commandPreview(grok, undefined, undefined, 'x', undefined, 1)).toBe('grok … --add-dir=… -- "x [1 image]"');
+  expect(commandPreview(grok)).toBe('grok …');
+});
 test('agents without a model list get a free-text model; empty means default', async () => {
   const codexOn = { ...codex, installed: true, models: [] };
   const opencodeOn = { ...opencode, installed: true };

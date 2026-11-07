@@ -8,9 +8,10 @@ export const PALETTE: Record<
   { body: string; dark: string; hat: string; roof: string; wall: string; label: string }
 > = {
   claude: { body: '#d97757', dark: '#8a3f24', hat: '#f6e7c8', roof: '#d4683f', wall: '#f3e2c4', label: 'Claude Code' },
-  codex: { body: '#3a3a40', dark: '#111114', hat: '#f4f4f4', roof: '#4a4d57', wall: '#cfccc5', label: 'Codex' },
+  codex: { body: '#e6e3dc', dark: '#8a867e', hat: '#3a3a40', roof: '#d9d6cf', wall: '#f2efe8', label: 'Codex' },
   antigravity: { body: '#4f7cf0', dark: '#22409a', hat: '#c9b8ff', roof: '#4f7cf0', wall: '#eef1f8', label: 'Antigravity' },
   opencode: { body: '#33a889', dark: '#17594a', hat: '#ffcc1a', roof: '#2f9a7e', wall: '#dcbf92', label: 'OpenCode' },
+  grok: { body: '#3a3a40', dark: '#111114', hat: '#f4f4f4', roof: '#4a4d57', wall: '#cfccc5', label: 'Grok Build' },
   custom: { body: '#8d8a83', dark: '#4f4c47', hat: '#efeae0', roof: '#7d7a74', wall: '#e4ded2', label: 'Custom' },
 };
 
@@ -32,6 +33,7 @@ export const CLASS_MAP: Record<AgentKind, Record<string, ClassTier>> = {
   // Model ids such as "gemini-3.8-flash-medium" or "claude-opus-5-5-high" (matched by substring).
   antigravity: { flash: 0, sonnet: 1, argon: 2, opus: 2 },
   opencode: {},
+  grok: {},
   custom: {},
 };
 

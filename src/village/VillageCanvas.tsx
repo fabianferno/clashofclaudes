@@ -7,6 +7,7 @@ import { PANEL_W } from './camera';
 import { createScene, type BoardInput, type Scene, type VillageInput } from './scene';
 import { setBoardImage } from './art/entities';
 import { clearProbeScene, setProbeScene } from './probe';
+import { splashReady } from '../splash';
 
 /** Each page's decoded snapshot: the store's `at` it came from and its key for `drawBoard`. */
 const decoded = new Map<string, { at: number; key: string }>();
@@ -98,6 +99,7 @@ export default function VillageCanvas({ onError }: { onError?: (e: unknown) => v
         s.sync(inputOf(useApp.getState()));
         s.select(useApp.getState().selection);
         s.setCovered(useApp.getState().covers > 0);
+        splashReady('scene');
         unsub = useApp.subscribe((st, prev) => {
           if (st.zoomRequest !== prev.zoomRequest && st.zoomRequest) s.fitCompound(st.zoomRequest.id);
           if (st.covers !== prev.covers) s.setCovered(st.covers > 0);
@@ -111,7 +113,7 @@ export default function VillageCanvas({ onError }: { onError?: (e: unknown) => v
             s.sync(inputOf(st));
         });
       },
-      (e) => console.error('village scene failed to start', e),
+      (e) => { console.error('village scene failed to start', e); splashReady('scene'); },
     );
     return () => {
       cancelled = true;

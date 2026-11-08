@@ -309,9 +309,9 @@ pub fn run() {
                 quotas.clone(),
                 data_dir.clone(),
                 quota::codex_sessions_dir(),
-                Box::new(|| {
-                    adapters::AdapterRegistry::new().get(model::AgentKind::Antigravity).is_some_and(|a| a.detect().installed)
-                }),
+                quota::cli_usage_reader(Box::new(|agent| {
+                    adapters::AdapterRegistry::new().get(agent.clone()).is_some_and(|a| a.detect().installed)
+                })),
             ));
             poller.clone().spawn();
             app.manage(commands::QuotaState { store: quotas, poller });

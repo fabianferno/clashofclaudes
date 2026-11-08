@@ -142,8 +142,8 @@ export default function SessionPanel({ sessionId, onClosed }: { sessionId: strin
       {paused ? (
         <div className="terminal-placeholder">
           {builder
-            ? `Paused when the app closed. Resume to pick ${builder.name}'s conversation back up.`
-            : 'Paused when the app closed. Resume to open a new shell here.'}
+            ? `Paused: it was not running when the app closed, or could not start again. Resume to pick ${builder.name}'s conversation back up.`
+            : 'Paused: it was not running when the app closed, or could not start again. Resume to open a new shell here.'}
         </div>
       ) : popped ? (
         <>

@@ -321,9 +321,20 @@ pub fn run() {
             let manager = SessionManager::new(adapters::AdapterRegistry::new(), Arc::new(hooks), data_dir, emit);
             let _ = cell.set(Arc::downgrade(&manager));
             // The sessions listed when the app last ran come back paused; then the dirs no session
-            // owns (left by a crash) go.
+            // owns (left by a crash) go, and the ones that were running resume (off the setup
+            // thread: each is a process spawn).
             manager.restore(&data.workspaces, &data.builders);
             manager.sweep_stale_session_dirs();
+            {
+                let (m, workspaces, builders) = (manager.clone(), data.workspaces.clone(), data.builders.clone());
+                std::thread::spawn(move || {
+                    for (id, res) in m.resume_was_running(&workspaces, &builders) {
+                        if let Err(e) = res {
+                            eprintln!("could not resume session {id}: {e:#}");
+                        }
+                    }
+                });
+            }
             // A launch in the background (`open -g`, or focus moved away while starting) is
             // unfocused from the start; a later focus event corrects either way.
             let focused = app.get_webview_window("main").is_some_and(|w| w.is_focused().unwrap_or(false));

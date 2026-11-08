@@ -1,5 +1,6 @@
 //! `<data>/sessions.json`: the sessions listed in the village, kept up to date as they change, so
-//! a quit, a crash or a dev rebuild brings them back paused (see `SessionManager::restore`).
+//! a quit, a crash or a dev rebuild brings them back: the ones that were running resume on their
+//! own, the rest come back paused (see `SessionManager::restore` and `resume_was_running`).
 use crate::model::{SessionKind, Tile, WorktreeInfo};
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
@@ -28,6 +29,10 @@ pub struct SavedSession {
     /// The `rev` of the last update sent, so updates after a resume keep increasing.
     #[serde(default)]
     pub rev: u64,
+    /// Its process was running when last saved (quitting saves first, then stops them): it
+    /// resumes on its own at the next launch. False for one that had exited or was still paused.
+    #[serde(default)]
+    pub running: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -78,6 +83,7 @@ mod tests {
             worktree: None,
             conversation: Some("c".into()),
             rev: 9,
+            running: true,
         };
         save(&p, std::slice::from_ref(&s)).unwrap();
         assert_eq!(load(&p), vec![s]);

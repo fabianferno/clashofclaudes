@@ -94,7 +94,7 @@ function App() {
       {quit !== null && (
         <div className="modal-bg">
           <div className="modal">
-            <p>{quit.live} sessions are still running. {quit.restart ? 'Restart now?' : 'Quit now?'} They stop, and come back paused next time so you can resume them.</p>
+            <p>{quit.live} sessions are still running. {quit.restart ? 'Restart now?' : 'Quit now?'} They stop, and pick up again next time the app opens.</p>
             <button onClick={() => ipc.quitNow(quit.restart).catch((e) => useApp.getState().setError(String(e)))}>{quit.restart ? 'Restart' : 'Quit'}</button>{' '}
             <button onClick={() => setQuit(null)}>Cancel</button>
           </div>

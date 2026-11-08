@@ -89,6 +89,8 @@ struct SessionEntry {
     osc_reply_owed: bool,
     /// The agent's own conversation id, saved so a paused session can resume it.
     conversation: Option<String>,
+    /// Restored paused, but its process was running when the app last closed: resumed at startup.
+    was_running: bool,
 }
 
 impl SessionEntry {
@@ -117,6 +119,7 @@ impl SessionEntry {
             osc_reply_owed: false,
             adapter,
             conversation: None,
+            was_running: false,
         }
     }
 
@@ -134,6 +137,7 @@ impl SessionEntry {
             worktree: i.worktree.clone(),
             conversation: self.conversation.clone(),
             rev: i.rev,
+            running: !self.exited && !i.paused,
         }
     }
 
@@ -1039,12 +1043,42 @@ impl SessionManager {
                 let mut e = SessionEntry::new(info, ws.path.clone(), None, terminal_policy(), None, now);
                 e.exited = true;
                 e.conversation = s.conversation;
+                e.was_running = s.running;
                 g.insert(s.id, e);
             }
             g.len()
         };
         self.save_sessions(); // forgets the dropped ones
         n
+    }
+
+    /// Resumes the restored sessions that were running when the app last closed (a quit, a crash
+    /// or a dev rebuild), oldest first; the ones that were paused stay paused. A failed resume
+    /// leaves that session paused for the owner to retry. Returns each attempt's outcome.
+    pub fn resume_was_running(&self, workspaces: &[Workspace], builders: &[Builder]) -> Vec<(String, Result<SessionInfo>)> {
+        let ids: Vec<(String, String, Option<String>)> = {
+            let mut list: Vec<_> = self.lock().values().filter(|e| e.info.paused && e.was_running).map(|e| e.info.clone()).collect();
+            list.sort_by(|a, b| a.started_at.cmp(&b.started_at).then_with(|| a.id.cmp(&b.id)));
+            list.into_iter()
+                .map(|i| {
+                    let builder = match &i.kind {
+                        SessionKind::Agent { builder_id } => Some(builder_id.clone()),
+                        SessionKind::Terminal => None,
+                    };
+                    (i.id, i.workspace_id, builder)
+                })
+                .collect()
+        };
+        ids.into_iter()
+            .map(|(id, ws_id, builder_id)| {
+                let res = (|| {
+                    let ws = workspaces.iter().find(|w| w.id == ws_id).ok_or_else(|| anyhow!("this session's workspace is gone"))?;
+                    let builder = builder_id.as_ref().and_then(|b| builders.iter().find(|x| &x.id == b));
+                    self.resume(ws, builder, &id)
+                })();
+                (id, res)
+            })
+            .collect()
     }
 
     /// Starts a paused session again under its id, keeping its task, place and progress: an agent
@@ -2233,6 +2267,43 @@ printf '\033]7501;state=idle:app=antigravity\033\\'; sleep 5"#;
         assert!(m.resume(&fx.ws, None, &t.id).is_ok(), "a terminal opens a new shell");
         assert_eq!(m.running_process_count(), 2);
         m.shutdown(KILL_GRACE);
+    }
+
+    #[test]
+    fn what_was_running_resumes_at_the_next_launch_and_the_rest_stays_paused() {
+        let fx = fixture();
+        let b = custom("b1", "sleep 30");
+        let done = custom("b2", "true");
+        let a = fx.mgr.start_agent(&fx.ws, &b, None, &[]).unwrap();
+        let t = fx.mgr.start_terminal(&fx.ws).unwrap();
+        let ended = fx.mgr.start_agent(&fx.ws, &done, None, &[]).unwrap();
+        let end = Instant::now() + Duration::from_secs(5);
+        while fx.mgr.lock().get(&ended.id).is_some_and(|e| !e.exited) && Instant::now() < end {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(fx.mgr.lock().get(&ended.id).is_some_and(|e| e.exited), "`true` exited");
+        fx.mgr.shutdown(KILL_GRACE); // a quit; a crash leaves the file as last saved, the same
+
+        let m = relaunch(&fx);
+        m.restore(std::slice::from_ref(&fx.ws), &[b.clone(), done.clone()]);
+        let out = m.resume_was_running(std::slice::from_ref(&fx.ws), &[b.clone(), done.clone()]);
+        let mut resumed: Vec<&str> = out.iter().filter(|(_, r)| r.is_ok()).map(|(id, _)| id.as_str()).collect();
+        resumed.sort();
+        let mut want = vec![a.id.as_str(), t.id.as_str()];
+        want.sort();
+        assert_eq!(resumed, want, "the agent and the shell were running; the exited one was not");
+        let list = m.list();
+        assert!(list.iter().any(|s| s.id == ended.id && s.paused));
+        assert!(list.iter().any(|s| s.id == a.id && !s.paused));
+
+        // the one left paused is not running either: it stays paused through the next relaunch too
+        m.shutdown(KILL_GRACE);
+        let m2 = relaunch(&fx);
+        m2.restore(std::slice::from_ref(&fx.ws), &[b.clone(), done.clone()]);
+        let again: Vec<String> = m2.resume_was_running(std::slice::from_ref(&fx.ws), &[b, done]).into_iter().map(|(id, _)| id).collect();
+        assert!(!again.contains(&ended.id));
+        assert_eq!(again.len(), 2);
+        m2.shutdown(KILL_GRACE);
     }
 
     #[test]

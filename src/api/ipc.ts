@@ -1,6 +1,6 @@
 import { invoke, Channel } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type { Todo, AppPreview, AgentInfo, AgentKind, AgentQuota, Builder, CloseOutcome, Compound, ConfirmQuit, Frame, ListState, Review, SessionInfo, Settings, Stats, Tile, UpdateStatus, Workspace, BugReport, BugReportInfo, ReportKind } from './types';
+import type { Todo, AppPreview, AgentAccount, AgentInfo, AgentKind, AgentQuota, Builder, CloseOutcome, Compound, ConfirmQuit, Frame, ListState, Review, SessionInfo, Settings, Stats, Tile, UpdateStatus, Workspace, BugReport, BugReportInfo, ReportKind } from './types';
 
 const SKIP_FLAG = 1n << 63n;
 
@@ -45,6 +45,8 @@ export const ipc = {
     listen<AppPreview[]>('apps-updated', (e) => cb(e.payload)),
   /** Reads every quota source now (Antigravity takes a second or two). */
   refreshQuotas: () => invoke<AgentQuota[]>('refresh_quotas'),
+  /** Who the agent is signed in as; null when it has none to show. */
+  getAccount: (agent: AgentKind) => invoke<AgentAccount | null>('get_account', { agent }),
   onQuotaUpdated: (cb: (q: AgentQuota) => void): Promise<UnlistenFn> =>
     listen<AgentQuota>('quota-updated', (e) => cb(e.payload)),
   addWorkspace: (path: string) => invoke<Workspace>('add_workspace', { path }),

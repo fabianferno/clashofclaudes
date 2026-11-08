@@ -679,6 +679,14 @@ pub async fn refresh_quotas(state: State<'_, QuotaState>) -> Result<Vec<crate::q
     .map_err(|e| e.to_string())
 }
 
+/// Who `agent` is signed in as (Claude takes a second); None when it has no account to show.
+#[tauri::command]
+pub async fn get_account(agent: crate::model::AgentKind) -> Result<Option<crate::account::AgentAccount>, String> {
+    tauri::async_runtime::spawn_blocking(move || crate::account::read(&agent, &std::env::temp_dir()))
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Records where a session's builder stands; the manager emits `session-updated`.
 #[tauri::command]
 pub fn set_session_spot(id: String, spot: Tile, state: State<'_, AppState>) -> Result<SessionInfo, String> {

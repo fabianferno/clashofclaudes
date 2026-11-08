@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { AgentQuota } from '../api/types';
 
-vi.mock('../api/ipc', () => ({ ipc: { refreshQuotas: vi.fn() } }));
+vi.mock('../api/ipc', () => ({ ipc: { refreshQuotas: vi.fn(), getAccount: vi.fn() } }));
 import { ipc } from '../api/ipc';
 import { useApp } from '../state/store';
 import QuotaPanel from './QuotaPanel';
@@ -21,6 +21,7 @@ const agy: AgentQuota = {
 
 beforeEach(() => {
   vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
+  vi.mocked(ipc.getAccount).mockResolvedValue(null);
   act(() => useApp.setState({ quotas: { antigravity: agy } }));
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
@@ -44,7 +45,29 @@ test('no reading explains where it will come from; Refresh stores the new readin
   act(() => useApp.setState({ quotas: {} }));
   vi.mocked(ipc.refreshQuotas).mockResolvedValue([{ ...agy, agent: 'claude' }]);
   render(<QuotaPanel agent="claude" />);
-  expect(screen.getByTestId('quota-empty').textContent).toMatch(/sessions started from the village/);
+  expect(screen.getByTestId('quota-empty').textContent).toMatch(/asked for its limits every few minutes/);
   fireEvent.click(screen.getByText('Refresh'));
   await waitFor(() => expect(useApp.getState().quotas.claude?.windows).toHaveLength(3));
+});
+
+test('the signed-in account shows at the top, and Refresh asks again', async () => {
+  vi.mocked(ipc.getAccount).mockResolvedValue({ agent: 'claude', signedIn: true, email: 'me@example.com', plan: 'Max 20x', detail: null });
+  vi.mocked(ipc.refreshQuotas).mockResolvedValue([]);
+  render(<QuotaPanel agent="claude" />);
+  expect(screen.getByTestId('quota-account').textContent).toBe('Checking account…');
+  await waitFor(() => expect(screen.getByTestId('quota-account').textContent).toBe('Signed in asme@example.comMax 20x'));
+  expect(ipc.getAccount).toHaveBeenCalledWith('claude');
+  vi.mocked(ipc.getAccount).mockResolvedValue({ agent: 'claude', signedIn: false, email: null, plan: null, detail: null });
+  fireEvent.click(screen.getByText('Refresh'));
+  await waitFor(() => expect(screen.getByTestId('quota-account').textContent).toBe('Not signed in'));
+});
+
+test('an API key shows as such; no account to show shows nothing', async () => {
+  vi.mocked(ipc.getAccount).mockResolvedValue({ agent: 'codex', signedIn: true, email: null, plan: null, detail: 'API key' });
+  render(<QuotaPanel agent="codex" />);
+  await waitFor(() => expect(screen.getByTestId('quota-account').textContent).toBe('Signed in asAPI key'));
+  cleanup();
+  vi.mocked(ipc.getAccount).mockRejectedValue(new Error('no claude'));
+  render(<QuotaPanel agent="claude" />);
+  await waitFor(() => expect(screen.queryByTestId('quota-account')).toBeNull());
 });

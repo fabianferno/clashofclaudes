@@ -146,6 +146,17 @@ export interface AgentQuota {
   source: string;
 }
 
+/** Who an agent is signed in as (see src-tauri/src/account.rs). */
+export interface AgentAccount {
+  agent: AgentKind | null;
+  signedIn: boolean;
+  email: string | null;
+  /** Readable plan name, e.g. "Max 20x". */
+  plan: string | null;
+  /** How it signs in when that is not an account ("API key"). */
+  detail: string | null;
+}
+
 /** A model as the picker offers it: the id passed to the agent, its name, and the efforts it takes (empty: the agent's). */
 export interface ModelChoice {
   id: string;

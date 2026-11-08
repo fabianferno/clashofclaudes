@@ -1,3 +1,4 @@
+pub mod account;
 pub mod adapters;
 pub mod apps;
 pub mod attachments;
@@ -429,6 +430,7 @@ pub fn run() {
             commands::read_attachment,
             commands::discard_attachments,
             commands::refresh_quotas,
+            commands::get_account,
             commands::open_in_editor,
             commands::open_in_finder,
             commands::haptic,

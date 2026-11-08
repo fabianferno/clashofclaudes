@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ipc } from '../api/ipc';
-import type { AgentKind, QuotaWindow } from '../api/types';
+import type { AgentAccount, AgentKind, QuotaWindow } from '../api/types';
 import { useApp } from '../state/store';
 import { RESOURCE } from '../village/look';
 import { isCollectorAgent, leftNow, primaryWindow, quotaTone, untilText } from '../village/quota';
@@ -17,10 +17,24 @@ const BAR: Record<ReturnType<typeof quotaTone>, string> = {
 
 /** Where a collector's numbers come from when it has none yet. */
 const NO_READING: Partial<Record<AgentKind, string>> = {
-  claude: 'Claude reports its limits to sessions started from the village (Pro and Max plans only). Start one and the tank fills in.',
+  claude: 'Claude Code is asked for its limits every few minutes (Pro and Max plans only; an API key has none). Press Refresh to ask now.',
   codex: 'Codex records its limits with each turn. Run a Codex session and they show here.',
   antigravity: 'Antigravity is asked for its limits every few minutes. Press Refresh to ask now.',
 };
+
+/** The signed-in account at the top of the panel: undefined while asking, null when there is none to show. */
+function AccountBox({ account }: { account: AgentAccount | null | undefined }) {
+  if (account === null) return null;
+  const who = account?.email ?? account?.detail;
+  const extra = [account?.plan, account?.email ? account.detail : null].filter(Boolean).join(' · ');
+  return (
+    <div className="sp-box quota-account" data-testid="quota-account">
+      <div className="sp-d">{account === undefined ? 'Checking account…' : account.signedIn ? 'Signed in as' : 'Not signed in'}</div>
+      {account?.signedIn && who && <div className="sp-t quota-email" title={who}>{who}</div>}
+      {account?.signedIn && extra && <div className="sp-d">{extra}</div>}
+    </div>
+  );
+}
 
 const fmtTime = (ms: number) =>
   new Date(ms).toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' });
@@ -30,6 +44,12 @@ export default function QuotaPanel({ agent }: { agent: AgentKind }) {
   const q = useApp((s) => s.quotas[agent]);
   const [now, setNow] = useState(() => Date.now());
   const [busy, setBusy] = useState(false);
+  const [account, setAccount] = useState<AgentAccount | null | undefined>(undefined);
+  const readAccount = () => ipc.getAccount(agent).then(setAccount, () => setAccount(null)); // no account line beats an error toast
+  useEffect(() => {
+    setAccount(undefined);
+    void readAccount();
+  }, [agent]);
   useEffect(() => {
     const t = window.setInterval(() => setNow(Date.now()), 30_000);
     return () => window.clearInterval(t);
@@ -37,7 +57,8 @@ export default function QuotaPanel({ agent }: { agent: AgentKind }) {
   const refresh = async () => {
     setBusy(true);
     try {
-      useApp.getState().setQuotas(await ipc.refreshQuotas());
+      const [quotas] = await Promise.all([ipc.refreshQuotas(), readAccount()]);
+      useApp.getState().setQuotas(quotas);
       setNow(Date.now());
     } catch (e) {
       useApp.getState().setError(String(e));
@@ -55,6 +76,7 @@ export default function QuotaPanel({ agent }: { agent: AgentKind }) {
 
   return (
     <>
+      <AccountBox account={account} />
       {!q && <div className="sp-note" data-testid="quota-empty">{NO_READING[agent] ?? 'This agent reports no limits.'}</div>}
       {[...groups].map(([group, ws]) => (
         <div key={group || 'all'}>

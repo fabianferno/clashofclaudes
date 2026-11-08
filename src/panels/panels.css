@@ -19,6 +19,8 @@
 .sp-note { margin: 0 2px 10px; }
 .sp-gap { margin-top: 6px; }
 .sp-t { font-weight: 900; font-size: 14px; }
+.quota-account { display: flex; flex-direction: column; gap: 2px; }
+.quota-email { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sp-row {
   display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; font: inherit; color: inherit;
   background: linear-gradient(180deg, #fffdf6 0%, #fff4df 100%); border: 3px solid #d8c39a; border-radius: 12px; padding: 8px 10px; margin-bottom: 8px; cursor: pointer;

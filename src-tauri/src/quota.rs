@@ -369,7 +369,7 @@ pub fn read_claude_usage(cwd: &Path, timeout: Duration) -> Option<Vec<QuotaWindo
 
 /// Runs `program` in `cwd` with no stdin and returns its stdout; None on a missing binary,
 /// error or timeout (the child is killed).
-fn run_quiet(program: &str, args: &[&str], cwd: &Path, timeout: Duration) -> Option<String> {
+pub(crate) fn run_quiet(program: &str, args: &[&str], cwd: &Path, timeout: Duration) -> Option<String> {
     use std::process::{Command, Stdio};
     let mut child = Command::new(program)
         .args(args)

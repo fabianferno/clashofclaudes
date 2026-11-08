@@ -4,6 +4,9 @@
 //!   * Claude Code pipes JSON to the status-line command; app-launched sessions post it to the
 //!     hook server. `rate_limits.<window>.used_percentage` (0-100) and `resets_at` (epoch seconds
 //!     on some versions, ISO-8601 on others); any window may be absent.
+//!   * With no fresh status-line reading (no Claude session running in the app), Claude Code
+//!     answers `claude -p /usage` locally, without a model turn: `Current week (all models): 4%
+//!     used · resets Nov 14 at 8:30pm (Asia/Calcutta)` lines, in local time.
 //!   * Codex writes `token_count` events carrying `rate_limits.{primary,secondary}` into
 //!     `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`.
 //!   * Antigravity answers `agy -p /usage` locally: `group \t label \t NN% \t ISO reset` rows of
@@ -121,26 +124,111 @@ pub fn parse_claude_status(body: &Value) -> Option<Vec<QuotaWindow>> {
     let mut out = Vec::new();
     for (key, w) in rl {
         let Some(used) = w.get("used_percentage").and_then(Value::as_f64) else { continue };
-        let known = CLAUDE_WINDOWS.iter().find(|(k, ..)| k == key);
-        let (label, mins) = match known {
-            Some((_, l, m)) => (l.to_string(), Some(*m)),
-            None if key.starts_with("seven_day_") => {
-                let name = key["seven_day_".len()..].replace('_', " ");
-                (format!("Weekly {name} limit"), Some(10_080))
-            }
-            None => continue, // spend limits and the like are not windows
-        };
-        out.push(QuotaWindow {
-            id: key.clone(),
-            label,
-            group: None,
-            left_pct: clamp_pct(100.0 - used),
-            resets_at: w.get("resets_at").and_then(time_ms),
-            window_mins: mins,
-        });
+        // spend limits and the like are not windows
+        out.extend(claude_window(key, used, w.get("resets_at").and_then(time_ms)));
     }
+    sort_claude(&mut out);
+    (!out.is_empty()).then_some(out)
+}
+
+/// One Claude window by its status-line key; None for keys that are not windows.
+fn claude_window(key: &str, used: f64, resets_at: Option<i64>) -> Option<QuotaWindow> {
+    let (label, mins) = match CLAUDE_WINDOWS.iter().find(|(k, ..)| *k == key) {
+        Some((_, l, m)) => (l.to_string(), *m),
+        None if key.starts_with("seven_day_") => (format!("Weekly {} limit", key["seven_day_".len()..].replace('_', " ")), 10_080),
+        None => return None,
+    };
+    Some(QuotaWindow { id: key.into(), label, group: None, left_pct: clamp_pct(100.0 - used), resets_at, window_mins: Some(mins) })
+}
+
+fn sort_claude(out: &mut [QuotaWindow]) {
     let order = |id: &str| CLAUDE_WINDOWS.iter().position(|(k, ..)| *k == id).unwrap_or(CLAUDE_WINDOWS.len());
     out.sort_by_key(|w| order(&w.id));
+}
+
+/// The local clock: (UTC offset in seconds, year), for `/usage`'s local reset times.
+pub fn local_clock(now_ms: i64) -> (i64, i64) {
+    #[cfg(unix)]
+    {
+        let t: libc::time_t = (now_ms / 1000) as libc::time_t;
+        let mut tm: libc::tm = unsafe { std::mem::zeroed() };
+        if !unsafe { libc::localtime_r(&t, &mut tm) }.is_null() {
+            #[allow(clippy::useless_conversion)] // c_long is i32 on some targets
+            return (i64::from(tm.tm_gmtoff), i64::from(tm.tm_year) + 1900);
+        }
+    }
+    (0, 1970 + now_ms / 31_556_952_000)
+}
+
+/// `Nov 14 at 8:30pm (Asia/Calcutta)` or `3pm (…)`, in local time, to epoch ms: the next such
+/// moment (a date without a year is this year's, or next year's once it has passed).
+fn parse_local_reset(s: &str, now_ms: i64, offset_s: i64, year: i64) -> Option<i64> {
+    let s = s.split('(').next()?.trim().to_ascii_lowercase();
+    const MONTHS: [&str; 12] = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+    let mut words = s.split(|c: char| c.is_whitespace() || c == ',').filter(|w| !w.is_empty() && *w != "at").peekable();
+    let date = match words.peek().and_then(|w| MONTHS.iter().position(|m| w.starts_with(m))) {
+        Some(m) => {
+            words.next();
+            let d: i64 = words.next()?.trim_end_matches(|c: char| c.is_ascii_alphabetic()).parse().ok()?;
+            Some((m as i64 + 1, d))
+        }
+        None => None,
+    };
+    let time: String = words.collect();
+    let (clock, pm) = match (time.strip_suffix("pm"), time.strip_suffix("am")) {
+        (Some(c), _) => (c, true),
+        (_, Some(c)) => (c, false),
+        _ => return None,
+    };
+    let (h, mi) = match clock.split_once(':') {
+        Some((h, m)) => (h.parse::<i64>().ok()?, m.parse::<i64>().ok()?),
+        None => (clock.parse::<i64>().ok()?, 0),
+    };
+    if !(1..=12).contains(&h) || !(0..60).contains(&mi) {
+        return None;
+    }
+    let secs_of_day = (h % 12 + if pm { 12 } else { 0 }) * 3600 + mi * 60;
+    let now_s = now_ms / 1000;
+    let at = match date {
+        Some((m, d)) => {
+            if !(1..=31).contains(&d) {
+                return None;
+            }
+            let at = |y| days_from_civil(y, m, d) * 86_400 + secs_of_day - offset_s;
+            let t = at(year);
+            if t < now_s - 86_400 { at(year + 1) } else { t }
+        }
+        None => {
+            let local = now_s + offset_s;
+            let t = local - local.rem_euclid(86_400) + secs_of_day - offset_s;
+            if t < now_s - 60 { t + 86_400 } else { t }
+        }
+    };
+    Some(at * 1000)
+}
+
+/// Windows from `claude -p /usage` text; None when no `Current …: N% used` line parses.
+pub fn parse_claude_usage(text: &str, now_ms: i64, offset_s: i64, year: i64) -> Option<Vec<QuotaWindow>> {
+    let mut out = Vec::new();
+    for line in text.lines() {
+        let Some(rest) = line.trim().strip_prefix("Current ") else { continue };
+        let Some((name, rest)) = rest.split_once(':') else { continue };
+        let Some((pct, rest)) = rest.trim().split_once("% used") else { continue };
+        let Ok(used) = pct.trim().parse::<f64>() else { continue };
+        let (span, scope) = match name.split_once('(') {
+            Some((a, b)) => (a.trim(), b.trim_end_matches(')').trim()),
+            None => (name.trim(), ""),
+        };
+        let key = match (span, scope.to_ascii_lowercase().as_str()) {
+            ("session", _) => "five_hour".to_string(),
+            ("week", "" | "all models") => "seven_day".to_string(),
+            ("week", model) => format!("seven_day_{}", model.replace(|c: char| !c.is_ascii_alphanumeric(), "_")),
+            _ => continue,
+        };
+        let resets_at = rest.split_once("resets").and_then(|(_, r)| parse_local_reset(r, now_ms, offset_s, year));
+        out.extend(claude_window(&key, used, resets_at));
+    }
+    sort_claude(&mut out);
     (!out.is_empty()).then_some(out)
 }
 
@@ -262,9 +350,29 @@ pub fn read_codex_rollout(path: &Path) -> Option<(Vec<QuotaWindow>, Option<i64>)
 
 /// Runs `agy -p /usage` in `cwd` and parses it; None on a missing binary, error or timeout.
 pub fn read_agy_usage(cwd: &Path, timeout: Duration) -> Option<Vec<QuotaWindow>> {
+    parse_agy_usage(&run_quiet("agy", &["-p", "/usage"], cwd, timeout)?)
+}
+
+/// Runs Claude Code's local `/usage` in `cwd` and parses it; None on a missing binary, error,
+/// timeout, or an account without plan limits (an API key). No model turn is taken; the user's
+/// settings, plugins and MCP servers stay out (no hooks run) and no session is saved.
+pub fn read_claude_usage(cwd: &Path, timeout: Duration) -> Option<Vec<QuotaWindow>> {
+    let args = ["-p", "/usage", "--output-format", "json", "--setting-sources", "", "--strict-mcp-config", "--no-session-persistence"];
+    let out: Value = serde_json::from_str(run_quiet("claude", &args, cwd, timeout)?.trim()).ok()?;
+    if out.get("is_error").and_then(Value::as_bool) == Some(true) {
+        return None;
+    }
+    let now = now_ms();
+    let (offset, year) = local_clock(now);
+    parse_claude_usage(out.get("result")?.as_str()?, now, offset, year)
+}
+
+/// Runs `program` in `cwd` with no stdin and returns its stdout; None on a missing binary,
+/// error or timeout (the child is killed).
+fn run_quiet(program: &str, args: &[&str], cwd: &Path, timeout: Duration) -> Option<String> {
     use std::process::{Command, Stdio};
-    let mut child = Command::new("agy")
-        .args(["-p", "/usage"])
+    let mut child = Command::new(program)
+        .args(args)
         .current_dir(cwd)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -289,7 +397,7 @@ pub fn read_agy_usage(cwd: &Path, timeout: Duration) -> Option<Vec<QuotaWindow>>
             }
         }
     }
-    parse_agy_usage(&reader.join().ok()?)
+    reader.join().ok()
 }
 
 pub type QuotaEmit = Arc<dyn Fn(&AgentQuota) + Send + Sync>;
@@ -310,6 +418,11 @@ impl QuotaStore {
         let saved: Vec<AgentQuota> = std::fs::read(&path).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
         let map = saved.into_iter().map(|q| (key(&q.agent), q)).collect();
         QuotaStore { path, map: Mutex::new(map), emit }
+    }
+
+    /// When the agent's latest reading was taken, if any.
+    pub fn updated_at(&self, agent: &AgentKind) -> Option<i64> {
+        self.map.lock().unwrap_or_else(|e| e.into_inner()).get(&key(agent)).map(|q| q.updated_at)
     }
 
     pub fn all(&self) -> Vec<AgentQuota> {
@@ -375,14 +488,37 @@ pub fn codex_sessions_dir() -> Option<PathBuf> {
 pub const CODEX_EVERY: Duration = Duration::from_secs(60);
 pub const AGY_EVERY: Duration = Duration::from_secs(300);
 const AGY_TIMEOUT: Duration = Duration::from_secs(20);
+/// `/usage` is asked when no Claude reading is this fresh (a running session's status line
+/// keeps it fresher, and is the better source: exact reset times).
+pub const CLAUDE_EVERY: Duration = Duration::from_secs(300);
+const CLAUDE_TIMEOUT: Duration = Duration::from_secs(30);
+pub const CLAUDE_USAGE_SOURCE: &str = "claude /usage";
 
-/// Polls the file and process sources (Claude's readings arrive through the hook server).
+/// Reads `/usage`-style windows for an agent (agy, Claude); swapped out in tests.
+pub type UsageReader = Box<dyn Fn(&AgentKind, &Path) -> Option<Vec<QuotaWindow>> + Send + Sync>;
+
+/// The real readers: the agent's CLI, if installed.
+pub fn cli_usage_reader(installed: Box<dyn Fn(&AgentKind) -> bool + Send + Sync>) -> UsageReader {
+    Box::new(move |agent, cwd| {
+        if !installed(agent) {
+            return None;
+        }
+        match agent {
+            AgentKind::Antigravity => read_agy_usage(cwd, AGY_TIMEOUT),
+            AgentKind::Claude => read_claude_usage(cwd, CLAUDE_TIMEOUT),
+            _ => None,
+        }
+    })
+}
+
+/// Polls the file and process sources (a running Claude session's readings arrive through the
+/// hook server; `/usage` fills in while none is running).
 pub struct Poller {
     store: Arc<QuotaStore>,
-    /// `agy` runs here so it never touches a project folder.
+    /// The CLIs run here so they never touch a project folder.
     cwd: PathBuf,
     codex_dir: Option<PathBuf>,
-    agy_installed: Box<dyn Fn() -> bool + Send + Sync>,
+    read_usage: UsageReader,
     last: Mutex<PollMarks>,
 }
 
@@ -390,14 +526,16 @@ pub struct Poller {
 struct PollMarks {
     codex_file: Option<(PathBuf, SystemTime)>,
     agy_at: Option<std::time::Instant>,
+    claude_at: Option<std::time::Instant>,
 }
 
 impl Poller {
-    pub fn new(store: Arc<QuotaStore>, cwd: PathBuf, codex_dir: Option<PathBuf>, agy_installed: Box<dyn Fn() -> bool + Send + Sync>) -> Poller {
-        Poller { store, cwd, codex_dir, agy_installed, last: Mutex::default() }
+    pub fn new(store: Arc<QuotaStore>, cwd: PathBuf, codex_dir: Option<PathBuf>, read_usage: UsageReader) -> Poller {
+        Poller { store, cwd, codex_dir, read_usage, last: Mutex::default() }
     }
 
-    /// Reads Codex when its newest rollout changed (or `force`), and agy when due (or `force`).
+    /// Reads Codex when its newest rollout changed (or `force`), agy when due (or `force`), and
+    /// Claude's `/usage` when due and no fresher Claude reading came in (or `force`).
     pub fn poll(&self, force: bool) {
         if let Some(path) = self.codex_dir.as_deref().and_then(latest_codex_rollout) {
             let mtime = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
@@ -418,11 +556,20 @@ impl Poller {
             }
             due
         };
-        if due
-            && (self.agy_installed)()
-            && let Some(w) = read_agy_usage(&self.cwd, AGY_TIMEOUT)
-        {
+        if due && let Some(w) = (self.read_usage)(&AgentKind::Antigravity, &self.cwd) {
             self.store.set(AgentKind::Antigravity, w, "agy /usage", None);
+        }
+        let fresh = self.store.updated_at(&AgentKind::Claude).is_some_and(|at| now_ms() - at < CLAUDE_EVERY.as_millis() as i64);
+        let due = {
+            let mut l = self.last.lock().unwrap_or_else(|e| e.into_inner());
+            let due = force || (!fresh && l.claude_at.is_none_or(|t| t.elapsed() >= CLAUDE_EVERY));
+            if due {
+                l.claude_at = Some(std::time::Instant::now());
+            }
+            due
+        };
+        if due && let Some(w) = (self.read_usage)(&AgentKind::Claude, &self.cwd) {
+            self.store.set_keeping_reset(AgentKind::Claude, w, CLAUDE_USAGE_SOURCE);
         }
     }
 
@@ -480,6 +627,83 @@ Gemini 4 Argon\tGemini 4 Argon Weekly Limit\t100%\t2026-11-07T16:00:11Z\n";
         assert_eq!(parse_claude_status(&json!({ "rate_limits": {} })), None);
     }
 
+    /// Captured from Claude Code 2.1.319 on 2026-11-08 (`claude -p /usage`, its JSON `result`).
+    const CLAUDE_USAGE: &str = "You are currently using your subscription to power your Claude Code usage\n\n\
+Current week (all models): 4% used · resets Nov 14 at 8:30pm (Asia/Calcutta)\n\
+Current week (Fable): 0% used · resets Nov 14 at 8:30pm (Asia/Calcutta)\n\n\
+What's contributing to your usage?\n\
+Last 24h · 445 requests · 7 sessions\n  81%  Give simple subagents a cheaper model\n";
+    const IST: i64 = 5 * 3600 + 1800;
+
+    #[test]
+    fn claude_usage_reads_the_weekly_windows_in_local_time() {
+        let now = parse_iso_ms("2026-11-08T05:00:00Z").unwrap();
+        let w = parse_claude_usage(CLAUDE_USAGE, now, IST, 2026).unwrap();
+        assert_eq!(w.iter().map(|w| w.id.as_str()).collect::<Vec<_>>(), ["seven_day", "seven_day_fable"]);
+        assert_eq!((w[0].label.as_str(), w[0].left_pct, w[0].window_mins), ("Weekly limit", 96.0, Some(10_080)));
+        assert_eq!(w[1].label, "Weekly fable limit");
+        // 8:30pm IST on Nov 14 is 15:00 UTC
+        assert_eq!(w[0].resets_at, parse_iso_ms("2026-11-14T15:00:00Z"));
+        // the tips' percentages are not windows
+        assert_eq!(parse_claude_usage("Last 24h\n  81%  Give simple subagents a cheaper model", now, IST, 2026), None);
+    }
+
+    #[test]
+    fn claude_usage_reads_the_session_window_and_rolls_resets_forward() {
+        let now = parse_iso_ms("2026-12-31T16:00:00Z").unwrap(); // 9:30pm IST
+        let w = parse_claude_usage("Current session: 37% used · resets 3am (Asia/Calcutta)\nCurrent week (all models): 50% used · resets Jan 2 at 9:15am (Asia/Calcutta)", now, IST, 2026).unwrap();
+        assert_eq!((w[0].id.as_str(), w[0].left_pct, w[0].window_mins), ("five_hour", 63.0, Some(300)));
+        assert_eq!(w[0].resets_at, parse_iso_ms("2026-12-31T21:30:00Z"), "3am is tomorrow's");
+        assert_eq!(w[1].resets_at, parse_iso_ms("2027-01-02T03:45:00Z"), "a date already past this year is next year's");
+        let w = parse_claude_usage("Current week (all models): 100% used", now, IST, 2026).unwrap();
+        assert_eq!((w[0].left_pct, w[0].resets_at), (0.0, None));
+    }
+
+    /// Live: asks the installed Claude Code (`cargo test -- --ignored claude_usage_live`).
+    #[test]
+    #[ignore]
+    fn claude_usage_live() {
+        let w = read_claude_usage(&std::env::temp_dir(), CLAUDE_TIMEOUT).expect("a subscription reading");
+        eprintln!("{w:#?}");
+        assert!(w.iter().any(|w| w.id == "seven_day"));
+    }
+
+    #[test]
+    fn claude_usage_is_asked_only_without_a_fresh_reading() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(QuotaStore::new(dir.path().join("quota.json"), Arc::new(|_| {})));
+        let asked = Arc::new(Mutex::new(0));
+        let a = asked.clone();
+        let p = Poller::new(store.clone(), dir.path().into(), None, Box::new(move |agent, _| {
+            if *agent != AgentKind::Claude {
+                return None;
+            }
+            *a.lock().unwrap() += 1;
+            parse_claude_usage("Current week (all models): 4% used", 0, 0, 2026)
+        }));
+        p.poll(false);
+        assert_eq!(*asked.lock().unwrap(), 1, "no reading yet: ask at once");
+        assert_eq!(store.all()[0].source, CLAUDE_USAGE_SOURCE);
+        assert_eq!(store.all()[0].windows[0].left_pct, 96.0);
+        p.poll(false);
+        assert_eq!(*asked.lock().unwrap(), 1, "the reading is fresh");
+        p.poll(true);
+        assert_eq!(*asked.lock().unwrap(), 2, "a refresh asks now");
+
+        let store = Arc::new(QuotaStore::new(dir.path().join("quota2.json"), Arc::new(|_| {})));
+        store.set_keeping_reset(AgentKind::Claude, parse_claude_usage("Current week (all models): 10% used", 0, 0, 2026).unwrap(), "Claude Code status line");
+        let asked = Arc::new(Mutex::new(0));
+        let a = asked.clone();
+        let p = Poller::new(store, dir.path().into(), None, Box::new(move |agent, _| {
+            if *agent == AgentKind::Claude {
+                *a.lock().unwrap() += 1;
+            }
+            None
+        }));
+        p.poll(false);
+        assert_eq!(*asked.lock().unwrap(), 0, "a running session's status line is fresher");
+    }
+
     #[test]
     fn codex_lines_read_primary_and_secondary() {
         let line = r#"{"timestamp":"2026-08-17T10:52:51.096Z","type":"event_msg","payload":{"type":"token_count","rate_limits":{"primary":{"used_percent":95.0,"window_minutes":300,"resets_at":1789555965},"secondary":{"used_percent":20.0,"window_minutes":10080,"resets_in_seconds":60},"credits":null}}}"#;
@@ -533,9 +757,11 @@ Gemini 4 Argon\tGemini 4 Argon Weekly Limit\t100%\t2026-11-07T16:00:11Z\n";
         let store = Arc::new(QuotaStore::new(dir.path().join("quota.json"), Arc::new(move |_| *h.lock().unwrap() += 1)));
         let asked = Arc::new(Mutex::new(0));
         let a = asked.clone();
-        let p = Poller::new(store.clone(), dir.path().into(), Some(dir.path().join("sessions")), Box::new(move || {
-            *a.lock().unwrap() += 1;
-            false
+        let p = Poller::new(store.clone(), dir.path().into(), Some(dir.path().join("sessions")), Box::new(move |agent, _| {
+            if *agent == AgentKind::Antigravity {
+                *a.lock().unwrap() += 1;
+            }
+            None
         }));
         p.poll(false);
         p.poll(false);

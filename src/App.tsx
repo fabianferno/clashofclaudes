@@ -17,6 +17,7 @@ import { preloadTerminal } from './components/LazyTerminalView';
 import TourOverlay from './onboarding/TourOverlay';
 import { startTour } from './onboarding/tour';
 import { loadSettings, tidyOnce } from './state/settings';
+import { splashReady } from './splash';
 import './App.css';
 
 function App() {
@@ -49,6 +50,7 @@ function App() {
       .then((s) => {
         if (cancelled) return;
         useApp.getState().hydrate(s);
+        splashReady('state');
         // Compounds for workspaces without one, spots for sessions without one.
         stopLayout = autoLayout((e) => useApp.getState().setError(String(e)));
         settings.then((st) => { if (!cancelled) return tidyOnce(st).catch((e) => useApp.getState().setError(String(e))); }, () => {});
@@ -56,6 +58,7 @@ function App() {
       .catch((e) => {
         if (cancelled) return;
         useApp.getState().markLoaded(); // the welcome card must not stay hidden forever
+        splashReady('state');
         useApp.getState().setError(String(e));
         // Workspaces added from here on still need compounds and spots.
         stopLayout = autoLayout((err) => useApp.getState().setError(String(err)));

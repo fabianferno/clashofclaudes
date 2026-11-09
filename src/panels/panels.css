@@ -184,7 +184,9 @@
 .kb-pick-list li.hot { background: #f0dfb8; }
 .kb-pick-list li[aria-selected="true"] .kb-pick-name { color: #2f7d17; }
 .kb-start .kb-reason { flex: 1; color: var(--sp-ink-soft); }
-.kb-add { display: flex; gap: 6px; }
+.kb-add { display: flex; gap: 6px; flex-wrap: wrap; }
+.kb-add select { flex: 1 0 100%; border: 2px solid #c8b083; border-radius: 8px; padding: 5px 6px; background: #fff8e8; font: 700 13px system-ui; color: #2b2018; }
+.kb-ws { align-self: flex-start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: #fff; padding: 1px 8px; border-radius: 999px; }
 .kb-add input { flex: 1; min-width: 0; border: 2px solid #c8b083; border-radius: 8px; padding: 6px 8px; background: #fff8e8; font: 600 13px system-ui; color: #2b2018; }
 
 /* a house's roof colour (WorkspacePanel) */
@@ -271,3 +273,24 @@
 .kb-add + .att-strip { margin: 6px 0 0; }
 .kb-todo .att-strip { margin: 0; }
 .kb-todo .att-thumb { width: 44px; height: 44px; }
+
+/* ⌘K command palette: above every page, under the quit dialog */
+.cmdk-bg { position: fixed; inset: 0; z-index: 60; background: rgba(20,13,7,.45); display: flex; justify-content: center; align-items: flex-start; padding: 12vh 16px 16px; }
+.cmdk {
+  width: min(640px, 100%); max-height: min(560px, 76vh); display: flex; flex-direction: column; overflow: hidden;
+  background: var(--sp-parch); color: #2b2018; font-family: system-ui, sans-serif;
+  border: 4px solid var(--hud-out); border-radius: 16px; box-shadow: 0 6px 0 var(--hud-out), 0 24px 60px rgba(0,0,0,.5);
+}
+.cmdk-field { display: flex; align-items: center; gap: 8px; background: var(--wood); padding: 10px 12px; border-bottom: 4px solid var(--hud-out); }
+.cmdk-field input { flex: 1; min-width: 0; border: 3px solid var(--hud-out); border-radius: 10px; padding: 9px 12px; background: #fff8e8; color: #2b2018; font: 700 16px system-ui; outline: none; }
+.cmdk-field input:focus { border-color: #f2b33d; }
+.cmdk-step { font: 400 16px 'Lilita One', sans-serif; color: #f3e7cc; white-space: nowrap; }
+.cmdk-list { overflow-y: auto; padding: 6px 8px 8px; flex: 1; min-height: 0; }
+.cmdk-group { font: 400 13px 'Lilita One', sans-serif; color: var(--sp-ink-soft); letter-spacing: .4px; margin: 8px 6px 4px; }
+.cmdk-item { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border: 2px solid transparent; border-radius: 10px; cursor: pointer; }
+.cmdk-item[aria-selected="true"] { background: #fff8e8; border-color: #a8885a; }
+.cmdk-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.cmdk-label { font-weight: 900; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmdk-hint { font-size: 12px; font-weight: 700; color: var(--sp-ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmdk-empty { padding: 18px 10px; text-align: center; font-weight: 700; color: var(--sp-ink-soft); }
+.cmdk-foot { display: flex; justify-content: space-between; gap: 8px; padding: 6px 12px; border-top: 2px solid #d8c39a; background: var(--sp-parch2); font-size: 11px; font-weight: 700; color: var(--sp-ink-soft); }

@@ -19,6 +19,8 @@ export default function WorkspacePanel({ workspaceId }: { workspaceId: string })
   const [addr, setAddr] = useState<string | null>(null);
   // a builder dropped on this workspace opens the form with them picked
   const preset = useApp((s) => (s.selection?.kind === 'workspace' && s.selection.id === workspaceId ? s.selection.builder : undefined));
+  // the command palette's "New session in …"
+  const asked = useApp((s) => s.selection?.kind === 'workspace' && s.selection.id === workspaceId && !!s.selection.newSession);
   const [confirm, setConfirm] = useState(false);
   const [coloring, setColoring] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -43,10 +45,10 @@ export default function WorkspacePanel({ workspaceId }: { workspaceId: string })
     try { await f(); } catch (e) { setErr(String(e)); }
   };
 
-  if (form || preset) {
+  if (form || preset || (asked && !ws.missing)) {
     const back = () => {
       setForm(false);
-      if (preset) useApp.getState().setSelection({ kind: 'workspace', id: workspaceId });
+      if (preset || asked) useApp.getState().setSelection({ kind: 'workspace', id: workspaceId });
     };
     return (
       <>

@@ -15,7 +15,7 @@ const ipc = vi.hoisted(() => ({
   discardAttachments: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock('../api/ipc', () => ({ ipc }));
-import { useApp } from '../state/store';
+import { KANBAN_ALL, useApp } from '../state/store';
 import Kanban, { kanbanColumn } from './Kanban';
 
 const ws: Workspace = { id: 'w1', name: 'shop', path: '/p/shop', createdAt: 0, missing: false, level: 1, xp: 0, compound: null };
@@ -168,4 +168,33 @@ test('images pasted into a new task go with it, show on its card and are handed 
   ipc.startSession.mockResolvedValue(sess('s9', 'b1', { kind: 'starting' }));
   fireEvent.click(screen.getByRole('button', { name: 'Start' }));
   await waitFor(() => expect(ipc.startSession).toHaveBeenCalledWith('w1', 'b1', '', [img]));
+});
+
+test("the Town Hall's board holds every workspace's sessions and To Do, each tagged with its workspace", async () => {
+  const ws2: Workspace = { ...ws, id: 'w2', name: 'blog', path: '/p/blog' };
+  act(() => useApp.setState({
+    workspaces: [ws, ws2], kanban: KANBAN_ALL,
+    todos: [{ id: 't9', workspaceId: 'w2', text: 'Write post', createdAt: 1 }],
+  }));
+  act(() => useApp.getState().upsertSession(sess('s1', 'b1', { kind: 'working' })));
+  act(() => useApp.getState().upsertSession(sess('s2', 'b2', { kind: 'needsYou', reason: 'Wants permission' }, { workspaceId: 'w2' })));
+  render(<Kanban />);
+  expect(screen.getByRole('heading', { name: 'All workspaces' })).toBeTruthy();
+  expect(within(column('Active')).getByText('shop')).toBeTruthy();
+  expect(within(column('Needs You')).getByText('blog')).toBeTruthy();
+  expect(within(screen.getByTestId('kb-todo-t9')).getByText('blog')).toBeTruthy();
+  // a new task goes to the workspace picked for it
+  ipc.addTodo.mockResolvedValue({ id: 't1', workspaceId: 'w2', text: 'Fix footer', createdAt: 2 });
+  fireEvent.change(screen.getByRole('combobox', { name: 'Workspace' }), { target: { value: 'w2' } });
+  fireEvent.change(screen.getByRole('textbox', { name: 'New task' }), { target: { value: 'Fix footer' } });
+  fireEvent.click(screen.getByText('Add'));
+  await waitFor(() => expect(ipc.addTodo).toHaveBeenCalledWith('w2', 'Fix footer', []));
+});
+
+test('a workspace board has no workspace picker or tags', () => {
+  act(() => useApp.getState().upsertSession(sess('s1', 'b1', { kind: 'working' })));
+  render(<Kanban />);
+  expect(screen.queryByRole('combobox', { name: 'Workspace' })).toBeNull();
+  expect(screen.getByRole('heading', { name: 'shop' })).toBeTruthy();
+  expect(screen.queryAllByText('shop')).toHaveLength(1); // the heading only
 });

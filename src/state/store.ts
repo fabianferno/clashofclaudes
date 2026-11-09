@@ -9,8 +9,11 @@ import { collectorFits, collectorTiles, shownCollectors } from '../village/quota
 
 export type Selection =
   | { kind: 'hall' }
-  /** `builder`: open the new-session form with this idle builder picked (dropped on the workspace). */
-  | { kind: 'workspace'; id: string; builder?: string }
+  /**
+   * `builder`: open the new-session form with this idle builder picked (dropped on the workspace).
+   * `newSession`: open the new-session form (from the command palette).
+   */
+  | { kind: 'workspace'; id: string; builder?: string; newSession?: boolean }
   | { kind: 'session'; id: string }
   | { kind: 'builder'; id: string }
   | { kind: 'quota'; agent: AgentKind };
@@ -212,9 +215,12 @@ export interface AppState {
   todos: Todo[];
   addTodo: (t: Todo) => void;
   removeTodo: (id: string) => void;
-  /** The workspace whose Kanban is open full-page, if any. */
+  /** The workspace whose Kanban is open full-page (KANBAN_ALL: every workspace's, from the Town Hall), if any. */
   kanban: string | null;
   setKanban: (workspaceId: string | null) => void;
+  /** The ⌘K command palette is open. */
+  paletteOpen: boolean;
+  setPaletteOpen: (open: boolean) => void;
   /** The Settings page is open full-page. */
   settingsOpen: boolean;
   setSettingsOpen: (open: boolean) => void;
@@ -260,6 +266,7 @@ export const useApp = create<AppState>((set, get) => ({
   covers: 0,
   todos: [],
   kanban: null,
+  paletteOpen: false,
   settingsOpen: false,
   settings: null,
   bugReport: null,
@@ -385,6 +392,7 @@ export const useApp = create<AppState>((set, get) => ({
     if (kanban) try { ipc.trackUsage('kanbanOpened').catch(() => {}); } catch { /* no backend */ }
   },
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
+  setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
   setSettings: (settings) => set({ settings }),
   setBugReport: (bugReport) => set({ bugReport }),
   setUpdateAvailable: (updateAvailable) => set({ updateAvailable }),
@@ -446,6 +454,9 @@ useApp.subscribe((st, prev) => {
   if (st.workspaces === prev.workspaces && st.builders === prev.builders && st.sessions === prev.sessions) return;
   if (!selectionAlive(st)) st.setSelection(null);
 });
+
+/** `kanban` for the Town Hall's board: every workspace's sessions and To Do on one page. */
+export const KANBAN_ALL = '*';
 
 export function sessionsByWorkspace(state: Pick<AppState, 'sessions'>, wsId: string): SessionInfo[] {
   return Object.values(state.sessions)

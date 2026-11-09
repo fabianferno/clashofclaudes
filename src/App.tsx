@@ -13,6 +13,7 @@ import PopOutApp from './panels/PopOutApp';
 import Kanban from './panels/Kanban';
 import SettingsPage from './panels/SettingsPage';
 import BugReportDialog, { openBugReport } from './panels/BugReport';
+import CommandPalette from './panels/CommandPalette';
 import { preloadTerminal } from './components/LazyTerminalView';
 import TourOverlay from './onboarding/TourOverlay';
 import { startTour } from './onboarding/tour';
@@ -87,6 +88,7 @@ function App() {
     <BugReportDialog />
     <TourOverlay />
     <UpdateToast />
+    <CommandPalette />
     <div className="toasts">
       {error && <div className="error" onClick={() => setError(null)}>{error}</div>}
       {notices.map((n) => <div key={n.id} className={`notice notice-${n.kind}`}>{n.text}</div>)}

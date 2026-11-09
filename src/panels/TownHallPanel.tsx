@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useApp } from '../state/store';
+import { KANBAN_ALL, useApp } from '../state/store';
 import * as wsActions from '../state/workspaceActions';
 import AgentsStatus from './AgentsStatus';
 import FolderHint from './FolderHint';
@@ -33,6 +33,9 @@ export default function TownHallPanel() {
         </button>
       ))}
       <div className="sp-btns">
+        {workspaces.length > 0 && (
+          <button className="hud-btn sm" title="Every workspace's sessions and To Do on one board" onClick={() => useApp.getState().setKanban(KANBAN_ALL)}>Kanban</button>
+        )}
         <button className="hud-btn blue sm" onClick={() => void wsActions.openFolder()}>Open workspace</button>
         {newName === null
           ? <button className="hud-btn sm" onClick={() => setNewName('')}>New workspace</button>

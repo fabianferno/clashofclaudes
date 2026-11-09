@@ -94,6 +94,8 @@ struct SessionEntry {
     conversation: Option<String>,
     /// Restored paused, but its process was running when the app last closed: resumed at startup.
     was_running: bool,
+    /// Restored paused: its state when the app last saved it running (`info.state` is Ended now).
+    saved_state: Option<SessionState>,
 }
 
 impl SessionEntry {
@@ -124,6 +126,7 @@ impl SessionEntry {
             adapter,
             conversation: None,
             was_running: false,
+            saved_state: None,
         }
     }
 
@@ -135,6 +138,7 @@ impl SessionEntry {
             kind: i.kind.clone(),
             task: i.task.clone(),
             title: i.title.clone(),
+            state: if i.paused { self.saved_state.clone() } else { Some(i.state.clone()) },
             started_at: i.started_at,
             steps: i.steps,
             reached_finished: i.reached_finished,
@@ -142,7 +146,8 @@ impl SessionEntry {
             worktree: i.worktree.clone(),
             conversation: self.conversation.clone(),
             rev: i.rev,
-            running: !self.exited && !i.paused,
+            // still owed its resume (restored, not started yet): it picks up at the next launch
+            running: (!self.exited && !i.paused) || (i.paused && self.was_running),
         }
     }
 
@@ -491,6 +496,12 @@ impl SessionManager {
             paused: false,
             subagents: vec![],
         };
+        if adapter.is_some()
+            && let Some(p) = &prior
+        {
+            // reopened at its prompt, with no task sent: not at work until it says so
+            info.state = crate::status::reopened_state(p.state.as_ref());
+        }
         let conversation = prior.and_then(|p| {
             info.task = p.task;
             info.title = p.title;
@@ -1059,6 +1070,7 @@ impl SessionManager {
                 e.exited = true;
                 e.conversation = s.conversation;
                 e.was_running = s.running;
+                e.saved_state = s.state;
                 g.insert(s.id, e);
             }
             g.len()
@@ -2333,6 +2345,51 @@ printf '\033]7501;state=idle:app=antigravity\033\\'; sleep 5"#;
         assert!(!again.contains(&ended.id));
         assert_eq!(again.len(), 2);
         m2.shutdown(KILL_GRACE);
+    }
+
+    #[test]
+    fn a_reopened_agent_waits_at_its_prompt_instead_of_reading_as_at_work() {
+        let fx = fixture();
+        // prints as an agent's TUI does when it comes up, then waits
+        let b = custom("b1", "printf 'welcome back'; sleep 30");
+        let a = fx.mgr.start_agent(&fx.ws, &b, None, &[]).unwrap(); // a task would be appended to the command
+        assert!(wait_until(|| state(&fx, &a.id) == SessionState::Working), "at work when the app quits");
+        fx.mgr.shutdown(KILL_GRACE);
+
+        let m = relaunch(&fx);
+        m.restore(std::slice::from_ref(&fx.ws), std::slice::from_ref(&b));
+        // a session restored but not resumed keeps the state it was saved with
+        m.shutdown(KILL_GRACE);
+        let m = relaunch(&fx);
+        m.restore(std::slice::from_ref(&fx.ws), std::slice::from_ref(&b));
+        let out = m.resume_was_running(std::slice::from_ref(&fx.ws), std::slice::from_ref(&b));
+        assert!(out.iter().all(|(_, r)| r.is_ok()));
+        let reopened = SessionState::NeedsYou { reason: crate::status::REOPENED_REASON.into() };
+        let now = || m.list().into_iter().find(|s| s.id == a.id).unwrap();
+        assert_eq!(now().state, reopened);
+        // its output (the agent coming back up) is no turn
+        let end = Instant::now() + Duration::from_secs(5);
+        while now().last_output_at == now().started_at && Instant::now() < end {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        std::thread::sleep(Duration::from_millis(200));
+        assert_eq!(now().state, reopened);
+        m.shutdown(KILL_GRACE);
+    }
+
+    #[test]
+    fn reopened_agents_rest_by_how_they_were_left() {
+        use crate::status::{reopened_state, REOPENED_REASON};
+        let waits = SessionState::NeedsYou { reason: REOPENED_REASON.into() };
+        assert_eq!(reopened_state(Some(&SessionState::Working)), waits);
+        assert_eq!(reopened_state(Some(&SessionState::NeedsYou { reason: "Wants permission".into() })), waits, "the prompt it asked is gone");
+        assert_eq!(reopened_state(Some(&SessionState::Finished)), SessionState::Finished);
+        assert_eq!(reopened_state(None), SessionState::Finished, "saved before states were kept");
+        // agy and Grok report idle as they come up: still the same wait
+        let p = crate::adapters::AntigravityAdapter.policy();
+        assert_eq!(crate::status::next_state(&waits, &crate::status::StatusEvent::Idle, &p), waits);
+        assert_eq!(crate::status::next_state(&waits, &crate::status::StatusEvent::Output, &p), waits);
+        assert_eq!(crate::status::next_state(&waits, &crate::status::StatusEvent::PromptSubmitted, &p), SessionState::Working);
     }
 
     #[test]

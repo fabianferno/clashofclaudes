@@ -57,6 +57,23 @@ impl StatusPolicy {
 /// typed instructions.
 pub const DENIED_REASON: &str = "Denied — say what to do instead in the terminal";
 
+/// NeedsYou reason for an agent reopened after the app quit or restarted mid-turn: it is back on
+/// its conversation, at its prompt, and goes on only when told to.
+pub const REOPENED_REASON: &str = "Reopened after a restart — say what to do next in the terminal";
+
+/// How an agent reopened without a prompt rests, given its state when the app last saved it: a
+/// turn the quit cut short waits for the owner; anything else (a finished turn, or a save from
+/// before states were kept) is at rest, finished. Never Working: no turn runs until the owner
+/// types, and only the agent's own events (hooks, status reports) say one started.
+pub fn reopened_state(before: Option<&SessionState>) -> SessionState {
+    match before {
+        Some(SessionState::Starting | SessionState::Working | SessionState::NeedsYou { .. } | SessionState::Stuck { .. }) => {
+            SessionState::NeedsYou { reason: REOPENED_REASON.into() }
+        }
+        _ => SessionState::Finished,
+    }
+}
+
 /// NeedsYou reason once the agent was interrupted mid-turn and waits for typed instructions.
 pub const INTERRUPTED_REASON: &str = "Stopped — say what to do next in the terminal";
 
@@ -96,6 +113,8 @@ pub fn next_state(state: &SessionState, ev: &StatusEvent, policy: &StatusPolicy)
         (_, E::PermissionRequested { message }) => S::NeedsYou { reason: message.clone() },
         // The interrupt that follows a denial keeps the denial's (more specific) reason.
         (S::NeedsYou { reason }, E::AskedInTerminal { .. } | E::Idle) if reason == DENIED_REASON => state.clone(),
+        // An agent reopened at its prompt reports idle as it comes up: still the same wait.
+        (S::NeedsYou { reason }, E::Idle) if reason == REOPENED_REASON => state.clone(),
         (_, E::AskedInTerminal { message }) => S::NeedsYou { reason: message.clone() },
         // Idle at launch (before a task's first `working`) or after a finished turn is no news;
         // mid-turn or at an open prompt it means the turn was interrupted.

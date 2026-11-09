@@ -1,7 +1,7 @@
 //! `<data>/sessions.json`: the sessions listed in the village, kept up to date as they change, so
 //! a quit, a crash or a dev rebuild brings them back: the ones that were running resume on their
 //! own, the rest come back paused (see `SessionManager::restore` and `resume_was_running`).
-use crate::model::{SessionKind, Tile, WorktreeInfo};
+use crate::model::{SessionKind, SessionState, Tile, WorktreeInfo};
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -15,6 +15,9 @@ pub struct SavedSession {
     pub task: Option<String>,
     #[serde(default)]
     pub title: Option<String>,
+    /// Its state when last saved while it ran; a reopened agent rests by it (`status::reopened_state`).
+    #[serde(default)]
+    pub state: Option<SessionState>,
     pub started_at: i64,
     #[serde(default)]
     pub steps: u32,
@@ -79,6 +82,7 @@ mod tests {
             kind: SessionKind::Agent { builder_id: "b".into() },
             task: Some("fix it".into()),
             title: None,
+            state: None,
             started_at: 5,
             steps: 3,
             reached_finished: true,

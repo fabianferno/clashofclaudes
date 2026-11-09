@@ -34,7 +34,7 @@ test('agents show as app icons only, marked ready or not set up', () => {
   expect(tile('claude').getAttribute('aria-label')).toBe('Claude Code: ready');
   expect(tile('codex').getAttribute('aria-label')).toBe('Codex: not set up');
   expect(tile('custom').getAttribute('aria-label')).toBe('Custom: ready');
-  expect(tile('antigravity').textContent).toBe('+Antigravity');
+  expect(tile('antigravity').textContent).toBe('Antigravity+');
   // No commands or versions until a tile is clicked.
   expect(screen.queryByText(/npm i -g/)).toBeNull();
   expect(screen.queryByRole('dialog')).toBeNull();
@@ -114,7 +114,7 @@ test('Antigravity setup gives its install script and the agy sign-in', () => {
 
 test('Grok Build setup gives its install script and grok login', () => {
   render(<AgentsStatus />);
-  expect(tile('grok').textContent).toBe('+Grok Build');
+  expect(tile('grok').textContent).toBe('Grok Build+');
   fireEvent.click(tile('grok'));
   expect(screen.getByRole('dialog', { name: 'Grok Build' })).toBeTruthy();
   expect(screen.getByText('curl -fsSL https://x.ai/cli/install.sh | bash')).toBeTruthy();

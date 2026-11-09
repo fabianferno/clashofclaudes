@@ -8,6 +8,9 @@ import { createScene, type BoardInput, type Scene, type VillageInput } from './s
 import { setBoardImage } from './art/entities';
 import { clearProbeScene, setProbeScene } from './probe';
 import { splashReady } from '../splash';
+import { zoomKey } from './zoomKey';
+
+export { zoomKey };
 
 /** Each page's decoded snapshot: the store's `at` it came from and its key for `drawBoard`. */
 const decoded = new Map<string, { at: number; key: string }>();
@@ -53,17 +56,6 @@ const inputOf = (s: AppState): VillageInput => ({
   boards: boardsOf(s),
   ownerName: s.settings?.playerName ?? null,
 });
-
-/** Cmd (Ctrl elsewhere) with + / = zooms in, with - zooms out, with 0 fits the village; else null. */
-export function zoomKey(e: Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' | 'altKey'>): 'in' | 'out' | 'fit' | null {
-  if (!(e.metaKey || e.ctrlKey) || e.altKey) return null;
-  switch (e.key) {
-    case '=': case '+': return 'in';
-    case '-': case '_': return 'out';
-    case '0': return 'fit';
-    default: return null;
-  }
-}
 
 /** The Pixi village, full-window; syncs from the store on every change (also while hidden). */
 export default function VillageCanvas({ onError }: { onError?: (e: unknown) => void } = {}) {

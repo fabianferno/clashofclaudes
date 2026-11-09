@@ -9,9 +9,10 @@ let created = 0;
 let resets = 0;
 let typed: (d: string) => void = () => {};
 let termOptions: Record<string, unknown> = {};
+let lastTerm: { options: Record<string, unknown> } | null = null;
 vi.mock('@xterm/xterm', () => ({
   Terminal: class {
-    constructor(o: Record<string, unknown>) { termOptions = o; created++; }
+    constructor(o: Record<string, unknown>) { termOptions = o; created++; lastTerm = this; }
     cols = 80; rows = 24;
     options: Record<string, unknown> = {};
     loadAddon() {} open() {}
@@ -45,6 +46,7 @@ vi.mock('../api/ipc', async () => {
   };
 });
 import TerminalView from './TerminalView';
+import { useTermFont } from './terminalFont';
 import { ipc } from '../api/ipc';
 import { screen } from '@testing-library/react';
 
@@ -206,4 +208,28 @@ test('replies xterm generates for the previous session\'s queued output go to th
   expect(vi.mocked(ipc.writeSession).mock.lastCall?.[0]).toBe('t12');
   expect(vi.mocked(ipc.writeSession).mock.calls.map((c) => c[0])).toEqual(['t11', 't12']);
   unmount();
+});
+
+test('⌘+ / ⌘- / ⌘0 size a popped-out terminal\'s text, not the village; elsewhere they stay the village\'s', () => {
+  useTermFont.setState({ size: 13 });
+  const village = vi.fn();
+  window.addEventListener('keydown', village);
+  const key = (k: string) => window.dispatchEvent(new KeyboardEvent('keydown', { key: k, metaKey: true, bubbles: true, cancelable: true }));
+  const { unmount } = render(<div className="popout"><TerminalView sessionId="t1" /></div>);
+  expect(termOptions.fontSize).toBe(13);
+  key('='); key('=');
+  expect(lastTerm?.options.fontSize).toBe(15);
+  key('-');
+  expect(lastTerm?.options.fontSize).toBe(14);
+  expect(village).not.toHaveBeenCalled();
+  key('0');
+  expect(lastTerm?.options.fontSize).toBe(13);
+  unmount();
+
+  // in the side panel, without focus in it: the village's zoom
+  render(<TerminalView sessionId="t2" />);
+  key('=');
+  expect(village).toHaveBeenCalledTimes(1);
+  expect(useTermFont.getState().size).toBe(13);
+  window.removeEventListener('keydown', village);
 });

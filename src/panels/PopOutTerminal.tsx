@@ -25,7 +25,7 @@ export default function PopOutTerminal({ sessionId, readOnly, title, onClose }: 
     <div className="popout" role="dialog" aria-label="Terminal">
       <header className="popout-head">
         <h2 className="ol">{title}</h2>
-        <span className="popout-hint">✕ to return</span>
+        <span className="popout-hint">⌘+ / ⌘− text size · ✕ to return</span>
         <button className="hud-btn grey sm" aria-label="Close terminal" onClick={onClose}>✕</button>
       </header>
       <div className="popout-body" ref={body}>

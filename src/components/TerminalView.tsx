@@ -6,6 +6,8 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import '@xterm/xterm/css/xterm.css';
 import { ipc, trimSeen } from '../api/ipc';
 import type { Frame } from '../api/types';
+import { zoomKey } from '../village/zoomKey';
+import { useTermFont } from './terminalFont';
 
 // Serialize attach/detach per session id so the backend's per-session channel never gets reordered.
 const chains = new Map<string, Promise<void>>();
@@ -48,7 +50,7 @@ export default function TerminalView({ sessionId, readOnly = false }: { sessionI
     // OSC 8 links (Claude Code prints these): xterm's default handler asks with confirm() and then
     // calls window.open, which the Tauri webview ignores, so hand them to the system browser.
     const term = new Terminal({
-      fontFamily: 'Menlo, monospace', fontSize: 13, scrollback: 2000, cursorBlink: true,
+      fontFamily: 'Menlo, monospace', fontSize: useTermFont.getState().size, scrollback: 2000, cursorBlink: true,
       linkHandler: { activate: (_e, uri) => { openUrl(uri).catch(fail(sessionRef.current)); } },
     });
     const fit = new FitAddon();
@@ -69,7 +71,25 @@ export default function TerminalView({ sessionId, readOnly = false }: { sessionI
     const ro = new ResizeObserver(() => fitTo(sessionRef.current, fail(sessionRef.current)));
     ro.observe(el);
 
+    // ⌘+ / ⌘- / ⌘0 size the text, like any terminal app: in a pop-out (it covers the village), or
+    // while typing here. Otherwise they are the village's zoom.
+    const onKey = (e: KeyboardEvent) => {
+      const z = zoomKey(e);
+      if (!z || !(el.closest('.popout') || el.contains(document.activeElement))) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      useTermFont.getState().zoom(z);
+    };
+    window.addEventListener('keydown', onKey, true);
+    const unFont = useTermFont.subscribe((f) => {
+      if (term.options.fontSize === f.size) return;
+      term.options.fontSize = f.size;
+      fitTo(sessionRef.current, fail(sessionRef.current));
+    });
+
     return () => {
+      window.removeEventListener('keydown', onKey, true);
+      unFont();
       ro.disconnect();
       sub.dispose();
       termRef.current = null;

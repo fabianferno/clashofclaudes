@@ -29,6 +29,8 @@
 .sp-row:hover { border-color: #a8885a; transform: translateY(-1px); box-shadow: inset 0 2px 0 rgba(255,255,255,.9), 0 4px 0 #a8885a; }
 .sp-rowtext { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .sp-rowtext .sp-d { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* a long task stays two lines; the full text is its tooltip and the session panel's */
+.sp-rowtext .sp-t { overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .sp-av { width: 38px; height: 38px; border-radius: 10px; border: 3px solid var(--hud-out); display: grid; place-items: center; font-size: 18px; flex: none; box-shadow: inset 0 3px 0 rgba(255,255,255,.35); }
 .sp-tag { font: 400 12px 'Lilita One', sans-serif; padding: 3px 9px; border-radius: 99px; border: 2px solid var(--hud-out); white-space: nowrap; letter-spacing: .3px; flex: none; -webkit-text-stroke: 2px var(--hud-out); }
 .sp-xp { height: 14px; border-radius: 8px; background: #2b2018; border: 2px solid var(--hud-out); overflow: hidden; position: relative; margin-top: 6px; }

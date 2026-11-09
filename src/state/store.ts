@@ -220,7 +220,9 @@ export interface AppState {
   setKanban: (workspaceId: string | null) => void;
   /** The ⌘K command palette is open. */
   paletteOpen: boolean;
-  setPaletteOpen: (open: boolean) => void;
+  /** What it opens with: text already typed, or a command's question (by command id). */
+  paletteSeed: { query?: string; ask?: string } | null;
+  setPaletteOpen: (open: boolean, seed?: { query?: string; ask?: string }) => void;
   /** The Settings page is open full-page. */
   settingsOpen: boolean;
   setSettingsOpen: (open: boolean) => void;
@@ -267,6 +269,7 @@ export const useApp = create<AppState>((set, get) => ({
   todos: [],
   kanban: null,
   paletteOpen: false,
+  paletteSeed: null,
   settingsOpen: false,
   settings: null,
   bugReport: null,
@@ -392,7 +395,7 @@ export const useApp = create<AppState>((set, get) => ({
     if (kanban) try { ipc.trackUsage('kanbanOpened').catch(() => {}); } catch { /* no backend */ }
   },
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
-  setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
+  setPaletteOpen: (paletteOpen, seed) => set({ paletteOpen, paletteSeed: paletteOpen ? seed ?? null : null }),
   setSettings: (settings) => set({ settings }),
   setBugReport: (bugReport) => set({ bugReport }),
   setUpdateAvailable: (updateAvailable) => set({ updateAvailable }),

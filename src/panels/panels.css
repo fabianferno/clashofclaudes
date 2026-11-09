@@ -294,3 +294,4 @@
 .cmdk-hint { font-size: 12px; font-weight: 700; color: var(--sp-ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cmdk-empty { padding: 18px 10px; text-align: center; font-weight: 700; color: var(--sp-ink-soft); }
 .cmdk-foot { display: flex; justify-content: space-between; gap: 8px; padding: 6px 12px; border-top: 2px solid #d8c39a; background: var(--sp-parch2); font-size: 11px; font-weight: 700; color: var(--sp-ink-soft); }
+.cmdk-kbd { flex: none; font: 700 12px ui-monospace, 'JetBrains Mono', monospace; color: #2b2018; background: #fff8e8; border: 2px solid #c8b083; border-bottom-width: 3px; border-radius: 7px; padding: 1px 7px; }

@@ -7,7 +7,7 @@ import { COLLECTOR_NAME, shownCollectors } from '../village/quota';
 import { openBugReport } from './BugReport';
 import { sessionName } from './sessionName';
 
-export type CommandGroup = 'Sessions' | 'Workspaces' | 'Builders' | 'Actions';
+export type CommandGroup = 'Common' | 'Sessions' | 'Workspaces' | 'Builders' | 'Actions';
 
 export interface Command {
   id: string;
@@ -18,13 +18,15 @@ export interface Command {
   /** Extra words it is found by. */
   keywords?: string;
   session?: SessionInfo;
+  /** Its keyboard shortcut, as shown ("⌘N"); see SHORTCUTS. */
+  shortcut?: string;
   /** Runs it; the palette has closed by then. */
   run?: () => void | Promise<void>;
   /** Asks for text first (in the palette), then runs with it. */
   ask?: { placeholder: string; submit: (text: string) => void | Promise<unknown> };
 }
 
-type State = Pick<AppState, 'sessions' | 'workspaces' | 'builders' | 'quotas' | 'agents'>;
+type State = Pick<AppState, 'sessions' | 'workspaces' | 'builders' | 'quotas' | 'agents' | 'selection' | 'kanban'>;
 
 /** Sessions that want the owner first, then those at work, then the rest; newest first within each. */
 const RANK: Record<SessionInfo['state']['kind'], number> = { needsYou: 0, stuck: 0, starting: 1, working: 1, finished: 2, ended: 3 };
@@ -41,7 +43,62 @@ const go = (sel: Parameters<AppState['setSelection']>[0]) => () => {
   useApp.getState().setSelection(sel);
 };
 
-/** Everything the palette offers, in its order when nothing is typed. */
+/**
+ * The workspace a shortcut acts on: the one open (its panel, a session of it, its Kanban), else
+ * the only one there is. Null when it is not clear which.
+ */
+export function currentWorkspace(st: Pick<AppState, 'sessions' | 'workspaces' | 'selection' | 'kanban'>): string | null {
+  const usable = st.workspaces.filter((w) => !w.missing);
+  const sel = st.selection;
+  const id = st.kanban && st.kanban !== KANBAN_ALL ? st.kanban
+    : sel?.kind === 'workspace' ? sel.id
+    : sel?.kind === 'session' ? st.sessions[sel.id]?.workspaceId
+    : usable.length === 1 ? usable[0].id : null;
+  return id && usable.some((w) => w.id === id) ? id : null;
+}
+
+/** The sessions that need the owner, oldest wait first. */
+const needing = (st: Pick<AppState, 'sessions' | 'workspaces'>) => Object.values(st.sessions)
+  .filter((s) => s.kind.kind === 'agent' && !s.paused && (s.state.kind === 'needsYou' || s.state.kind === 'stuck') && st.workspaces.some((w) => w.id === s.workspaceId))
+  .sort((a, b) => a.startedAt - b.startedAt);
+
+/**
+ * Keyboard shortcuts for the commands used most (⌘ on a Mac, Ctrl elsewhere). Each names the
+ * command it runs for the current workspace, or, when none is clear, what the palette opens with
+ * to pick one.
+ */
+export interface Shortcut {
+  key: string;
+  shift?: boolean;
+  /** The command it runs, if there is one now. */
+  command: (st: State, ws: string | null) => string | null;
+  /** Without one: the palette opens with this typed. */
+  otherwise?: string;
+}
+export const SHORTCUTS: Shortcut[] = [
+  { key: 'n', command: (_, ws) => (ws ? `new:${ws}` : null), otherwise: 'New session in ' },
+  { key: 't', command: (_, ws) => (ws ? `term:${ws}` : null), otherwise: 'New terminal in ' },
+  { key: 'b', command: (_, ws) => (ws ? `kanban:${ws}` : 'kanban:all') },
+  { key: 'b', shift: true, command: () => 'kanban:all' },
+  { key: 'j', command: () => 'next-needs' },
+  { key: 'e', shift: true, command: (_, ws) => (ws ? `editor:${ws}` : null), otherwise: 'Open in editor ' },
+  { key: 'h', shift: true, command: () => 'hall' },
+  { key: 'n', shift: true, command: () => 'ws:new' },
+  { key: 'o', command: () => 'ws:open' },
+];
+
+export const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+export const keyLabel = (s: Pick<Shortcut, 'key' | 'shift'>) => `${IS_MAC ? '⌘' : 'Ctrl+'}${s.shift ? (IS_MAC ? '⇧' : 'Shift+') : ''}${s.key.toUpperCase()}`;
+
+/** The shortcut a key press is, if any: ⌘ (Ctrl off a Mac, where Ctrl belongs to the terminal) and a letter. */
+export function shortcutOf(e: Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' | 'altKey' | 'shiftKey'>): Shortcut | null {
+  const mod = e.metaKey || (!IS_MAC && e.ctrlKey);
+  if (!mod || e.altKey || (e.metaKey && e.ctrlKey)) return null;
+  const key = e.key.toLowerCase();
+  return SHORTCUTS.find((s) => s.key === key && !!s.shift === e.shiftKey) ?? null;
+}
+
+/** Everything the palette offers, in its order when nothing is typed: the shortcuts' commands first. */
 export function paletteCommands(st: State): Command[] {
   const out: Command[] = [];
   const wsName = (id: string) => st.workspaces.find((w) => w.id === id)?.name ?? '';
@@ -60,6 +117,14 @@ export function paletteCommands(st: State): Command[] {
     });
   }
 
+  const waiting = needing(st);
+  if (waiting.length > 0) {
+    const sel = st.selection?.kind === 'session' ? st.selection.id : null;
+    // the next one after the session open now, round the list
+    const next = waiting[(waiting.findIndex((s) => s.id === sel) + 1) % waiting.length];
+    out.push({ id: 'next-needs', group: 'Actions', label: 'Next session that needs you', hint: `${waiting.length} waiting`, keywords: 'jump approve permission',
+      run: go({ kind: 'session', id: next.id }) });
+  }
   out.push(
     { id: 'hall', group: 'Actions', label: 'Town Hall', hint: 'Every workspace and builder', run: go({ kind: 'hall' }) },
     { id: 'kanban:all', group: 'Actions', label: 'Kanban: all workspaces', hint: 'Every session and To Do on one board', keywords: 'board todo',
@@ -109,7 +174,18 @@ export function paletteCommands(st: State): Command[] {
   for (const b of st.builders) {
     out.push({ id: `builder:${b.id}`, group: 'Builders', label: b.name, hint: b.agent, run: go(builderTarget(b.id, Object.values(st.sessions))) });
   }
-  return out;
+  // the shortcuts' commands, labelled, lead the list
+  const ws = currentWorkspace(st);
+  const common: Command[] = [];
+  for (const s of SHORTCUTS) {
+    const id = s.command(st, ws);
+    const c = id ? out.find((x) => x.id === id) : undefined;
+    if (!c || c.shortcut) continue;
+    c.shortcut = keyLabel(s);
+    common.push(c);
+  }
+  for (const c of common) c.group = 'Common';
+  return [...common, ...out.filter((c) => !common.includes(c))];
 }
 
 /**

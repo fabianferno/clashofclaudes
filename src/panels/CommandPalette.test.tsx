@@ -14,7 +14,7 @@ vi.mock('../state/workspaceActions', () => folders);
 vi.mock('./BugReport', () => ({ openBugReport: vi.fn() }));
 import { KANBAN_ALL, useApp } from '../state/store';
 import CommandPalette from './CommandPalette';
-import { matchCommands, paletteCommands } from './commands';
+import { keyLabel, matchCommands, paletteCommands } from './commands';
 
 const ws = (id: string, name: string): Workspace => ({ id, name, path: `/p/${name}`, createdAt: 0, missing: false, level: 1, xp: 0, compound: null });
 const bld = (id: string, name: string): Builder => ({ id, name, agent: 'claude', model: null, effort: null, customCommand: null });
@@ -124,4 +124,53 @@ test('a terminal starts from the palette and is opened', async () => {
   fireEvent.keyDown(search(), { key: 'Enter' });
   await vi.waitFor(() => expect(useApp.getState().selection).toEqual({ kind: 'session', id: 't1' }));
   expect(ipc.startTerminal).toHaveBeenCalledWith('w1');
+});
+
+test('⌘N starts a session in the workspace open now; with none clear, the palette asks which', () => {
+  render(<CommandPalette />);
+  act(() => useApp.getState().setSelection({ kind: 'session', id: 's2' }));
+  press('n', { metaKey: true });
+  expect(useApp.getState().selection).toEqual({ kind: 'workspace', id: 'w2', newSession: true });
+  act(() => useApp.getState().setSelection(null));
+  press('n', { metaKey: true });
+  expect(search().value).toBe('New session in ');
+  expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(expect.arrayContaining([expect.stringContaining('New session in shop'), expect.stringContaining('New session in blog')]));
+});
+
+test('⌘J opens the next session that needs you; ⌘B the Kanban; ⌘⇧N asks for a workspace name', () => {
+  render(<CommandPalette />);
+  press('j', { metaKey: true });
+  expect(useApp.getState().selection).toEqual({ kind: 'session', id: 's2' });
+  act(() => useApp.getState().setSelection(null));
+  press('b', { metaKey: true });
+  expect(useApp.getState().kanban).toBe(KANBAN_ALL); // no workspace open: every workspace's
+  act(() => useApp.setState({ kanban: null }));
+  act(() => useApp.getState().setSelection({ kind: 'workspace', id: 'w1' }));
+  press('b', { metaKey: true });
+  expect(useApp.getState().kanban).toBe('w1');
+  press('n', { metaKey: true, shiftKey: true });
+  expect(screen.getByRole('textbox', { name: 'Workspace name' })).toBeTruthy();
+});
+
+test('the shortcuts lead the palette, each with its keys', () => {
+  act(() => useApp.getState().setSelection({ kind: 'workspace', id: 'w1' }));
+  render(<CommandPalette />);
+  press('k', { metaKey: true });
+  const first = screen.getAllByRole('option').slice(0, 3).map((o) => o.textContent);
+  expect(first[0]).toContain('New session in shop');
+  expect(first[0]).toContain(keyLabel({ key: 'n' }));
+  expect(first[1]).toContain('New terminal in shop');
+  expect(screen.getByText('Common')).toBeTruthy();
+});
+
+test('a key that is no shortcut, or ⌘J with nobody waiting, is left alone', () => {
+  act(() => useApp.setState({ sessions: {} }));
+  render(<CommandPalette />);
+  const seen = vi.fn();
+  window.addEventListener('keydown', seen);
+  press('j', { metaKey: true });
+  press('x', { metaKey: true });
+  expect(seen).toHaveBeenCalledTimes(2);
+  expect(screen.queryByRole('dialog')).toBeNull();
+  window.removeEventListener('keydown', seen);
 });

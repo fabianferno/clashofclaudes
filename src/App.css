@@ -20,7 +20,6 @@ button { cursor: pointer; }
 .badge { font-size: 11px; color: #fff; background: var(--err); border-radius: 8px; padding: 0 6px; }
 .new-session { display: flex; flex-direction: column; gap: 10px; max-width: 480px; }
 .new-session label { display: flex; flex-direction: column; gap: 3px; }
-.preview { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; word-break: break-all; }
 .error { color: #ff8a80; font-size: 13px; cursor: pointer; }
 .notice { color: #ffcf33; }
 .panel { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 8px; }

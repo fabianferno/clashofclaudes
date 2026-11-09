@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { ipc } from '../api/ipc';
 import { idleBuilders, useApp } from '../state/store';
-import type { AgentInfo, AgentKind, Builder } from '../api/types';
+import type { AgentKind, Builder } from '../api/types';
 import { CLASS_NAMES, classOf } from '../village/look';
 import BuilderAvatar from '../hud/BuilderAvatar';
 import BuilderPreview from './BuilderPreview';
@@ -12,40 +12,6 @@ import { AttachmentStrip, useAttachments } from './Attachments';
 import { DEMO_TASK, createDemoBuilder, isDemoId } from '../onboarding/demo';
 
 export const RECRUIT_NAMES = ['Ivy', 'Jax', 'Kai', 'Lu', 'Mo', 'Nia', 'Oz', 'Pip', 'Quin', 'Rex'];
-
-const q = (s: string) => `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
-
-/**
- * Display-only preview of the command that will be run, mirroring each adapter's arguments
- * (src-tauri/src/adapters). `…` stands for app-supplied arguments (hook settings, the shared-folder
- * note, the project path). Effort is shown only where the agent takes it. `images`: how many are
- * attached; the task then lists their paths, shown as `[N images]`.
- */
-export function commandPreview(
-  agent: AgentInfo, model?: string, effort?: string, task?: string, customCommand?: string, images = 0,
-): string {
-  const shown = [task, images > 0 && `[${images} image${images > 1 ? 's' : ''}]`].filter(Boolean).join(' ');
-  const t = shown ? q(shown) : '';
-  const imageArgs = (flag: string) => Array.from({ length: images }, () => flag).join(' ');
-  const join = (parts: Array<string | false | undefined>) => parts.filter(Boolean).join(' ');
-  switch (agent.kind) {
-    case 'custom':
-      return join([customCommand?.trim(), t]);
-    case 'claude':
-      return join(['claude …', model && `--model ${model}`, effort && `--effort ${effort}`, images > 0 && '--add-dir=…', t && `-- ${t}`]);
-    case 'codex':
-      return join(['codex', model && `-m ${model}`, effort && `-c model_reasoning_effort=${q(effort)}`, '…', imageArgs('--image=…'), t && `-- ${t}`]);
-    case 'opencode': {
-      // Effort goes through OPENCODE_CONFIG_CONTENT, and only for a `provider/model`.
-      const providerModel = !!model && /^[^/]+\/.+$/.test(model);
-      return join([effort && providerModel && 'OPENCODE_CONFIG_CONTENT=…', 'opencode …', model && `--model=${model}`, t && `--prompt=${t}`]);
-    }
-    case 'antigravity':
-      return join(['agy', model && `--model=${model}`, images > 0 && '--add-dir=…', t && `--prompt-interactive=${t}`]);
-    case 'grok':
-      return join(['grok …', model && `--model=${model}`, effort && `--reasoning-effort=${effort}`, images > 0 && '--add-dir=…', t && `-- ${t}`]);
-  }
-}
 
 const RECRUIT = '__recruit__';
 const DEFAULT = '';
@@ -92,8 +58,6 @@ export default function NewSessionPicker({ workspaceId, builderId }: { workspace
   const isCustom = agent?.kind === 'custom';
   const pModel = (recruiting ? model.trim() : existing?.model) || null;
   const pEffort = (recruiting ? effort : existing?.effort) || null;
-  const pCmd = recruiting ? command : existing?.customCommand ?? '';
-  const preview = agent ? commandPreview(agent, pModel ?? undefined, pEffort ?? undefined, task.trim() || undefined, pCmd, att.names.length) : '';
 
   async function start() {
     const st = useApp.getState();
@@ -194,7 +158,6 @@ export default function NewSessionPicker({ workspaceId, builderId }: { workspace
           <span className="sp-d">{tier}</span>
         </div>
       )}
-      <code className="preview">{preview}</code>
       {error && <div className="panel-warn">{error}</div>}
       <button type="submit" className="hud-btn sm" disabled={busy || att.saving}>Start</button>
     </form>

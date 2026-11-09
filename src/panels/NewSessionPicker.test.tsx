@@ -5,7 +5,7 @@ import type { AgentInfo, Builder, SessionInfo } from '../api/types';
 vi.mock('../api/ipc', () => ({ ipc: { createBuilder: vi.fn(), startSession: vi.fn(), saveAttachment: vi.fn(), discardAttachments: vi.fn() } }));
 import { ipc } from '../api/ipc';
 import { useApp } from '../state/store';
-import NewSessionPicker, { commandPreview, RECRUIT_NAMES } from './NewSessionPicker';
+import NewSessionPicker, { RECRUIT_NAMES } from './NewSessionPicker';
 
 const claude: AgentInfo = {
   kind: 'claude', label: 'Claude Code', installed: true, version: '2', canApprove: true,
@@ -30,36 +30,7 @@ function setup(o: { builders?: Builder[]; sessions?: Record<string, SessionInfo>
 beforeEach(() => { vi.mocked(ipc.createBuilder).mockReset(); vi.mocked(ipc.startSession).mockReset(); ensureSpot.mockClear(); });
 afterEach(cleanup);
 
-test('commandPreview for claude', () => {
-  expect(commandPreview(claude, 'opus', 'max', 'fix "bug"')).toBe('claude … --model opus --effort max -- "fix \\"bug\\""');
-});
 const opencode: AgentInfo = { ...claude, kind: 'opencode', label: 'OpenCode', models: [], canApprove: false };
-const antigravity: AgentInfo = { ...claude, kind: 'antigravity', label: 'Antigravity CLI', models: ['gemini-3.8-flash-medium'], efforts: [], canApprove: false };
-test('commandPreview shows attached images', () => {
-  expect(commandPreview(claude, undefined, undefined, 'fix it', undefined, 2)).toBe('claude … --add-dir=… -- "fix it [2 images]"');
-  expect(commandPreview(codex, undefined, undefined, undefined, undefined, 1)).toBe('codex … --image=… -- "[1 image]"');
-  expect(commandPreview(antigravity, undefined, undefined, 'x', undefined, 1)).toBe('agy --add-dir=… --prompt-interactive="x [1 image]"');
-});
-test('commandPreview mirrors the Codex adapter', () => {
-  expect(commandPreview(codex, 'gpt-6', 'high', 'fix it')).toBe('codex -m gpt-6 -c model_reasoning_effort="high" … -- "fix it"');
-  expect(commandPreview(codex)).toBe('codex …');
-});
-test('commandPreview mirrors the OpenCode adapter (effort only via config, for provider/model)', () => {
-  expect(commandPreview(opencode, 'anthropic/claude-x', 'high', 'fix it'))
-    .toBe('OPENCODE_CONFIG_CONTENT=… opencode … --model=anthropic/claude-x --prompt="fix it"');
-  expect(commandPreview(opencode, 'gpt-5', 'high')).toBe('opencode … --model=gpt-5');
-  expect(commandPreview(opencode, undefined, 'high')).toBe('opencode …');
-});
-test('commandPreview mirrors the Antigravity adapter (effort is part of the model id)', () => {
-  expect(commandPreview(antigravity, 'gemini-3.8-flash-medium', 'high', 'fix it')).toBe('agy --model=gemini-3.8-flash-medium --prompt-interactive="fix it"');
-  expect(commandPreview(antigravity)).toBe('agy');
-});
-const grok: AgentInfo = { ...claude, kind: 'grok', label: 'Grok Build', models: ['grok-4.7'], efforts: ['low', 'medium', 'high', 'xhigh'], canApprove: false };
-test('commandPreview mirrors the Grok Build adapter', () => {
-  expect(commandPreview(grok, 'grok-4.7', 'xhigh', 'fix it')).toBe('grok … --model=grok-4.7 --reasoning-effort=xhigh -- "fix it"');
-  expect(commandPreview(grok, undefined, undefined, 'x', undefined, 1)).toBe('grok … --add-dir=… -- "x [1 image]"');
-  expect(commandPreview(grok)).toBe('grok …');
-});
 test('agents without a model list get a free-text model; empty means default', async () => {
   const codexOn = { ...codex, installed: true, models: [] };
   const opencodeOn = { ...opencode, installed: true };
@@ -72,7 +43,6 @@ test('agents without a model list get a free-text model; empty means default', a
   fireEvent.click(screen.getByRole('radio', { name: 'OpenCode' }));
   expect(model().placeholder).toBe('provider/model');
   fireEvent.change(model(), { target: { value: ' openai/gpt-5 ' } });
-  expect(screen.getByText(/^opencode … --model=openai\/gpt-5$/)).toBeTruthy();
   fireEvent.click(screen.getByText('Start'));
   await vi.waitFor(() => expect(ipc.createBuilder).toHaveBeenCalledWith('Ivy', 'opencode', 'openai/gpt-5', null, null));
   // Back to Codex: the field resets, and an empty model is sent as null.
@@ -83,9 +53,6 @@ test('agents without a model list get a free-text model; empty means default', a
   fireEvent.change(model(), { target: { value: '   ' } });
   fireEvent.click(screen.getByText('Start'));
   await vi.waitFor(() => expect(ipc.createBuilder).toHaveBeenCalledWith('Ivy', 'codex', null, null, null));
-});
-test('commandPreview omits unset model/effort', () => {
-  expect(commandPreview(claude, undefined, undefined, undefined)).toBe('claude …');
 });
 test('picker_disables_uninstalled', () => {
   setup({ agents: [claude, codex, custom] });
@@ -121,7 +88,6 @@ test('agent default follows agents detected after mount until the user picks', (
   act(() => useApp.setState({ agents: [claude, custom] }));
   const checked = () => screen.getByRole('radio', { checked: true }).getAttribute('aria-label');
   expect(checked()).toBe('Claude Code');
-  expect(screen.getByText(/^claude …/)).toBeTruthy();
   fireEvent.click(screen.getByRole('radio', { name: 'Custom command' }));
   act(() => useApp.setState({ agents: [claude, custom, { ...codex, installed: true }] }));
   expect(checked()).toBe('Custom command');
@@ -255,7 +221,6 @@ test('pasted images show as thumbnails, can be taken off, and go to the session'
   const png = (n: string) => new File([new Uint8Array([1])], n, { type: 'image/png' });
   fireEvent.paste(task, { clipboardData: { files: [png('1.png'), png('2.png')], types: ['Files'] } });
   await vi.waitFor(() => expect(screen.getAllByTestId('att-thumb')).toHaveLength(2));
-  expect(screen.getByText(/\[2 images\]/)).toBeTruthy();
   fireEvent.click(screen.getAllByRole('button', { name: 'Remove image' })[0]);
   expect(ipc.discardAttachments).toHaveBeenCalledWith(['a.png']);
   fireEvent.paste(task, { clipboardData: { files: [], types: ['text/plain'] } }); // plain text: nothing to save
@@ -283,7 +248,10 @@ test('Codex models come from its catalog: a slider with their names, no typing',
   expect(screen.getByText('GPT-6-Luna')).toBeTruthy(); // a tick label, by display name
   act(() => { fireEvent.change(model, { target: { value: '2' } }); });
   expect(model.getAttribute('aria-valuetext')).toBe('GPT-5.6-Terra');
-  expect(screen.getByText(/codex -m gpt-5\.6-terra/)).toBeTruthy(); // the id goes to Codex
+  vi.mocked(ipc.createBuilder).mockResolvedValue({ ...bld('b9', 'Ivy'), agent: 'codex' });
+  vi.mocked(ipc.startSession).mockResolvedValue(sess('s9', 'b9', { kind: 'working' }));
+  fireEvent.click(screen.getByText('Start'));
+  await vi.waitFor(() => expect(ipc.createBuilder).toHaveBeenCalledWith('Ivy', 'codex', 'gpt-5.6-terra', null, null)); // the id goes to Codex
 });
 
 test('the effort slider follows the chosen model, and an effort it does not take goes back to Default', async () => {

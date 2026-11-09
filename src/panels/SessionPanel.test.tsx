@@ -249,3 +249,23 @@ test('a resume failure stays on the panel and the session stays paused', async (
   expect(await screen.findByText('Claude Code is not installed')).toBeTruthy();
   expect(screen.getByText('Resume')).toBeTruthy();
 });
+
+test('opened from a Kanban card it pops out at once, and closing it goes back to that board', async () => {
+  useApp.setState({ sessions: { s1: sess({ kind: 'working' }, false) }, selection: { kind: 'session', id: 's1', popout: true, back: 'w1' }, kanban: null });
+  render(<SessionPanel sessionId="s1" />);
+  const pop = await screen.findByRole('dialog', { name: 'Terminal' });
+  expect(pop).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Close terminal' }));
+  expect(screen.queryByRole('dialog', { name: 'Terminal' })).toBeNull();
+  expect(useApp.getState().kanban).toBe('w1');
+  expect(useApp.getState().selection).toBeNull();
+});
+
+test('Pop out from the panel closes back to the panel', async () => {
+  useApp.setState({ sessions: { s1: sess({ kind: 'working' }, false) }, selection: { kind: 'session', id: 's1' }, kanban: null });
+  render(<SessionPanel sessionId="s1" />);
+  fireEvent.click(screen.getByRole('button', { name: 'Pop out' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Close terminal' }));
+  expect(useApp.getState().kanban).toBeNull();
+  expect(useApp.getState().selection).toEqual({ kind: 'session', id: 's1' });
+});

@@ -84,10 +84,11 @@ export default function Kanban() {
     const b = builderOf(s);
     const agent = b && agents.find((a) => a.kind === b.agent);
     const reason = s.state.kind === 'needsYou' || s.state.kind === 'stuck' ? s.state.reason : null;
+    // popped out, full window; closing it comes back to this board (a paused one has no terminal: the panel)
     const open = () => {
       const st = useApp.getState();
       st.setKanban(null);
-      st.setSelection({ kind: 'session', id: s.id });
+      st.setSelection(s.paused ? { kind: 'session', id: s.id } : { kind: 'session', id: s.id, popout: true, back: wsId });
     };
     return (
       <article key={s.id} className="kb-card" data-testid={`kb-card-${s.id}`} role="button" tabIndex={0}

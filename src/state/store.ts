@@ -14,7 +14,8 @@ export type Selection =
    * `newSession`: open the new-session form (from the command palette).
    */
   | { kind: 'workspace'; id: string; builder?: string; newSession?: boolean }
-  | { kind: 'session'; id: string }
+  /** `popout`: open it popped out (from the Kanban); `back`: the Kanban to return to when the pop-out closes. */
+  | { kind: 'session'; id: string; popout?: boolean; back?: string }
   | { kind: 'builder'; id: string }
   | { kind: 'quota'; agent: AgentKind };
 

@@ -87,6 +87,13 @@ test('clicking a card opens its session', () => {
   render(<Kanban />);
   fireEvent.click(screen.getByTestId('kb-card-s1'));
   expect(useApp.getState().kanban).toBeNull();
+  expect(useApp.getState().selection).toEqual({ kind: 'session', id: 's1', popout: true, back: 'w1' }); // popped out, back to here
+});
+
+test('a paused card opens in the side panel: it has no terminal to pop out', () => {
+  act(() => useApp.setState({ sessions: { s1: sess('s1', 'b1', { kind: 'ended', exitCode: null }, { paused: true }) } }));
+  render(<Kanban />);
+  fireEvent.click(screen.getByTestId('kb-card-s1'));
   expect(useApp.getState().selection).toEqual({ kind: 'session', id: 's1' });
 });
 

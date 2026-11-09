@@ -23,6 +23,22 @@ export default function SessionPanel({ sessionId, onClosed }: { sessionId: strin
   const [review, setReview] = useState<Review | null>(null);
   const [answering, setAnswering] = useState(false);
   const [popped, setPopped] = useState(false);
+  // opened popped out (a Kanban card): pop out at once
+  const askPop = useApp((s) => (s.selection?.kind === 'session' && s.selection.id === sessionId && s.selection.popout ? s.selection : null));
+  useEffect(() => { if (askPop) setPopped(true); }, [askPop]);
+  const closePop = () => {
+    setPopped(false);
+    const st = useApp.getState();
+    const sel = st.selection;
+    if (sel?.kind !== 'session' || sel.id !== sessionId) return;
+    if (sel.back) {
+      // back to the board it was opened from
+      st.setSelection(null);
+      st.setKanban(sel.back);
+    } else if (sel.popout) {
+      st.setSelection({ kind: 'session', id: sessionId });
+    }
+  };
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -149,7 +165,7 @@ export default function SessionPanel({ sessionId, onClosed }: { sessionId: strin
       ) : popped ? (
         <>
           <div className="terminal-placeholder">Terminal popped out — ✕ to return</div>
-          <PopOutTerminal sessionId={sessionId} readOnly={readOnly} title={title} onClose={() => setPopped(false)} />
+          <PopOutTerminal sessionId={sessionId} readOnly={readOnly} title={title} onClose={closePop} />
         </>
       ) : (
         <TerminalView sessionId={sessionId} readOnly={readOnly} />

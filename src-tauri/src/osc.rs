@@ -80,7 +80,7 @@ fn find(hay: &[u8], needle: &[u8]) -> Option<usize> {
 }
 
 /// Length of the body and of its terminator (BEL, or ESC `\`).
-fn terminator(b: &[u8]) -> Option<(usize, usize)> {
+pub(crate) fn terminator(b: &[u8]) -> Option<(usize, usize)> {
     b.iter().enumerate().find_map(|(i, &c)| match c {
         0x07 => Some((i, 1)),
         0x1b if b.get(i + 1) == Some(&b'\\') => Some((i, 2)),

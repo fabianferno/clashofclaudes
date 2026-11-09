@@ -81,6 +81,9 @@ fn probe() -> Detection {
 pub static DETECTION: DetectionCache = DetectionCache::new(DETECTION_TTL);
 
 impl AgentAdapter for GrokAdapter {
+    fn task_title(&self, raw: &str) -> Option<String> {
+        crate::title::grok(raw)
+    }
     fn kind(&self) -> AgentKind {
         AgentKind::Grok
     }

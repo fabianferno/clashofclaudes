@@ -4,6 +4,7 @@ use crate::attachments;
 use crate::git::{self, GitBaseline, Review};
 use crate::hooks::HookServer;
 use crate::osc::{Osc7501, SUPPORT_REPLY};
+use crate::title::TitleScanner;
 use crate::model::{Builder, SessionInfo, SessionKind, SessionState, Subagent, Tile, Workspace, WorktreeInfo};
 use crate::pty::{LaunchSpec, PtyHandle, REAP_POLL};
 use crate::saved::{self, SavedSession};
@@ -87,6 +88,8 @@ struct SessionEntry {
     osc: Option<Osc7501>,
     /// An OSC 7501 support query arrived before the PTY handle was recorded; answered then.
     osc_reply_owed: bool,
+    /// Window-title scanner, for agent sessions (the adapter decides what a title names).
+    titles: Option<TitleScanner>,
     /// The agent's own conversation id, saved so a paused session can resume it.
     conversation: Option<String>,
     /// Restored paused, but its process was running when the app last closed: resumed at startup.
@@ -117,6 +120,7 @@ impl SessionEntry {
             prompt_seen: None,
             osc: adapter.as_ref().filter(|a| a.reads_osc_status()).map(|_| Osc7501::default()),
             osc_reply_owed: false,
+            titles: adapter.as_ref().map(|_| TitleScanner::default()),
             adapter,
             conversation: None,
             was_running: false,
@@ -130,6 +134,7 @@ impl SessionEntry {
             workspace_id: i.workspace_id.clone(),
             kind: i.kind.clone(),
             task: i.task.clone(),
+            title: i.title.clone(),
             started_at: i.started_at,
             steps: i.steps,
             reached_finished: i.reached_finished,
@@ -471,6 +476,7 @@ impl SessionManager {
             workspace_id: ws.id.clone(),
             kind,
             task: task.map(str::to_string),
+            title: None,
             state: SessionState::Starting,
             steps: 0,
             started_at: now,
@@ -487,6 +493,7 @@ impl SessionManager {
         };
         let conversation = prior.and_then(|p| {
             info.task = p.task;
+            info.title = p.title;
             info.started_at = p.started_at;
             info.steps = p.steps;
             info.reached_finished = p.reached_finished;
@@ -575,6 +582,13 @@ impl SessionManager {
         e.info.last_output_at = now;
         e.quiet_since_ms = now;
         let mut changed = e.apply(&StatusEvent::Output, now);
+        if let (Some(scan), Some(adapter)) = (e.titles.as_mut(), e.adapter.as_ref())
+            && let Some(title) = scan.feed(data).and_then(|raw| adapter.task_title(&raw))
+            && e.info.title.as_ref() != Some(&title)
+        {
+            e.info.title = Some(title);
+            changed = true;
+        }
         // In-band status reports: the agent's own word, like a hook event.
         let events: Vec<StatusEvent> = match e.osc.as_mut() {
             Some(p) => {
@@ -1026,6 +1040,7 @@ impl SessionManager {
                     workspace_id: s.workspace_id,
                     kind: s.kind,
                     task: s.task,
+                    title: s.title,
                     state: SessionState::Ended { exit_code: None },
                     steps: s.steps,
                     started_at: s.started_at,
@@ -2087,6 +2102,20 @@ mod tests {
         // After a report, silence no longer reads as "Waiting in the terminal".
         fx.mgr.tick(info(&fx, &s.id).started_at + 120_000);
         assert_eq!(state(&fx, &s.id), SessionState::Finished);
+    }
+
+    #[test]
+    fn the_agent_s_terminal_title_names_the_session_and_is_saved() {
+        let fx = fixture();
+        // As Claude Code 2.1 does: its launch title, then the conversation's name behind a spinner glyph.
+        let script = r#"printf '\033]0;\342\234\263 Claude Code\007'; sleep 0.2; printf '\033]0;\342\227\221 Local voice'; sleep 0.2; printf ' agent startup\007 hi'; sleep 5"#;
+        let spec = LaunchSpec { program: "/bin/sh".into(), args: vec!["-c".into(), script.into()], env: vec![], cwd: fx.ws.path.clone() };
+        let s = fx.mgr.start_with_spec(&fx.ws, &claude("b1"), spec, Arc::new(ClaudeAdapter)).unwrap();
+        assert_eq!(s.title, None);
+        assert!(wait_until(|| info(&fx, &s.id).title.as_deref() == Some("Local voice agent startup")), "got {:?}", info(&fx, &s.id).title);
+        fx.mgr.tick(now_ms()); // saves what changed
+        let saved = saved::load(&fx.data_dir.join("sessions.json"));
+        assert_eq!(saved.iter().find(|x| x.id == s.id).and_then(|x| x.title.as_deref()), Some("Local voice agent startup"));
     }
 
     #[test]

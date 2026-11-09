@@ -71,6 +71,17 @@ test('a permission prompt can be answered from the card', () => {
   expect(useApp.getState().kanban).toBe('w1'); // answering does not leave the board
 });
 
+test("a card is named by the agent's title once it has one, the task as its tooltip", () => {
+  const long = 'Create a reel from the following content dump: '.repeat(20);
+  act(() => useApp.getState().upsertSession(sess('s1', 'b1', { kind: 'working' }, { task: long, title: 'Reel from content dump' })));
+  act(() => useApp.getState().upsertSession(sess('s2', 'b2', { kind: 'working' })));
+  render(<Kanban />);
+  const named = screen.getByText('Reel from content dump');
+  expect(named.getAttribute('title')).toBe(long);
+  expect(screen.queryByText(long)).toBeNull();
+  expect(screen.getByText('Task s2')).toBeTruthy(); // no title yet: the task
+});
+
 test('clicking a card opens its session', () => {
   act(() => useApp.setState({ sessions: { s1: sess('s1', 'b1', { kind: 'working' }) } }));
   render(<Kanban />);

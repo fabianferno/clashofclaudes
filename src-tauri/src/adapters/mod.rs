@@ -186,6 +186,11 @@ pub trait AgentAdapter: Send + Sync {
     fn reads_osc_status(&self) -> bool {
         false
     }
+    /// The conversation's short name, from a window title the agent set (see `title.rs`); None
+    /// when that title names nothing (or the agent never names its conversations).
+    fn task_title(&self, _raw: &str) -> Option<String> {
+        None
+    }
     /// The agent's conversation id named by a hook payload, once there is a conversation to resume.
     fn conversation_of(&self, _body: &serde_json::Value) -> Option<String> {
         None

@@ -8,6 +8,7 @@ import { AttachmentStrip, useAttachments } from './Attachments';
 import BuilderPicker from './BuilderPicker';
 import { StateTag } from './tags';
 import { isDemoId } from '../onboarding/demo';
+import { sessionName, taskTooltip } from './sessionName';
 
 export type KanbanColumn = 'active' | 'needs' | 'finished';
 
@@ -80,7 +81,7 @@ export default function Kanban() {
     return (
       <article key={s.id} className="kb-card" data-testid={`kb-card-${s.id}`} role="button" tabIndex={0}
         onClick={open} onKeyDown={(e) => { if (e.key === 'Enter') open(); }}>
-        <div className="kb-title">{s.task ?? 'Session'}</div>
+        <div className="kb-title" title={taskTooltip(s)}>{sessionName(s) ?? 'Session'}</div>
         <div className="kb-who">
           {b && <AgentLogo kind={b.agent} size={18} />}
           <span>{b?.name ?? 'Builder'}{agent ? ` · ${agent.label}` : ''}</span>

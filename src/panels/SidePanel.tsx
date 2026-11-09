@@ -9,6 +9,7 @@ import WorkspacePanel from './WorkspacePanel';
 import QuotaPanel from './QuotaPanel';
 import '../hud/hud.css';
 import './panels.css';
+import { sessionName, taskTooltip } from './sessionName';
 
 /** The right-hand panel over the village; the selection decides what it shows. */
 export default function SidePanel() {
@@ -41,7 +42,7 @@ export default function SidePanel() {
     <aside className="side-panel" style={{ width: PANEL_W }} data-testid="side-panel">
       <header className="sp-head">
         <div className="sp-titles">
-          <h2 className="ol">{head.title}</h2>
+          <h2 className="ol" title={head.full}>{head.title}</h2>
           <div className="sp-sub" title={head.sub}>{head.sub}</div>
         </div>
         <button className="hud-btn grey sm sp-close" aria-label="Close panel" onClick={() => setSelection(null)}>✕</button>
@@ -68,7 +69,7 @@ export default function SidePanel() {
 function headOf(
   sel: Selection,
   st: Pick<ReturnType<typeof useApp.getState>, 'workspaces' | 'builders' | 'sessions'>,
-): { title: string; sub: string } | null {
+): { title: string; sub: string; full?: string } | null {
   switch (sel.kind) {
     case 'hall': return { title: 'Town Hall', sub: 'all workspaces' };
     case 'workspace': {
@@ -84,7 +85,7 @@ function headOf(
       if (!s) return null;
       const w = st.workspaces.find((x) => x.id === s.workspaceId);
       const b = s.kind.kind === 'agent' ? st.builders.find((x) => x.id === (s.kind as { builderId: string }).builderId) : undefined;
-      return { title: s.task ?? (b ? b.name : 'Terminal'), sub: `${w?.name ?? ''} · ${b?.name ?? 'Terminal'}` };
+      return { title: sessionName(s) ?? (b ? b.name : 'Terminal'), sub: `${w?.name ?? ''} · ${b?.name ?? 'Terminal'}`, full: taskTooltip(s) };
     }
     case 'quota': return { title: 'Resources', sub: `${PALETTE[sel.agent].label} limits` };
   }

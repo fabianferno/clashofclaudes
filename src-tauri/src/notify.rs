@@ -183,6 +183,7 @@ mod tests {
             workspace_id: "w".into(),
             kind,
             task: Some("SECRET TASK TEXT".into()),
+            title: None,
             state,
             steps: 0,
             started_at: 0,

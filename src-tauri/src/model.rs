@@ -259,6 +259,10 @@ pub struct SessionInfo {
     pub workspace_id: String,
     pub kind: SessionKind,
     pub task: Option<String>,
+    /// The agent's short name for the conversation, from its terminal title (Claude Code, Grok
+    /// Build); shown in place of the task's start.
+    #[serde(default)]
+    pub title: Option<String>,
     pub state: SessionState,
     pub steps: u32,
     pub started_at: i64,

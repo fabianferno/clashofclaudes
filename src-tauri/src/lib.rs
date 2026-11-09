@@ -11,6 +11,7 @@ pub mod model;
 pub mod bugreport;
 pub mod notify;
 pub mod osc;
+pub mod title;
 pub mod persist;
 pub mod platform;
 pub mod pty;

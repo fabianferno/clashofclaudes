@@ -6,6 +6,7 @@ import TerminalView from '../components/LazyTerminalView';
 import { CLASS_NAMES, GEAR_NAMES, classOf, gearOf } from '../village/look';
 import PopOutTerminal from './PopOutTerminal';
 import { isDemoId } from '../onboarding/demo';
+import { sessionName } from './sessionName';
 
 function elapsed(from: number, now: number): string {
   const s = Math.max(0, Math.floor((now - from) / 1000));
@@ -84,7 +85,7 @@ export default function SessionPanel({ sessionId, onClosed }: { sessionId: strin
     }
   }
 
-  const title = builder ? `${builder.name} · ${session.task ?? 'session'}` : 'Terminal';
+  const title = builder ? `${builder.name} · ${sessionName(session) ?? 'session'}` : 'Terminal';
   const tier = builder
     ? `${builder.model ? `${builder.model} · ` : ''}${builder.effort ? `${builder.effort} ` : ''}→ ${CLASS_NAMES[classOf(builder.agent, builder.model)]} with ${GEAR_NAMES[gearOf(builder.effort)].toLowerCase()}`
     : null;

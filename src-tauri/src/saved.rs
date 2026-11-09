@@ -13,6 +13,8 @@ pub struct SavedSession {
     pub workspace_id: String,
     pub kind: SessionKind,
     pub task: Option<String>,
+    #[serde(default)]
+    pub title: Option<String>,
     pub started_at: i64,
     #[serde(default)]
     pub steps: u32,
@@ -76,6 +78,7 @@ mod tests {
             workspace_id: "w".into(),
             kind: SessionKind::Agent { builder_id: "b".into() },
             task: Some("fix it".into()),
+            title: None,
             started_at: 5,
             steps: 3,
             reached_finished: true,

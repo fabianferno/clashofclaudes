@@ -63,6 +63,8 @@ export interface SessionInfo {
   workspaceId: string;
   kind: SessionKind;
   task: string | null;
+  /** The agent's short name for the conversation (its terminal title), once it has named it. */
+  title?: string | null;
   state: SessionState;
   steps: number;
   startedAt: number;

@@ -5,6 +5,7 @@ import NewSessionPicker from './NewSessionPicker';
 import { boardItems, browserUrl, sessionsByWorkspace, useApp } from '../state/store';
 import { HOUSE_SWATCHES, houseColors, xpNeed } from '../village/look';
 import { StateTag } from './tags';
+import { sessionName, taskTooltip } from './sessionName';
 
 export default function WorkspacePanel({ workspaceId }: { workspaceId: string }) {
   const ws = useApp((s) => s.workspaces.find((w) => w.id === workspaceId));
@@ -61,7 +62,7 @@ export default function WorkspacePanel({ workspaceId }: { workspaceId: string })
       <button key={s.id} className="sp-row" data-testid={`${terminal ? 'terminal' : 'session'}-row-${s.id}`}
         onClick={() => useApp.getState().setSelection({ kind: 'session', id: s.id })}>
         <span className="sp-rowtext">
-          <span className="sp-t" title={!terminal && s.task ? s.task : undefined}>{terminal ? 'Terminal' : (s.task ?? 'Session')}</span>
+          <span className="sp-t" title={terminal ? undefined : taskTooltip(s)}>{terminal ? 'Terminal' : (sessionName(s) ?? 'Session')}</span>
           <span className="sp-d">{terminal ? 'plain shell' : `${b?.name ?? 'Builder'} · ${s.steps} steps`}</span>
         </span>
         <StateTag state={s.state} paused={s.paused} />

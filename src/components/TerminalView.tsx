@@ -8,9 +8,15 @@ import { ipc, trimSeen } from '../api/ipc';
 import type { Frame } from '../api/types';
 import { zoomKey } from '../village/zoomKey';
 import { useTermFont } from './terminalFont';
+import { useApp } from '../state/store';
 
 // Serialize attach/detach per session id so the backend's per-session channel never gets reordered.
 const chains = new Map<string, Promise<void>>();
+
+/** Shift+Enter sent as the kitty keyboard protocol has it, for programs that asked for that protocol. */
+export const SHIFT_ENTER_KITTY = '\x1b[13;2u';
+/** Shift+Enter for an agent that did not: ESC then Enter (Alt+Enter), a new line in Claude Code and agy. */
+export const SHIFT_ENTER_ALT = '\x1b\r';
 
 /**
  * One xterm per host (the panel, or the pop-out), kept across session switches: a switch detaches
@@ -28,6 +34,12 @@ export default function TerminalView({ sessionId, readOnly = false }: { sessionI
   const readOnlyRef = useRef(readOnly);
   useEffect(() => { readOnlyRef.current = readOnly; }, [readOnly]);
   const sessionRef = useRef(sessionId);
+  // Agents take Shift+Enter as a new line in their prompt; a shell keeps it as Enter.
+  const isAgent = useApp((s) => s.sessions[sessionId]?.kind.kind === 'agent');
+  const agentRef = useRef(isAgent);
+  useEffect(() => { agentRef.current = isAgent; }, [isAgent]);
+  // The program on screen turned on the kitty keyboard protocol (CSI > flags u; CSI < u pops it).
+  const kittyRef = useRef(false);
   const termRef = useRef<{ term: Terminal; fit: FitAddon } | null>(null);
   // The terminal has shown a session, so the next one starts with a reset.
   const shownIn = useRef<Terminal | null>(null);
@@ -63,6 +75,25 @@ export default function TerminalView({ sessionId, readOnly = false }: { sessionI
     } catch { /* fall back to the default renderer */ }
     termRef.current = { term, fit };
 
+    const csi = [
+      term.parser.registerCsiHandler({ prefix: '>', final: 'u' }, () => { kittyRef.current = true; return false; }),
+      term.parser.registerCsiHandler({ prefix: '<', final: 'u' }, () => { kittyRef.current = false; return false; }),
+      term.parser.registerCsiHandler({ prefix: '=', final: 'u' }, (p) => { kittyRef.current = Number(p[0]) > 0; return false; }),
+    ];
+    // Shift+Enter: xterm sends a plain Enter, which submits an agent's prompt. A terminal app
+    // sends the protocol's Shift+Enter (or Alt+Enter), a new line, so do the same.
+    term.attachCustomKeyEventHandler((ev) => {
+      if (ev.key !== 'Enter' || !ev.shiftKey || ev.ctrlKey || ev.altKey || ev.metaKey) return true;
+      const seq = kittyRef.current ? SHIFT_ENTER_KITTY : agentRef.current ? SHIFT_ENTER_ALT : null;
+      if (!seq) return true;
+      if (ev.type === 'keydown' && !readOnlyRef.current) {
+        const sid = sessionRef.current;
+        ipc.writeSession(sid, Array.from(new TextEncoder().encode(seq))).catch(fail(sid));
+      }
+      ev.preventDefault();
+      return false; // not xterm's own Enter (keydown nor keypress)
+    });
+
     const enc = new TextEncoder();
     const sub = term.onData((d) => {
       const sid = sessionRef.current;
@@ -89,6 +120,7 @@ export default function TerminalView({ sessionId, readOnly = false }: { sessionI
 
     return () => {
       window.removeEventListener('keydown', onKey, true);
+      csi.forEach((d) => d.dispose());
       unFont();
       ro.disconnect();
       sub.dispose();
@@ -114,6 +146,7 @@ export default function TerminalView({ sessionId, readOnly = false }: { sessionI
       term.write('', () => {
         if (!disposed) sessionRef.current = sessionId;
         term.reset();
+        kittyRef.current = false;
       });
     } else {
       sessionRef.current = sessionId;

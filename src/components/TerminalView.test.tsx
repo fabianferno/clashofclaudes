@@ -10,12 +10,16 @@ let resets = 0;
 let typed: (d: string) => void = () => {};
 let termOptions: Record<string, unknown> = {};
 let lastTerm: { options: Record<string, unknown> } | null = null;
+let keyHandler: (e: KeyboardEvent) => boolean = () => true;
+const csiHandlers: Record<string, (p: number[]) => boolean> = {};
 vi.mock('@xterm/xterm', () => ({
   Terminal: class {
     constructor(o: Record<string, unknown>) { termOptions = o; created++; lastTerm = this; }
     cols = 80; rows = 24;
     options: Record<string, unknown> = {};
     loadAddon() {} open() {}
+    parser = { registerCsiHandler: (id: { prefix?: string; final: string }, cb: (p: number[]) => boolean) => { csiHandlers[`${id.prefix ?? ''}${id.final}`] = cb; return { dispose() {} }; } };
+    attachCustomKeyEventHandler(cb: (e: KeyboardEvent) => boolean) { keyHandler = cb; }
     onData(cb: (d: string) => void) { typed = cb; return { dispose() {} }; }
     write(d: Uint8Array | string, cb?: () => void) { writes.push(d); writeDone.push(cb ?? (() => {})); }
     dispose() { disposeCount++; }
@@ -47,6 +51,8 @@ vi.mock('../api/ipc', async () => {
 });
 import TerminalView from './TerminalView';
 import { useTermFont } from './terminalFont';
+import { useApp } from '../state/store';
+import { SHIFT_ENTER_ALT, SHIFT_ENTER_KITTY } from './TerminalView';
 import { ipc } from '../api/ipc';
 import { screen } from '@testing-library/react';
 
@@ -232,4 +238,31 @@ test('⌘+ / ⌘- / ⌘0 size a popped-out terminal\'s text, not the village; el
   expect(village).toHaveBeenCalledTimes(1);
   expect(useTermFont.getState().size).toBe(13);
   window.removeEventListener('keydown', village);
+});
+
+test('Shift+Enter is a new line for an agent (Alt+Enter, or the kitty Shift+Enter once asked for); a shell keeps Enter', () => {
+  const base = { workspaceId: 'w', task: null, state: { kind: 'working' as const }, steps: 0, startedAt: 0, lastOutputAt: 0, reachedFinished: false, worktree: null, commandPreview: '', awaitingDecision: false, busy: false, rev: 1, spot: null };
+  useApp.setState({ sessions: {
+    a1: { ...base, id: 'a1', kind: { kind: 'agent', builderId: 'b' } },
+    t1: { ...base, id: 't1', kind: { kind: 'terminal' } },
+  } });
+  const shiftEnter = (type = 'keydown') => keyHandler(new KeyboardEvent(type, { key: 'Enter', shiftKey: true, cancelable: true }));
+  const sent = () => vi.mocked(ipc.writeSession).mock.calls.map(([, bytes]) => new TextDecoder().decode(new Uint8Array(bytes)));
+  vi.mocked(ipc.writeSession).mockClear();
+
+  const { unmount } = render(<TerminalView sessionId="a1" />);
+  expect(shiftEnter()).toBe(false);
+  expect(shiftEnter('keypress')).toBe(false); // xterm must not add its own Enter
+  expect(keyHandler(new KeyboardEvent('keydown', { key: 'Enter' }))).toBe(true); // plain Enter is xterm's
+  csiHandlers['>u']([1]); // the agent turns on the kitty keyboard protocol
+  shiftEnter();
+  csiHandlers['<u']([]);
+  shiftEnter();
+  expect(sent()).toEqual([SHIFT_ENTER_ALT, SHIFT_ENTER_KITTY, SHIFT_ENTER_ALT]);
+  unmount();
+
+  vi.mocked(ipc.writeSession).mockClear();
+  render(<TerminalView sessionId="t1" />);
+  expect(shiftEnter()).toBe(true);
+  expect(sent()).toEqual([]);
 });

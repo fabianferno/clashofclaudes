@@ -439,6 +439,8 @@ export interface SceneOptions {
   onBuilderAssign?: (builderId: string, workspaceId: string) => void;
   /** A builder being dragged just came over a workspace it could be dropped on. */
   onBuilderOver?: (workspaceId: string) => void;
+  /** The pointer (no button held) just came over a workspace's house or the Town Hall: `house:<id>` or `hall`. */
+  onBuildingHover?: (entityId: string) => void;
   /** The scene has played (or given up on) the close outcome for this session id. */
   onClosedConsumed?: (sessionId: string) => void;
   /** An app board was clicked: open its app. */
@@ -1550,10 +1552,27 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       redrawOverlay();
       return;
     }
-    if (!drag.active || ev.pointerId !== pointerId) return;
+    if (!drag.active || ev.pointerId !== pointerId) { hoverAt(ev); return; }
     const p = localPoint(ev);
     drag.move(p.x, p.y);
   };
+  /** The house or hall under a free pointer, reported once each time the pointer comes over one. */
+  let hovered: string | null = null;
+  let hoverCheckedAt = 0;
+  const hoverAt = (ev: PointerEvent) => {
+    if (ev.buttons !== 0 || ev.pointerType === 'touch') return;
+    const now = performance.now();
+    if (now - hoverCheckedAt < 40) return; // a few checks a second are plenty, and keep moves cheap
+    hoverCheckedAt = now;
+    const p = localPoint(ev), w = screenToWorld(cam, p.x, p.y);
+    const hit = hitTest(hitEntities(), w.x, w.y);
+    const id = hit && (hit.kind === 'house' || hit.kind === 'hall') ? hit.id : null;
+    if (id !== hovered) {
+      hovered = id;
+      if (id) opts.onBuildingHover?.(id);
+    }
+  };
+  const onLeave = () => { hovered = null; };
   const endObjectDrag = (ev: PointerEvent | null) => {
     const d = od;
     od = null;
@@ -1618,6 +1637,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
   };
   canvas.addEventListener('pointerdown', onDown);
   canvas.addEventListener('pointermove', onMove);
+  canvas.addEventListener('pointerleave', onLeave);
   canvas.addEventListener('pointerup', onUp);
   canvas.addEventListener('pointercancel', onCancel);
   canvas.addEventListener('wheel', onWheel, { passive: false });

@@ -76,6 +76,8 @@ export default function VillageCanvas({ onError }: { onError?: (e: unknown) => v
       onBuilderAssign: (builderId, id) => useApp.getState().setSelection({ kind: 'workspace', id, builder: builderId }),
       // a tap under the finger as the held builder crosses into a workspace; nothing to tell the owner if it fails
       onBuilderOver: () => { ipc.haptic().catch(() => {}); },
+      // the same tap as the pointer comes over a workspace's house or the Town Hall
+      onBuildingHover: () => { ipc.haptic().catch(() => {}); },
       panelWidth: () => (useApp.getState().panelOpen ? getPanelWidth() : 0),
       openPanelWidth: getPanelWidth,
       // a page that refuses framing would pop out blank: that one goes to the browser

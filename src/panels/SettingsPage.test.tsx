@@ -7,6 +7,7 @@ const ipc = vi.hoisted(() => ({
   dataFolder: vi.fn().mockResolvedValue('/Users/me/Library/Application Support/app'),
   showDataFolder: vi.fn().mockResolvedValue(undefined),
   checkForUpdate: vi.fn(),
+  haptic: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock('../api/ipc', () => ({ ipc }));
 vi.mock('@tauri-apps/api/app', () => ({ getVersion: vi.fn().mockResolvedValue('0.1.0') }));
@@ -123,4 +124,17 @@ test('Replay the tour closes Settings and opens the welcome', async () => {
   const { useTour, endTour } = await import('../onboarding/tour');
   expect(useTour.getState().step).toBe('welcome');
   await act(async () => { await endTour(); });
+});
+
+test('running the pointer over a haptic pad plays the chosen feel; an Off pad plays nothing', async () => {
+  ipc.getSettings.mockResolvedValue({ updatesEnabled: false, hapticHover: 'levelChange', hapticDrop: 'off' });
+  render(<SettingsPage />);
+  await screen.findByText('Version 0.1.0');
+  ipc.haptic.mockClear();
+  const [hover, drop] = screen.getAllByText(/^(Hover to feel|Off)$/, { selector: '.set-feel' });
+  fireEvent.pointerEnter(hover);
+  expect(ipc.haptic).toHaveBeenCalledWith('levelChange');
+  ipc.haptic.mockClear();
+  fireEvent.pointerEnter(drop);
+  expect(ipc.haptic).not.toHaveBeenCalled();
 });

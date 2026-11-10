@@ -246,6 +246,13 @@
 .set-switch:focus-visible { outline: 2px solid #2f6fb5; outline-offset: 2px; }
 .set-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .set-haptic { display: inline-flex; gap: 6px; align-items: center; flex: none; }
+/* a pad that plays the chosen haptic as the pointer comes onto it, like a house in the village */
+.set-feel { display: inline-flex; align-items: center; justify-content: center; width: 112px; height: 30px; flex: none;
+  font: 700 11px system-ui; color: #6b4d8f; letter-spacing: .02em; user-select: none;
+  background: repeating-linear-gradient(135deg, #f1e6fa 0 6px, #e8daf5 6px 12px); border: 2px dashed #a888c8; border-radius: 8px;
+  transition: background-color .12s, border-color .12s, transform .12s; }
+.set-feel:hover { background: #d9c3f0; border-style: solid; border-color: #8a5ab8; color: #4a2d6b; transform: scale(1.04); }
+.set-feel.off { opacity: .45; pointer-events: none; }
 .set-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 12px ui-monospace, monospace; padding: 6px 8px; background: #fff8e8; border: 2px solid #d8c39a; border-radius: 8px; }
 .set-keys { margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 6px 14px; }
 .set-keys div { display: flex; align-items: center; gap: 10px; }

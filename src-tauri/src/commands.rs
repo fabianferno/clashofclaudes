@@ -796,10 +796,11 @@ pub fn open_in_finder(path: String, app: AppHandle) -> Result<(), String> {
     app.opener().open_path(path, None::<&str>).map_err(|e| e.to_string())
 }
 
-/// A trackpad tap as a dragged builder comes over a workspace. Sync, so it runs on the main thread.
+/// A trackpad haptic (`kind`: see `platform::Haptic::parse`; the firm click when unknown or not
+/// given). Sync, so it runs on the main thread.
 #[tauri::command]
-pub fn haptic() {
-    crate::platform::haptic_tap();
+pub fn haptic(kind: Option<String>) {
+    crate::platform::haptic(kind.as_deref().and_then(crate::platform::Haptic::parse).unwrap_or(crate::platform::Haptic::LevelChange));
 }
 
 #[tauri::command]

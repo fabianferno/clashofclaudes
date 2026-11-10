@@ -163,6 +163,19 @@ pub struct Settings {
     /// suggests the To Do). None: no limit.
     #[serde(default)]
     pub session_limit: Option<u32>,
+    /// The trackpad haptic as the pointer comes over a house or the Town Hall (`platform::Haptic` names).
+    #[serde(default = "default_haptic_hover")]
+    pub haptic_hover: String,
+    /// The trackpad haptic as a held builder comes over a workspace it can be dropped on.
+    #[serde(default = "default_haptic_drop")]
+    pub haptic_drop: String,
+}
+
+fn default_haptic_hover() -> String {
+    "alignment".into()
+}
+fn default_haptic_drop() -> String {
+    "levelChange".into()
 }
 
 fn default_true() -> bool {
@@ -181,6 +194,12 @@ impl Settings {
             .filter(|n| !n.is_empty());
         // a fresh id each time sharing is turned on; none while it is off
         self.session_limit = self.session_limit.filter(|n| *n > 0).map(|n| n.min(32));
+        if crate::platform::Haptic::parse(&self.haptic_hover).is_none() {
+            self.haptic_hover = default_haptic_hover();
+        }
+        if crate::platform::Haptic::parse(&self.haptic_drop).is_none() {
+            self.haptic_drop = default_haptic_drop();
+        }
         self.install_id = if self.share_usage { self.install_id.filter(|i| !i.trim().is_empty()).or_else(|| Some(uuid::Uuid::new_v4().to_string())) } else { None };
         self
     }
@@ -198,6 +217,16 @@ mod settings_tests {
         assert_eq!(on.clone().normalized().install_id, Some(id), "kept while on");
         assert_eq!(Settings { share_usage: false, ..on }.normalized().install_id, None);
         assert_eq!(Settings::default().normalized().install_id, None, "off by default");
+    }
+
+    #[test]
+    fn haptics_default_light_on_hover_and_firm_on_drop_and_unknown_names_reset() {
+        let d = Settings::default();
+        assert_eq!((d.haptic_hover.as_str(), d.haptic_drop.as_str()), ("alignment", "levelChange"));
+        let odd = Settings { haptic_hover: "buzz".into(), haptic_drop: "double".into(), ..Settings::default() }.normalized();
+        assert_eq!((odd.haptic_hover.as_str(), odd.haptic_drop.as_str()), ("alignment", "double"));
+        let old: Settings = serde_json::from_str("{}").unwrap();
+        assert_eq!(old.haptic_hover, "alignment", "saved before the setting existed");
     }
 
     #[test]
@@ -224,6 +253,8 @@ impl Default for Settings {
             share_usage: false,
             install_id: None,
             session_limit: None,
+            haptic_hover: default_haptic_hover(),
+            haptic_drop: default_haptic_drop(),
         }
     }
 }

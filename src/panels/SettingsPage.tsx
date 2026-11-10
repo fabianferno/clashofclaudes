@@ -8,6 +8,8 @@ import { startTour } from '../onboarding/tour';
 import AgentsStatus from './AgentsStatus';
 import '../onboarding/onboarding.css';
 import { openBugReport } from './BugReport';
+import { HAPTICS, playHaptic } from '../state/haptics';
+import type { HapticKind } from '../api/types';
 
 export { DEFAULT_SETTINGS };
 
@@ -38,6 +40,22 @@ function Toggle({ label, hint, checked, onChange }: { label: string; hint?: stri
         {hint && <span className="set-hint">{hint}</span>}
       </span>
     </label>
+  );
+}
+
+/** One moment's haptic: pick a feel (it plays as you pick it), or Try it again. */
+function HapticRow({ label, value, onChange }: { label: string; value: HapticKind; onChange: (k: HapticKind) => void }) {
+  const hint = HAPTICS.find((h) => h.kind === value)?.hint;
+  return (
+    <div className="set-line" title={hint}>
+      <span className="set-label">{label}</span>
+      <span className="set-haptic">
+        <select aria-label={label} value={value} onChange={(e) => { const k = e.target.value as HapticKind; onChange(k); playHaptic(k); }}>
+          {HAPTICS.map((h) => <option key={h.kind} value={h.kind}>{h.label}</option>)}
+        </select>
+        <button type="button" className="hud-btn blue sm" disabled={value === 'off'} onClick={() => playHaptic(value)}>Try</button>
+      </span>
+    </div>
   );
 }
 
@@ -155,6 +173,15 @@ export default function SettingsPage() {
                   {[1, 2, 3, 4, 5, 6, 8, 10].map((n) => <option key={n} value={n}>{n}</option>)}
                 </select>
               </label>
+            </div>
+          </section>
+
+          <section className="set-card" aria-label="Haptics">
+            <h3 className="kb-head ol" style={{ background: '#8a5ab8' }}>Haptics</h3>
+            <div className="set-body">
+              <div className="set-note">Felt on a Force Touch trackpad while a finger rests on it. Try each one: macOS offers three, from a faint tick to a firm click.</div>
+              <HapticRow label="Over a house or the Town Hall" value={settings.hapticHover ?? 'alignment'} onChange={(hapticHover) => change({ hapticHover })} />
+              <HapticRow label="A builder over a workspace" value={settings.hapticDrop ?? 'levelChange'} onChange={(hapticDrop) => change({ hapticDrop })} />
             </div>
           </section>
 

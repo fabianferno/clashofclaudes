@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { ipc } from '../api/ipc';
 import { boardItems, moveValid, useApp, type AppState } from '../state/store';
 import ZoomControls from '../hud/ZoomControls';
 import { getPanelWidth, usePanelWidth } from '../state/panelWidth';
@@ -9,6 +8,7 @@ import { setBoardImage } from './art/entities';
 import { clearProbeScene, setProbeScene } from './probe';
 import { splashReady } from '../splash';
 import { zoomKey } from './zoomKey';
+import { hapticFor, playHaptic } from '../state/haptics';
 
 export { zoomKey };
 
@@ -75,9 +75,9 @@ export default function VillageCanvas({ onError }: { onError?: (e: unknown) => v
       onClosedConsumed: (id) => useApp.getState().consumeClosed(id),
       onBuilderAssign: (builderId, id) => useApp.getState().setSelection({ kind: 'workspace', id, builder: builderId }),
       // a tap under the finger as the held builder crosses into a workspace; nothing to tell the owner if it fails
-      onBuilderOver: () => { ipc.haptic().catch(() => {}); },
-      // the same tap as the pointer comes over a workspace's house or the Town Hall
-      onBuildingHover: () => { ipc.haptic().catch(() => {}); },
+      onBuilderOver: () => playHaptic(hapticFor('drop')),
+      // the pointer comes over a workspace's house or the Town Hall (Settings › Haptics picks the feel)
+      onBuildingHover: () => playHaptic(hapticFor('hover')),
       panelWidth: () => (useApp.getState().panelOpen ? getPanelWidth() : 0),
       openPanelWidth: getPanelWidth,
       // a page that refuses framing would pop out blank: that one goes to the browser

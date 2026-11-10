@@ -1,6 +1,6 @@
 import { invoke, Channel } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type { Todo, AppPreview, AgentAccount, AgentInfo, AgentKind, AgentQuota, Builder, CloseOutcome, Compound, ConfirmQuit, Frame, ListState, Review, SessionInfo, Settings, Stats, Tile, UpdateStatus, Workspace, BugReport, BugReportInfo, ReportKind } from './types';
+import type { HapticKind, Todo, AppPreview, AgentAccount, AgentInfo, AgentKind, AgentQuota, Builder, CloseOutcome, Compound, ConfirmQuit, Frame, ListState, Review, SessionInfo, Settings, Stats, Tile, UpdateStatus, Workspace, BugReport, BugReportInfo, ReportKind } from './types';
 
 const SKIP_FLAG = 1n << 63n;
 
@@ -87,7 +87,7 @@ export const ipc = {
   openInEditor: (path: string) => invoke<void>('open_in_editor', { path }),
   openInFinder: (path: string) => invoke<void>('open_in_finder', { path }),
   /** A Force Touch trackpad tap (nothing with a mouse or off macOS). */
-  haptic: () => invoke<void>('haptic'),
+  haptic: (kind?: Exclude<HapticKind, 'off' | 'double'>) => invoke<void>('haptic', { kind: kind ?? null }),
   reviewSession: (id: string) => invoke<Review>('review_session', { id }),
   detachSession: (id: string) => invoke<void>('detach_session', { id }),
   /** The terminal finished writing output up to stream position `offset`; lets the next frame through. */

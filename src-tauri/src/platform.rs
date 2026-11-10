@@ -22,16 +22,52 @@ pub fn which(program: &str) -> Option<PathBuf> {
         .find(is_exec)
 }
 
-/// A firm tap from a Force Touch trackpad (AppKit's "level change", the strongest of its patterns).
-/// Felt only while a finger rests on such a trackpad; a no-op with a mouse.
+/// The trackpad haptics a setting can pick (AppKit's three patterns, a double tick, or none).
+/// Felt only while a finger rests on a Force Touch trackpad; a no-op with a mouse.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Haptic {
+    Off,
+    /// The lightest: one faint tick (what macOS gives when something snaps to a guide).
+    Alignment,
+    /// A soft, general-purpose tap.
+    Generic,
+    /// The firmest: a click (what macOS gives stepping through levels, e.g. a slider's detents).
+    LevelChange,
+    /// Two light ticks in quick succession.
+    Double,
+}
+
+impl Haptic {
+    /// The setting's name (`off`, `alignment`, `generic`, `levelChange`, `double`); None when unknown.
+    pub fn parse(name: &str) -> Option<Haptic> {
+        Some(match name {
+            "off" => Haptic::Off,
+            "alignment" => Haptic::Alignment,
+            "generic" => Haptic::Generic,
+            "levelChange" => Haptic::LevelChange,
+            "double" => Haptic::Double,
+            _ => return None,
+        })
+    }
+}
+
 #[cfg(target_os = "macos")]
-pub fn haptic_tap() {
+pub fn haptic(kind: Haptic) {
     use objc2_app_kit::{NSHapticFeedbackManager, NSHapticFeedbackPattern, NSHapticFeedbackPerformanceTime, NSHapticFeedbackPerformer};
-    NSHapticFeedbackManager::defaultPerformer()
-        .performFeedbackPattern_performanceTime(NSHapticFeedbackPattern::LevelChange, NSHapticFeedbackPerformanceTime::Now);
+    let play = |p: NSHapticFeedbackPattern| {
+        NSHapticFeedbackManager::defaultPerformer().performFeedbackPattern_performanceTime(p, NSHapticFeedbackPerformanceTime::Now);
+    };
+    match kind {
+        Haptic::Off => {}
+        Haptic::Alignment => play(NSHapticFeedbackPattern::Alignment),
+        Haptic::Generic => play(NSHapticFeedbackPattern::Generic),
+        Haptic::LevelChange => play(NSHapticFeedbackPattern::LevelChange),
+        // one tick per call: the frontend times the second (AppKit wants the main thread for each)
+        Haptic::Double => play(NSHapticFeedbackPattern::Alignment),
+    }
 }
 #[cfg(not(target_os = "macos"))]
-pub fn haptic_tap() {}
+pub fn haptic(_kind: Haptic) {}
 
 /// Signals the process group led by `pgid` (a PTY child is a session leader, so its
 /// pgid is its pid), reaching grandchildren such as the commands a shell forked.

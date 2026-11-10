@@ -248,7 +248,14 @@ export interface Settings {
   installId?: string | null;
   /** At most this many agent sessions at work at once; null: no limit. */
   sessionLimit?: number | null;
+  /** The trackpad haptic as the pointer comes over a house or the Town Hall. */
+  hapticHover?: HapticKind;
+  /** The trackpad haptic as a held builder comes over a workspace it can be dropped on. */
+  hapticDrop?: HapticKind;
 }
+
+/** A trackpad haptic (AppKit's patterns, a double tick, or none); felt only on a Force Touch trackpad. */
+export type HapticKind = 'off' | 'alignment' | 'generic' | 'levelChange' | 'double';
 
 export interface UpdateStatus {
   available: boolean;

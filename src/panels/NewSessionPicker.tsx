@@ -13,6 +13,8 @@ import { DEMO_TASK, createDemoBuilder, isDemoId } from '../onboarding/demo';
 import { ownerQueue, roomToStart, runningAgents } from '../state/queue';
 import { keyLabel } from './commands';
 import './briefing.css';
+import { bindingForecast, clockText, isLow } from '../state/elixir';
+import { COLLECTOR_NAME, isCollectorAgent } from '../village/quota';
 
 export const RECRUIT_NAMES = ['Ivy', 'Jax', 'Kai', 'Lu', 'Mo', 'Nia', 'Oz', 'Pip', 'Quin', 'Rex'];
 
@@ -100,6 +102,21 @@ export default function NewSessionPicker({ workspaceId, builderId }: { workspace
       setBusy(false);
     }
   }
+
+  // the chosen agent's elixir: low now, or running out before it refills at this rate
+  const quotas = useApp((s) => s.quotas);
+  const quotaHistory = useApp((s) => s.quotaHistory);
+  const elixirNote = (() => {
+    const a = agent?.kind;
+    if (sample || !a || !isCollectorAgent(a)) return null;
+    const now = Date.now();
+    const f = bindingForecast(quotas[a], now, quotaHistory);
+    if (!f) return null;
+    if (f.left <= 0) return `${COLLECTOR_NAME[a]} is out of elixir: this session may stop at once.`;
+    if (isLow(a, quotas, now, settings)) return `${COLLECTOR_NAME[a]} has ${Math.round(f.left)}% of its ${f.window.label.toLowerCase()} left.`;
+    if (f.runsOut && f.emptyAt !== null) return `At this rate ${COLLECTOR_NAME[a]} runs out around ${clockText(f.emptyAt, now)}, before its ${f.window.label.toLowerCase()} refills.`;
+    return null;
+  })();
 
   const tier = agent ? `${CLASS_NAMES[classOf(agent.kind, pModel)]}` : '';
 
@@ -194,6 +211,7 @@ export default function NewSessionPicker({ workspaceId, builderId }: { workspace
           <input type="checkbox" checked={isolate} onChange={(e) => setIsolate(e.target.checked)} /> Work in its own git worktree
         </label>
       )}
+      {elixirNote && <div className="ns-elixir" role="note" data-testid="start-elixir">{elixirNote}</div>}
       {nudge && (
         <div className="ns-nudge" data-testid="start-nudge">
           <span>

@@ -3,6 +3,8 @@ import { ipc } from './api/ipc';
 import { autoLayout, useApp } from './state/store';
 import { autoSnapshots } from './state/snapshots';
 import { autoStart } from './state/autoStart';
+import { watchSounds } from './state/sounds';
+import { watchElixir } from './state/elixirWatch';
 import { queueReason } from './state/queue';
 import VillageCanvas from './village/VillageCanvas';
 import TopBar from './hud/TopBar';
@@ -53,6 +55,9 @@ function App() {
     let stopLayout: (() => void) | null = null;
     // To Dos set to start on their own start once their builder is free (waits for the first state)
     const stopAuto = autoStart((e) => useApp.getState().setError(String(e)));
+    // the village's sounds, and a heads-up when an agent's elixir won't last until it refills
+    const stopSounds = watchSounds();
+    const stopElixir = watchElixir();
     const settings = loadSettings();
     ipc.listState()
       .then((s) => {
@@ -78,7 +83,7 @@ function App() {
     settings.then((s) => { if (!cancelled && !s.onboarded) startTour(); }).catch(() => {});
     const preload = window.setTimeout(preloadTerminal, 2000); // after the village's first frames
     const stopSnapshots = autoSnapshots();
-    return () => { cancelled = true; window.clearTimeout(preload); stopLayout?.(); stopAuto(); stopSnapshots(); unlisten.forEach((u) => u()); };
+    return () => { cancelled = true; window.clearTimeout(preload); stopLayout?.(); stopAuto(); stopSounds(); stopElixir(); stopSnapshots(); unlisten.forEach((u) => u()); };
   }, []);
 
   return (

@@ -65,11 +65,16 @@ Running several agents makes it easy to start a fifth thread while four are stil
 - **A briefing for each item.** Before the terminal, the panel shows the task, what the agent asks (for Claude Code, the exact tool call, such as `Bash: npm test`) and the agent's last reply (Claude Code and Codex). It also shows the files changed since the session started.
 - **Close the loop.** For finished work: **Accept** closes it and earns XP. **Follow up** sends your reply into the agent's prompt. **Park** puts it aside, with an optional note, until it changes. **Discard** closes it without XP, and its changes stay on disk.
 - **Fewer threads.** While things wait on you, **+ New session** suggests **Add to To Do** instead. **Settings › Focus** can limit how many sessions work at once.
+- **Elixir that decides.** The collectors forecast each agent's limits at the rate they are burning ("runs out around 3:40 PM, before it refills"): in the collector panel, on the resource bar (its rim glows amber) and once as a notice. To Dos set to start on their own wait while their agent is at or under a reserve (**Settings › Elixir**, 10 % by default), and start once it refills; optionally a free builder whose agent has elixir takes the task instead.
 - **A To Do that runs itself.** Tick **Start on its own** on a To Do and it starts when its builder is free and the limit allows. Tick **Own worktree** (on a To Do or in + New session) and the session starts in a new git worktree, on a new branch from your last commit. The worktree is kept in the app's data folder (`worktrees/`). Its changes stay apart from yours until you merge the branch. Uncommitted changes in your folder are not carried over.
 
 ## Notifications
 
 When the app is in the background, it shows a macOS notification when a session needs you or finishes (title: the builder's name, body: "needs you: ..." or "finished"), and the Dock icon shows how many sessions are waiting. Clicking a notification brings the app forward and selects that session. Notifications never include your task text or terminal output.
+
+## Sounds
+
+The app plays a sound when a builder wants a decision, asks you something, finishes, gets stuck, starts, sends out a minion (subagent) or goes back to work, for every agent and whether the window is in front or not. Pick a macOS sound or one of your own files for each moment in **Settings › Sounds** (a copy of your file is kept in the data folder), set the volume, or turn sounds off. The app plays them itself (`afplay`); it adds nothing to your agents' hooks.
 
 ## Privacy
 

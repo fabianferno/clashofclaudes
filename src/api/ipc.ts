@@ -88,6 +88,12 @@ export const ipc = {
   openInFinder: (path: string) => invoke<void>('open_in_finder', { path }),
   /** A Force Touch trackpad tap (nothing with a mouse or off macOS). */
   haptic: (kind?: Exclude<HapticKind, 'off' | 'double'>) => invoke<void>('haptic', { kind: kind ?? null }),
+  /** Plays a sound file (nothing while sounds are off, unless `preview`); `volume` 0-100, else the saved one. */
+  playSound: (path: string, volume?: number, preview = false) => invoke<void>('play_sound', { path, volume: volume ?? null, preview }),
+  /** The macOS system sounds' names (`Basso`, `Blow`, ...). */
+  systemSounds: () => invoke<string[]>('system_sounds'),
+  /** Copies a sound file into the data folder; returns the copy's path. */
+  importSound: (path: string) => invoke<string>('import_sound', { path }),
   reviewSession: (id: string) => invoke<Review>('review_session', { id }),
   detachSession: (id: string) => invoke<void>('detach_session', { id }),
   /** The terminal finished writing output up to stream position `offset`; lets the next frame through. */

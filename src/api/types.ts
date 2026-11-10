@@ -252,7 +252,20 @@ export interface Settings {
   hapticHover?: HapticKind;
   /** The trackpad haptic as a held builder comes over a workspace it can be dropped on. */
   hapticDrop?: HapticKind;
+  /** Auto-started To Dos wait while their agent has this percent or less left of any limit; 0: never. */
+  elixirReserve?: number;
+  /** A To Do held for elixir goes to a free builder whose agent has some. */
+  elixirStandIn?: boolean;
+  /** The village plays sounds. */
+  soundsOn?: boolean;
+  /** Sound volume, 0-100. */
+  soundVolume?: number;
+  /** The sound file each moment plays; "" is silent. */
+  sounds?: Partial<Record<SoundMoment, string>>;
 }
+
+/** A moment that can play a sound (see src/state/sounds.ts and src-tauri/src/sounds.rs). */
+export type SoundMoment = 'decide' | 'answer' | 'finished' | 'stuck' | 'start' | 'minion' | 'working';
 
 /** A trackpad haptic (AppKit's patterns, a double tick, or none); felt only on a Force Touch trackpad. */
 export type HapticKind = 'off' | 'alignment' | 'generic' | 'levelChange' | 'double';

@@ -4,6 +4,7 @@ import type { AgentAccount, AgentKind, QuotaWindow } from '../api/types';
 import { useApp } from '../state/store';
 import { RESOURCE } from '../village/look';
 import { isCollectorAgent, leftNow, primaryWindow, quotaTone, untilText } from '../village/quota';
+import { forecastText, forecastWindow, isLow, reserveOf } from '../state/elixir';
 
 const resourceBar = (a: keyof typeof RESOURCE) => `linear-gradient(${RESOURCE[a].lit}, ${RESOURCE[a].label})`;
 const BAR: Record<ReturnType<typeof quotaTone>, string> = {
@@ -42,6 +43,8 @@ const fmtTime = (ms: number) =>
 /** Every limit an agent reports, shortest window first, grouped by model group. */
 export default function QuotaPanel({ agent }: { agent: AgentKind }) {
   const q = useApp((s) => s.quotas[agent]);
+  const history = useApp((s) => s.quotaHistory[agent]);
+  const settings = useApp((s) => s.settings);
   const [now, setNow] = useState(() => Date.now());
   const [busy, setBusy] = useState(false);
   const [account, setAccount] = useState<AgentAccount | null | undefined>(undefined);
@@ -84,6 +87,7 @@ export default function QuotaPanel({ agent }: { agent: AgentKind }) {
           {ws.map((w) => {
             const left = leftNow(w, now);
             const refilled = w.resetsAt !== null && w.resetsAt <= now;
+            const f = forecastWindow(w, now, history?.[w.id]);
             return (
               <div key={w.id} className="sp-box quota-row" data-testid={`quota-${w.id}`}>
                 <div className="quota-head">
@@ -94,11 +98,21 @@ export default function QuotaPanel({ agent }: { agent: AgentKind }) {
                 <div className="sp-d quota-reset">
                   {refilled ? 'Refilled' : w.resetsAt !== null ? `Refills in ${untilText(w.resetsAt - now)} · ${fmtTime(w.resetsAt)}` : 'No reset time reported'}
                 </div>
+                {!refilled && (
+                  <div className={`sp-d quota-forecast${f.runsOut ? ' warn' : ''}`} data-testid={`quota-forecast-${w.id}`}>
+                    {forecastText(f, now)}{f.perHour ? ` · ${f.perHour < 1 ? f.perHour.toFixed(1) : Math.round(f.perHour)}% an hour` : ''}
+                  </div>
+                )}
               </div>
             );
           })}
         </div>
       ))}
+      {q && isLow(agent, { [agent]: q }, now, settings) && (
+        <div className="sp-note quota-held" data-testid="quota-held">
+          At or under your {reserveOf(settings)}% reserve: To Dos set to start on their own wait{settings?.elixirStandIn ? ', or go to a builder whose agent has elixir' : ''}. Change it in Settings › Elixir.
+        </div>
+      )}
       {q && (
         <div className="sp-note" data-testid="quota-asof">
           Read {untilText(now - q.updatedAt)} ago from {q.source}.

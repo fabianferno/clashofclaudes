@@ -169,6 +169,28 @@ pub struct Settings {
     /// The trackpad haptic as a held builder comes over a workspace it can be dropped on.
     #[serde(default = "default_haptic_drop")]
     pub haptic_drop: String,
+    /// Auto-started To Dos wait while their agent has this percent or less left of any limit; 0: never.
+    #[serde(default = "default_elixir_reserve")]
+    pub elixir_reserve: u32,
+    /// A To Do held for elixir goes to a free builder whose agent has some.
+    #[serde(default)]
+    pub elixir_stand_in: bool,
+    /// The village plays sounds (`sounds.rs`).
+    #[serde(default = "default_true")]
+    pub sounds_on: bool,
+    /// Sound volume, 0-100.
+    #[serde(default = "default_sound_volume")]
+    pub sound_volume: u32,
+    /// The sound file each moment plays (`sounds::MOMENTS`); "" is silent.
+    #[serde(default = "crate::sounds::default_sounds")]
+    pub sounds: BTreeMap<String, String>,
+}
+
+fn default_elixir_reserve() -> u32 {
+    10
+}
+fn default_sound_volume() -> u32 {
+    70
 }
 
 fn default_haptic_hover() -> String {
@@ -200,6 +222,9 @@ impl Settings {
         if crate::platform::Haptic::parse(&self.haptic_drop).is_none() {
             self.haptic_drop = default_haptic_drop();
         }
+        self.elixir_reserve = self.elixir_reserve.min(50);
+        self.sound_volume = self.sound_volume.min(100);
+        self.sounds = crate::sounds::normalized(std::mem::take(&mut self.sounds));
         self.install_id = if self.share_usage { self.install_id.filter(|i| !i.trim().is_empty()).or_else(|| Some(uuid::Uuid::new_v4().to_string())) } else { None };
         self
     }
@@ -230,6 +255,15 @@ mod settings_tests {
     }
 
     #[test]
+    fn elixir_and_sounds_default_and_clamp() {
+        let old: Settings = serde_json::from_str("{}").unwrap();
+        assert_eq!((old.elixir_reserve, old.elixir_stand_in, old.sounds_on, old.sound_volume), (10, false, true, 70));
+        assert_eq!(old.sounds, crate::sounds::default_sounds(), "saved before sounds existed");
+        let odd = Settings { elixir_reserve: 99, sound_volume: 400, ..Settings::default() }.normalized();
+        assert_eq!((odd.elixir_reserve, odd.sound_volume), (50, 100));
+    }
+
+    #[test]
     fn player_name_is_trimmed_capped_and_blank_dropped() {
         let named = |n: &str| Settings { player_name: Some(n.into()), ..Settings::default() }.normalized().player_name;
         assert_eq!(named("  Fabian "), Some("Fabian".into()));
@@ -255,6 +289,11 @@ impl Default for Settings {
             session_limit: None,
             haptic_hover: default_haptic_hover(),
             haptic_drop: default_haptic_drop(),
+            elixir_reserve: default_elixir_reserve(),
+            elixir_stand_in: false,
+            sounds_on: true,
+            sound_volume: default_sound_volume(),
+            sounds: crate::sounds::default_sounds(),
         }
     }
 }

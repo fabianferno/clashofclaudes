@@ -23,10 +23,14 @@ afterEach(cleanup);
 
 test('a bar shows how much of the main limit is left, and when it refills', () => {
   expect(resourceBar(quota('claude', 41.6), NOW, 'claude')).toEqual({
-    pct: 42, value: '42%', sub: 'week', title: 'Claude: 42% of Weekly limit left, refills in 2d',
+    pct: 42, value: '42%', sub: 'week', title: 'Claude: 42% of Weekly limit left, refills in 2d', runsOut: false,
   });
+  // 90 % used in the first 5 days: the last 10 % lasts about half a day, well before the refill in 2
+  const fast = resourceBar(quota('claude', 10), NOW, 'claude');
+  expect(fast.runsOut).toBe(true);
+  expect(fast.title).toContain('At this rate the weekly limit runs out around');
   expect(resourceBar(quota('codex', 0), NOW, 'codex').value).toBe('Empty');
-  expect(resourceBar(undefined, NOW, 'antigravity')).toEqual({ pct: null, value: '—', sub: '', title: 'Antigravity: no limits read yet' });
+  expect(resourceBar(undefined, NOW, 'antigravity')).toEqual({ pct: null, value: '—', sub: '', title: 'Antigravity: no limits read yet', runsOut: false });
 });
 
 test('one bar per rationed agent with a reading or installed; a click opens its collector', () => {

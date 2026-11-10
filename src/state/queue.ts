@@ -1,4 +1,5 @@
-import type { Builder, SessionInfo, Settings, Todo, Workspace } from '../api/types';
+import type { AgentKind, AgentQuota, Builder, SessionInfo, Settings, Todo, Workspace } from '../api/types';
+import { isLow, standInFor, type ElixirRules } from './elixir';
 
 /**
  * The owner's queue: every agent session waiting on them, one at a time. Take the first, read its
@@ -58,33 +59,48 @@ export function runningAgents(sessions: Record<string, SessionInfo>): number {
 export const roomToStart = (sessions: Record<string, SessionInfo>, settings: Pick<Settings, 'sessionLimit'> | null): boolean =>
   !settings?.sessionLimit || runningAgents(sessions) < settings.sessionLimit;
 
+/** A To Do picked to start now, with the builder that takes it (`standInFor`: the one it was for, when another takes it). */
+export type StartPick = Todo & { builderId: string; standInFor?: string };
+
 /**
  * The To Dos set to start on their own that can start now, oldest first: their builder is free,
  * their workspace is there, and the running-session limit leaves room (each one started takes a slot,
- * and a builder takes one task at a time).
+ * and a builder takes one task at a time). A To Do whose builder's agent is at or under the elixir
+ * reserve waits, unless stand-ins are on and a free builder with elixir can take it instead.
  */
 export function autoStartable(st: {
   todos: Todo[];
   builders: Builder[];
   sessions: Record<string, SessionInfo>;
   workspaces: Pick<Workspace, 'id' | 'missing'>[];
-  settings: Pick<Settings, 'sessionLimit'> | null;
-}): Todo[] {
+  settings: (Pick<Settings, 'sessionLimit'> & ElixirRules) | null;
+  quotas?: Partial<Record<AgentKind, AgentQuota>>;
+  now?: number;
+}): StartPick[] {
   const busy = new Set<string>();
   for (const s of Object.values(st.sessions)) {
     if (s.kind.kind === 'agent' && s.state.kind !== 'ended') busy.add(s.kind.builderId);
   }
+  const quotas = st.quotas ?? {};
+  const now = st.now ?? Date.now();
   const limit = st.settings?.sessionLimit ?? null;
   let room = limit ? Math.max(0, limit - runningAgents(st.sessions)) : Infinity;
-  const out: Todo[] = [];
+  const out: StartPick[] = [];
   for (const t of [...st.todos].sort((a, b) => a.createdAt - b.createdAt)) {
     if (room <= 0) break;
     if (!t.auto || !t.builderId || busy.has(t.builderId)) continue;
-    if (!st.builders.some((b) => b.id === t.builderId)) continue;
+    const b = st.builders.find((x) => x.id === t.builderId);
+    if (!b) continue;
     const ws = st.workspaces.find((w) => w.id === t.workspaceId);
     if (!ws || ws.missing) continue;
-    out.push(t);
-    busy.add(t.builderId);
+    let pick: StartPick = { ...t, builderId: b.id };
+    if (isLow(b.agent, quotas, now, st.settings)) {
+      const sub = st.settings?.elixirStandIn ? standInFor(st.builders, busy, quotas, now, st.settings) : null;
+      if (!sub) continue;
+      pick = { ...t, builderId: sub.id, standInFor: b.id };
+    }
+    out.push(pick);
+    busy.add(pick.builderId);
     room -= 1;
   }
   return out;

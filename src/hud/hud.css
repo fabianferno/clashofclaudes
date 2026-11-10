@@ -81,6 +81,10 @@ img.hud-stat-ico { width: 48px; height: 48px; margin: 0 -4px; filter: none; }
   background: radial-gradient(circle at 50% 40%, #fffdf7 0%, #e5cda4 100%); box-shadow: inset 0 3px 0 rgba(255,255,255,.35), 0 3px 0 var(--hud-out); filter: none; box-sizing: border-box; }
 .hud-stat:hover .hud-resource-trough { border-color: var(--hud-out); }
 .hud-resource:hover .hud-resource-trough { border-color: #000; }
+/* at this rate the agent runs out before it refills: the trough's rim glows amber */
+.hud-resource.runs-out .hud-resource-trough { border-color: var(--hud-working); animation: hud-runs-out 2.4s ease-in-out infinite; }
+@keyframes hud-runs-out { 50% { box-shadow: inset 0 2px 4px rgba(0,0,0,.55), 0 3px 0 var(--hud-out), 0 0 10px 2px rgba(245,166,35,.65); } }
+@media (prefers-reduced-motion: reduce) { .hud-resource.runs-out .hud-resource-trough { animation: none; } }
 .hud-resource:focus-visible { outline: 2px solid #fff; outline-offset: 2px; border-radius: 12px; }
 .hud-gear { position: fixed; left: 12px; bottom: 14px; z-index: 3; width: 40px; height: 40px; padding: 0; display: grid; place-items: center; border-radius: 12px; }
 

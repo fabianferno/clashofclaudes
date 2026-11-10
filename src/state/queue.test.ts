@@ -80,3 +80,19 @@ test('waited labels', () => {
   expect(waitedLabel(5 * 60_000)).toBe('5m');
   expect(waitedLabel(80 * 60_000)).toBe('1h 20m');
 });
+
+test('a To Do for a builder whose agent is low on elixir waits, or goes to a stand-in when that is on', () => {
+  const now = 1_800_000_000_000;
+  const low = { agent: 'claude' as const, updatedAt: now, source: 't', windows: [{ id: 'five_hour', label: '5h', group: null, leftPct: 4, resetsAt: now + 3_600_000, windowMins: 300 }] };
+  const ok = { agent: 'codex' as const, updatedAt: now, source: 't', windows: [{ id: 'primary', label: '5h', group: null, leftPct: 60, resetsAt: now + 3_600_000, windowMins: 300 }] };
+  const builders = [builder('c1'), { ...builder('x1'), agent: 'codex' as const }];
+  const todos = [todo('t1', { auto: true, builderId: 'c1' })];
+  const base = { todos, builders, workspaces: ws, sessions: {}, quotas: { claude: low, codex: ok }, now };
+  expect(autoStartable({ ...base, settings: null })).toEqual([]);
+  expect(autoStartable({ ...base, settings: { elixirReserve: 0 } }).map((t) => t.builderId)).toEqual(['c1']);
+  const sub = autoStartable({ ...base, settings: { elixirStandIn: true } });
+  expect(sub.map((t) => [t.id, t.builderId, t.standInFor])).toEqual([['t1', 'x1', 'c1']]);
+  // the stand-in is busy: it waits
+  const busy = { x: sess('x', { kind: 'working' }, { kind: { kind: 'agent', builderId: 'x1' } }) };
+  expect(autoStartable({ ...base, sessions: busy, settings: { elixirStandIn: true } })).toEqual([]);
+});

@@ -11,6 +11,7 @@ import { isDemoId } from '../onboarding/demo';
 import { sessionName, taskTooltip } from './sessionName';
 import { houseColors } from '../village/look';
 import './briefing.css';
+import { heldText, isLow } from '../state/elixir';
 
 export type KanbanColumn = 'active' | 'needs' | 'finished';
 
@@ -205,6 +206,11 @@ function TodoCard({ todo, idle, all, disabled, tag }: { todo: Todo; idle: Builde
   const builderId = remembered && (auto || idle.some((b) => b.id === remembered)) ? remembered
     : offered.some((b) => b.id === pick) ? pick : idle[0]?.id ?? (auto ? all[0]?.id ?? '' : '');
   const free = idle.some((b) => b.id === builderId);
+  const quotas = useApp((s) => s.quotas);
+  const settings = useApp((s) => s.settings);
+  const agentOf = all.find((b) => b.id === builderId)?.agent;
+  // its agent at or under the reserve: it waits for elixir (or a stand-in takes it, when that is on)
+  const held = auto && !!agentOf && isLow(agentOf, quotas, Date.now(), settings);
   const save = async (next: { auto?: boolean; builderId?: string | null; worktree?: boolean }) => {
     const st = useApp.getState();
     try {
@@ -243,7 +249,8 @@ function TodoCard({ todo, idle, all, disabled, tag }: { todo: Todo; idle: Builde
       {auto && (
         <div className="kb-reason" style={{ color: 'var(--sp-ink-soft)' }}>
           <span className="kb-auto-tag ol">Auto</span>{' '}
-          {free ? 'Starting…' : `Starts when ${all.find((b) => b.id === builderId)?.name ?? 'its builder'} is free`}
+          {held ? `${heldText(agentOf!, quotas[agentOf!], Date.now())}${settings?.elixirStandIn ? ', or a builder with elixir takes it' : ''}`
+            : free ? 'Starting…' : `Starts when ${all.find((b) => b.id === builderId)?.name ?? 'its builder'} is free`}
         </div>
       )}
       <div className="kb-start">

@@ -20,6 +20,7 @@ pub mod saved;
 pub mod scrollback;
 pub mod sessions;
 pub mod snapshot;
+pub mod sounds;
 pub mod status;
 pub mod updater;
 pub mod usage;
@@ -448,6 +449,9 @@ pub fn run() {
             commands::open_in_editor,
             commands::open_in_finder,
             commands::haptic,
+            commands::play_sound,
+            commands::system_sounds,
+            commands::import_sound,
             commands::review_session,
             commands::attach_session,
             commands::detach_session,

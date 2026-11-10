@@ -3,21 +3,26 @@ import { useApp } from '../state/store';
 import { RESOURCE } from '../village/look';
 import { MARK_FILL_RULE, MARK_PATHS } from '../agentMarks';
 import { COLLECTOR_NAME, leftNow, primaryWindow, shownCollectors, untilText, windowShort, type CollectorAgent } from '../village/quota';
+import { bindingForecast, clockText, type QuotaHistory } from '../state/elixir';
 
 /** One agent's tank as a bar: how much of its main limit is left, and what the bar says. */
-export function resourceBar(q: Parameters<typeof primaryWindow>[0] | undefined, now: number, agent: CollectorAgent): { pct: number | null; value: string; sub: string; title: string } {
+export function resourceBar(q: Parameters<typeof primaryWindow>[0] | undefined, now: number, agent: CollectorAgent, history: QuotaHistory = {}): { pct: number | null; value: string; sub: string; title: string; runsOut: boolean } {
   const w = q && primaryWindow(q, now);
   const name = COLLECTOR_NAME[agent];
   // the drop wears the agent's logo, so the bar names only the window; the name stays in the title
-  if (!w) return { pct: null, value: '—', sub: '', title: `${name}: no limits read yet` };
+  if (!w) return { pct: null, value: '—', sub: '', title: `${name}: no limits read yet`, runsOut: false };
   const left = Math.round(leftNow(w, now));
   const short = windowShort(w.windowMins);
   const refill = w.resetsAt !== null && w.resetsAt > now ? `refills in ${untilText(w.resetsAt - now)}` : null;
+  const f = bindingForecast(q, now, history);
+  const runsOut = !!f?.runsOut && f.left > 0 && f.emptyAt !== null;
+  const warn = runsOut ? `. At this rate the ${f!.window.label.toLowerCase()} runs out around ${clockText(f!.emptyAt!, now)}` : '';
   return {
+    runsOut,
     pct: left,
     value: left > 0 ? `${left}%` : 'Empty',
     sub: short ?? '',
-    title: `${name}: ${left}% of ${w.label} left${refill ? `, ${refill}` : ''}`,
+    title: `${name}: ${left}% of ${w.label} left${refill ? `, ${refill}` : ''}${warn}`,
   };
 }
 
@@ -52,6 +57,7 @@ function Drop({ agent }: { agent: CollectorAgent }) {
 /** Top right: each rationed agent's limit as a resource bar; a click opens its collector. */
 export default function ResourceBars() {
   const quotas = useApp((s) => s.quotas);
+  const history = useApp((s) => s.quotaHistory);
   const agents = useApp((s) => s.agents);
   const setSelection = useApp((s) => s.setSelection);
   const [now, setNow] = useState(() => Date.now());
@@ -64,9 +70,9 @@ export default function ResourceBars() {
   return (
     <>
       {shown.map((agent) => {
-        const b = resourceBar(quotas[agent], now, agent);
+        const b = resourceBar(quotas[agent], now, agent, history);
         return (
-          <button key={agent} type="button" className="hud-resource" data-testid={`resource-${agent}`} title={b.title} aria-label={b.title}
+          <button key={agent} type="button" className={`hud-resource${b.runsOut ? ' runs-out' : ''}`} data-testid={`resource-${agent}`} title={b.title} aria-label={b.title}
             onClick={() => setSelection({ kind: 'quota', agent })}>
             <span className="hud-resource-trough">
               <i className="hud-resource-fill" style={{ width: `${b.pct ?? 0}%`, background: `linear-gradient(${RESOURCE[agent].lit}, ${RESOURCE[agent].mid} 55%, ${RESOURCE[agent].deep})` }} />

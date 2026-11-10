@@ -9,7 +9,15 @@ import AgentsStatus from './AgentsStatus';
 import '../onboarding/onboarding.css';
 import { openBugReport } from './BugReport';
 import { HAPTICS, playHaptic } from '../state/haptics';
-import type { HapticKind } from '../api/types';
+import type { HapticKind, SoundMoment } from '../api/types';
+import { open as openFile } from '@tauri-apps/plugin-dialog';
+import { DEFAULT_SOUNDS, SOUND_MOMENTS, previewSound } from '../state/sounds';
+import { DEFAULT_RESERVE } from '../state/elixir';
+
+const SYSTEM_SOUNDS_DIR = '/System/Library/Sounds/';
+const CHOOSE = '__choose';
+const fileName = (p: string) => p.split('/').pop() ?? p;
+const systemPath = (name: string) => `${SYSTEM_SOUNDS_DIR}${name}.aiff`;
 
 export { DEFAULT_SETTINGS };
 
@@ -60,6 +68,45 @@ function HapticRow({ label, value, onChange }: { label: string; value: HapticKin
   );
 }
 
+/**
+ * One moment's sound: off, a macOS system sound, or a file of the owner's own (copied into the
+ * data folder). It plays as it is picked; ▶ plays it again.
+ */
+function SoundRow({ label, hint, value, system, volume, onChange }: {
+  label: string; hint: string; value: string; system: string[]; volume: number; onChange: (path: string) => void;
+}) {
+  const own = value && !value.startsWith(SYSTEM_SOUNDS_DIR) ? value : null;
+  const pick = async (v: string) => {
+    if (v !== CHOOSE) { onChange(v); previewSound(v, volume); return; }
+    try {
+      const chosen = await openFile({ multiple: false, directory: false, filters: [{ name: 'Sounds', extensions: ['aiff', 'aif', 'mp3', 'wav', 'm4a', 'caf', 'aac', 'flac'] }] });
+      if (typeof chosen !== 'string') return;
+      const copy = await ipc.importSound(chosen);
+      onChange(copy);
+      previewSound(copy, volume);
+    } catch (e) {
+      useApp.getState().setError(String(e));
+    }
+  };
+  return (
+    <div className="set-line" title={hint}>
+      <span className="set-text">
+        <span className="set-label">{label}</span>
+        <span className="set-hint">{hint}</span>
+      </span>
+      <span className="set-haptic">
+        <select aria-label={`Sound: ${label}`} value={value} onChange={(e) => void pick(e.target.value)}>
+          <option value="">Off</option>
+          {own && <option value={own}>{fileName(own)}</option>}
+          {system.map((n) => <option key={n} value={systemPath(n)}>{n}</option>)}
+          <option value={CHOOSE}>Your own file…</option>
+        </select>
+        <button type="button" className="hud-btn grey sm set-play" aria-label={`Play ${label}`} disabled={!value} onClick={() => previewSound(value, volume)}>▶</button>
+      </span>
+    </div>
+  );
+}
+
 /** The owner's name, saved on Enter or when the field loses focus; the Town Hall's plate follows it. */
 function NameField({ saved, onSave }: { saved: string | null; onSave: (name: string | null) => void }) {
   const [draft, setDraft] = useState<string | null>(null); // null: showing the saved name
@@ -93,6 +140,7 @@ export default function SettingsPage() {
   const [version, setVersion] = useState<string | null>(null);
   const [folder, setFolder] = useState<string | null>(null);
   const [check, setCheck] = useState<Check>(null);
+  const [systemSounds, setSystemSounds] = useState<string[]>([]);
 
   useEffect(() => (open ? useApp.getState().cover() : undefined), [open]);
   useEffect(() => {
@@ -102,6 +150,7 @@ export default function SettingsPage() {
     loadSettings().catch(() => {});
     getVersion().then((v) => live && setVersion(v)).catch(() => {});
     ipc.dataFolder().then((f) => live && setFolder(f)).catch(() => {});
+    ipc.systemSounds().then((n) => live && setSystemSounds(n)).catch(() => {});
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       e.preventDefault();
@@ -174,6 +223,43 @@ export default function SettingsPage() {
                   {[1, 2, 3, 4, 5, 6, 8, 10].map((n) => <option key={n} value={n}>{n}</option>)}
                 </select>
               </label>
+            </div>
+          </section>
+
+          <section className="set-card" aria-label="Elixir">
+            <h3 className="kb-head ol" style={{ background: '#b0479b' }}>Elixir</h3>
+            <div className="set-body">
+              <div className="set-note">Keep a reserve of each agent's limits. To Dos set to start on their own wait while their agent is at or under it, and start once it refills.</div>
+              <label className="set-line">
+                <span className="set-label">Hold To Dos at</span>
+                <select aria-label="Hold To Dos at" value={settings.elixirReserve ?? DEFAULT_RESERVE}
+                  onChange={(e) => change({ elixirReserve: Number(e.target.value) })}>
+                  <option value={0}>Never: use it all</option>
+                  {[5, 10, 15, 20, 25, 30].map((n) => <option key={n} value={n}>{n}% left or less</option>)}
+                </select>
+              </label>
+              <Toggle label="Hand held To Dos to another agent"
+                hint="A free builder whose agent has elixir takes the task instead of waiting (the one with the most left)."
+                checked={!!settings.elixirStandIn} onChange={(on) => change({ elixirStandIn: on })} />
+            </div>
+          </section>
+
+          <section className="set-card" aria-label="Sounds">
+            <h3 className="kb-head ol" style={{ background: '#2f9e7a' }}>Sounds</h3>
+            <div className="set-body">
+              <div className="set-note">Played by this app for every agent, whether the window is in front or not. Pick a macOS sound or one of your own files (a copy is kept in the data folder).</div>
+              <Toggle label="Play sounds" checked={settings.soundsOn !== false} onChange={(on) => change({ soundsOn: on })} />
+              <label className="set-line">
+                <span className="set-label">Volume</span>
+                <input type="range" min={5} max={100} step={5} aria-label="Sound volume" value={settings.soundVolume ?? 70}
+                  onChange={(e) => change({ soundVolume: Number(e.target.value) })}
+                  onPointerUp={(e) => previewSound((settings.sounds ?? DEFAULT_SOUNDS).finished || DEFAULT_SOUNDS.finished, Number((e.target as HTMLInputElement).value))} />
+              </label>
+              {settings.soundsOn !== false && SOUND_MOMENTS.map(({ moment, label, hint }) => (
+                <SoundRow key={moment} label={label} hint={hint} system={systemSounds} volume={settings.soundVolume ?? 70}
+                  value={(settings.sounds ?? DEFAULT_SOUNDS)[moment] ?? DEFAULT_SOUNDS[moment]}
+                  onChange={(path) => change({ sounds: { ...DEFAULT_SOUNDS, ...settings.sounds, [moment as SoundMoment]: path } })} />
+              ))}
             </div>
           </section>
 

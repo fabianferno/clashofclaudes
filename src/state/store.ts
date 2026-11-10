@@ -6,6 +6,7 @@ import { ipc } from '../api/ipc';
 import type { AgentInfo, AgentKind, AgentQuota, AppPreview, Todo, Builder, CloseOutcome, Compound, ListState, SessionInfo, SessionState, Settings, Stats, Tile, Workspace, ReportKind } from '../api/types';
 import { HOUSE, STRUCT, canPlace, centeredHouse, compoundFits, gapBetween, houseClearOfWalls, placeCompound, shiftCompound, spotFor, tidySpots, wallRect } from '../village/layout';
 import { collectorFits, collectorTiles, shownCollectors } from '../village/quota';
+import { recordReading, type QuotaHistory } from './elixir';
 import { nextInQueue, ownerQueue } from './queue';
 
 export type Selection =
@@ -200,6 +201,8 @@ export interface AppState {
   setStats: (s: Stats) => void;
   /** Latest quota reading per agent. */
   quotas: Partial<Record<AgentKind, AgentQuota>>;
+  /** Recent readings per agent and window, for how fast each burns (`elixir.ts`). */
+  quotaHistory: QuotaHistory;
   setQuota: (q: AgentQuota) => void;
   setQuotas: (qs: AgentQuota[]) => void;
   /** Collectors the owner has dragged (top-left tiles); the rest stand in their default slots. */
@@ -272,6 +275,7 @@ export const useApp = create<AppState>((set, get) => ({
   agents: [],
   stats: { shippedTotal: 0, recentShips: [] },
   quotas: {},
+  quotaHistory: {},
   collectorSpots: {},
   apps: [],
   boardSpots: {},
@@ -376,8 +380,11 @@ export const useApp = create<AppState>((set, get) => ({
     ...(st.kanban === id ? { kanban: null } : {}),
   })),
   setStats: (stats) => set({ stats }),
-  setQuota: (q) => set((st) => ({ quotas: { ...st.quotas, [q.agent]: q } })),
-  setQuotas: (qs) => set((st) => ({ quotas: { ...st.quotas, ...Object.fromEntries(qs.map((q) => [q.agent, q])) } })),
+  setQuota: (q) => set((st) => ({ quotas: { ...st.quotas, [q.agent]: q }, quotaHistory: recordReading(st.quotaHistory, q) })),
+  setQuotas: (qs) => set((st) => ({
+    quotas: { ...st.quotas, ...Object.fromEntries(qs.map((q) => [q.agent, q])) },
+    quotaHistory: qs.reduce((h, q) => recordReading(h, q), st.quotaHistory),
+  })),
   setCollectorSpots: (collectorSpots) => set({ collectorSpots }),
   setApps: (apps) => set((st) => {
     // a hidden app whose server stopped shows again when it next starts

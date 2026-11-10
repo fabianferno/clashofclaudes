@@ -803,6 +803,32 @@ pub fn haptic(kind: Option<String>) {
     crate::platform::haptic(kind.as_deref().and_then(crate::platform::Haptic::parse).unwrap_or(crate::platform::Haptic::LevelChange));
 }
 
+/// Plays a sound file at `volume` (0-100; the saved volume when not given). Nothing while sounds are off,
+/// unless `preview` (the owner trying one in Settings).
+#[tauri::command]
+pub fn play_sound(path: String, volume: Option<u32>, preview: Option<bool>, state: State<'_, AppState>) -> Result<(), String> {
+    let (on, saved) = {
+        let d = state.data();
+        (d.settings.sounds_on, d.settings.sound_volume)
+    };
+    if !on && !preview.unwrap_or(false) {
+        return Ok(());
+    }
+    crate::sounds::play(std::path::Path::new(&path), volume.unwrap_or(saved)).map_err(fmt_err)
+}
+
+/// The macOS system sounds' names.
+#[tauri::command]
+pub fn system_sounds() -> Vec<String> {
+    crate::sounds::system_sounds()
+}
+
+/// Copies a sound file into the data folder; returns the copy's path.
+#[tauri::command]
+pub fn import_sound(path: String, state: State<'_, AppState>) -> Result<String, String> {
+    crate::sounds::import(state.data_dir(), std::path::Path::new(&path)).map(|p| p.to_string_lossy().into_owned()).map_err(fmt_err)
+}
+
 #[tauri::command]
 pub async fn review_session(id: String, state: State<'_, AppState>) -> Result<Review, String> {
     state.manager.review(&id).map_err(fmt_err)

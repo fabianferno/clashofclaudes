@@ -8,6 +8,9 @@ const ipc = vi.hoisted(() => ({
   showDataFolder: vi.fn().mockResolvedValue(undefined),
   checkForUpdate: vi.fn(),
   haptic: vi.fn().mockResolvedValue(undefined),
+  systemSounds: vi.fn().mockResolvedValue(['Blow', 'Hero', 'Morse']),
+  playSound: vi.fn().mockResolvedValue(undefined),
+  importSound: vi.fn(),
 }));
 vi.mock('../api/ipc', () => ({ ipc }));
 vi.mock('@tauri-apps/api/app', () => ({ getVersion: vi.fn().mockResolvedValue('0.1.0') }));
@@ -137,4 +140,22 @@ test('running the pointer over a haptic pad plays the chosen feel; an Off pad pl
   ipc.haptic.mockClear();
   fireEvent.pointerEnter(drop);
   expect(ipc.haptic).not.toHaveBeenCalled();
+});
+
+test('picking a sound saves it for that moment and plays it; ▶ plays it again; the reserve saves', async () => {
+  ipc.getSettings.mockResolvedValue({ updatesEnabled: false });
+  render(<SettingsPage />);
+  await screen.findByText('Version 0.1.0');
+  const finished = await screen.findByLabelText('Sound: Finished') as HTMLSelectElement;
+  expect(finished.value).toBe('/System/Library/Sounds/Hero.aiff'); // the default
+  await screen.findAllByRole('option', { name: 'Morse' });
+  ipc.playSound.mockClear();
+  await act(async () => { fireEvent.change(finished, { target: { value: '/System/Library/Sounds/Blow.aiff' } }); });
+  expect(ipc.setSettings).toHaveBeenLastCalledWith(expect.objectContaining({ sounds: expect.objectContaining({ finished: '/System/Library/Sounds/Blow.aiff', decide: '/System/Library/Sounds/Morse.aiff' }) }));
+  expect(ipc.playSound).toHaveBeenCalledWith('/System/Library/Sounds/Blow.aiff', 70, true);
+  ipc.playSound.mockClear();
+  fireEvent.click(screen.getByLabelText('Play Finished'));
+  expect(ipc.playSound).toHaveBeenCalledWith('/System/Library/Sounds/Blow.aiff', 70, true);
+  await act(async () => { fireEvent.change(screen.getByLabelText('Hold To Dos at'), { target: { value: '20' } }); });
+  expect(ipc.setSettings).toHaveBeenLastCalledWith(expect.objectContaining({ elixirReserve: 20 }));
 });

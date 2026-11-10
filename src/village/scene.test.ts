@@ -4,7 +4,7 @@ import { findSpot, gapBetween, placeCompound, wallRect } from './layout';
 import { COLLECTOR_SLOT } from './quota';
 import { enclosure, seedOf } from './enclosure';
 import { scaffoldHeight } from './look';
-import { HALL_LIFT, buildEntities, hopOf, siteDepth, needsRefit, rendererOptions, structureLook, type VillageInput } from './scene';
+import { HALL_LIFT, buildEntities, hopOf, siteDepth, needsRefit, rendererOptions, structureLook, type VillageInput, gateAwareDepth } from './scene';
 import { statusSignature, statusesDue } from './status';
 
 const ws = (id: string, compound: Compound | null, level = 1): Workspace => ({
@@ -307,3 +307,24 @@ describe('siteDepth', () => {
   });
 });
 
+
+
+describe('gateAwareDepth', () => {
+  // a north gate (wall along x) at tile (4, 0), its sprite at depth 6.002; a west one at (0, 4)
+  const north = { x: 4, y: 0, alongX: true, depth: 6.002 };
+  const west = { x: 0, y: 4, alongX: false, depth: 6.002 };
+  it('a builder passing through is behind the gate until he crosses its wall line, then in front', () => {
+    for (const g of [north, west]) {
+      const at = (along: number, across: number) => (g.alongX ? [g.x + along, g.y + 0.5 + across] : [g.x + 0.5 + across, g.y + along]);
+      const d = (along: number, across: number) => { const [x, y] = at(along, across); return gateAwareDepth(x, y, x + y, [g]); };
+      expect(d(0.5, -0.9)).toBeLessThan(g.depth); // outside, about to go in
+      expect(d(0.5, -0.05)).toBeLessThan(g.depth); // under the lintel, not past it yet
+      expect(d(0.5, 0.05)).toBeGreaterThan(g.depth); // just past the posts: over the gate
+      expect(d(0.5, 0.9)).toBeGreaterThan(g.depth); // inside
+    }
+  });
+  it('leaves builders away from every gate alone', () => {
+    expect(gateAwareDepth(10, 10, 20.006, [north, west])).toBe(20.006);
+    expect(gateAwareDepth(4.5, 2, 6.5, [north])).toBe(6.5); // two tiles in: plain depth again
+  });
+});

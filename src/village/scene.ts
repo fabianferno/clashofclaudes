@@ -325,6 +325,25 @@ const HEAD_HEIGHT: Record<ClassTier, number> = { 0: 56, 1: 64, 2: 80, 3: 88 };
 const SHADOW_SIZE: Record<ClassTier, number> = { 0: 0.9, 1: 1, 2: 1.15, 3: 1.25 };
 
 /** The depth a builder at work in compound `c` is drawn over: the house's and every structure's front corner. */
+/** A compound's gate for depth: its tile, whether its wall runs along x (n/s sides), and its sprite's depth. */
+export interface GateDepth { x: number; y: number; alongX: boolean; depth: number }
+
+/**
+ * Depth for a walker at tile point (px, py) near a gate. The gate's posts and lintel stand on the
+ * wall's centre line, so a builder passing through is behind the gate until he crosses that line
+ * and in front of it from then on (larger x or y is nearer the viewer on every side). Plain x + y
+ * would keep him behind until he was a whole tile past it, and put him over it on the way.
+ */
+export function gateAwareDepth(px: number, py: number, depth: number, gates: readonly GateDepth[]): number {
+  for (const g of gates) {
+    const along = g.alongX ? px - g.x : py - g.y; // 0..1 across the gate's opening
+    const across = g.alongX ? py - (g.y + 0.5) : px - (g.x + 0.5); // past the wall line (> 0: nearer the viewer)
+    if (along < -0.25 || along > 1.25 || Math.abs(across) > 1) continue;
+    return across > 0 ? g.depth + 0.0003 : g.depth - 0.0003;
+  }
+  return depth;
+}
+
 export function siteDepth(c: Compound, spots: readonly Tile[]): number {
   // the house and structures sort by their front corner plus their kind's rank (see `ent`): outrank them
   return Math.max(c.house.x + c.house.y + 2 * HOUSE, ...spots.map((s) => s.x + s.y + 2 * STRUCT)) + KIND_RANK.builder * 0.001;
@@ -547,6 +566,8 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
 
   const sprites = new Map<string, { sprite: Sprite; key: string; entity: Entity; ws?: string; base: { x: number; y: number } }>();
   let entities: Entity[] = [];
+  /** The compounds' gates, for builders walking through them (see `gateAwareDepth`). */
+  let gates: GateDepth[] = [];
   let lastState: VillageInput = { workspaces: [], sessions: [], builders: [] };
   let destroyed = false;
   const views = new Map<string, BuilderView>();
@@ -959,8 +980,8 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       m.sprite.scale.set(size);
       // its own depth (its spot is clear of anything in front that would cover it); one huddled at its
       // builder's feet is drawn with the builder, over the site
-      const depth = m.x + m.y + KIND_RANK.builder * 0.001;
-      m.sprite.zIndex = (spot?.huddled && !moving ? v.siteZ : depth) + 0.0001 * (1 + m.slot);
+      const depth = gateAwareDepth(m.x, m.y, m.x + m.y + KIND_RANK.builder * 0.001, gates);
+      m.sprite.zIndex = (spot?.huddled && !moving ? v.siteZ : depth) + 0.00001 * (1 + m.slot);
       setTex(m.shadow, 'shadow');
       m.shadow.position.set(x, y);
       m.shadow.scale.set(size * SHADOW_SIZE[0]);
@@ -984,7 +1005,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       const hop = v.pose === 'cheer' && !v.held ? hopOf(time, (hashOf(w.id) % 100) / 100) : { lift: 0, squash: 1 };
       v.sprite.position.set(p.x + (ro?.x ?? 0), p.y + (ro?.y ?? 0) - (v.held ? HELD_LIFT : 0) - hop.lift);
       v.sprite.scale.set(0.5 * (2 - hop.squash), 0.5 * hop.squash); // feet planted: the anchor is at the feet
-      v.sprite.zIndex = v.held ? 20000 : w.x + w.y + KIND_RANK.builder * 0.001;
+      v.sprite.zIndex = v.held ? 20000 : gateAwareDepth(w.x, w.y, w.x + w.y + KIND_RANK.builder * 0.001, gates);
       // the shadow stays on the ground, smaller and fainter while the builder is in the air
       v.shadow.visible = !v.held;
       if (!v.held) {
@@ -1056,6 +1077,10 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     if (!relocs.size) syncGround(compounds, state); // while a compound travels the old ground stays; it is re-baked once at the end
     syncBuilders(state);
     entities = buildEntities({ ...state, now: Date.now() });
+    gates = entities.filter((e) => e.kind === 'gate').map((e) => {
+      const side = e.texKey.split(':')[1];
+      return { x: e.x - 1, y: e.y - 1, alongX: side === 'n' || side === 's', depth: e.depth };
+    });
     statusSig = statusSignature(entities);
     // Fetch every live texture first: this refreshes their LRU slots before anything new can evict them.
     const tex = entities.map((e) => getTexture(e.texKey, () => artFor(e.texKey)));

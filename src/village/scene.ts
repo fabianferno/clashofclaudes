@@ -1389,19 +1389,66 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     !lastState.sessions.some((x) => x.kind.kind === 'agent' && x.kind.builderId === id && x.state.kind !== 'ended');
   const collectorCorners = () =>
     entities.filter((e) => e.kind === 'collector').map((e) => ({ x: e.x - STRUCT, y: e.y - STRUCT }));
+  /**
+   * A workspace's walled ground (interior and wall tiles, `x,y` keys) as its walls stand now, kept for
+   * one drag (the drop target is asked on every move).
+   */
+  let groundCache = new Map<string, Set<string>>();
+  const groundOf = (wsId: string): Set<string> => {
+    let g = groundCache.get(wsId);
+    if (g) return g;
+    const w = lastState.workspaces.find((x) => x.id === wsId);
+    g = new Set<string>();
+    if (w?.compound) {
+      const e = enclosure(w.compound, spotsIn(lastState.sessions, wsId, lastState.boards), w.level, seedOf(wsId));
+      g = new Set([...e.inside, ...e.walls.map((t) => `${t.x},${t.y}`)]);
+    }
+    groundCache.set(wsId, g);
+    return g;
+  };
+  let drawnDrop = '';
   const drawDrop = (at: Tile, drop: BuilderDrop) => {
+    const tile = { x: Math.floor(at.x), y: Math.floor(at.y) };
+    const k = drop.kind === 'assign' ? `ws:${drop.workspaceId}` : `${drop.kind}:${tile.x},${tile.y}`;
+    if (k === drawnDrop) return; // the same highlight: nothing to redraw
+    drawnDrop = k;
     bdFx.clear();
-    const ws = drop.kind === 'assign' ? lastState.workspaces.find((w) => w.id === drop.workspaceId)?.compound : null;
-    const r = ws ? wallRect(ws) : { x0: Math.floor(at.x), y0: Math.floor(at.y), w: 1, h: 1 };
-    const a = iso(r.x0, r.y0), b = iso(r.x0 + r.w, r.y0), c = iso(r.x0 + r.w, r.y0 + r.h), d = iso(r.x0, r.y0 + r.h);
     const ok = drop.kind !== 'blocked';
-    bdFx.poly([a.x, a.y, b.x, b.y, c.x, c.y, d.x, d.y]).fill({ color: ok ? 0x5cf05c : 0xff3b2f, alpha: ws ? 0.22 : 0.4 })
-      .stroke({ width: ws ? 4 : 3, color: ok ? 0x1f8a1f : 0xb02218 });
+    const fill = { color: ok ? 0x5cf05c : 0xff3b2f, alpha: 0.4 };
+    const edge = { width: 3, color: ok ? 0x1f8a1f : 0xb02218 };
+    if (drop.kind !== 'assign') {
+      const a = iso(tile.x, tile.y), b = iso(tile.x + 1, tile.y), c = iso(tile.x + 1, tile.y + 1), d = iso(tile.x, tile.y + 1);
+      bdFx.poly([a.x, a.y, b.x, b.y, c.x, c.y, d.x, d.y]).fill(fill).stroke(edge);
+      return;
+    }
+    // the ground within the workspace's walls, as they stand (not the rect the compound reserves)
+    const g = groundOf(drop.workspaceId);
+    const tiles = [...g].map((s) => s.split(',').map(Number) as [number, number]);
+    for (const [x, y] of tiles) {
+      const a = iso(x, y), b = iso(x + 1, y), c = iso(x + 1, y + 1), d = iso(x, y + 1);
+      bdFx.poly([a.x, a.y, b.x, b.y, c.x, c.y, d.x, d.y]);
+    }
+    bdFx.fill({ ...fill, alpha: 0.22 });
+    // its outline: every tile edge with no walled ground beyond it
+    for (const [x, y] of tiles) {
+      const side = (nx: number, ny: number, p: Tile, q: Tile) => {
+        if (g.has(`${nx},${ny}`)) return;
+        const a = iso(p.x, p.y), b = iso(q.x, q.y);
+        bdFx.moveTo(a.x, a.y).lineTo(b.x, b.y);
+      };
+      side(x, y - 1, { x, y }, { x: x + 1, y });
+      side(x + 1, y, { x: x + 1, y }, { x: x + 1, y: y + 1 });
+      side(x, y + 1, { x, y: y + 1 }, { x: x + 1, y: y + 1 });
+      side(x - 1, y, { x, y }, { x, y: y + 1 });
+    }
+    bdFx.stroke({ ...edge, width: 4, cap: 'round' });
   };
   const endBuilderDrag = (ev: PointerEvent | null) => {
     const d = bd;
     bd = null;
     bdFx.clear();
+    drawnDrop = '';
+    groundCache = new Map(); // walls may change before the next drag
     canvas.style.cursor = '';
     if (ev) { try { canvas.releasePointerCapture(ev.pointerId); } catch { /* see onDown */ } }
     const v = d && views.get(d.id);
@@ -1481,7 +1528,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       const at = toGrid(w.x + bd.grab.x, w.y + bd.grab.y + HELD_LIFT);
       v.held = at;
       const was = bd.drop;
-      bd.drop = dropOf(at, lastState.workspaces, collectorCorners(), idleBuilder(bd.id));
+      bd.drop = dropOf(at, lastState.workspaces, collectorCorners(), idleBuilder(bd.id), groundOf);
       if (bd.drop.kind === 'assign' && (was.kind !== 'assign' || was.workspaceId !== bd.drop.workspaceId)) {
         opts.onBuilderOver?.(bd.drop.workspaceId);
       }

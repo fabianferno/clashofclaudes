@@ -71,6 +71,17 @@ describe('walkers', () => {
     expect(dropOf({ x: 0.5, y: 40.5 }, wss, [], true)).toEqual({ kind: 'blocked' }); // off in the forest
   });
 
+  it('dropping_inside_the_walls_assigns_but_the_reserved_ground_outside_them_refuses', () => {
+    const wss = [{ id: 'e', missing: false, compound: east }];
+    // walls drawn around only part of the compound's rect: tiles (12..13, 0..1), the wall tile (11, 0)
+    const ground = new Set(['12,0', '13,0', '12,1', '13,1', '11,0']);
+    const groundOf = () => ground;
+    expect(dropOf({ x: 12.3, y: 0.4 }, wss, [], true, groundOf)).toEqual({ kind: 'assign', workspaceId: 'e' });
+    expect(dropOf({ x: 11.5, y: 0.5 }, wss, [], true, groundOf)).toEqual({ kind: 'assign', workspaceId: 'e' }); // on the wall
+    expect(dropOf({ x: 8.5, y: 0.5 }, wss, [], true, groundOf)).toEqual({ kind: 'blocked' }); // in the rect, outside the walls
+    expect(dropOf({ x: 13.5, y: 1.5 }, wss, [], false, groundOf)).toEqual({ kind: 'blocked' }); // inside, but busy
+  });
+
   it('standTile_offset', () => {
     const c: Compound = { x0: 0, y0: 0, w: 12, h: 12, house: { x: 0, y: 0 } };
     expect(standTile(c, { x: 5, y: 6 }, c.house)).toEqual({ x: 7.45, y: 7.1 });

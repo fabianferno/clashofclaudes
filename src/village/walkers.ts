@@ -210,18 +210,24 @@ const DROP_CLEAR = 2;
 const DROP_REACH = 6;
 
 /**
- * What dropping a builder at tile point `p` does. Inside a workspace's walls an idle builder is put to
- * work there (a busy one, or a workspace whose folder is missing, refuses); on open ground clear of
- * walls, the hall and collectors (`collectors`: their 2x2 corners) and near the village, it is set down.
+ * What dropping a builder at tile point `p` does. Inside a workspace's walls (or on them) an idle
+ * builder is put to work there (a busy one, or a workspace whose folder is missing, refuses); the
+ * ground its compound reserves outside its walls refuses too. On open ground clear of walls, the
+ * hall and collectors (`collectors`: their 2x2 corners) and near the village, it is set down.
+ * `groundOf`: a workspace's walled ground, interior and wall tiles as `x,y` keys (see `enclosure`);
+ * without it the whole compound rect counts as walled.
  */
 export function dropOf(
   p: Tile, workspaces: readonly { id: string; missing: boolean; compound: Compound | null }[],
-  collectors: readonly Tile[], idle: boolean,
+  collectors: readonly Tile[], idle: boolean, groundOf?: (wsId: string) => Set<string>,
 ): BuilderDrop {
   const t = { x0: Math.floor(p.x), y0: Math.floor(p.y), w: 1, h: 1 };
   const compounds = workspaces.flatMap((w) => (w.compound ? [w.compound] : []));
   const on = workspaces.find((w) => w.compound && gapBetween(t, wallRect(w.compound)) < 0);
-  if (on) return idle && !on.missing ? { kind: 'assign', workspaceId: on.id } : { kind: 'blocked' };
+  if (on) {
+    const walled = !groundOf || groundOf(on.id).has(key(t.x0, t.y0));
+    return walled && idle && !on.missing ? { kind: 'assign', workspaceId: on.id } : { kind: 'blocked' };
+  }
   if (gapBetween(t, HALL) < DROP_CLEAR || compounds.some((c) => gapBetween(t, wallRect(c)) < DROP_CLEAR)) return { kind: 'blocked' };
   if (collectors.some((c) => gapBetween(t, { x0: c.x, y0: c.y, w: STRUCT, h: STRUCT }) < 1)) return { kind: 'blocked' };
   const v = villageRect(compounds);

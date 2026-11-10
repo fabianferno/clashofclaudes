@@ -132,6 +132,69 @@ pub fn worktree_of(workspace_root: &Path, cwd: &Path) -> Option<WorktreeInfo> {
     Some(WorktreeInfo { branch: branch(&cwd_top), path: cwd_top })
 }
 
+/// A short branch-safe slug of `text` (lowercase letters, digits and dashes), at most `max` chars.
+pub fn slug(text: &str, max: usize) -> String {
+    let mut out = String::new();
+    for c in text.chars() {
+        if out.len() >= max {
+            break;
+        }
+        if c.is_ascii_alphanumeric() {
+            out.push(c.to_ascii_lowercase());
+        } else if !out.is_empty() && !out.ends_with('-') {
+            out.push('-');
+        }
+    }
+    out.trim_end_matches('-').to_string()
+}
+
+/// A new worktree of the repository holding `dir`, at `at`, on a new branch `branch` from HEAD.
+/// Returns the worktree and the folder in it that matches `dir` (the workspace may be a
+/// subfolder of its repository). Fails when `dir` is not in a repository with a commit.
+pub fn add_worktree(dir: &Path, at: &Path, branch: &str) -> anyhow::Result<(WorktreeInfo, PathBuf)> {
+    let top = toplevel(dir).ok_or_else(|| anyhow::anyhow!("this workspace is not a git repository, so it can't start in a worktree"))?;
+    git_line(dir, &["rev-parse", "--verify", "-q", "HEAD"])
+        .ok_or_else(|| anyhow::anyhow!("this repository has no commit yet, so it can't start in a worktree"))?;
+    if let Some(parent) = at.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let at_s = at.to_string_lossy();
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(&top)
+        .args(["worktree", "add", "-q", "-b", branch, &at_s, "HEAD"])
+        .env_remove("GIT_DIR")
+        .env_remove("GIT_WORK_TREE")
+        .env_remove("GIT_INDEX_FILE")
+        .stdin(Stdio::null())
+        .output()?;
+    if !out.status.success() {
+        anyhow::bail!("git worktree add failed: {}", String::from_utf8_lossy(&out.stderr).trim());
+    }
+    let canon = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+    let rel = canon(dir).strip_prefix(canon(&top)).map(Path::to_path_buf).unwrap_or_default();
+    let cwd = at.join(rel);
+    std::fs::create_dir_all(&cwd)?; // a subfolder with nothing committed in it yet
+    Ok((WorktreeInfo { path: at.to_path_buf(), branch: Some(branch.to_string()) }, cwd))
+}
+
+/// The folder in worktree `worktree` that matches `dir` in its own checkout (`dir` may be a
+/// subfolder of its repository).
+pub fn matching_folder(dir: &Path, worktree: &Path) -> PathBuf {
+    let canon = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+    let rel = toplevel(dir).and_then(|top| canon(dir).strip_prefix(canon(&top)).map(Path::to_path_buf).ok()).unwrap_or_default();
+    worktree.join(rel)
+}
+
+/// Undoes `add_worktree` after a start that failed: the worktree and its (still empty) branch go.
+pub fn remove_worktree(dir: &Path, wt: &WorktreeInfo) {
+    let path = wt.path.to_string_lossy();
+    let _ = git_out(dir, &["worktree", "remove", "--force", &path]);
+    if let Some(b) = &wt.branch {
+        let _ = git_out(dir, &["branch", "-D", b]);
+    }
+}
+
 /// `git init` in an existing directory.
 pub fn init_repo(dir: &Path) -> anyhow::Result<()> {
     git_out(dir, &["init", "-q"])
@@ -172,6 +235,31 @@ pub(crate) mod test_util {
 mod tests {
     use super::test_util::*;
     use super::*;
+
+    #[test]
+    fn slug_is_branch_safe_and_short() {
+        assert_eq!(slug("Fix the Login page!! (urgent)", 40), "fix-the-login-page-urgent");
+        assert_eq!(slug("  ¿¿  ", 10), "");
+        assert!(slug(&"word ".repeat(20), 12).len() <= 12);
+    }
+
+    #[test]
+    fn worktree_gets_its_own_branch_and_matching_subfolder() {
+        let d = tempfile::tempdir().unwrap();
+        let repo = d.path().join("repo");
+        std::fs::create_dir_all(repo.join("app")).unwrap();
+        repo_with_commit(&repo);
+        std::fs::write(repo.join("app/b.txt"), "b").unwrap();
+        git(&repo, &["add", "app/b.txt"]);
+        git(&repo, &["commit", "-q", "-m", "app"]);
+        let at = d.path().join("wt").join("one");
+        let (wt, cwd) = add_worktree(&repo.join("app"), &at, "coc/test-1").unwrap();
+        assert_eq!(wt.branch.as_deref(), Some("coc/test-1"));
+        assert_eq!(cwd, at.join("app"));
+        assert!(cwd.join("b.txt").exists());
+        assert_eq!(branch(&at).as_deref(), Some("coc/test-1"));
+        assert!(add_worktree(d.path(), &d.path().join("x"), "coc/x").is_err(), "not a repo");
+    }
 
     #[test]
     fn non_git_dir_has_no_baseline() {

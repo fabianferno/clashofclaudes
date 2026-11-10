@@ -223,7 +223,10 @@ impl AgentAdapter for CodexAdapter {
     }
     fn parse_hook(&self, body: &serde_json::Value) -> Vec<StatusEvent> {
         match body.get("type").and_then(|v| v.as_str()) {
-            Some("agent-turn-complete") => vec![StatusEvent::TurnFinished],
+            Some("agent-turn-complete") => {
+                let reply = body.get("last-assistant-message").and_then(|v| v.as_str()).filter(|t| !t.trim().is_empty());
+                reply.map(|t| StatusEvent::AssistantMessage { text: t.to_string() }).into_iter().chain([StatusEvent::TurnFinished]).collect()
+            }
             _ => vec![],
         }
     }
@@ -380,7 +383,11 @@ mod tests {
     fn codex_parse_turn_complete() {
         let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/codex/agent-turn-complete.json");
         let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(p).unwrap()).unwrap();
-        assert_eq!(CodexAdapter.parse_hook(&v), vec![StatusEvent::TurnFinished]);
+        assert_eq!(
+            CodexAdapter.parse_hook(&v),
+            vec![StatusEvent::AssistantMessage { text: "Renamed foo to bar.".into() }, StatusEvent::TurnFinished]
+        );
+        assert_eq!(CodexAdapter.parse_hook(&json!({"type": "agent-turn-complete"})), vec![StatusEvent::TurnFinished], "no reply in it");
     }
 
     #[test]

@@ -137,10 +137,10 @@ test('⌘N starts a session in the workspace open now; with none clear, the pale
   expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(expect.arrayContaining([expect.stringContaining('New session in shop'), expect.stringContaining('New session in blog')]));
 });
 
-test('⌘J opens the next session that needs you; ⌘B the Kanban; ⌘⇧N asks for a workspace name', () => {
+test('⌘J takes the next in the owner\'s queue; ⌘B the Kanban; ⌘⇧N asks for a workspace name', () => {
   render(<CommandPalette />);
   press('j', { metaKey: true });
-  expect(useApp.getState().selection).toEqual({ kind: 'session', id: 's2' });
+  expect(useApp.getState().selection).toEqual({ kind: 'session', id: 's2', queue: true });
   act(() => useApp.getState().setSelection(null));
   press('b', { metaKey: true });
   expect(useApp.getState().kanban).toBe(KANBAN_ALL); // no workspace open: every workspace's

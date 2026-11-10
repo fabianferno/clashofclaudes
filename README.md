@@ -57,6 +57,16 @@ Claude Code and Antigravity CLI have been verified against real runs. Grok Build
 
 Antigravity CLI replaced Gemini CLI for Google's plans; the app supports Antigravity and no longer Gemini CLI (builders saved for Gemini CLI become Antigravity builders).
 
+## One thing at a time
+
+Running several agents makes it easy to start a fifth thread while four are still waiting on you. The village keeps that in check:
+
+- **Your queue.** Every session waiting on you goes in one queue, in this order: permissions to Allow or Deny, then questions, then stuck sessions, then finished work to review. Oldest wait comes first within each. **▶ N waiting on you** at the top left (or **⌘J**) opens the first item. Deal with it and the next one comes up.
+- **A briefing for each item.** Before the terminal, the panel shows the task, what the agent asks (for Claude Code, the exact tool call, such as `Bash: npm test`) and the agent's last reply (Claude Code and Codex). It also shows the files changed since the session started.
+- **Close the loop.** For finished work: **Accept** closes it and earns XP. **Follow up** sends your reply into the agent's prompt. **Park** puts it aside, with an optional note, until it changes. **Discard** closes it without XP, and its changes stay on disk.
+- **Fewer threads.** While things wait on you, **+ New session** suggests **Add to To Do** instead. **Settings › Focus** can limit how many sessions work at once.
+- **A To Do that runs itself.** Tick **Start on its own** on a To Do and it starts when its builder is free and the limit allows. Tick **Own worktree** (on a To Do or in + New session) and the session starts in a new git worktree, on a new branch from your last commit. The worktree is kept in the app's data folder (`worktrees/`). Its changes stay apart from yours until you merge the branch. Uncommitted changes in your folder are not carried over.
+
 ## Notifications
 
 When the app is in the background, it shows a macOS notification when a session needs you or finishes (title: the builder's name, body: "needs you: ..." or "finished"), and the Dock icon shows how many sessions are waiting. Clicking a notification brings the app forward and selects that session. Notifications never include your task text or terminal output.
@@ -68,6 +78,7 @@ When the app is in the background, it shows a macOS notification when a session 
 - To list Codex's models the app runs `codex debug models`; Codex may refresh that list from OpenAI with your own Codex login, as it does when you run it. The app itself sends nothing.
 - The app **never edits your agent configuration**: nothing under `~/.claude`, `~/.codex`, `~/.gemini`, `~/.config/opencode`, `~/.grok`, or a project's `.claude`, `.codex`, `.gemini`, `.opencode` or `.grok`. To get status events it hands each agent a private per-session settings file stored in the app's own data folder (`~/Library/Application Support/dev.clashofclaudes.desktop/sessions/`), and deletes it when the session closes.
 - Status events arrive on a localhost-only server protected by a random per-session token.
+- **Own worktree** is the one time the app writes to your repository: it runs `git worktree add` with a new `coc/…` branch. The worktree and the branch stay after the session closes, so you can merge or delete them yourself.
 - Quitting the app stops your agent sessions (it asks first if any are running). They come back paused on the next launch, where they stood: **Resume** continues a Claude Code, Codex, Antigravity or Grok Build session on its own conversation (`claude --resume`, `codex resume`, `agy --conversation`, `grok --resume`); OpenCode, custom agents and terminals start fresh in the same folder. To find an Antigravity session's conversation the app reads (never writes) `~/.gemini/antigravity-cli/history.jsonl`; a Grok Build session is started with its own id (`--session-id`), and the app only checks that Grok saved it under `~/.grok/sessions`.
 - macOS may ask whether Clash of Claudes can read your Downloads, Desktop or Documents folder. That is an agent or terminal running inside the app (macOS asks on behalf of the app that started it), the same prompt iTerm or VS Code shows the first time. Allow it for folders that hold your workspaces; saying no elsewhere is safe. Change it later in **System Settings > Privacy & Security > Files & Folders**.
 

@@ -197,6 +197,10 @@ mod tests {
             spot: None,
             paused: false,
             subagents: vec![],
+            state_since: 0,
+            last_message: None,
+            asking: None,
+            parked: None,
         }
     }
     fn agent(id: &str, state: SessionState) -> SessionInfo {

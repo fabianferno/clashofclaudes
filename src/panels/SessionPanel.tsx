@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { ipc } from '../api/ipc';
 import { stateLabel, useApp } from '../state/store';
-import type { CloseOutcome, Review } from '../api/types';
+import type { CloseOutcome } from '../api/types';
 import TerminalView from '../components/LazyTerminalView';
 import { CLASS_NAMES, GEAR_NAMES, classOf, gearOf } from '../village/look';
 import PopOutTerminal from './PopOutTerminal';
 import { isDemoId } from '../onboarding/demo';
 import { sessionName } from './sessionName';
+import Briefing from './Briefing';
+import { queueReason } from '../state/queue';
 
 function elapsed(from: number, now: number): string {
   const s = Math.max(0, Math.floor((now - from) / 1000));
@@ -20,7 +22,6 @@ export default function SessionPanel({ sessionId, onClosed }: { sessionId: strin
   const agents = useApp((s) => s.agents);
   const [now, setNow] = useState(Date.now());
   const [error, setError] = useState<string | null>(null);
-  const [review, setReview] = useState<Review | null>(null);
   const [answering, setAnswering] = useState(false);
   const [popped, setPopped] = useState(false);
   // opened popped out (a Kanban card): pop out at once
@@ -53,7 +54,6 @@ export default function SessionPanel({ sessionId, onClosed }: { sessionId: strin
   current.current = sessionId;
   if (shownFor !== sessionId) {
     setShownFor(sessionId);
-    setReview(null);
     setError(null);
     setPopped(false);
     setAnswering(false);
@@ -71,29 +71,30 @@ export default function SessionPanel({ sessionId, onClosed }: { sessionId: strin
     try { await p; } catch (e) { if (stillShown(sid)) setError(String(e)); }
   };
   const st = session.state.kind;
-  // A review describes one Finished moment; once the agent works again it is stale.
-  if (review && st !== 'finished') setReview(null);
+  // taken from the owner's queue: once dealt with, the next one comes up
+  const fromQueue = () => {
+    const sel = useApp.getState().selection;
+    return sel?.kind === 'session' && sel.id === sessionId && !!sel.queue;
+  };
+  const dealt = (sid: string) => { if (fromQueue() && stillShown(sid)) useApp.getState().takeNext(sid); };
   const answer = async (p: () => Promise<unknown>) => {
     if (answering) return;
     const sid = sessionId;
+    const queued = fromQueue();
     setAnswering(true);
-    try { await run(p()); } finally { if (stillShown(sid)) setAnswering(false); }
-  };
-  const showReview = async () => {
-    const sid = sessionId;
-    setError(null);
-    try {
-      const r = await ipc.reviewSession(sid);
-      if (stillShown(sid)) setReview(r);
-    } catch (e) { if (stillShown(sid)) setError(String(e)); }
+    let ok = false;
+    try { await p(); ok = true; } catch (e) { if (stillShown(sid)) setError(String(e)); } finally { if (stillShown(sid)) setAnswering(false); }
+    if (ok && queued && stillShown(sid)) useApp.getState().takeNext(sid);
   };
 
-  async function close() {
+  async function close(discard = false) {
     const sid = sessionId;
+    const queued = fromQueue();
     setError(null);
     try {
-      const o = await ipc.closeSession(sid);
+      const o = await ipc.closeSession(sid, discard);
       onClosed?.(o, sid);
+      if (queued) useApp.getState().takeNext(sid);
     } catch (e) {
       // the session may be gone already (the panel unmounts with it): report where it survives
       useApp.getState().setError(`Close failed: ${String(e)}`);
@@ -106,6 +107,8 @@ export default function SessionPanel({ sessionId, onClosed }: { sessionId: strin
     ? `${builder.model ? `${builder.model} · ` : ''}${builder.effort ? `${builder.effort} ` : ''}→ ${CLASS_NAMES[classOf(builder.agent, builder.model)]} with ${GEAR_NAMES[gearOf(builder.effort)].toLowerCase()}`
     : null;
   const readOnly = st === 'ended';
+  // a session waiting on the owner (or parked out of their queue) gets its briefing
+  const briefed = session.kind.kind === 'agent' && !session.paused && queueReason({ ...session, parked: null }) !== null;
   const paused = !!session.paused;
   const resume = () => run(ipc.resumeSession(sessionId).then((s) => useApp.getState().upsertSession(s)));
 
@@ -126,35 +129,24 @@ export default function SessionPanel({ sessionId, onClosed }: { sessionId: strin
         {tier && <div className="sp-d session-tier">{tier}</div>}
       </header>
       <div className="session-actions">
-        {session.state.kind === 'needsYou' && (canApprove && session.awaitingDecision
+        {!briefed && session.state.kind === 'needsYou' && (canApprove && session.awaitingDecision
           ? <>
               <button className="hud-btn sm" data-tour="allow" disabled={answering} onClick={() => answer(() => ipc.approve(sessionId))}>Allow</button>
               <button className="hud-btn red sm" disabled={answering} onClick={() => answer(() => ipc.deny(sessionId))}>Deny</button>
             </>
           : <><em>Answer in the terminal</em>{canApprove && session.state.reason && <span className="sp-d">{session.state.reason}</span>}</>)}
-        {st === 'finished' && (
-          <button className="hud-btn sm" onClick={() => void showReview()}>Review</button>
-        )}
         {paused && <button className="hud-btn sm" onClick={() => void resume()}>Resume</button>}
         {!paused && <button className="hud-btn grey sm" onClick={() => run(ipc.stopSession(sessionId))}>Stop</button>}
-        <button className="hud-btn grey sm" data-tour="close-session" onClick={close}>Close</button>
+        <button className="hud-btn grey sm" data-tour={briefed ? undefined : 'close-session'} onClick={() => void close()}>Close</button>
         {!paused && <button className="hud-btn blue sm" onClick={() => setPopped(true)}>Pop out</button>}
       </div>
       {error && <div className="panel-warn">{error}</div>}
-      {review && (
-        <div className="review sp-box">
-          {!review.isGit ? <div>No git history; open the folder to review</div> : (
-            <>
-              {review.branch && <div>Branch: {review.branch}</div>}
-              {review.files.length === 0 && review.untracked.length === 0 && <div>No changes since this session started</div>}
-              <ul>{review.files.map((f) => <li key={f.path}>{f.path} +{f.added} −{f.removed}</li>)}</ul>
-              {review.untracked.length > 0 && (
-                <div>Untracked:<ul>{review.untracked.map((p) => <li key={p}>{p}</li>)}</ul></div>
-              )}
-              {review.otherSessionsActive && <div>Other sessions were active in this folder.</div>}
-            </>
-          )}
-        </div>
+      {briefed && (
+        <Briefing session={session} canApprove={canApprove} answering={answering}
+          onAllow={() => void answer(() => ipc.approve(sessionId))}
+          onDeny={() => void answer(() => ipc.deny(sessionId))}
+          onClose={(discard) => void close(discard)}
+          onDealt={() => dealt(sessionId)} />
       )}
       {paused ? (
         <div className="terminal-placeholder">

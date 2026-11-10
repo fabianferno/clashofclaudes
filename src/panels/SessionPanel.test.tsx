@@ -26,6 +26,7 @@ const sess = (state: SessionState, awaitingDecision: boolean): SessionInfo => ({
 beforeEach(() => {
   approve.mockReset();
   reviewSession.mockReset();
+  reviewSession.mockResolvedValue({ isGit: true, branch: 'main', files: [], untracked: [], otherSessionsActive: false });
   closeSession.mockReset();
   stopSession.mockReset();
   resumeSession.mockReset();
@@ -67,23 +68,21 @@ test('allow_hidden_after_typing', () => {
   useApp.getState().upsertSession(sess({ kind: 'needsYou', reason: 'x' }, false));
   render(<SessionPanel sessionId="s1" />);
   expect(screen.queryByText('Allow')).toBeNull();
-  expect(screen.getByText('Answer in the terminal')).toBeTruthy();
+  expect(screen.getByText('Asking you')).toBeTruthy();
+  expect(screen.getByPlaceholderText('Answer it…')).toBeTruthy(); // answered from the briefing, or in the terminal
 });
 
 test('review_shows_no_changes_line', async () => {
   useApp.getState().upsertSession(sess({ kind: 'finished' }, false));
-  reviewSession.mockResolvedValue({ isGit: true, branch: 'main', files: [], untracked: [], otherSessionsActive: false });
   render(<SessionPanel sessionId="s1" />);
-  fireEvent.click(screen.getByText('Review'));
-  expect(await screen.findByText('No changes since this session started')).toBeTruthy();
+  expect(await screen.findByText('No changes since it started (on main).')).toBeTruthy();
 });
 
 test('review of a non-git folder', async () => {
   useApp.getState().upsertSession(sess({ kind: 'finished' }, false));
   reviewSession.mockResolvedValue({ isGit: false, branch: null, files: [], untracked: [], otherSessionsActive: false });
   render(<SessionPanel sessionId="s1" />);
-  fireEvent.click(screen.getByText('Review'));
-  expect(await screen.findByText('No git history; open the folder to review')).toBeTruthy();
+  expect(await screen.findByText('No git history here; open the folder to look.')).toBeTruthy();
 });
 
 test('worktree sessions show a branch chip', () => {
@@ -162,15 +161,13 @@ test('terminal sessions have no Edit builder link', () => {
 test('switching sessions keeps the terminal host and resets per-session state', async () => {
   useApp.getState().upsertSession(sess({ kind: 'finished' }, false));
   useApp.getState().upsertSession({ ...sess({ kind: 'working' }, false), id: 's2' });
-  reviewSession.mockResolvedValue({ isGit: true, branch: 'main', files: [], untracked: [], otherSessionsActive: false });
   const { container, rerender } = render(<SessionPanel sessionId="s1" />);
-  fireEvent.click(screen.getByText('Review'));
-  expect(await screen.findByText('No changes since this session started')).toBeTruthy();
+  expect(await screen.findByText('No changes since it started (on main).')).toBeTruthy();
   const host = container.querySelector('.terminal');
   rerender(<SessionPanel sessionId="s2" />);
   expect(container.querySelector('.terminal')).toBe(host); // the same xterm host, now showing s2
   expect(host?.getAttribute('data-sid')).toBe('s2');
-  expect(screen.queryByText('No changes since this session started')).toBeNull();
+  expect(screen.queryByText('No changes since it started (on main).')).toBeNull();
 });
 
 test('late results for a session switched away from never land on the one shown', async () => {
@@ -187,7 +184,7 @@ test('late results for a session switched away from never land on the one shown'
   const { rerender } = render(<SessionPanel sessionId="s1" onClosed={onClosed} />);
   fireEvent.click(screen.getByText('Stop'));
   fireEvent.click(screen.getByText('Allow'));
-  fireEvent.click(screen.getByText('Close'));
+  fireEvent.click(screen.getAllByText('Close')[0]);
   rerender(<SessionPanel sessionId="s2" onClosed={onClosed} />);
   // s2 starts clean, and starts answering its own prompt.
   const s2allow = pending<void>();
@@ -202,28 +199,33 @@ test('late results for a session switched away from never land on the one shown'
   expect((screen.getByText('Allow') as HTMLButtonElement).disabled).toBe(false);
 });
 
-test('a review requested for one session does not show on the next', async () => {
+test('a review read for one session does not show on the next', async () => {
   useApp.getState().upsertSession(sess({ kind: 'finished' }, false));
   useApp.getState().upsertSession({ ...sess({ kind: 'finished' }, false), id: 's2' });
   let resolve: (r: unknown) => void = () => {};
-  reviewSession.mockReturnValue(new Promise((r) => { resolve = r; }));
+  reviewSession.mockReturnValueOnce(new Promise((r) => { resolve = r; }));
+  reviewSession.mockResolvedValueOnce({ isGit: false, branch: null, files: [], untracked: [], otherSessionsActive: false });
   const { rerender } = render(<SessionPanel sessionId="s1" />);
-  fireEvent.click(screen.getByText('Review'));
+  await act(async () => {});
   rerender(<SessionPanel sessionId="s2" />);
+  expect(await screen.findByText('No git history here; open the folder to look.')).toBeTruthy();
   await act(async () => resolve({ isGit: true, branch: 'main', files: [], untracked: [], otherSessionsActive: false }));
-  expect(screen.queryByText('No changes since this session started')).toBeNull();
+  expect(screen.queryByText('No changes since it started (on main).')).toBeNull(); // s1's late answer
+  expect(screen.getByText('No git history here; open the folder to look.')).toBeTruthy();
 });
 
-test('a review clears once the session leaves Finished', async () => {
+test('the briefing goes once the session works again, and reads the changes anew when it finishes', async () => {
   useApp.getState().upsertSession(sess({ kind: 'finished' }, false));
-  reviewSession.mockResolvedValue({ isGit: true, branch: 'main', files: [], untracked: [], otherSessionsActive: false });
   render(<SessionPanel sessionId="s1" />);
-  fireEvent.click(screen.getByText('Review'));
-  expect(await screen.findByText('No changes since this session started')).toBeTruthy();
+  expect(await screen.findByText('No changes since it started (on main).')).toBeTruthy();
   act(() => useApp.getState().upsertSession({ ...sess({ kind: 'working' }, false), rev: 2 }));
-  expect(screen.queryByText('No changes since this session started')).toBeNull();
-  act(() => useApp.getState().upsertSession({ ...sess({ kind: 'finished' }, false), rev: 3 }));
-  expect(screen.queryByText('No changes since this session started')).toBeNull();
+  expect(screen.queryByText('No changes since it started (on main).')).toBeNull();
+  expect(screen.queryByTestId('briefing')).toBeNull();
+  // finished again: read anew (its new turn may have changed more)
+  reviewSession.mockResolvedValue({ isGit: true, branch: 'main', files: [{ path: 'a.ts', added: 3, removed: 1 }], untracked: [], otherSessionsActive: false });
+  act(() => useApp.getState().upsertSession({ ...sess({ kind: 'finished' }, false), rev: 3, stateSince: 99 }));
+  expect(await screen.findByText(/in 1 file/)).toBeTruthy();
+  expect(reviewSession).toHaveBeenCalledTimes(2);
 });
 
 test('a paused session offers Resume instead of a terminal, and resuming shows it running', async () => {

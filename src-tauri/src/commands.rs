@@ -349,13 +349,55 @@ fn start_err(app: &AppHandle, state: &AppState, workspace_id: &str, e: anyhow::E
 }
 
 #[tauri::command]
-pub async fn start_session(workspace_id: String, builder_id: String, task: String, images: Vec<String>, app: AppHandle, state: State<'_, AppState>) -> Result<SessionInfo, String> {
-    let ws = find_workspace(&state, &workspace_id)?;
+/// `worktree`: start it in its own git worktree, on a new branch from HEAD, kept in the app's data
+/// folder (`worktrees/`), so its changes wait apart from the workspace's for review.
+#[allow(clippy::too_many_arguments)]
+pub async fn start_session(workspace_id: String, builder_id: String, task: String, images: Vec<String>, worktree: Option<bool>, app: AppHandle, state: State<'_, AppState>) -> Result<SessionInfo, String> {
+    let mut ws = find_workspace(&state, &workspace_id)?;
     let builder = state.data().builders.iter().find(|b| b.id == builder_id).cloned().ok_or("unknown builder")?;
     let task = task.trim();
-    let s = state.manager.start_agent(&ws, &builder, (!task.is_empty()).then_some(task), &images).map_err(|e| start_err(&app, &state, &workspace_id, e))?;
+    let repo = ws.path.clone();
+    let wt = if worktree.unwrap_or(false) {
+        if ws.missing || !ws.path.exists() {
+            return Err(start_err(&app, &state, &workspace_id, anyhow::Error::new(WorkspaceMissing(ws.path.clone()))));
+        }
+        let (at, branch) = worktree_place(state.data_dir(), &ws.name, task);
+        let (info, cwd) = git::add_worktree(&ws.path, &at, &branch).map_err(fmt_err)?;
+        ws.path = cwd;
+        Some(info)
+    } else {
+        None
+    };
+    let s = match state.manager.start_agent(&ws, &builder, (!task.is_empty()).then_some(task), &images) {
+        Ok(s) => s,
+        Err(e) => {
+            if let Some(wt) = &wt {
+                git::remove_worktree(&repo, wt);
+            }
+            return Err(start_err(&app, &state, &workspace_id, e));
+        }
+    };
     crate::usage::track(&app, crate::usage::Event::SessionStarted(builder.agent));
-    Ok(s)
+    let Some(wt) = wt else { return Ok(s) };
+    state.manager.set_worktree(&s.id, wt);
+    Ok(state.manager.list().into_iter().find(|x| x.id == s.id).unwrap_or(s))
+}
+
+/// Where a new worktree for a task goes (under the app's data folder) and its branch name.
+pub fn worktree_place(data_dir: &std::path::Path, ws_name: &str, task: &str) -> (PathBuf, String) {
+    let short = Uuid::new_v4().simple().to_string()[..6].to_string();
+    let name = git::slug(task, 32);
+    let branch = if name.is_empty() { format!("coc/{short}") } else { format!("coc/{name}-{short}") };
+    let ws = git::slug(ws_name, 24);
+    let dir = if ws.is_empty() { short.clone() } else { format!("{ws}-{short}") };
+    (data_dir.join("worktrees").join(dir), branch)
+}
+
+/// Puts a session aside out of the owner's queue with a note (`None` takes it back); it comes back
+/// by itself when its state changes.
+#[tauri::command]
+pub fn park_session(id: String, note: Option<String>, state: State<'_, AppState>) -> Result<SessionInfo, String> {
+    state.manager.set_parked(&id, note).map_err(fmt_err)
 }
 
 /// Saves an image pasted into a task (the raw bytes are the request body) and returns its name.
@@ -435,14 +477,20 @@ pub async fn resume_session(id: String, app: AppHandle, state: State<'_, AppStat
 }
 
 #[tauri::command]
-pub async fn close_session(id: String, app: AppHandle, state: State<'_, AppState>) -> Result<CloseOutcome, String> {
+/// `discard`: the owner did not want its work; it earns nothing even when finished.
+pub async fn close_session(id: String, discard: Option<bool>, app: AppHandle, state: State<'_, AppState>) -> Result<CloseOutcome, String> {
     state.channels.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
-    let closed = state.manager.close(&id).map_err(fmt_err)?;
-    let outcome;
+    let mut closed = state.manager.close(&id).map_err(fmt_err)?;
+    let discard = discard.unwrap_or(false) && closed.is_agent;
+    if discard {
+        closed.reached_finished = false;
+    }
+    let mut outcome;
     let (ws, stats) = {
         let mut d = state.data();
         let before = d.workspaces.iter().find(|w| w.id == closed.workspace_id).cloned();
         outcome = apply_close(&mut d, &closed, now_ms());
+        outcome.discarded = discard;
         if outcome.earned_xp {
             state.save(&d)?;
         }
@@ -471,6 +519,8 @@ pub struct CloseOutcome {
     pub unfinished: bool,
     /// An agent was closed while Stuck (earns nothing).
     pub stuck: bool,
+    /// The owner discarded it (earns nothing).
+    pub discarded: bool,
 }
 
 /// Applies the XP rules for a closed session. A finished, not-stuck agent session earns
@@ -485,6 +535,7 @@ pub fn apply_close(d: &mut AppData, closed: &ClosedSession, now_ms: i64) -> Clos
         workspace_id: closed.workspace_id.clone(),
         unfinished: closed.is_agent && !closed.reached_finished,
         stuck: closed.is_agent && closed.stuck,
+        discarded: false,
     };
     let earns = closed.is_agent && closed.reached_finished && !closed.stuck;
     let Some(w) = d.workspaces.iter_mut().find(|w| w.id == closed.workspace_id) else { return out };
@@ -620,7 +671,7 @@ pub fn apply_add_todo(d: &mut AppData, workspace_id: &str, text: &str, images: V
     if !d.workspaces.iter().any(|w| w.id == workspace_id) {
         anyhow::bail!("unknown workspace {workspace_id}");
     }
-    let t = Todo { id: Uuid::new_v4().to_string(), workspace_id: workspace_id.to_string(), text: text.to_string(), images, created_at: now };
+    let t = Todo { id: Uuid::new_v4().to_string(), workspace_id: workspace_id.to_string(), text: text.to_string(), images, created_at: now, auto: false, builder_id: None, worktree: false };
     d.todos.push(t.clone());
     Ok(t)
 }
@@ -629,6 +680,33 @@ pub fn apply_add_todo(d: &mut AppData, workspace_id: &str, text: &str, images: V
 pub fn add_todo(workspace_id: String, text: String, images: Vec<String>, state: State<'_, AppState>) -> Result<Todo, String> {
     let mut d = state.data();
     let t = apply_add_todo(&mut d, &workspace_id, &text, images, now_ms()).map_err(fmt_err)?;
+    state.save(&d)?;
+    Ok(t)
+}
+
+/// Sets how a To Do starts: on its own (`auto`, which needs a builder), with which builder, and
+/// whether in its own worktree.
+pub fn apply_update_todo(d: &mut AppData, id: &str, auto: bool, builder_id: Option<String>, worktree: bool) -> anyhow::Result<Todo> {
+    let builder_id = builder_id.filter(|b| !b.is_empty());
+    if let Some(b) = &builder_id
+        && !d.builders.iter().any(|x| &x.id == b)
+    {
+        anyhow::bail!("unknown builder");
+    }
+    if auto && builder_id.is_none() {
+        anyhow::bail!("pick a builder for the task to start on its own");
+    }
+    let t = d.todos.iter_mut().find(|t| t.id == id).ok_or_else(|| anyhow::anyhow!("this task is gone"))?;
+    t.auto = auto;
+    t.builder_id = builder_id;
+    t.worktree = worktree;
+    Ok(t.clone())
+}
+
+#[tauri::command]
+pub fn update_todo(id: String, auto: bool, builder_id: Option<String>, worktree: bool, state: State<'_, AppState>) -> Result<Todo, String> {
+    let mut d = state.data();
+    let t = apply_update_todo(&mut d, &id, auto, builder_id, worktree).map_err(fmt_err)?;
     state.save(&d)?;
     Ok(t)
 }
@@ -1007,6 +1085,30 @@ mod tests {
     }
 
     #[test]
+    fn a_todo_starts_on_its_own_only_with_a_builder() {
+        let mut d = village();
+        let w = d.workspaces[0].id.clone();
+        d.builders.push(Builder { id: "b1".into(), name: "Ada".into(), agent: AgentKind::Claude, model: None, effort: None, custom_command: None });
+        let t = apply_add_todo(&mut d, &w, "Fix it", vec![], 5).unwrap();
+        assert!(!t.auto && !t.worktree && t.builder_id.is_none());
+        assert!(apply_update_todo(&mut d, &t.id, true, None, false).is_err(), "auto needs a builder");
+        assert!(apply_update_todo(&mut d, &t.id, true, Some("ghost".into()), false).is_err(), "unknown builder");
+        let u = apply_update_todo(&mut d, &t.id, true, Some("b1".into()), true).unwrap();
+        assert!(u.auto && u.worktree && u.builder_id.as_deref() == Some("b1"));
+        assert_eq!(d.todos[0], u);
+        assert!(apply_update_todo(&mut d, "gone", false, None, false).is_err());
+    }
+
+    #[test]
+    fn worktrees_go_in_the_data_folder_on_a_coc_branch() {
+        let (at, branch) = worktree_place(Path::new("/data"), "My App", "Fix the login page");
+        assert!(at.starts_with("/data/worktrees") && at.file_name().unwrap().to_string_lossy().starts_with("my-app-"));
+        assert!(branch.starts_with("coc/fix-the-login-page-"));
+        let (_, bare) = worktree_place(Path::new("/data"), "!!", "");
+        assert!(bare.starts_with("coc/") && bare.len() == "coc/".len() + 6);
+    }
+
+    #[test]
     fn todos_may_be_just_images_but_only_attachment_names() {
         let mut d = village();
         let w = d.workspaces[0].id.clone();
@@ -1033,7 +1135,7 @@ mod tests {
         let o = apply_close(&mut d, &closed(true, true, false), 5_000);
         assert_eq!(
             o,
-            CloseOutcome { earned_xp: true, xp_gained: 100, level_before: 1, level_after: 2, workspace_id: "w1".into(), unfinished: false, stuck: false }
+            CloseOutcome { earned_xp: true, xp_gained: 100, level_before: 1, level_after: 2, workspace_id: "w1".into(), unfinished: false, stuck: false, discarded: false }
         );
         assert_eq!((d.workspaces[0].level, d.workspaces[0].xp), (2, 0));
         assert_eq!((d.stats.shipped_total, d.stats.recent_ships.clone()), (1, vec![5_000]));

@@ -13,6 +13,7 @@ const ipc = vi.hoisted(() => ({
   saveAttachment: vi.fn(),
   readAttachment: vi.fn().mockResolvedValue(new ArrayBuffer(4)),
   discardAttachments: vi.fn().mockResolvedValue(undefined),
+  updateTodo: vi.fn(),
 }));
 vi.mock('../api/ipc', () => ({ ipc }));
 import { KANBAN_ALL, useApp } from '../state/store';
@@ -120,7 +121,7 @@ test('a task is written down, then handed to an idle builder and becomes a sessi
   ipc.setSessionSpot.mockImplementation(async (id, spot) => ({ ...useApp.getState().sessions[id], spot }));
   fireEvent.click(screen.getByRole('button', { name: 'Start' }));
   await waitFor(() => expect(within(column('Active')).getByText('Fix login')).toBeTruthy());
-  expect(ipc.startSession).toHaveBeenCalledWith('w1', 'b3', 'Fix login', []);
+  expect(ipc.startSession).toHaveBeenCalledWith('w1', 'b3', 'Fix login', [], false);
   expect(ipc.removeTodo).toHaveBeenCalledWith('t1');
   expect(within(column('To Do')).queryByText('Fix login')).toBeNull();
 });
@@ -174,7 +175,7 @@ test('images pasted into a new task go with it, show on its card and are handed 
   expect(screen.getAllByTestId('att-thumb')).toHaveLength(1); // the form let go of it
   ipc.startSession.mockResolvedValue(sess('s9', 'b1', { kind: 'starting' }));
   fireEvent.click(screen.getByRole('button', { name: 'Start' }));
-  await waitFor(() => expect(ipc.startSession).toHaveBeenCalledWith('w1', 'b1', '', [img]));
+  await waitFor(() => expect(ipc.startSession).toHaveBeenCalledWith('w1', 'b1', '', [img], false));
 });
 
 test("the Town Hall's board holds every workspace's sessions and To Do, each tagged with its workspace", async () => {
@@ -204,4 +205,18 @@ test('a workspace board has no workspace picker or tags', () => {
   expect(screen.queryByRole('combobox', { name: 'Workspace' })).toBeNull();
   expect(screen.getByRole('heading', { name: 'shop' })).toBeTruthy();
   expect(screen.queryAllByText('shop')).toHaveLength(1); // the heading only
+});
+
+test('a To Do set to start on its own keeps its builder, even a busy one, and can go in its own worktree', async () => {
+  const t = { id: 't1', workspaceId: 'w1', text: 'Fix footer', images: [], createdAt: 1 };
+  ipc.updateTodo.mockImplementation(async (_id: string, auto: boolean, builderId: string | null, worktree: boolean) => ({ ...t, auto, builderId, worktree }));
+  act(() => useApp.setState({ todos: [t], sessions: { s1: sess('s1', 'b1', { kind: 'working' }) } }));
+  render(<Kanban />);
+  const card = screen.getByTestId('kb-todo-t1');
+  await act(async () => { fireEvent.click(within(card).getByLabelText(/Start on its own/)); });
+  expect(ipc.updateTodo).toHaveBeenLastCalledWith('t1', true, 'b2', false); // the first idle builder
+  expect(within(card).getByText(/Starts when Bo is free|Starting…/)).toBeTruthy();
+  await act(async () => { fireEvent.click(within(card).getByLabelText(/Own worktree/)); });
+  expect(ipc.updateTodo).toHaveBeenLastCalledWith('t1', true, 'b2', true);
+  expect(useApp.getState().todos[0]).toMatchObject({ auto: true, builderId: 'b2', worktree: true });
 });

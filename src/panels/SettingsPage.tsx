@@ -143,6 +143,21 @@ export default function SettingsPage() {
             </div>
           </section>
 
+          <section className="set-card" aria-label="Focus">
+            <h3 className="kb-head ol" style={{ background: '#7a5a2f' }}>Focus</h3>
+            <div className="set-body">
+              <div className="set-note">Fewer threads at once. With a limit, To Dos set to start on their own wait for a free slot, and + New session suggests the To Do once you reach it.</div>
+              <label className="set-line">
+                <span className="set-label">Sessions at work at once</span>
+                <select aria-label="Sessions at work at once" value={settings.sessionLimit ?? 0}
+                  onChange={(e) => change({ sessionLimit: Number(e.target.value) || null })}>
+                  <option value={0}>No limit</option>
+                  {[1, 2, 3, 4, 5, 6, 8, 10].map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </label>
+            </div>
+          </section>
+
           <section className="set-card" aria-label="Notifications">
             <h3 className="kb-head ol" style={{ background: 'var(--hud-needs)' }}>Notifications</h3>
             <div className="set-body">

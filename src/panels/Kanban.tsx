@@ -10,6 +10,7 @@ import { StateTag } from './tags';
 import { isDemoId } from '../onboarding/demo';
 import { sessionName, taskTooltip } from './sessionName';
 import { houseColors } from '../village/look';
+import './briefing.css';
 
 export type KanbanColumn = 'active' | 'needs' | 'finished';
 
@@ -100,6 +101,7 @@ export default function Kanban() {
           <span>{b?.name ?? 'Builder'}{agent ? ` · ${agent.label}` : ''}</span>
         </div>
         {reason && <div className="kb-reason">{reason}</div>}
+        {s.parked != null && <div className="kb-parked">Parked{s.parked ? `: ${s.parked}` : ''}</div>}
         <div className="kb-foot">
           <StateTag state={s.state} paused={s.paused} />
           <span>{s.steps} steps · {elapsedLabel(now - s.startedAt)}</span>
@@ -134,7 +136,7 @@ export default function Kanban() {
                 {items.length === 0 && <div className="kb-empty">{all && c.id !== 'todo' ? c.empty.replace(' here', '') : c.empty}</div>}
                 {c.id === 'todo'
                   ? mine.map((t) => (
-                    <TodoCard key={t.id} todo={t} idle={idle} disabled={!!wsOf(t.workspaceId)?.missing}
+                    <TodoCard key={t.id} todo={t} idle={idle} all={builders.filter((b) => isDemoId(b.id) === isDemoId(t.workspaceId))} disabled={!!wsOf(t.workspaceId)?.missing}
                       tag={all ? <WorkspaceTag ws={wsOf(t.workspaceId)} /> : null} />
                   ))
                   : (items as SessionInfo[]).map(card)}
@@ -188,16 +190,38 @@ function AddTodo({ workspaces, disabled }: { workspaces: Workspace[]; disabled: 
   );
 }
 
-/** A planned task: hand it to an idle builder (it becomes a session and moves to Active) or cross it off. */
-function TodoCard({ todo, idle, disabled, tag }: { todo: Todo; idle: Builder[]; disabled: boolean; tag?: ReactNode }) {
+/**
+ * A planned task: hand it to an idle builder (it becomes a session and moves to Active) or cross it
+ * off. Set to start on its own, it waits for its builder (busy or not now) and starts once that
+ * builder is free; in its own worktree, its changes wait apart on a new branch.
+ */
+function TodoCard({ todo, idle, all, disabled, tag }: { todo: Todo; idle: Builder[]; all: Builder[]; disabled: boolean; tag?: ReactNode }) {
   const [pick, setPick] = useState('');
   const [busy, setBusy] = useState(false);
-  const builderId = idle.some((b) => b.id === pick) ? pick : idle[0]?.id ?? '';
+  const auto = !!todo.auto;
+  // its own builder when it has one; else the one picked, else the first idle
+  const remembered = todo.builderId && all.some((b) => b.id === todo.builderId) ? todo.builderId : '';
+  const offered = auto ? all : idle;
+  const builderId = remembered && (auto || idle.some((b) => b.id === remembered)) ? remembered
+    : offered.some((b) => b.id === pick) ? pick : idle[0]?.id ?? (auto ? all[0]?.id ?? '' : '');
+  const free = idle.some((b) => b.id === builderId);
+  const save = async (next: { auto?: boolean; builderId?: string | null; worktree?: boolean }) => {
+    const st = useApp.getState();
+    try {
+      st.addTodo(await ipc.updateTodo(todo.id, next.auto ?? auto, next.builderId !== undefined ? next.builderId : (todo.builderId ?? (auto || next.auto ? builderId || null : null)), next.worktree ?? !!todo.worktree));
+    } catch (e) {
+      st.setError(String(e));
+    }
+  };
+  const choose = (id: string) => {
+    setPick(id);
+    if (auto || todo.builderId) void save({ builderId: id });
+  };
   const start = async () => {
     const st = useApp.getState();
     setBusy(true);
     try {
-      const s = await ipc.startSession(todo.workspaceId, builderId, todo.text, todo.images ?? []);
+      const s = await ipc.startSession(todo.workspaceId, builderId, todo.text, todo.images ?? [], !!todo.worktree);
       st.upsertSession(s);
       // the session holds the task now; a failure to cross it off only leaves a stale card
       try { await ipc.removeTodo(todo.id); st.removeTodo(todo.id); } catch (e) { st.setError(String(e)); }
@@ -216,12 +240,30 @@ function TodoCard({ todo, idle, disabled, tag }: { todo: Todo; idle: Builder[]; 
       {tag}
       {todo.text && <div className="kb-title">{todo.text}</div>}
       <AttachmentStrip names={todo.images ?? []} />
+      {auto && (
+        <div className="kb-reason" style={{ color: 'var(--sp-ink-soft)' }}>
+          <span className="kb-auto-tag ol">Auto</span>{' '}
+          {free ? 'Starting…' : `Starts when ${all.find((b) => b.id === builderId)?.name ?? 'its builder'} is free`}
+        </div>
+      )}
       <div className="kb-start">
-        {idle.length > 0 ? (
-          <BuilderPicker builders={idle} value={builderId} onChange={setPick} disabled={busy} />
-        ) : <span className="kb-reason">All builders are busy</span>}
-        <button className="hud-btn sm" disabled={disabled || busy || !builderId} onClick={() => void start()}>Start</button>
+        {offered.length > 0 ? (
+          <BuilderPicker builders={offered} value={builderId} onChange={choose} disabled={busy} />
+        ) : <span className="kb-reason">{all.length ? 'All builders are busy' : 'No builders yet'}</span>}
+        <button className="hud-btn sm" disabled={disabled || busy || !builderId || !free} onClick={() => void start()}>Start</button>
         <button className="hud-btn grey sm" aria-label={`Delete ${todo.text || 'image task'}`} disabled={busy} onClick={() => void remove()}>✕</button>
+      </div>
+      <div className="kb-opts">
+        <label title="Starts by itself as soon as its builder is free (and your limit on sessions at work allows)">
+          <input type="checkbox" checked={auto} disabled={busy || !builderId}
+            onChange={(e) => void save({ auto: e.target.checked, builderId: builderId || null })} /> Start on its own
+        </label>
+        {!isDemoId(todo.workspaceId) && (
+          <label title="A new branch in its own folder, from your last commit: its changes wait apart from yours for review">
+            <input type="checkbox" checked={!!todo.worktree} disabled={busy}
+              onChange={(e) => void save({ worktree: e.target.checked })} /> Own worktree
+          </label>
+        )}
       </div>
     </article>
   );

@@ -23,8 +23,71 @@ use std::time::Instant;
 /// Appended to every agent session's system prompt.
 pub const SHARED_FOLDER_NOTE: &str = "Other coding agents may be working in this same folder at the same time. If your task needs isolation from their changes, you may create your own git worktree and work there.";
 
-const HOOK_EVENTS: [&str; 8] =
-    ["SessionStart", "UserPromptSubmit", "PostToolUse", "Notification", "Stop", "SessionEnd", "SubagentStart", "SubagentStop"];
+const HOOK_EVENTS: [&str; 9] = [
+    "SessionStart",
+    "UserPromptSubmit",
+    "PreToolUse",
+    "PostToolUse",
+    "Notification",
+    "Stop",
+    "SessionEnd",
+    "SubagentStart",
+    "SubagentStop",
+];
+
+/// A tool call in a few words for the briefing: the tool and what it acts on (`Bash: npm test`,
+/// `Edit: src/app.ts`). Paths under `cwd` are shown relative to it.
+pub(crate) fn tool_summary(tool: &str, input: Option<&serde_json::Value>, cwd: Option<&str>) -> String {
+    let field = |k: &str| input.and_then(|i| i.get(k)).and_then(|v| v.as_str()).map(str::trim).filter(|v| !v.is_empty());
+    let what = ["command", "file_path", "notebook_path", "url", "pattern", "query", "path", "description", "prompt"]
+        .iter()
+        .find_map(|k| field(k))
+        .map(|v| match cwd.map(|c| format!("{}/", c.trim_end_matches('/'))) {
+            Some(prefix) if v.starts_with(&prefix) => v[prefix.len()..].to_string(),
+            _ => v.to_string(),
+        });
+    match what {
+        Some(w) => format!("{tool}: {}", w.split_whitespace().collect::<Vec<_>>().join(" ")),
+        None => tool.to_string(),
+    }
+}
+
+/// The text of the last assistant message in a Claude transcript (JSONL; one line per content
+/// block, blocks of one message share `message.id`). Reads only the file's last 512 KB.
+pub(crate) fn last_reply_in_transcript(path: &std::path::Path) -> Option<String> {
+    use std::io::{Read, Seek, SeekFrom};
+    const TAIL: u64 = 512 * 1024;
+    let mut f = std::fs::File::open(path).ok()?;
+    let len = f.metadata().ok()?.len();
+    f.seek(SeekFrom::Start(len.saturating_sub(TAIL))).ok()?;
+    let mut buf = Vec::new();
+    f.read_to_end(&mut buf).ok()?;
+    let text = String::from_utf8_lossy(&buf);
+    let lines: Vec<serde_json::Value> = text.lines().filter_map(|l| serde_json::from_str(l).ok()).collect();
+    let texts_of = |v: &serde_json::Value| -> Vec<String> {
+        v.pointer("/message/content")
+            .and_then(|c| c.as_array())
+            .map(|blocks| {
+                blocks
+                    .iter()
+                    .filter(|b| b.get("type").and_then(|t| t.as_str()) == Some("text"))
+                    .filter_map(|b| b.get("text").and_then(|t| t.as_str()).map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let is_reply = |v: &serde_json::Value| v.get("type").and_then(|t| t.as_str()) == Some("assistant") && v.get("isSidechain").and_then(|s| s.as_bool()) != Some(true);
+    let last = lines.iter().rposition(|v| is_reply(v) && !texts_of(v).is_empty())?;
+    let id = lines[last].pointer("/message/id").cloned();
+    let parts: Vec<String> = lines
+        .iter()
+        .filter(|v| is_reply(v) && id.is_some() && v.pointer("/message/id") == id.as_ref())
+        .flat_map(texts_of)
+        .collect();
+    let joined = if parts.is_empty() { texts_of(&lines[last]) } else { parts }.join("\n\n");
+    let t = joined.trim();
+    (!t.is_empty()).then(|| t.to_string())
+}
 
 pub struct ClaudeAdapter;
 
@@ -169,8 +232,17 @@ impl AgentAdapter for ClaudeAdapter {
         let mut out = Vec::new();
         match body.get("hook_event_name").and_then(|v| v.as_str()) {
             Some("UserPromptSubmit") => out.push(StatusEvent::PromptSubmitted),
+            Some("PreToolUse") => {
+                let Some(tool) = body.get("tool_name").and_then(|v| v.as_str()) else { return vec![] };
+                let cwd = body.get("cwd").and_then(|v| v.as_str());
+                // a CwdChanged here too would re-check worktrees before every tool: not needed
+                return vec![StatusEvent::ToolPending { summary: tool_summary(tool, body.get("tool_input"), cwd) }];
+            }
             Some("PostToolUse") => out.push(StatusEvent::ToolUsed),
             Some("Stop") => {
+                if let Some(text) = body.get("last_assistant_message").and_then(|v| v.as_str()).filter(|t| !t.trim().is_empty()) {
+                    out.push(StatusEvent::AssistantMessage { text: text.to_string() });
+                }
                 out.push(StatusEvent::TurnFinished);
                 // a turn can end with subagents still running in the background; with none left,
                 // any minion whose stop hook went missing goes too
@@ -209,6 +281,15 @@ impl AgentAdapter for ClaudeAdapter {
             Some("UserPromptSubmit" | "PostToolUse" | "Stop") => body.get("session_id").and_then(|v| v.as_str()).map(String::from),
             _ => None,
         }
+    }
+    fn reply_file(&self, body: &serde_json::Value) -> Option<PathBuf> {
+        if body.get("hook_event_name").and_then(|v| v.as_str()) != Some("Stop") || body.get("last_assistant_message").and_then(|v| v.as_str()).is_some() {
+            return None;
+        }
+        body.get("transcript_path").and_then(|v| v.as_str()).filter(|p| p.ends_with(".jsonl")).map(PathBuf::from)
+    }
+    fn read_reply(&self, file: &std::path::Path) -> Option<String> {
+        last_reply_in_transcript(file)
     }
     fn approve_keys(&self) -> Option<&'static [u8]> {
         Some(b"1")
@@ -252,10 +333,13 @@ mod tests {
         }
     }
 
-    fn parse(name: &str) -> Vec<StatusEvent> {
+    fn fixture(name: &str) -> serde_json::Value {
         let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/claude-hooks").join(name);
-        let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
-        ClaudeAdapter.parse_hook(&v)
+        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
+    }
+
+    fn parse(name: &str) -> Vec<StatusEvent> {
+        ClaudeAdapter.parse_hook(&fixture(name))
     }
 
     fn cwd_ev() -> StatusEvent {
@@ -398,11 +482,46 @@ mod tests {
 
     #[test]
     fn parses_fixtures() {
-        assert_eq!(parse("stop.json"), vec![TurnFinished, SubagentsDone, cwd_ev()]);
+        let reply = "I created `hello.txt` in `/private/tmp/coc-hooks` containing `hi`, and reading it back printed `hi`. The file ends with a trailing newline because `echo` adds one.";
+        assert_eq!(parse("stop.json"), vec![AssistantMessage { text: reply.into() }, TurnFinished, SubagentsDone, cwd_ev()]);
+        assert_eq!(ClaudeAdapter.reply_file(&fixture("stop.json")), None, "the reply came with the hook");
         assert!(matches!(parse("notification_permission.json")[0], PermissionRequested { .. }));
         assert_eq!(parse("notification_idle.json")[0], WaitingForInput);
         assert_eq!(parse("post_tool_use.json")[0], ToolUsed);
         assert_eq!(parse("user_prompt_submit.json")[0], PromptSubmitted);
+    }
+
+    #[test]
+    fn pre_tool_use_names_the_pending_call() {
+        let ev = |tool: &str, input: serde_json::Value| ClaudeAdapter.parse_hook(&json!({"hook_event_name": "PreToolUse", "cwd": "/w", "tool_name": tool, "tool_input": input}));
+        assert_eq!(ev("Bash", json!({"command": "npm  test\n -- --watch"})), vec![ToolPending { summary: "Bash: npm test -- --watch".into() }]);
+        assert_eq!(ev("Edit", json!({"file_path": "/w/src/app.ts"})), vec![ToolPending { summary: "Edit: src/app.ts".into() }]);
+        assert_eq!(ev("Edit", json!({"file_path": "/elsewhere/x.ts"})), vec![ToolPending { summary: "Edit: /elsewhere/x.ts".into() }]);
+        assert_eq!(ev("TodoWrite", json!({"todos": []})), vec![ToolPending { summary: "TodoWrite".into() }]);
+        assert_eq!(ClaudeAdapter.parse_hook(&json!({"hook_event_name": "PreToolUse"})), vec![], "no tool name");
+    }
+
+    #[test]
+    fn a_stop_without_its_reply_reads_the_transcript() {
+        let d = tempfile::tempdir().unwrap();
+        let t = d.path().join("c.jsonl");
+        let line = |v: serde_json::Value| format!("{v}\n");
+        let body = [
+            line(json!({"type": "user", "message": {"role": "user", "content": "hi"}})),
+            line(json!({"type": "assistant", "message": {"id": "m1", "content": [{"type": "text", "text": "old reply"}]}})),
+            line(json!({"type": "assistant", "message": {"id": "m2", "content": [{"type": "text", "text": "First part."}]}})),
+            line(json!({"type": "assistant", "message": {"id": "m2", "content": [{"type": "tool_use", "name": "Bash"}]}})),
+            line(json!({"type": "assistant", "message": {"id": "m2", "content": [{"type": "text", "text": "Done."}]}})),
+            line(json!({"type": "assistant", "isSidechain": true, "message": {"id": "s", "content": [{"type": "text", "text": "subagent"}]}})),
+            "not json\n".to_string(),
+        ]
+        .concat();
+        std::fs::write(&t, body).unwrap();
+        let stop = json!({"hook_event_name": "Stop", "transcript_path": t.to_string_lossy()});
+        let file = ClaudeAdapter.reply_file(&stop).expect("no reply in the hook: read the transcript");
+        assert_eq!(ClaudeAdapter.read_reply(&file).as_deref(), Some("First part.\n\nDone."));
+        assert_eq!(ClaudeAdapter.reply_file(&json!({"hook_event_name": "PostToolUse", "transcript_path": "/x.jsonl"})), None);
+        assert_eq!(last_reply_in_transcript(&d.path().join("missing.jsonl")), None);
     }
 
     #[test]

@@ -37,6 +37,9 @@ export const ipc = {
   /** Removes attachments taken off a task before it was added or started (ones a To Do keeps stay). */
   discardAttachments: (names: string[]) => invoke<void>('discard_attachments', { names }),
   removeTodo: (id: string) => invoke<void>('remove_todo', { id }),
+  /** How a To Do starts: on its own (`auto`, needs a builder), with which builder, in its own worktree. */
+  updateTodo: (id: string, auto: boolean, builderId: string | null, worktree: boolean) =>
+    invoke<Todo>('update_todo', { id, auto, builderId, worktree }),
   /** A small JPEG of a page for its board, as a data: URL (taken in a hidden window; a few seconds). */
   snapshotApp: (url: string) => invoke<string>('snapshot_app', { url }),
   /** Local web apps last found in the workspaces. */
@@ -58,8 +61,8 @@ export const ipc = {
   updateBuilder: (builder: Builder) => invoke<void>('update_builder', { builder }),
   deleteBuilder: (id: string) => invoke<void>('delete_builder', { id }),
   /** `images`: attachment names; the session takes them over (their originals are removed). */
-  startSession: (workspaceId: string, builderId: string, task: string, images: string[] = []) =>
-    invoke<SessionInfo>('start_session', { workspaceId, builderId, task, images }),
+  startSession: (workspaceId: string, builderId: string, task: string, images: string[] = [], worktree = false) =>
+    invoke<SessionInfo>('start_session', { workspaceId, builderId, task, images, worktree }),
   startTerminal: (workspaceId: string) => invoke<SessionInfo>('start_terminal', { workspaceId }),
   writeSession: (id: string, data: number[]) => invoke<void>('write_session', { id, data }),
   resizeSession: (id: string, cols: number, rows: number) => invoke<void>('resize_session', { id, cols, rows }),
@@ -67,7 +70,10 @@ export const ipc = {
   deny: (id: string) => invoke<void>('deny', { id }),
   stopSession: (id: string) => invoke<void>('stop_session', { id }),
   resumeSession: (id: string) => invoke<SessionInfo>('resume_session', { id }),
-  closeSession: (id: string) => invoke<CloseOutcome>('close_session', { id }),
+  /** `discard`: the owner didn't want its work: no XP even when finished. */
+  closeSession: (id: string, discard = false) => invoke<CloseOutcome>('close_session', { id, discard }),
+  /** Puts a session aside out of the queue with a note; null takes it back. */
+  parkSession: (id: string, note: string | null) => invoke<SessionInfo>('park_session', { id, note }),
   setCompound: (workspaceId: string, compound: Compound) =>
     invoke<Workspace>('set_compound', { workspaceId, compound }),
   /** null goes back to the automatic colour. */

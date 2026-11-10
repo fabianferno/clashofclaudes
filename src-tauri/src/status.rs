@@ -26,6 +26,10 @@ pub enum StatusEvent {
     SubagentStopped { id: String },
     /// The agent says none of its subagents is running any more (a turn ended with no background tasks).
     SubagentsDone,
+    /// The agent's reply at the end of a turn (for the briefing). Leaves the state alone.
+    AssistantMessage { text: String },
+    /// The tool call the agent is about to make, summarized (`Bash: npm test`). Leaves the state alone.
+    ToolPending { summary: String },
 }
 
 #[derive(Clone, Debug, PartialEq)]

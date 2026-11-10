@@ -6,6 +6,7 @@ import { builderTarget } from '../hud/hudState';
 import { COLLECTOR_NAME, shownCollectors } from '../village/quota';
 import { openBugReport } from './BugReport';
 import { sessionName } from './sessionName';
+import { QUEUE_LABEL, nextInQueue, ownerQueue } from '../state/queue';
 
 export type CommandGroup = 'Common' | 'Sessions' | 'Workspaces' | 'Builders' | 'Actions';
 
@@ -57,10 +58,6 @@ export function currentWorkspace(st: Pick<AppState, 'sessions' | 'workspaces' | 
   return id && usable.some((w) => w.id === id) ? id : null;
 }
 
-/** The sessions that need the owner, oldest wait first. */
-const needing = (st: Pick<AppState, 'sessions' | 'workspaces'>) => Object.values(st.sessions)
-  .filter((s) => s.kind.kind === 'agent' && !s.paused && (s.state.kind === 'needsYou' || s.state.kind === 'stuck') && st.workspaces.some((w) => w.id === s.workspaceId))
-  .sort((a, b) => a.startedAt - b.startedAt);
 
 /**
  * Keyboard shortcuts for the commands used most (⌘ on a Mac, Ctrl elsewhere). Each names the
@@ -117,13 +114,15 @@ export function paletteCommands(st: State): Command[] {
     });
   }
 
-  const waiting = needing(st);
-  if (waiting.length > 0) {
+  const queue = ownerQueue(st);
+  if (queue.length > 0) {
     const sel = st.selection?.kind === 'session' ? st.selection.id : null;
-    // the next one after the session open now, round the list
-    const next = waiting[(waiting.findIndex((s) => s.id === sel) + 1) % waiting.length];
-    out.push({ id: 'next-needs', group: 'Actions', label: 'Next session that needs you', hint: `${waiting.length} waiting`, keywords: 'jump approve permission',
-      run: go({ kind: 'session', id: next.id }) });
+    const next = nextInQueue(queue, sel);
+    if (next) {
+      out.push({ id: 'next-needs', group: 'Actions', label: 'Next in your queue', hint: `${queue.length} waiting on you · ${QUEUE_LABEL[next.reason].toLowerCase()}`,
+        keywords: 'jump approve permission review inbox needs you',
+        run: () => { useApp.getState().takeNext(sel); } });
+    }
   }
   out.push(
     { id: 'hall', group: 'Actions', label: 'Town Hall', hint: 'Every workspace and builder', run: go({ kind: 'hall' }) },

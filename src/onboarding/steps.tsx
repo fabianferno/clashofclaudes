@@ -78,7 +78,7 @@ export function copyOf(id: StepId, c: StepContext): StepCopy {
     case 'needs':
       return {
         title: `${c.builder} needs you`,
-        body: <>A red <K>!</K> means a session is waiting on you: a permission, a question or a sign-in. <K>Allow</K> or <K>Deny</K> right here, or answer in the terminal. The <K>needs you</K> pill at the top left pulses until you do.</>,
+        body: <>A red <K>!</K> means a session is waiting on you. Its briefing says what it asks and what it changed so far: <K>Allow</K> or <K>Deny</K> right here, or answer in the terminal. Everything waiting on you lines up in one queue: <K>⌘J</K> takes the next.</>,
         waiting: 'Allow or Deny',
       };
     case 'wait-finish':
@@ -89,8 +89,8 @@ export function copyOf(id: StepId, c: StepContext): StepCopy {
       return c.session?.reachedFinished
         ? {
           title: 'Ready to review',
-          body: <>A finished tent means <K>ready to review</K>. <K>Review</K> lists the files the agent changed. Happy with it? <K>Close</K> stands the builder down and earns XP for the workspace.</>,
-          waiting: 'Close the session',
+          body: <>A finished tent means <K>ready to review</K>. The briefing shows the agent’s last reply and the files it changed. Happy with it? <K>Accept</K> stands the builder down and earns XP. Or follow up, <K>Park</K> it for later, or <K>Discard</K> it.</>,
+          waiting: 'Accept the work',
         }
         : { title: 'Close it', body: <>This session never finished, so closing it earns no XP. Close it to carry on.</>, waiting: 'Close the session' };
     case 'xp': {

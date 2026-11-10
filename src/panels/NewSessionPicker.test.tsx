@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { AgentInfo, Builder, SessionInfo } from '../api/types';
 
-vi.mock('../api/ipc', () => ({ ipc: { createBuilder: vi.fn(), startSession: vi.fn(), saveAttachment: vi.fn(), discardAttachments: vi.fn() } }));
+vi.mock('../api/ipc', () => ({ ipc: { createBuilder: vi.fn(), startSession: vi.fn(), saveAttachment: vi.fn(), discardAttachments: vi.fn(), addTodo: vi.fn(), updateTodo: vi.fn() } }));
 import { ipc } from '../api/ipc';
 import { useApp } from '../state/store';
 import NewSessionPicker, { RECRUIT_NAMES } from './NewSessionPicker';
@@ -130,7 +130,7 @@ test('start: startSession, upsert, ensureSpot, select; empty task allowed', asyn
   render(<NewSessionPicker workspaceId="w" />);
   fireEvent.click(screen.getByText('Start'));
   await vi.waitFor(() => expect(useApp.getState().selection).toEqual({ kind: 'session', id: 's9' }));
-  expect(ipc.startSession).toHaveBeenCalledWith('w', 'b1', '', []);
+  expect(ipc.startSession).toHaveBeenCalledWith('w', 'b1', '', [], false);
   expect(ensureSpot).toHaveBeenCalledWith('s9');
   expect(useApp.getState().sessions.s9).toBeTruthy();
 });
@@ -147,7 +147,7 @@ test('recruit adds builder to store; a failed start keeps it, shows the error, a
   fireEvent.click(screen.getByText('Start'));
   await vi.waitFor(() => expect(useApp.getState().selection).toEqual({ kind: 'session', id: 's' }));
   expect(ipc.createBuilder).toHaveBeenCalledTimes(1);
-  expect(ipc.startSession).toHaveBeenLastCalledWith('w', 'b1', '', []);
+  expect(ipc.startSession).toHaveBeenLastCalledWith('w', 'b1', '', [], false);
 });
 
 test('the preview timer stops on unmount', () => {
@@ -226,7 +226,7 @@ test('pasted images show as thumbnails, can be taken off, and go to the session'
   fireEvent.paste(task, { clipboardData: { files: [], types: ['text/plain'] } }); // plain text: nothing to save
   expect(ipc.saveAttachment).toHaveBeenCalledTimes(2);
   fireEvent.click(screen.getByText('Start'));
-  await vi.waitFor(() => expect(ipc.startSession).toHaveBeenCalledWith('w', 'b1', '', ['b.png']));
+  await vi.waitFor(() => expect(ipc.startSession).toHaveBeenCalledWith('w', 'b1', '', ['b.png'], false));
   expect(screen.queryAllByTestId('att-thumb')).toHaveLength(0);
 });
 
@@ -276,4 +276,36 @@ test('the chosen agent wears a check; one not installed a plus', () => {
   expect(btn(/^Codex/).getAttribute('aria-disabled')).toBe('true');
   expect(btn(/^Codex/).querySelector('.agent-pick-badge.todo')).toBeTruthy();
   expect(container.querySelectorAll('.agent-pick-badge.ok')).toHaveLength(1);
+});
+
+test('with things already waiting on the owner, it suggests the To Do over one more thread', async () => {
+  setup({ builders: [bld('b1', 'Ada'), bld('b2', 'Bo')], sessions: { s1: { ...sess('s1', 'b2', { kind: 'finished' }), stateSince: 1 } } });
+  vi.mocked(ipc.addTodo).mockResolvedValue({ id: 't1', workspaceId: 'w', text: 'Fix footer', images: [], createdAt: 1 });
+  vi.mocked(ipc.updateTodo).mockResolvedValue({ id: 't1', workspaceId: 'w', text: 'Fix footer', images: [], createdAt: 1, builderId: 'b1', worktree: false, auto: false });
+  act(() => useApp.setState({ todos: [], notices: [] }));
+  render(<NewSessionPicker workspaceId="w" />);
+  expect(screen.getByTestId('start-nudge').textContent).toContain('1 thing is already waiting on you');
+  expect(screen.getByText('Start anyway')).toBeTruthy();
+  const add = screen.getByText('Add to To Do') as HTMLButtonElement;
+  expect(add.disabled).toBe(true); // nothing written yet
+  fireEvent.change(screen.getByRole('textbox', { name: /Task/ }), { target: { value: 'Fix footer' } });
+  await act(async () => { fireEvent.click(add); });
+  expect(ipc.addTodo).toHaveBeenCalledWith('w', 'Fix footer', []);
+  expect(ipc.updateTodo).toHaveBeenCalledWith('t1', false, 'b1', false); // remembers the builder picked
+  expect(ipc.startSession).not.toHaveBeenCalled();
+  expect(useApp.getState().todos.map((t) => t.id)).toEqual(['t1']);
+  expect(useApp.getState().selection).toEqual({ kind: 'workspace', id: 'w' });
+});
+
+test('at the running-session limit it says so; with nothing waiting it just starts', () => {
+  setup({ builders: [bld('b1', 'Ada'), bld('b2', 'Bo')], sessions: { s1: sess('s1', 'b2', { kind: 'working' }) } });
+  act(() => useApp.setState({ settings: { updatesEnabled: false, notifyNeedsYou: true, notifyFinished: true, dockBadge: true, sessionLimit: 1 } }));
+  render(<NewSessionPicker workspaceId="w" />);
+  expect(screen.getByTestId('start-nudge').textContent).toContain('1 session is at work, your limit.');
+  cleanup();
+  act(() => useApp.setState({ settings: { updatesEnabled: false, notifyNeedsYou: true, notifyFinished: true, dockBadge: true, sessionLimit: null } }));
+  render(<NewSessionPicker workspaceId="w" />);
+  expect(screen.queryByTestId('start-nudge')).toBeNull();
+  expect(screen.getByText('Start')).toBeTruthy();
+  act(() => useApp.setState({ settings: null }));
 });

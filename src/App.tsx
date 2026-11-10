@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { ipc } from './api/ipc';
 import { autoLayout, useApp } from './state/store';
 import { autoSnapshots } from './state/snapshots';
+import { autoStart } from './state/autoStart';
+import { queueReason } from './state/queue';
 import VillageCanvas from './village/VillageCanvas';
 import TopBar from './hud/TopBar';
 import BuildersBar from './hud/BuildersBar';
@@ -41,12 +43,16 @@ function App() {
     keep(ipc.onQuotaUpdated((q) => useApp.getState().setQuota(q)));
     keep(ipc.onAppsUpdated((a) => useApp.getState().setApps(a)));
     keep(ipc.onSelectSession((id) => {
-      if (useApp.getState().sessions[id]) useApp.getState().setSelection({ kind: 'session', id });
+      // a notification of something waiting on the owner opens it as their queue's item: dealt with, the next comes up
+      const s = useApp.getState().sessions[id];
+      if (s) useApp.getState().setSelection({ kind: 'session', id, ...(queueReason(s) ? { queue: true } : {}) });
     }));
     keep(ipc.onConfirmQuit((q) => setQuit({ live: q.live, restart: !!q.restart })));
     keep(ipc.onOpenSettings(() => useApp.getState().setSettingsOpen(true)));
     keep(ipc.onOpenBugReport((kind) => void openBugReport(kind)));
     let stopLayout: (() => void) | null = null;
+    // To Dos set to start on their own start once their builder is free (waits for the first state)
+    const stopAuto = autoStart((e) => useApp.getState().setError(String(e)));
     const settings = loadSettings();
     ipc.listState()
       .then((s) => {
@@ -72,7 +78,7 @@ function App() {
     settings.then((s) => { if (!cancelled && !s.onboarded) startTour(); }).catch(() => {});
     const preload = window.setTimeout(preloadTerminal, 2000); // after the village's first frames
     const stopSnapshots = autoSnapshots();
-    return () => { cancelled = true; window.clearTimeout(preload); stopLayout?.(); stopSnapshots(); unlisten.forEach((u) => u()); };
+    return () => { cancelled = true; window.clearTimeout(preload); stopLayout?.(); stopAuto(); stopSnapshots(); unlisten.forEach((u) => u()); };
   }, []);
 
   return (

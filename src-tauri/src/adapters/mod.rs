@@ -200,6 +200,15 @@ pub trait AgentAdapter: Send + Sync {
     fn find_conversation(&self, _cwd: &Path, _since_ms: i64, _session_id: &str) -> Option<String> {
         None
     }
+    /// For a hook payload that ends a turn without the agent's reply in it: the agent's own file
+    /// that holds the reply (cheap: no IO).
+    fn reply_file(&self, _body: &serde_json::Value) -> Option<std::path::PathBuf> {
+        None
+    }
+    /// The agent's last reply, read (only) from `reply_file`'s file. Runs off the sessions lock.
+    fn read_reply(&self, _file: &Path) -> Option<String> {
+        None
+    }
 }
 
 pub struct AdapterRegistry {

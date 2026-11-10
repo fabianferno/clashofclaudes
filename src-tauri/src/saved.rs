@@ -38,6 +38,12 @@ pub struct SavedSession {
     /// resumes on its own at the next launch. False for one that had exited or was still paused.
     #[serde(default)]
     pub running: bool,
+    #[serde(default)]
+    pub state_since: i64,
+    #[serde(default)]
+    pub last_message: Option<String>,
+    #[serde(default)]
+    pub parked: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -91,6 +97,9 @@ mod tests {
             conversation: Some("c".into()),
             rev: 9,
             running: true,
+            state_since: 4,
+            last_message: Some("done".into()),
+            parked: Some("later".into()),
         };
         save(&p, std::slice::from_ref(&s)).unwrap();
         assert_eq!(load(&p), vec![s]);

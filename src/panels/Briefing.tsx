@@ -1,0 +1,227 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ipc } from '../api/ipc';
+import type { Review, SessionInfo } from '../api/types';
+import { useApp } from '../state/store';
+import { QUEUE_LABEL, ownerQueue, queueReason, waitedLabel, waitingSince, type QueueReason } from '../state/queue';
+import { isDemoId } from '../onboarding/demo';
+import './briefing.css';
+
+const enc = new TextEncoder();
+const bytes = (s: string) => Array.from(enc.encode(s));
+
+/**
+ * Types `text` into the agent's prompt and submits it: pasted as one block (bracketed paste, as a
+ * terminal pastes), then Enter a moment later, so a multi-line reply is not sent line by line.
+ */
+export async function sendPrompt(id: string, text: string): Promise<void> {
+  const t = text.replace(/\r\n?/g, '\n').trim();
+  if (!t) return;
+  // the tour's sample session reads plain typing
+  await ipc.writeSession(id, bytes(isDemoId(id) ? t : `\x1b[200~${t}\x1b[201~`));
+  await new Promise((r) => setTimeout(r, 120));
+  await ipc.writeSession(id, bytes('\r'));
+}
+
+const TAG_COLOR: Record<QueueReason, string> = {
+  decide: 'var(--hud-needs)', answer: 'var(--hud-needs)', stuck: 'var(--hud-stuck)', review: 'var(--hud-finished)',
+};
+
+interface Props {
+  session: SessionInfo;
+  canApprove: boolean;
+  answering: boolean;
+  onAllow: () => void;
+  onDeny: () => void;
+  /** Accept (`discard` false: closes it, XP when finished) or Discard (closes it, no XP). */
+  onClose: (discard: boolean) => void;
+  /** The owner dealt with it (answered, followed up, parked): the queue may move on. */
+  onDealt: () => void;
+}
+
+/**
+ * What the owner needs to decide on a session that waits on them, on one card: the task, what it
+ * asks, its last reply and what it changed; and the ways to close the loop. Only for a session
+ * in the owner's queue (or one parked out of it).
+ */
+export default function Briefing({ session: s, canApprove, answering, onAllow, onDeny, onClose, onDealt }: Props) {
+  const sessions = useApp((st) => st.sessions);
+  const workspaces = useApp((st) => st.workspaces);
+  const inQueue = useApp((st) => st.selection?.kind === 'session' && st.selection.id === s.id && !!st.selection.queue);
+  const queue = useMemo(() => ownerQueue({ sessions, workspaces }), [sessions, workspaces]);
+  const reason = queueReason(s) ?? queueReason({ ...s, parked: null });
+  const [now, setNow] = useState(Date.now());
+  const [review, setReview] = useState<{ key: string; r: Review | null; error?: string } | null>(null);
+  const [showFiles, setShowFiles] = useState(false);
+  const [taskOpen, setTaskOpen] = useState(false);
+  const [reply, setReply] = useState('');
+  const [sending, setSending] = useState(false);
+  const [parking, setParking] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const shownFor = useRef(s.id);
+
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+  // a different session: start clean
+  if (shownFor.current !== s.id) {
+    shownFor.current = s.id;
+    setReply(''); setParking(null); setError(null); setShowFiles(false); setTaskOpen(false);
+  }
+
+  // what it changed, read once per wait (a new state may bring new changes)
+  const reviewKey = `${s.id}:${s.stateSince ?? 0}:${s.state.kind}`;
+  const wantsReview = reason === 'review' || reason === 'answer' || reason === 'decide' || reason === 'stuck';
+  useEffect(() => {
+    if (!wantsReview) return;
+    let live = true;
+    Promise.resolve()
+      .then(() => ipc.reviewSession(s.id))
+      .then((r) => { if (live) setReview({ key: reviewKey, r }); })
+      .catch((e) => { if (live) setReview({ key: reviewKey, r: null, error: String(e) }); });
+    return () => { live = false; };
+  }, [reviewKey, wantsReview, s.id]);
+
+  if (!reason) return null;
+  const pos = queue.findIndex((q) => q.session.id === s.id);
+  const others = queue.filter((q) => q.session.id !== s.id).length;
+  const r = review?.key === reviewKey ? review.r : null;
+  const added = r?.files.reduce((n, f) => n + f.added, 0) ?? 0;
+  const removed = r?.files.reduce((n, f) => n + f.removed, 0) ?? 0;
+  const changed = (r?.files.length ?? 0) + (r?.untracked.length ?? 0);
+  const parked = s.parked != null;
+  const state = s.state;
+  const asked = state.kind === 'needsYou' || state.kind === 'stuck' ? state.reason : null;
+
+  const act = async (p: () => Promise<unknown>, dealt = true) => {
+    setError(null);
+    try {
+      await p();
+      if (dealt) onDealt();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+  const send = async () => {
+    if (!reply.trim() || sending) return;
+    setSending(true);
+    await act(async () => { await sendPrompt(s.id, reply); setReply(''); });
+    setSending(false);
+  };
+  const park = () => act(async () => {
+    useApp.getState().upsertSession(await ipc.parkSession(s.id, (parking ?? '').trim()));
+    setParking(null);
+  });
+  const unpark = () => act(async () => { useApp.getState().upsertSession(await ipc.parkSession(s.id, null)); }, false);
+  const canReply = !s.paused && s.state.kind !== 'ended' && !(reason === 'decide' && canApprove);
+
+  return (
+    <div className={`brief sp-box${parked ? ' brief-parked' : ''}`} data-testid="briefing">
+      <div className="brief-top">
+        <span className="brief-tag ol" style={{ background: parked ? 'var(--hud-idle)' : TAG_COLOR[reason] }}>{parked ? 'Parked' : QUEUE_LABEL[reason]}</span>
+        <span className="brief-wait">waiting {waitedLabel(now - waitingSince(s))}</span>
+        {inQueue && pos >= 0 && <span className="brief-pos">{pos + 1} of {queue.length}</span>}
+        {others > 0 && (
+          <button type="button" className="sp-link brief-skip" title="Leave this one for now and take the next (⌘J)"
+            onClick={() => useApp.getState().takeNext(s.id)}>
+            Next ⌘J
+          </button>
+        )}
+      </div>
+      {parked && (
+        <div className="brief-parknote">
+          {s.parked ? <>“{s.parked}”</> : 'Put aside.'} It comes back to your queue when it changes.
+          <button type="button" className="sp-link" onClick={() => void unpark()}>Back to queue</button>
+        </div>
+      )}
+
+      {s.task && (
+        <div className="brief-sec">
+          <div className="brief-h">Task</div>
+          <div className={`brief-task${taskOpen ? ' open' : ''}`} onClick={() => setTaskOpen((o) => !o)} title={taskOpen ? '' : 'Show all'}>{s.task}</div>
+        </div>
+      )}
+
+      {(asked || s.asking) && (
+        <div className="brief-sec">
+          <div className="brief-h">{reason === 'stuck' ? 'What went wrong' : 'It asks'}</div>
+          {asked && <div className="brief-ask">{asked}</div>}
+          {s.asking && reason !== 'stuck' && <code className="brief-call">{s.asking}</code>}
+        </div>
+      )}
+
+      {s.lastMessage && (
+        <div className="brief-sec">
+          <div className="brief-h">Its last reply</div>
+          <div className="brief-reply">{s.lastMessage}</div>
+        </div>
+      )}
+
+      {wantsReview && (
+        <div className="brief-sec">
+          <div className="brief-h">Changes</div>
+          {!review || review.key !== reviewKey ? <div className="sp-d">Reading git…</div>
+            : review.error ? <div className="sp-d">{review.error}</div>
+            : !r?.isGit ? <div className="sp-d">No git history here; open the folder to look.</div>
+            : changed === 0 ? <div className="sp-d">No changes since it started{r.branch ? ` (on ${r.branch})` : ''}.</div>
+            : (
+              <>
+                <button type="button" className="brief-sum" onClick={() => setShowFiles((v) => !v)} aria-expanded={showFiles}>
+                  <span className="brief-plus">+{added}</span> <span className="brief-minus">−{removed}</span>
+                  {' '}in {changed} {changed === 1 ? 'file' : 'files'}
+                  {r.branch && <span className="chip">{r.branch}</span>}
+                  <span className="brief-caret">{showFiles ? '▾' : '▸'}</span>
+                </button>
+                {showFiles && (
+                  <ul className="brief-files">
+                    {r.files.map((f) => <li key={f.path}><span>{f.path}</span> <b className="brief-plus">+{f.added}</b> <b className="brief-minus">−{f.removed}</b></li>)}
+                    {r.untracked.map((p) => <li key={p}><span>{p}</span> <b className="brief-new">new</b></li>)}
+                  </ul>
+                )}
+                {r.otherSessionsActive && <div className="sp-d">Other sessions were working in this folder too.</div>}
+              </>
+            )}
+        </div>
+      )}
+
+      {error && <div className="panel-warn">{error}</div>}
+
+      <div className="brief-foot">
+      {canReply && (
+        <form className="brief-reply-form" onSubmit={(e) => { e.preventDefault(); void send(); }}>
+          <textarea aria-label="Follow up" rows={reply.includes('\n') ? 3 : 1} value={reply} disabled={sending}
+            placeholder={reason === 'review' ? 'Follow up: ask for a change…' : 'Answer it…'}
+            onChange={(e) => setReply(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }} />
+          <button type="submit" className="hud-btn blue sm" disabled={sending || !reply.trim()}>Send</button>
+        </form>
+      )}
+
+      <div className="brief-actions">
+        {reason === 'decide' && canApprove && (
+          <>
+            <button className="hud-btn sm" data-tour="allow" disabled={answering} onClick={() => { onAllow(); }}>Allow</button>
+            <button className="hud-btn red sm" disabled={answering} onClick={() => { onDeny(); }}>Deny</button>
+          </>
+        )}
+        {reason === 'review' && (
+          <button className="hud-btn sm" data-testid="accept" data-tour="close-session" title="Close it: the work is done (earns XP)" onClick={() => onClose(false)}>Accept +XP</button>
+        )}
+        {!parked && parking === null && (
+          <button className="hud-btn grey sm" title="Put it aside, out of your queue, until it changes" onClick={() => setParking('')}>Park</button>
+        )}
+        <button className="hud-btn grey sm" title={reason === 'review' ? "Close it without taking the work (no XP); its changes stay on disk" : 'Close it (no XP)'}
+          onClick={() => onClose(true)}>{reason === 'review' ? 'Discard' : 'Close'}</button>
+      </div>
+      {parking !== null && (
+        <form className="brief-park" onSubmit={(e) => { e.preventDefault(); void park(); }}>
+          <input aria-label="Why park it" autoFocus placeholder="A note for later (optional)" value={parking} maxLength={500}
+            onChange={(e) => setParking(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setParking(null); } }} />
+          <button type="submit" className="hud-btn sm">Park</button>
+          <button type="button" className="hud-btn grey sm" onClick={() => setParking(null)}>Cancel</button>
+        </form>
+      )}
+      </div>
+    </div>
+  );
+}

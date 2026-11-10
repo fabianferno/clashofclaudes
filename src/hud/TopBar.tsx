@@ -5,7 +5,10 @@ import { RES_MARGIN, STATS_GAP, panelInset, statsPlacement, type StatsPlacement 
 import ResourceBars from './ResourceBars';
 import BuilderAvatar from './BuilderAvatar';
 import './hud.css';
+import { ownerQueue } from '../state/queue';
 import { usePanelWidth } from '../state/panelWidth';
+import { keyLabel } from '../panels/commands';
+import '../panels/briefing.css';
 
 interface PillDef { id: string; badge: BadgeState; label: string; pulse?: boolean }
 const PILLS: PillDef[] = [
@@ -23,6 +26,8 @@ export default function TopBar() {
   const stats = useApp((s) => s.stats);
   const panelOpen = useApp((s) => s.panelOpen);
   const panelW = usePanelWidth((s) => s.width); // the panel's edge may be dragged
+  const workspaces = useApp((s) => s.workspaces);
+  const queued = useMemo(() => ownerQueue({ sessions: sessionMap, workspaces }).length, [sessionMap, workspaces]);
   const setSelection = useApp((s) => s.setSelection);
   // "Shipped today" must roll over at local midnight even if nothing else re-renders the bar.
   const [day, setDay] = useState(0);
@@ -101,6 +106,12 @@ export default function TopBar() {
           <div className="hud-pbar ol">Village level</div>
         </div>
         <div className="hud-pills">
+          {queued > 0 && (
+            <button data-testid="pill-queue" className="hud-pill hud-queue ol" title="Take what waits on you, one at a time"
+              onClick={() => useApp.getState().takeNext(null)}>
+              ▶ {queued} waiting on you<kbd>{keyLabel({ key: 'j' })}</kbd>
+            </button>
+          )}
           {PILLS.map((p) => {
             const items = byState[p.badge];
             if (items.length === 0) return null;

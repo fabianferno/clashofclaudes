@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { ipc } from '../api/ipc';
 import { idleBuilders, useApp } from '../state/store';
 import type { AgentKind, Builder } from '../api/types';
@@ -10,6 +10,9 @@ import { EffortSlider, ModelSlider, effortsFor, modelNames } from './Choosers';
 import AgentPicker from './AgentPicker';
 import { AttachmentStrip, useAttachments } from './Attachments';
 import { DEMO_TASK, createDemoBuilder, isDemoId } from '../onboarding/demo';
+import { ownerQueue, roomToStart, runningAgents } from '../state/queue';
+import { keyLabel } from './commands';
+import './briefing.css';
 
 export const RECRUIT_NAMES = ['Ivy', 'Jax', 'Kai', 'Lu', 'Mo', 'Nia', 'Oz', 'Pip', 'Quin', 'Rex'];
 
@@ -47,6 +50,12 @@ export default function NewSessionPicker({ workspaceId, builderId }: { workspace
   const att = useAttachments(taskField);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [isolate, setIsolate] = useState(false);
+  const settings = useApp((s) => s.settings);
+  // Before one more thread starts: what already waits on the owner, and the limit on sessions at work.
+  const waiting = useMemo(() => (sample ? 0 : ownerQueue({ sessions, workspaces }).filter((q) => !isDemoId(q.session.id)).length), [sample, sessions, workspaces]);
+  const atLimit = !sample && !roomToStart(sessions, settings);
+  const nudge = waiting > 0 || atLimit;
 
   // Recruit is the default when nobody is idle.
   const choice = picked !== null && (picked === RECRUIT || idle.some((b) => b.id === picked))
@@ -78,7 +87,7 @@ export default function NewSessionPicker({ workspaceId, builderId }: { workspace
         return setError('Choose a builder');
       }
       setBusy(true);
-      const s = await ipc.startSession(wsId, builderId, task.trim(), att.names);
+      const s = await ipc.startSession(wsId, builderId, task.trim(), att.names, isolate && !sample);
       att.clear(); // the session has them now
       st.upsertSession(s);
       // a spot failure must not strand a started session (a second Start would run a duplicate)
@@ -93,6 +102,28 @@ export default function NewSessionPicker({ workspaceId, builderId }: { workspace
   }
 
   const tier = agent ? `${CLASS_NAMES[classOf(agent.kind, pModel)]}` : '';
+
+  /** Writes the task down in the To Do instead of starting it now. */
+  async function toTodo() {
+    const st = useApp.getState();
+    if (!task.trim() && att.names.length === 0) return setError('Write the task first');
+    setError(null);
+    setBusy(true);
+    try {
+      let t = await ipc.addTodo(wsId, task, att.names);
+      // with a builder picked, the To Do remembers it (and the worktree choice)
+      if (existing || isolate) t = await ipc.updateTodo(t.id, false, existing?.id ?? null, isolate).catch(() => t);
+      st.addTodo(t);
+      att.clear(); // the To Do keeps them now
+      setTask('');
+      st.notify('Added to the To Do');
+      st.setSelection({ kind: 'workspace', id: wsId });
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <form className="new-session" onSubmit={(e) => { e.preventDefault(); void start(); }}>
@@ -158,8 +189,26 @@ export default function NewSessionPicker({ workspaceId, builderId }: { workspace
           <span className="sp-d">{tier}</span>
         </div>
       )}
+      {!sample && (
+        <label className="sp-check" title="A new branch in its own folder (in the app's data), from your last commit: its changes wait apart from yours until you merge them">
+          <input type="checkbox" checked={isolate} onChange={(e) => setIsolate(e.target.checked)} /> Work in its own git worktree
+        </label>
+      )}
+      {nudge && (
+        <div className="ns-nudge" data-testid="start-nudge">
+          <span>
+            {waiting > 0 && <>{waiting === 1 ? '1 thing is' : `${waiting} things are`} already waiting on you. </>}
+            {atLimit && <>{runningAgents(sessions) === 1 ? '1 session is' : `${runningAgents(sessions)} sessions are`} at work, your limit. </>}
+            Write this one down and start it when you’re clear?
+          </span>
+          <span className="ns-nudge-row">
+            <button type="button" className="hud-btn blue sm" disabled={busy || att.saving || (!task.trim() && att.names.length === 0)} onClick={() => void toTodo()}>Add to To Do</button>
+            {waiting > 0 && <button type="button" className="hud-btn grey sm" onClick={() => useApp.getState().takeNext(null)}>Take the queue ({keyLabel({ key: 'j' })})</button>}
+          </span>
+        </div>
+      )}
       {error && <div className="panel-warn">{error}</div>}
-      <button type="submit" className="hud-btn sm" disabled={busy || att.saving}>Start</button>
+      <button type="submit" className={`hud-btn sm${nudge ? ' grey' : ''}`} disabled={busy || att.saving}>{nudge ? 'Start anyway' : 'Start'}</button>
     </form>
   );
 }

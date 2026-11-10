@@ -6,6 +6,7 @@ import { ipc } from '../api/ipc';
 import type { AgentInfo, AgentKind, AgentQuota, AppPreview, Todo, Builder, CloseOutcome, Compound, ListState, SessionInfo, SessionState, Settings, Stats, Tile, Workspace, ReportKind } from '../api/types';
 import { HOUSE, STRUCT, canPlace, compoundFits, gapBetween, placeCompound, shiftCompound, spotFor, tidySpots, wallRect } from '../village/layout';
 import { collectorFits, collectorTiles, shownCollectors } from '../village/quota';
+import { nextInQueue, ownerQueue } from './queue';
 
 export type Selection =
   | { kind: 'hall' }
@@ -14,8 +15,11 @@ export type Selection =
    * `newSession`: open the new-session form (from the command palette).
    */
   | { kind: 'workspace'; id: string; builder?: string; newSession?: boolean }
-  /** `popout`: open it popped out (from the Kanban); `back`: the Kanban to return to when the pop-out closes. */
-  | { kind: 'session'; id: string; popout?: boolean; back?: string }
+  /**
+   * `popout`: open it popped out (from the Kanban); `back`: the Kanban to return to when the pop-out closes.
+   * `queue`: taken from the owner's queue: once it is dealt with, the next one comes up.
+   */
+  | { kind: 'session'; id: string; popout?: boolean; back?: string; queue?: boolean }
   | { kind: 'builder'; id: string }
   | { kind: 'quota'; agent: AgentKind };
 
@@ -162,6 +166,13 @@ export interface AppState {
   /** A session was closed: pushes its notice(s) and remembers an earning outcome for the scene. Terminals stay silent. */
   onClosed: (o: CloseOutcome, sessionId?: string) => void;
   consumeClosed: (sessionId: string) => void;
+  /** A short notice over the village. */
+  notify: (text: string, kind?: Notice['kind']) => void;
+  /**
+   * Takes the next session from the owner's queue (the first that is not `current`) into the panel;
+   * with nothing left, closes the panel and says the queue is clear. Returns whether one came up.
+   */
+  takeNext: (current?: string | null) => boolean;
   /** True once the first `hydrate` (listState) has completed. */
   loaded: boolean;
   workspaces: Workspace[];
@@ -284,13 +295,28 @@ export const useApp = create<AppState>((set, get) => ({
   error: null,
   setError: (error) => set({ error }),
   lastClosed: {},
+  notify: (text, kind = 'info') => {
+    const id = ++noticeSeq;
+    set((st) => ({ notices: [...st.notices, { id, text, kind }] }));
+    setTimeout(() => set((st) => ({ notices: st.notices.filter((n) => n.id !== id) })), NOTICE_MS);
+  },
+  takeNext: (current = null) => {
+    const st = get();
+    const next = nextInQueue(ownerQueue(st), current);
+    if (!next) {
+      if (st.selection?.kind === 'session' && st.selection.queue) st.setSelection(null);
+      st.notify('Queue clear \u2014 nothing waits on you');
+      return false;
+    }
+    st.setKanban(null);
+    st.setSettingsOpen(false);
+    st.setSelection({ kind: 'session', id: next.session.id, queue: true });
+    return true;
+  },
   onClosed: (o, sessionId) => {
-    const push = (text: string, kind: Notice['kind']) => {
-      const id = ++noticeSeq;
-      set((st) => ({ notices: [...st.notices, { id, text, kind }] }));
-      setTimeout(() => set((st) => ({ notices: st.notices.filter((n) => n.id !== id) })), NOTICE_MS);
-    };
-    if (o.stuck) push('Closed while stuck \u2014 no XP', 'info');
+    const push = (text: string, kind: Notice['kind']) => get().notify(text, kind);
+    if (o.discarded) push('Discarded \u2014 no XP', 'info');
+    else if (o.stuck) push('Closed while stuck \u2014 no XP', 'info');
     else if (o.unfinished) push('Closed \u2014 not finished, no XP', 'info');
     else if (o.earnedXp) {
       push(`+${o.xpGained} XP`, 'xp');

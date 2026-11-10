@@ -115,6 +115,15 @@ pub struct Todo {
     #[serde(default)]
     pub images: Vec<String>,
     pub created_at: i64,
+    /// Starts on its own once `builder_id` is free (and the running-session limit allows).
+    #[serde(default)]
+    pub auto: bool,
+    /// The builder it goes to (needed for `auto`; the Kanban's picker otherwise).
+    #[serde(default)]
+    pub builder_id: Option<String>,
+    /// Starts in its own git worktree, on a new branch, so its changes wait apart for review.
+    #[serde(default)]
+    pub worktree: bool,
 }
 
 /// User preferences. `updates_enabled` gates the updater, the app's only network access.
@@ -150,6 +159,10 @@ pub struct Settings {
     /// A random id for this install's usage counts: made when sharing is turned on, dropped when it is turned off.
     #[serde(default)]
     pub install_id: Option<String>,
+    /// At most this many agent sessions at work at once (auto-started To Dos wait; + New session
+    /// suggests the To Do). None: no limit.
+    #[serde(default)]
+    pub session_limit: Option<u32>,
 }
 
 fn default_true() -> bool {
@@ -167,6 +180,7 @@ impl Settings {
             .map(|n| n.trim().chars().take(PLAYER_NAME_MAX).collect::<String>().trim_end().to_string())
             .filter(|n| !n.is_empty());
         // a fresh id each time sharing is turned on; none while it is off
+        self.session_limit = self.session_limit.filter(|n| *n > 0).map(|n| n.min(32));
         self.install_id = if self.share_usage { self.install_id.filter(|i| !i.trim().is_empty()).or_else(|| Some(uuid::Uuid::new_v4().to_string())) } else { None };
         self
     }
@@ -209,6 +223,7 @@ impl Default for Settings {
             spots_tidy: 0,
             share_usage: false,
             install_id: None,
+            session_limit: None,
         }
     }
 }
@@ -288,6 +303,18 @@ pub struct SessionInfo {
     /// The agent's own subagents running right now (Claude's Agent tool): drawn as minions by its builder.
     #[serde(default)]
     pub subagents: Vec<Subagent>,
+    /// When `state` last changed (ms): how long it has waited on the owner.
+    #[serde(default)]
+    pub state_since: i64,
+    /// The agent's last reply (end of its latest turn), for the briefing; capped in length.
+    #[serde(default)]
+    pub last_message: Option<String>,
+    /// The tool call the agent is about to make (`Bash: npm test`), while it waits on it.
+    #[serde(default)]
+    pub asking: Option<String>,
+    /// The owner put it aside (out of the queue) with this note (maybe empty), until its state changes.
+    #[serde(default)]
+    pub parked: Option<String>,
 }
 
 /// A subagent the session's agent spawned, from its start hook until its stop hook.

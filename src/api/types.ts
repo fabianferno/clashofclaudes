@@ -84,6 +84,14 @@ export interface SessionInfo {
   paused?: boolean;
   /** The agent's own subagents running right now, drawn as minions by its builder. */
   subagents?: Subagent[];
+  /** When `state` last changed (ms): how long it has waited on the owner. */
+  stateSince?: number;
+  /** The agent's last reply (the end of its latest turn), when the agent reports it. */
+  lastMessage?: string | null;
+  /** The tool call it is about to make (`Bash: npm test`), while it waits on it. */
+  asking?: string | null;
+  /** Put aside out of the owner's queue, with this note (maybe empty), until its state changes. */
+  parked?: string | null;
 }
 
 /** A subagent a session's agent spawned (Claude's Agent tool), from its start until its stop. */
@@ -102,6 +110,12 @@ export interface Todo {
   /** Attachment names, handed to the session that starts it. */
   images?: string[];
   createdAt: number;
+  /** Starts on its own once `builderId` is free (and the running-session limit allows). */
+  auto?: boolean;
+  /** The builder it goes to (needed for `auto`). */
+  builderId?: string | null;
+  /** Starts in its own git worktree, on a new branch, so its changes wait apart for review. */
+  worktree?: boolean;
 }
 
 export interface ListState {
@@ -202,6 +216,8 @@ export interface CloseOutcome {
   unfinished: boolean;
   /** An agent was closed while Stuck. */
   stuck: boolean;
+  /** The owner discarded it (no XP). */
+  discarded?: boolean;
 }
 
 export interface ConfirmQuit {
@@ -230,6 +246,8 @@ export interface Settings {
   shareUsage?: boolean;
   /** This install's random usage id, made by the backend while sharing is on. */
   installId?: string | null;
+  /** At most this many agent sessions at work at once; null: no limit. */
+  sessionLimit?: number | null;
 }
 
 export interface UpdateStatus {

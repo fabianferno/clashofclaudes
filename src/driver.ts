@@ -37,8 +37,8 @@ const ipc = {
     useApp.getState().upsertSession(s);
     return s;
   },
-  closeSession: async (id: string) => {
-    const o = await rawIpc.closeSession(id);
+  closeSession: async (id: string, discard = false) => {
+    const o = await rawIpc.closeSession(id, discard);
     useApp.getState().onClosed(o, id);
     return o;
   },

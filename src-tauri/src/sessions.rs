@@ -47,6 +47,23 @@ const INITIAL_ROWS: u16 = 32;
 /// At most one `Output` event per session per this interval.
 const FLUSH_EVERY: Duration = Duration::from_millis(16);
 const TICK_EVERY: Duration = Duration::from_secs(1);
+/// Longest agent reply kept for the briefing, in characters (the end is kept).
+const LAST_MESSAGE_MAX: usize = 4000;
+/// Longest pending tool call kept, in characters.
+const ASKING_MAX: usize = 400;
+
+/// `text` trimmed and cut to `max` characters (a long reply keeps its end: that is where the
+/// summary and the question are).
+fn cap_text(text: &str, max: usize) -> String {
+    let t = text.trim();
+    let n = t.chars().count();
+    if n <= max {
+        return t.to_string();
+    }
+    let tail: String = t.chars().skip(n - (max - 1)).collect();
+    format!("…{}", tail.trim_start())
+}
+
 /// Screen prompts are looked for in this much of the newest output.
 const PROMPT_WINDOW: usize = 8 * 1024;
 pub use crate::status::DENIED_REASON;
@@ -148,6 +165,9 @@ impl SessionEntry {
             rev: i.rev,
             // still owed its resume (restored, not started yet): it picks up at the next launch
             running: (!self.exited && !i.paused) || (i.paused && self.was_running),
+            state_since: i.state_since,
+            last_message: i.last_message.clone(),
+            parked: i.parked.clone(),
         }
     }
 
@@ -167,6 +187,22 @@ impl SessionEntry {
             }
             StatusEvent::SubagentsDone => return !std::mem::take(subs).is_empty(),
             StatusEvent::SubagentStarted { .. } => return false,
+            StatusEvent::AssistantMessage { text } => {
+                let text = cap_text(text, LAST_MESSAGE_MAX);
+                if text.is_empty() || self.info.last_message.as_ref() == Some(&text) {
+                    return false;
+                }
+                self.info.last_message = Some(text);
+                return true;
+            }
+            StatusEvent::ToolPending { summary } => {
+                let summary = cap_text(summary, ASKING_MAX);
+                if self.info.asking.as_ref() == Some(&summary) {
+                    return false;
+                }
+                self.info.asking = Some(summary);
+                return true;
+            }
             // the agent is gone, and its subagents with it
             StatusEvent::Exited { .. } => changed |= !std::mem::take(subs).is_empty(),
             _ => {}
@@ -175,10 +211,18 @@ impl SessionEntry {
             self.info.steps += 1;
             changed = true;
         }
+        // the call it was waiting on ran, or the turn moved on: nothing pending any more
+        if matches!(ev, StatusEvent::ToolUsed | StatusEvent::TurnFinished | StatusEvent::PromptSubmitted | StatusEvent::Exited { .. })
+            && self.info.asking.take().is_some()
+        {
+            changed = true;
+        }
         let next = next_state(&self.info.state, ev, &self.policy);
         if next != self.info.state {
             self.info.reached_finished |= next == SessionState::Finished;
             self.info.state = next;
+            self.info.state_since = now;
+            self.info.parked = None; // put aside until something changed: it has
             self.quiet_since_ms = now;
             changed = true;
         }
@@ -212,6 +256,8 @@ impl SessionEntry {
         match found {
             Some(p) if was_seen != Some(p.needle) && self.is_live() && !matches!(self.info.state, SessionState::NeedsYou { .. }) => {
                 self.info.state = SessionState::NeedsYou { reason: p.reason.into() };
+                self.info.state_since = now;
+                self.info.parked = None;
                 self.info.awaiting_decision = true;
                 self.active_prompt = Some(p);
                 self.quiet_since_ms = now;
@@ -495,6 +541,10 @@ impl SessionManager {
             spot: None,
             paused: false,
             subagents: vec![],
+            state_since: now,
+            last_message: None,
+            asking: None,
+            parked: None,
         };
         if adapter.is_some()
             && let Some(p) = &prior
@@ -511,6 +561,7 @@ impl SessionManager {
             info.worktree = p.worktree;
             info.spot = p.spot;
             info.rev = p.rev; // the frontend drops updates whose rev is not newer
+            info.last_message = p.last_message;
             p.conversation
         });
         let _spawning = SpawnGuard::new(&self.spawning);
@@ -658,6 +709,10 @@ impl SessionManager {
                 // A user stop ends the session (with the real exit code) instead of reading as a crash.
                 let was_live = e.is_live();
                 e.info.state = SessionState::Ended { exit_code: code };
+                if was_live {
+                    e.info.state_since = now_ms();
+                    e.info.asking = None;
+                }
                 was_live
             } else {
                 e.apply(&StatusEvent::Exited { code }, now_ms())
@@ -691,6 +746,7 @@ impl SessionManager {
 
     /// Must stay quick: runs inline on a tokio worker. Git work is offloaded to a thread.
     pub fn on_hook(&self, session_id: &str, body: serde_json::Value) {
+        let reply_adapter;
         let job = {
             let mut g = self.lock();
             let Some(e) = g.get_mut(session_id) else { return };
@@ -700,6 +756,7 @@ impl SessionManager {
                 return;
             }
             let Some(adapter) = e.adapter.clone() else { return };
+            reply_adapter = Some(adapter.clone());
             let now = now_ms();
             let mut changed = false;
             let mut job = None;
@@ -727,6 +784,19 @@ impl SessionManager {
             }
             job
         };
+        // a reply the payload lacks may be in the agent's own files (Claude's transcript): read off the lock
+        if let Some(adapter) = reply_adapter
+            && let Some(file) = adapter.reply_file(&body)
+        {
+            let (weak, id) = (self.weak.clone(), session_id.to_string());
+            std::thread::spawn(move || {
+                if let Some(text) = adapter.read_reply(&file)
+                    && let Some(m) = weak.upgrade()
+                {
+                    m.set_last_message(&id, &text);
+                }
+            });
+        }
         if let Some((ws_path, cwd)) = job {
             let (weak, id) = (self.weak.clone(), session_id.to_string());
             std::thread::spawn(move || {
@@ -739,7 +809,31 @@ impl SessionManager {
         }
     }
 
-    fn set_worktree(&self, id: &str, wt: WorktreeInfo) {
+    fn set_last_message(&self, id: &str, text: &str) {
+        let mut g = self.lock();
+        if let Some(e) = g.get_mut(id)
+            && e.apply(&StatusEvent::AssistantMessage { text: text.to_string() }, now_ms())
+        {
+            self.unsaved.store(true, AtomicOrdering::Relaxed);
+            self.send_updated(e);
+        }
+    }
+
+    /// Puts the session aside (out of the owner's queue) with a note, or (None) takes it back.
+    /// It comes back by itself once its state changes.
+    pub fn set_parked(&self, id: &str, note: Option<String>) -> Result<SessionInfo> {
+        let mut g = self.lock();
+        let e = g.get_mut(id).ok_or_else(|| anyhow!("unknown session {id}"))?;
+        let note = note.map(|n| cap_text(&n, 500));
+        if e.info.parked != note {
+            e.info.parked = note;
+            self.unsaved.store(true, AtomicOrdering::Relaxed);
+            self.send_updated(e);
+        }
+        Ok(e.info.clone())
+    }
+
+    pub(crate) fn set_worktree(&self, id: &str, wt: WorktreeInfo) {
         let mut g = self.lock();
         if let Some(e) = g.get_mut(id) {
             if e.info.worktree.as_ref() != Some(&wt) {
@@ -819,8 +913,11 @@ impl SessionManager {
             e.info.state = SessionState::Working;
         } else if !screen_prompt {
             e.info.state = SessionState::NeedsYou { reason: DENIED_REASON.into() };
+            e.info.asking = None;
         } // denying a screen prompt (trust menu) exits the agent: the exit moves the state on
         e.quiet_since_ms = now_ms();
+        e.info.state_since = e.quiet_since_ms;
+        e.info.parked = None;
         self.send_updated(e);
         Ok(())
     }
@@ -1065,6 +1162,10 @@ impl SessionManager {
                     spot: s.spot,
                     paused: true,
                     subagents: vec![],
+                    state_since: if s.state_since > 0 { s.state_since } else { s.started_at },
+                    last_message: s.last_message,
+                    asking: None,
+                    parked: s.parked,
                 };
                 let mut e = SessionEntry::new(info, ws.path.clone(), None, terminal_policy(), None, now);
                 e.exited = true;
@@ -1123,6 +1224,15 @@ impl SessionManager {
                 self.ensure_builder_free(&g, builder_id)?;
             }
             g.remove(id).expect("found above")
+        };
+        // a session the app started in its own worktree carries on there (its conversation lives there)
+        let in_worktree;
+        let ws = match &old.info.worktree {
+            Some(wt) if wt.path.starts_with(self.data_dir.join("worktrees")) && wt.path.exists() => {
+                in_worktree = Workspace { path: git::matching_folder(&ws.path, &wt.path), ..ws.clone() };
+                &in_worktree
+            }
+            _ => ws,
         };
         let res = match (&old.info.kind, builder) {
             (SessionKind::Terminal, _) => {
@@ -1579,6 +1689,42 @@ mod tests {
         fx.mgr.approve(&s.id).unwrap();
         // Hooks for unknown sessions are ignored.
         fx.mgr.on_hook("nope", fixture_json("stop.json"));
+    }
+
+    #[test]
+    fn the_briefing_follows_the_hooks_and_parking_lasts_until_the_state_changes() {
+        let fx = fixture();
+        let s = fx.mgr.start_with_spec(&fx.ws, &claude("b1"), sleeper(&fx), Arc::new(ClaudeAdapter)).unwrap();
+        let pre = serde_json::json!({"hook_event_name": "PreToolUse", "cwd": "/x", "tool_name": "Bash", "tool_input": {"command": "rm -rf build"}});
+        fx.mgr.on_hook(&s.id, pre);
+        fx.mgr.on_hook(&s.id, fixture_json("notification_permission.json"));
+        let i = info(&fx, &s.id);
+        assert!(matches!(i.state, SessionState::NeedsYou { .. }));
+        assert_eq!(i.asking.as_deref(), Some("Bash: rm -rf build"), "what it waits on");
+        let since = i.state_since;
+        assert!(since >= i.started_at);
+        // parked: out of the queue, still waiting; the same state keeps it parked
+        assert_eq!(fx.mgr.set_parked(&s.id, Some("after lunch".into())).unwrap().parked.as_deref(), Some("after lunch"));
+        fx.mgr.on_hook(&s.id, fixture_json("notification_permission.json"));
+        assert_eq!(info(&fx, &s.id).parked.as_deref(), Some("after lunch"));
+        fx.mgr.on_hook(&s.id, fixture_json("post_tool_use.json"));
+        let i = info(&fx, &s.id);
+        assert_eq!((i.state.clone(), i.asking.clone(), i.parked.clone()), (SessionState::Working, None, None), "it ran: back in play");
+        fx.mgr.on_hook(&s.id, fixture_json("stop.json"));
+        let i = info(&fx, &s.id);
+        assert_eq!(i.state, SessionState::Finished);
+        assert!(i.last_message.as_deref().is_some_and(|m| m.starts_with("I created `hello.txt`")));
+        assert!(i.state_since >= since);
+        assert!(fx.mgr.set_parked("nope", None).is_err());
+    }
+
+    #[test]
+    fn long_replies_keep_their_end() {
+        assert_eq!(cap_text("  short  ", 10), "short");
+        let long = format!("{}THE END", "x".repeat(50));
+        let c = cap_text(&long, 12);
+        assert_eq!(c.chars().count(), 12);
+        assert!(c.starts_with('…') && c.ends_with("THE END"));
     }
 
     #[test]

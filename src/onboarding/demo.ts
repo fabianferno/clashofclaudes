@@ -80,7 +80,10 @@ const stopTimers = (sim: Sim) => { sim.timers.forEach(clearTimeout); sim.timers 
 function patch(id: string, p: Partial<SessionInfo>): SessionInfo | null {
   const cur = useApp.getState().sessions[id];
   if (!cur) return null;
-  const next = { ...cur, ...p, rev: cur.rev + 1, lastOutputAt: Date.now() };
+  const now = Date.now();
+  const moved = p.state && JSON.stringify(p.state) !== JSON.stringify(cur.state);
+  // as the backend: a new state starts its wait anew and brings a parked session back
+  const next = { ...cur, ...(moved ? { stateSince: now, parked: null } : {}), ...p, rev: cur.rev + 1, lastOutputAt: now };
   useApp.getState().upsertSession(next);
   return next;
 }
@@ -138,7 +141,10 @@ function finish(sim: Sim): void {
   sim.phase = 'done';
   const what = sim.answered === 'no' ? ' (tests skipped, as you asked)' : '';
   print(sim, `\n${A.accent}⏺${A.reset} Done: ${sim.task}${what}. Review the changes, then close me to earn XP.\n${PROMPT}`);
-  patch(sim.id, { state: { kind: 'finished' }, reachedFinished: true, awaitingDecision: false });
+  patch(sim.id, {
+    state: { kind: 'finished' }, reachedFinished: true, awaitingDecision: false, asking: null,
+    lastMessage: `Done: ${sim.task}${what}. I added the theme in src/theme.ts and a toggle in src/App.tsx${sim.answered === 'no' ? '' : '; the 24 tests pass'}.`,
+  });
 }
 
 function begin(sim: Sim): void {
@@ -148,7 +154,7 @@ function begin(sim: Sim): void {
     steps(sim, WORK.slice(0, STEPS_BEFORE_ASK), () => {
       sim.phase = 'ask';
       print(sim, ASK);
-      patch(sim.id, { state: { kind: 'needsYou', reason: 'Allow Bash: npm test?' }, awaitingDecision: true });
+      patch(sim.id, { state: { kind: 'needsYou', reason: 'Allow Bash: npm test?' }, awaitingDecision: true, asking: 'Bash: npm test' });
     });
   });
 }
@@ -158,7 +164,7 @@ function answer(sim: Sim, yes: boolean): void {
   sim.phase = 'after';
   sim.answered = yes ? 'yes' : 'no';
   print(sim, yes ? `  ${A.green}✓ Allowed${A.reset}\n` : `  ${A.red}✗ Denied${A.reset}\n`);
-  patch(sim.id, { state: { kind: 'working' }, awaitingDecision: false });
+  patch(sim.id, { state: { kind: 'working' }, awaitingDecision: false, asking: null });
   steps(sim, yes ? AFTER_YES : AFTER_NO, () => finish(sim));
 }
 
@@ -227,7 +233,7 @@ function session(workspaceId: string, kind: SessionInfo['kind'], task: string | 
   return {
     id: nextId('s'), workspaceId, kind, task, state: { kind: kind.kind === 'agent' ? 'starting' : 'working' }, steps: 0,
     startedAt: now, lastOutputAt: now, reachedFinished: false, worktree: null, commandPreview: '', awaitingDecision: false,
-    busy: false, rev: 1, spot: null,
+    busy: false, rev: 1, spot: null, stateSince: now,
   };
 }
 
@@ -290,12 +296,14 @@ export const demoIpc = {
     patch(id, { state: { kind: 'ended', exitCode: null }, awaitingDecision: false, busy: false });
   },
   resumeSession: async (id: string) => sessionOf(id),
-  closeSession: async (id: string): Promise<CloseOutcome> => {
+  closeSession: async (id: string, discard = false): Promise<CloseOutcome> => {
     const s = sessionOf(id);
     const agent = s.kind.kind === 'agent';
+    const discarded = discard && agent;
+    const finished = s.reachedFinished && !discarded;
     const out: CloseOutcome = {
       earnedXp: false, xpGained: 0, levelBefore: 1, levelAfter: 1, workspaceId: s.workspaceId,
-      unfinished: agent && !s.reachedFinished, stuck: agent && s.state.kind === 'stuck',
+      unfinished: agent && !finished, stuck: agent && s.state.kind === 'stuck', discarded,
     };
     const sim = sims.get(id);
     if (sim) stopTimers(sim);
@@ -303,7 +311,7 @@ export const demoIpc = {
     const w = useApp.getState().workspaces.find((x) => x.id === s.workspaceId);
     if (w) {
       out.levelBefore = out.levelAfter = w.level;
-      if (agent && s.reachedFinished && !out.stuck) {
+      if (agent && finished && !out.stuck) {
         const next = award(w.level, w.xp, XP_PER_SESSION);
         useApp.getState().updateWorkspace({ ...w, ...next });
         Object.assign(out, { earnedXp: true, xpGained: XP_PER_SESSION, levelAfter: next.level });
@@ -312,6 +320,10 @@ export const demoIpc = {
     // as the backend's session-removed event: after the caller has the outcome (the village plays its orbs)
     setTimeout(() => useApp.getState().removeSession(id), 0);
     return out;
+  },
+  parkSession: async (id: string, note: string | null): Promise<SessionInfo> => {
+    sessionOf(id);
+    return need(patch(id, { parked: note }), 'session');
   },
   reviewSession: async (id: string): Promise<Review> => {
     sessionOf(id);
@@ -343,6 +355,11 @@ export const demoIpc = {
     return { id: nextId('t'), workspaceId, text, images, createdAt: Date.now() };
   },
   removeTodo: async () => {},
+  updateTodo: async (id: string, auto: boolean, builderId: string | null, worktree: boolean): Promise<Todo> => {
+    const t = need(useApp.getState().todos.find((x) => x.id === id), 'task');
+    if (auto && !builderId) throw new Error('pick a builder for the task to start on its own');
+    return { ...t, auto, builderId, worktree };
+  },
   updateBuilder: async () => {},
   deleteBuilder: async () => {},
   openInEditor: async () => { throw new Error(NOT_ON_DISK); },
@@ -376,6 +393,7 @@ const ROUTES: Record<keyof typeof demoIpc, (...a: never[]) => boolean> = {
   stopSession: (id: string) => isDemoId(id),
   resumeSession: (id: string) => isDemoId(id),
   closeSession: (id: string) => isDemoId(id),
+  parkSession: (id: string) => isDemoId(id),
   reviewSession: (id: string) => isDemoId(id),
   setCompound: (ws: string) => isDemoId(ws),
   setWorkspaceColor: (ws: string) => isDemoId(ws),
@@ -384,6 +402,7 @@ const ROUTES: Record<keyof typeof demoIpc, (...a: never[]) => boolean> = {
   removeWorkspace: (ws: string) => isDemoId(ws),
   addTodo: (ws: string) => isDemoId(ws),
   removeTodo: (id: string) => isDemoId(id),
+  updateTodo: (id: string) => isDemoId(id),
   updateBuilder: (b: Builder) => isDemoId(b?.id),
   deleteBuilder: (id: string) => isDemoId(id),
   openInEditor: (path: string) => path === DEMO_PATH,

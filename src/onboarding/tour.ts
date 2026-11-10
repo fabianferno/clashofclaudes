@@ -94,7 +94,7 @@ export const STEPS: StepSpec[] = [
   {
     id: 'needs', needsDemo: true,
     enter: showSession,
-    target: () => dom('.session-panel .session-actions'),
+    target: () => dom('.session-panel .brief'),
     done: () => stateOf() !== 'needsYou',
     assist: () => { showSession(); requestAnimationFrame(() => click('[data-tour="allow"]')); },
   },
@@ -106,7 +106,7 @@ export const STEPS: StepSpec[] = [
   {
     id: 'review', needsDemo: true,
     enter: showSession,
-    target: () => dom('.session-panel .session-actions'),
+    target: () => dom('.session-panel .brief'),
     done: () => !live(),
     assist: () => { showSession(); requestAnimationFrame(() => click('[data-tour="close-session"]')); },
   },

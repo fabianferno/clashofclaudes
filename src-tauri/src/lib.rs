@@ -437,6 +437,8 @@ pub fn run() {
             commands::snapshot_app,
             commands::add_todo,
             commands::remove_todo,
+            commands::update_todo,
+            commands::park_session,
             commands::save_attachment,
             commands::import_attachment,
             commands::read_attachment,

@@ -1210,10 +1210,25 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
   let od: { m: Movable; grab: { x: number; y: number }; moved: boolean; target: Tile; valid: boolean } | null = null;
 
   const ARROW_DIRS = [{ x: 1, y: 0 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 0, y: -1 }];
-  const arrows = ARROW_DIRS.map(() => {
-    const g = new Graphics().poly([11, 0, -7, -8, -7, 8]).fill({ color: 0xffd84a }).stroke({ width: 2, color: 0x1d130b });
+  /**
+   * An arrow lying on the ground, in tile units: `u` along the way it points, `w` across. Each is
+   * projected like the tiles (so it sits in the isometric plane), given a darker edge below for
+   * thickness, and stands in the ground layer: under the builders and buildings, never over them.
+   */
+  const ARROW_SHAPE: Array<[number, number]> = [[0.62, 0], [0.08, 0.44], [0.08, 0.17], [-0.42, 0.17], [-0.42, -0.17], [0.08, -0.17], [0.08, -0.44]];
+  const ARROW_DEPTH = 4; // px of edge showing under the arrow's face
+  const arrows = ARROW_DIRS.map((d) => {
+    const pts = ARROW_SHAPE.flatMap(([u, w]) => {
+      const p = iso(d.x * u - d.y * w, d.y * u + d.x * w);
+      return [p.x, p.y];
+    });
+    const g = new Graphics();
+    // the solid edge: the face stacked down a pixel at a time (drawn once, at start)
+    for (let k = ARROW_DEPTH; k >= 1; k--) g.poly(pts.map((v, i) => (i % 2 ? v + k : v))).fill({ color: 0x9a6400 }).stroke({ width: 2.5, color: 0x1d130b, join: 'round' });
+    for (let k = ARROW_DEPTH; k >= 1; k--) g.poly(pts.map((v, i) => (i % 2 ? v + k : v))).fill({ color: 0x9a6400 });
+    g.poly(pts).fill({ color: 0xffd84a }).stroke({ width: 2.5, color: 0x1d130b, join: 'round' });
     g.visible = false;
-    overlay.addChild(g);
+    groundLayer.addChild(g);
     return g;
   });
   const arrowBase = ARROW_DIRS.map(() => ({ x: 0, y: 0, dx: 0, dy: 0 }));
@@ -1268,9 +1283,8 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     fx.poly(footprint(m, m.tile)).fill({ color: 0xffd84a, alpha: 0.35 }).stroke({ width: 3, color: 0xffd84a, alpha: 0.9 });
     const o = cornerOf(m, m.tile), cx = o.x + m.w / 2, cy = o.y + m.h / 2;
     ARROW_DIRS.forEach((d, i) => {
-      const p = iso(cx + d.x * (m.w / 2 + 0.6), cy + d.y * (m.h / 2 + 0.6)), v = iso(d.x, d.y), n = Math.hypot(v.x, v.y);
+      const p = iso(cx + d.x * (m.w / 2 + 1.15), cy + d.y * (m.h / 2 + 1.15)), v = iso(d.x, d.y), n = Math.hypot(v.x, v.y);
       arrowBase[i] = { x: p.x, y: p.y, dx: v.x / n, dy: v.y / n };
-      arrows[i].rotation = Math.atan2(v.y, v.x);
       arrows[i].position.set(p.x, p.y);
       arrows[i].visible = true;
     });

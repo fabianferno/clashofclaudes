@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { settled, smoothing, springStep, tiltFromVelocity } from './gameCursorMath';
+import { HOLD_MS, headingFromVelocity, nearestDeg, settled, shadowOffset, smoothing, springStep, wrapDeg } from './gameCursorMath';
 import './gameCursor.css';
 
 /**
@@ -8,8 +8,9 @@ import './gameCursor.css';
  * the better tool: text fields and the terminal (I-beam), resize handles, and embedded pages.
  *
  * It follows the mouse in one requestAnimationFrame loop that writes a transform (no React render
- * per move) and stops when the pointer is at rest. It tilts toward the direction of travel and
- * springs back upright (gameCursorMath.ts); with reduced motion it only follows.
+ * per move) and stops when the pointer is at rest. It turns on its tip to point where the mouse
+ * is going, and swings back to its resting angle a moment after the mouse stops
+ * (gameCursorMath.ts); with reduced motion it only follows.
  *
  * Other code can ask for the OS cursor everywhere for a while (a resize drag) with the
  * `gc-suspend` class on <html>.
@@ -66,6 +67,9 @@ export default function GameCursor() {
     let dx = 0, dy = 0; // movement since the last frame
     let vx = 0, vy = 0; // smoothed velocity, px/s
     let angle = 0, angVel = 0;
+    let aim = 0; // the angle it is turning toward
+    let movedAt = 0; // when the mouse last moved fast enough to point somewhere (ms)
+    let written = '', shadowFor = NaN; // what the DOM holds, so it is written only on change
     let shown = false;
     let raf = 0, last = 0;
     let state = ''; // classes last written, so the DOM is touched only on change
@@ -92,12 +96,31 @@ export default function GameCursor() {
       vx += (dx / dt - vx) * k;
       vy += (dy / dt - vy) * k;
       dx = dy = 0;
-      if (still) { angle = 0; angVel = 0; } else ({ angle, vel: angVel } = springStep(angle, angVel, tiltFromVelocity(vx, vy), dt));
-      const rest = still || settled(angle, angVel, vx, vy);
-      if (rest) { angle = 0; angVel = 0; vx = vy = 0; }
+      let holding = false;
+      if (still) {
+        angle = angVel = aim = 0;
+      } else {
+        const heading = headingFromVelocity(vx, vy);
+        if (heading !== null) { aim = nearestDeg(heading, angle); movedAt = now; }
+        else if (now - movedAt >= HOLD_MS) aim = nearestDeg(0, angle); // still a while: back to rest, the short way
+        else holding = true; // keeps pointing the way it went
+        ({ angle, vel: angVel } = springStep(angle, angVel, aim, dt));
+      }
+      const rest = still || (!holding && Math.abs(wrapDeg(aim)) < 0.05 && settled(angle, angVel, vx, vy));
+      if (rest) { angle = angVel = aim = 0; vx = vy = 0; }
       const dpr = window.devicePixelRatio || 1;
       const px = Math.round(x * dpr) / dpr, py = Math.round(y * dpr) / dpr;
-      el.style.transform = `translate3d(${px}px, ${py}px, 0) rotate(${angle.toFixed(2)}deg)`;
+      const deg = Math.round(wrapDeg(angle) * 10) / 10;
+      const t = `translate3d(${px}px, ${py}px, 0) rotate(${deg}deg)`;
+      if (t !== written) { written = t; el.style.transform = t; }
+      if (deg !== shadowFor) {
+        // the shadow falls down-right on screen whichever way the pointer points
+        shadowFor = deg;
+        const o = shadowOffset(deg);
+        el.style.setProperty('--gc-sx', `${o.x.toFixed(2)}px`);
+        el.style.setProperty('--gc-sy', `${o.y.toFixed(2)}px`);
+      }
+      // while holding a heading the loop idles cheaply (nothing changes, nothing is written)
       if (!rest) raf = requestAnimationFrame(frame);
     };
     const kick = () => {

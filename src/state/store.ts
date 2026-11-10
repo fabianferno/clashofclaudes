@@ -4,7 +4,7 @@ import { create } from 'zustand';
 export interface FoundUpdate { version: string | null; notes: string | null }
 import { ipc } from '../api/ipc';
 import type { AgentInfo, AgentKind, AgentQuota, AppPreview, Todo, Builder, CloseOutcome, Compound, ListState, SessionInfo, SessionState, Settings, Stats, Tile, Workspace, ReportKind } from '../api/types';
-import { HOUSE, STRUCT, canPlace, compoundFits, gapBetween, placeCompound, shiftCompound, spotFor, tidySpots, wallRect } from '../village/layout';
+import { HOUSE, STRUCT, canPlace, centeredHouse, compoundFits, gapBetween, houseClearOfWalls, placeCompound, shiftCompound, spotFor, tidySpots, wallRect } from '../village/layout';
 import { collectorFits, collectorTiles, shownCollectors } from '../village/quota';
 import { nextInQueue, ownerQueue } from './queue';
 
@@ -36,8 +36,9 @@ export interface VillageActions {
   /** A board's spot (see `boardItems`), found the same way; null when the board went away first. */
   ensureBoardSpot: (key: string, onError?: (e: unknown) => void) => Promise<Tile | null>;
   /**
-   * Space out the workspace's tents, rune stones and boards to the padding new ones get (see `tidySpots`),
-   * growing its compound if they no longer fit. Resolves to how many were moved to new spots.
+   * Stand the workspace's house in the middle of its yard and space out its tents, rune stones and boards
+   * to the padding new ones get (see `tidySpots`), growing its compound if they no longer fit. Resolves
+   * to how many were moved to new spots.
    */
   tidy: (wsId: string) => Promise<number>;
   /**
@@ -147,8 +148,8 @@ export function moveValid(st: MoveState, target: MoveTarget, at: Tile): boolean 
     .map((x) => x.spot!)
     .concat(boardSpotsIn(st.boardSpots, wsId!));
   if (target.kind === 'session') return st.sessions[target.id]?.spot ? canPlace(c, mates(target.id), at, STRUCT) : false;
-  // the house is checked against every structure, but not against its own current tile
-  return canPlace({ ...c, house: { x: -1e6, y: -1e6 } }, mates(null), at, HOUSE);
+  // the house is checked against every structure, but not against its own current tile, and keeps its yard
+  return houseClearOfWalls(c, at) && canPlace({ ...c, house: { x: -1e6, y: -1e6 } }, mates(null), at, HOUSE);
 }
 
 export interface Notice { id: number; text: string; kind: 'xp' | 'level' | 'info' }
@@ -587,13 +588,16 @@ function villageActions(get: () => AppState): VillageActions {
 
   const tidy = async (wsId: string): Promise<number> => {
     const st = get();
-    const c = st.workspaces.find((w) => w.id === wsId)?.compound;
-    if (!c) return 0;
+    const stored = st.workspaces.find((w) => w.id === wsId)?.compound;
+    if (!stored) return 0;
+    // the house goes to the middle of its yard (older villages put it in a corner); what stood there moves aside
+    const mid = centeredHouse(stored);
+    const c = mid.x === stored.house.x && mid.y === stored.house.y ? stored : { ...stored, house: mid };
     const mates = Object.values(st.sessions).filter((x) => x.workspaceId === wsId && x.spot);
     const boards = Object.keys(st.boardSpots).filter((k) => k.startsWith(`${wsId}:`));
     const all = st.workspaces.flatMap((w) => (w.compound ? [w.compound] : []));
-    const r = tidySpots(c, all, [...mates.map((x) => x.spot!), ...boards.map((k) => st.boardSpots[k])]);
-    if (r.compound !== c) get().updateWorkspace(await ipc.setCompound(wsId, r.compound));
+    const r = tidySpots(c, all.filter((x) => x !== stored).concat(c), [...mates.map((x) => x.spot!), ...boards.map((k) => st.boardSpots[k])]);
+    if (r.compound !== stored) get().updateWorkspace(await ipc.setCompound(wsId, r.compound));
     for (const [i, m] of mates.entries()) {
       const t = r.spots[i];
       if (t.x !== m.spot!.x || t.y !== m.spot!.y) get().upsertSession(await ipc.setSessionSpot(m.id, t));

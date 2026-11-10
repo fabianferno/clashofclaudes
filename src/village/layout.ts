@@ -12,7 +12,7 @@ export interface Rect {
 export const HALL: Rect = { x0: -2, y0: -2, w: 5, h: 5 };
 /** Min empty tiles between compound walls and anything else (roads). */
 export const GAP = 4;
-export const START = 12;
+export const START = 17;
 export const GROW = 4;
 export const HOUSE = 3;
 export const STRUCT = 2;
@@ -77,16 +77,24 @@ function findFree(w: number, h: number, others: Compound[]): Tile {
   }
 }
 
-/** House top-left in the interior corner nearest the hall. */
-function houseCorner(x0: number, y0: number, w: number, h: number): Tile {
-  const east = x0 + w / 2 > HALL_CX;
-  const south = y0 + h / 2 > HALL_CY;
-  return { x: east ? x0 : x0 + w - HOUSE, y: south ? y0 : y0 + h - HOUSE };
+/** Tiles of ground the house keeps from the wall on every side: it stands in its yard, not against the fence. */
+export const HOUSE_WALL_GAP = 3;
+
+/** The house's top-left tile centred in the compound's interior (half a tile nearer the top-left when odd). */
+export function centeredHouse(c: Pick<Compound, 'x0' | 'y0' | 'w' | 'h'>): Tile {
+  return { x: c.x0 + Math.floor((c.w - HOUSE) / 2), y: c.y0 + Math.floor((c.h - HOUSE) / 2) };
+}
+
+/** Whether a house on `at` keeps HOUSE_WALL_GAP of ground from each wall of `c`. */
+export function houseClearOfWalls(c: Pick<Compound, 'x0' | 'y0' | 'w' | 'h'>, at: Tile): boolean {
+  return at.x - c.x0 >= HOUSE_WALL_GAP && at.y - c.y0 >= HOUSE_WALL_GAP
+    && c.x0 + c.w - (at.x + HOUSE) >= HOUSE_WALL_GAP && c.y0 + c.h - (at.y + HOUSE) >= HOUSE_WALL_GAP;
 }
 
 export function placeCompound(existing: Compound[]): Compound {
   const o = findFree(START, START, existing);
-  return { x0: o.x, y0: o.y, w: START, h: START, house: houseCorner(o.x, o.y, START, START) };
+  const c = { x0: o.x, y0: o.y, w: START, h: START };
+  return { ...c, house: centeredHouse(c) };
 }
 
 /** Wall side facing the hall. */
@@ -333,8 +341,9 @@ export function tidySpots(
 ): { compound: Compound; spots: Tile[]; moved: number; shift: Tile } {
   const out = spots.map((t) => ({ ...t }));
   const hx = c.house.x + HOUSE / 2, hy = c.house.y + HOUSE / 2;
-  const order = spots.map((_, i) => i)
-    .sort((a, b) => (spots[a].x - hx) ** 2 + (spots[a].y - hy) ** 2 - ((spots[b].x - hx) ** 2 + (spots[b].y - hy) ** 2));
+  // by each structure's centre, as `freeSpots` ranks them
+  const d2 = (t: Tile) => (t.x + STRUCT / 2 - hx) ** 2 + (t.y + STRUCT / 2 - hy) ** 2;
+  const order = spots.map((_, i) => i).sort((a, b) => d2(spots[a]) - d2(spots[b]));
   const kept: number[] = [];
   const stray: number[] = [];
   const at = (ks: number[]) => ks.map((k) => out[k]);

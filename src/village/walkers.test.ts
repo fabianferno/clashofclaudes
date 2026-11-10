@@ -156,9 +156,12 @@ describe('walkers', () => {
       const walk = walkable(enclosure(c, spots, 3, seedOf(seed)).inside, c, spots);
       for (const spot of spots) {
         const to = routeToSite({ x: 0, y: 5 }, c, spot, walk);
-        expect(to[1]).toEqual(centre(gateInside(c)));
-        if (to.length > 3) turns++;
-        onGround(walk, to.slice(1)); // gate inside -> stand, never through a wall, the house or a tent
+        const out = centre(gateOutside(c));
+        // along the road (with any bends), then in through the gate
+        const inAt = to.findIndex((p) => p.x === out.x && p.y === out.y) + 1;
+        expect(to[inAt]).toEqual(centre(gateInside(c)));
+        if (to.length - inAt > 2) turns++;
+        onGround(walk, to.slice(inAt)); // gate inside -> stand, never through a wall, the house or a tent
         const stand = to[to.length - 1];
         const home = routeHome(stand, c, walk);
         onGround(walk, [stand, ...home.slice(0, home.indexOf(home.find((p) => p.x === centre(gateInside(c)).x && p.y === centre(gateInside(c)).y)!) + 1)]);

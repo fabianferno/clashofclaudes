@@ -191,7 +191,12 @@ export function retarget(w: Walker, c: Compound, spot: Tile | null, walk?: Set<s
   const keep = (route: Tile[]) => route.slice(Math.max(0, route.length - w.path.length));
   if (w.mode === 'toSite' && spot && w.path.length) {
     if (inside) return { ...w, path: interiorPath(walk!, w, standTile(c, spot, c.house, walk)) };
-    return { ...w, path: walk ? routeToSite(w, c, spot, walk) : keep(routeToSite(w, c, spot)) };
+    if (!walk) return { ...w, path: keep(routeToSite(w, c, spot)) };
+    // already past the road's bends (the gate is next): carry on from the gate, not back along the road
+    const out = centre(gateOutside(c)), route = routeToSite(w, c, spot, walk);
+    const atGate = route.findIndex((p) => p.x === out.x && p.y === out.y);
+    const pastBends = w.path.some((p) => p.x === out.x && p.y === out.y);
+    return { ...w, path: pastBends && atGate > 0 ? route.slice(atGate) : route };
   }
   if (w.mode === 'home' && w.path.length) return { ...w, path: inside ? routeHome(w, c, walk, blocked) : keep(routeHome(w, c, walk, blocked)) };
   return w;

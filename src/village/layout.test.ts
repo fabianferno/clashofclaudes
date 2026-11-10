@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Compound, Tile } from '../api/types';
 import {
-  EDGE_PAD, GAP, GROW, HALL, HOUSE, START, STRUCT, STRUCT_PAD, Rect, assertNoCollisions, canPlace, expand,
+  EDGE_PAD, GAP, GROW, HALL, HOUSE, HOUSE_WALL_GAP, START, STRUCT, STRUCT_PAD, Rect, assertNoCollisions, canPlace, expand, houseClearOfWalls,
   findSpot, gapBetween, gateInside, gateOutside, gateSide, gateTile, looksClear, padded, placeCompound, roadPath, spotFor, tidySpots, wallRect,
 } from './layout';
 
@@ -32,11 +32,9 @@ describe('placeCompound', () => {
     expect(c.house.y).toBeGreaterThanOrEqual(c.y0);
     expect(c.house.x + HOUSE).toBeLessThanOrEqual(c.x0 + c.w);
     expect(c.house.y + HOUSE).toBeLessThanOrEqual(c.y0 + c.h);
-    // corner nearest hall: house touches interior edges facing the hall
-    const cx = c.x0 + c.w / 2, cy = c.y0 + c.h / 2;
-    const hx = cx > 0.5 ? c.x0 : c.x0 + c.w - HOUSE;
-    const hy = cy > 0.5 ? c.y0 : c.y0 + c.h - HOUSE;
-    expect(c.house).toEqual({ x: hx, y: hy });
+    // the house stands in the middle of its yard, well clear of every wall
+    expect(c.house).toEqual({ x: c.x0 + (c.w - HOUSE) / 2, y: c.y0 + (c.h - HOUSE) / 2 });
+    expect(houseClearOfWalls(c, c.house)).toBe(true);
   });
   it('eight_compounds_never_overlap', () => {
     const all = placeN(8);
@@ -120,7 +118,21 @@ describe('tidySpots', () => {
     expect(r.spots).toHaveLength(4);
     expect(allPadded(r.compound, r.spots)).toBe(true);
     expect(r.moved).toBeGreaterThan(0);
-    expect(r.compound.w * r.compound.h).toBeGreaterThan(c.w * c.h);
+    expect(r.compound.w * r.compound.h).toBeGreaterThanOrEqual(c.w * c.h);
+  });
+
+  it('a house in the middle has tents on every side of it, and keeps its yard', () => {
+    const c = placeCompound([]);
+    const taken: Tile[] = [];
+    for (let s = findSpot(c, taken); s; s = findSpot(c, taken)) taken.push(s);
+    const hx = c.house.x + HOUSE / 2, hy = c.house.y + HOUSE / 2;
+    const sides = new Set(taken.map((t) => `${Math.sign(t.x + STRUCT / 2 - hx)},${Math.sign(t.y + STRUCT / 2 - hy)}`));
+    expect(taken.length).toBeGreaterThanOrEqual(4);
+    expect(sides.size).toBeGreaterThanOrEqual(3);
+    // a house dragged against the fence is refused
+    expect(houseClearOfWalls(c, { x: c.x0, y: c.house.y })).toBe(false);
+    expect(houseClearOfWalls(c, { x: c.x0 + HOUSE_WALL_GAP, y: c.y0 + HOUSE_WALL_GAP })).toBe(true);
+    expect(houseClearOfWalls(c, { x: c.x0 + c.w - HOUSE - HOUSE_WALL_GAP + 1, y: c.house.y })).toBe(false);
   });
 
   it('leaves an already padded village alone', () => {
@@ -136,7 +148,9 @@ describe('tidySpots', () => {
   it('keeps the spot nearest the house and moves the one crowding it', () => {
     const c = placeCompound([]);
     const near = findSpot(c, [])!;
-    const crowd = { x: near.x + STRUCT, y: near.y };
+    // crowding it: right beside it, on the side away from the house
+    const away = near.x + STRUCT / 2 >= c.house.x + HOUSE / 2 ? 1 : -1;
+    const crowd = { x: near.x + away * STRUCT, y: near.y };
     const r = tidySpots(c, [c], [crowd, near]);
     expect(r.spots[1]).toEqual(near);
     expect(r.spots[0]).not.toEqual(crowd);

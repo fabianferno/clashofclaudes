@@ -304,7 +304,7 @@ describe('village', () => {
 });
 
 describe('commitMove', () => {
-  const c: Compound = { x0: 6, y0: 6, w: 8, h: 8, house: { x: 6, y: 6 } };
+  const c: Compound = { x0: 2, y0: 2, w: 16, h: 16, house: { x: 6, y: 6 } };
   const ws = { id: 'w1', compound: c } as unknown as Workspace;
   beforeEach(() => {
     vi.mocked(ipc.setSessionSpot).mockReset();
@@ -318,7 +318,7 @@ describe('commitMove', () => {
     const t = { kind: 'session', id: 's1' } as const;
     expect(await useApp.getState().village.commitMove(t, { x: 12, y: 6 })).toBe(false); // on s2
     expect(await useApp.getState().village.commitMove(t, { x: 6, y: 6 })).toBe(false); // on the house
-    expect(await useApp.getState().village.commitMove(t, { x: 13, y: 10 })).toBe(false); // out of the compound
+    expect(await useApp.getState().village.commitMove(t, { x: 17, y: 10 })).toBe(false); // out of the compound
     expect(ipc.setSessionSpot).not.toHaveBeenCalled();
     expect(ipc.setCompound).not.toHaveBeenCalled();
   });
@@ -335,6 +335,7 @@ describe('commitMove', () => {
     vi.mocked(ipc.setCompound).mockImplementation(async (_id, comp) => ({ ...ws, compound: comp }) as Workspace);
     const t = { kind: 'workspace', id: 'w1' } as const;
     expect(await useApp.getState().village.commitMove(t, { x: 9, y: 9 })).toBe(false); // covers s1 (10,10)
+    expect(await useApp.getState().village.commitMove(t, { x: 3, y: 6 })).toBe(false); // against the fence: keeps its yard
     expect(ipc.setCompound).not.toHaveBeenCalled();
     expect(await useApp.getState().village.commitMove(t, { x: 7, y: 7 })).toBe(true); // overlaps its own old tile only
     expect(ipc.setCompound).toHaveBeenCalledWith('w1', { ...c, house: { x: 7, y: 7 } });

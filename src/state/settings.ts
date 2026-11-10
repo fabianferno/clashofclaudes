@@ -38,8 +38,11 @@ export async function saveSettings(patch: Partial<Settings>): Promise<Settings> 
   }
 }
 
-/** The spacing rules villages are tidied to: 1 kept padding, 2 also keeps every structure clear on screen (`looksClear`). */
-export const SPOTS_TIDY = 2;
+/**
+ * The spacing rules villages are tidied to: 1 kept padding, 2 also keeps every structure clear on
+ * screen (`looksClear`), 3 stands each house in the middle of its yard, clear of the walls.
+ */
+export const SPOTS_TIDY = 3;
 
 /** A village laid out under older spacing rules is spaced out once, on the first launch with the newer ones. */
 export async function tidyOnce(s: Settings): Promise<void> {

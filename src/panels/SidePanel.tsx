@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
 import { useApp, type Selection } from '../state/store';
 import { CLASS_NAMES, PALETTE, classOf } from '../village/look';
-import { PANEL_W } from '../village/camera';
+import { usePanelWidth } from '../state/panelWidth';
+import PanelResizer from './PanelResizer';
 import SessionPanel from './SessionPanel';
 import BuilderPanel from './BuilderPanel';
 import TownHallPanel from './TownHallPanel';
@@ -19,6 +20,7 @@ export default function SidePanel() {
   const sessions = useApp((s) => s.sessions);
   const setSelection = useApp((s) => s.setSelection);
   const onClosed = useApp((s) => s.onClosed);
+  const width = usePanelWidth((s) => s.width);
   const open = selection !== null;
 
   useEffect(() => {
@@ -39,7 +41,8 @@ export default function SidePanel() {
   if (!head) return null;
 
   return (
-    <aside className="side-panel" style={{ width: PANEL_W }} data-testid="side-panel">
+    <aside className="side-panel" style={{ width }} data-testid="side-panel">
+      <PanelResizer />
       <header className="sp-head">
         <div className="sp-titles">
           <h2 className="ol" title={head.full}>{head.title}</h2>

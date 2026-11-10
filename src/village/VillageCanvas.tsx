@@ -3,7 +3,7 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import { ipc } from '../api/ipc';
 import { boardItems, moveValid, useApp, type AppState } from '../state/store';
 import ZoomControls from '../hud/ZoomControls';
-import { PANEL_W } from './camera';
+import { getPanelWidth, usePanelWidth } from '../state/panelWidth';
 import { createScene, type BoardInput, type Scene, type VillageInput } from './scene';
 import { setBoardImage } from './art/entities';
 import { clearProbeScene, setProbeScene } from './probe';
@@ -76,7 +76,8 @@ export default function VillageCanvas({ onError }: { onError?: (e: unknown) => v
       onBuilderAssign: (builderId, id) => useApp.getState().setSelection({ kind: 'workspace', id, builder: builderId }),
       // a tap under the finger as the held builder crosses into a workspace; nothing to tell the owner if it fails
       onBuilderOver: () => { ipc.haptic().catch(() => {}); },
-      panelWidth: () => (useApp.getState().panelOpen ? PANEL_W : 0),
+      panelWidth: () => (useApp.getState().panelOpen ? getPanelWidth() : 0),
+      openPanelWidth: getPanelWidth,
       // a page that refuses framing would pop out blank: that one goes to the browser
       onOpenApp: (b) => {
         if (b.frameable) useApp.getState().setAppPopout({ url: b.url, title: b.label, key: b.key, browserId: b.browserId });
@@ -115,6 +116,16 @@ export default function VillageCanvas({ onError }: { onError?: (e: unknown) => v
       setScene(null);
     };
   }, []);
+
+  // A panel dragged wider must not cover what it shows: keep the selection in the room left of it.
+  useEffect(() => {
+    if (!scene) return;
+    return usePanelWidth.subscribe((st, prev) => {
+      if (st.width === prev.width) return;
+      const { panelOpen, selection } = useApp.getState();
+      if (panelOpen) scene.reveal(selection);
+    });
+  }, [scene]);
 
   // Cmd +/- like the zoom buttons, unless a pop-out or the Kanban covers the village
   useEffect(() => {

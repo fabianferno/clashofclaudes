@@ -1,5 +1,4 @@
-import { useApp } from '../state/store';
-import { PANEL_W } from '../village/camera';
+import { usePanelInset } from './layout';
 
 interface Props {
   onZoomIn: () => void;
@@ -21,9 +20,9 @@ function Magnifier({ plus = false }: { plus?: boolean }) {
 
 /** Zoom buttons at the right edge, vertically centred; they slide left when the panel is open. */
 export default function ZoomControls({ onZoomIn, onZoomOut, onFit }: Props) {
-  const panelOpen = useApp((s) => s.panelOpen);
+  const inset = usePanelInset();
   return (
-    <div className="zoom-controls" style={{ right: panelOpen ? PANEL_W + 12 : 12 }} data-testid="zoom-controls">
+    <div className="zoom-controls" style={{ right: inset + 12 }} data-testid="zoom-controls">
       <button className="zoom-ico" aria-label="Zoom in" title="Zoom in" onClick={onZoomIn}><Magnifier plus /></button>
       <button className="zoom-ico" aria-label="Zoom out" title="Zoom out" onClick={onZoomOut}><Magnifier /></button>
       <button aria-label="Fit village" title="Fit village" onClick={onFit}>Village</button>

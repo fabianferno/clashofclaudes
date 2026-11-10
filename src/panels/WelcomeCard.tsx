@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useApp } from '../state/store';
 import * as wsActions from '../state/workspaceActions';
-import { panelInset } from '../hud/layout';
+import { usePanelInset } from '../hud/layout';
 import FolderHint from './FolderHint';
 import { useTour } from '../onboarding/tour';
 
@@ -12,14 +12,14 @@ import { useTour } from '../onboarding/tour';
 export default function WelcomeCard() {
   const touring = useTour((s) => s.step !== null);
   const show = useApp((s) => s.loaded && s.workspaces.length === 0) && !touring;
-  const panelOpen = useApp((s) => s.panelOpen);
+  const inset = usePanelInset();
   const [naming, setNaming] = useState<string | null>(null);
   if (!show) return null;
 
   const create = async (pick = false) => { if (naming && await wsActions.createFolder(naming, pick)) setNaming(null); };
 
   return (
-    <div className="welcome-layer" style={{ right: panelInset(panelOpen), pointerEvents: 'none' }}>
+    <div className="welcome-layer" style={{ right: inset, pointerEvents: 'none' }}>
       <div className="welcome-card" data-testid="welcome-card" style={{ pointerEvents: 'auto' }}>
         <h2 className="ol">Open a workspace to start</h2>
         <p>Pick a project and your builders will get to work in it.</p>

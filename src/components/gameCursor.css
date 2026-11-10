@@ -1,0 +1,40 @@
+/* The game cursor (GameCursor.tsx). <html class="gc-on"> once the mouse has moved over the window. */
+
+/* The OS cursor hides everywhere except text entry, the terminal, resize handles and embedded pages. */
+html.gc-on:not(.gc-suspend),
+html.gc-on:not(.gc-suspend) *:not(:is(
+  input:not([type=range],[type=checkbox],[type=radio],[type=button],[type=submit],[type=reset],[type=color],[type=file],[type=image]),
+  textarea, [contenteditable]:not([contenteditable=false]), [contenteditable]:not([contenteditable=false]) *,
+  .xterm, .xterm *, .gc-native, .gc-native *, iframe
+)) {
+  cursor: none !important;
+}
+/* cursor is inherited: give text entry its I-beam back explicitly (xterm sets its own) */
+html.gc-on :is(input:not([type=range],[type=checkbox],[type=radio],[type=button],[type=submit],[type=reset],[type=color],[type=file],[type=image]), textarea, [contenteditable]:not([contenteditable=false])) {
+  cursor: text;
+}
+html.gc-on :is(input, textarea):disabled { cursor: default; }
+
+/* The layer: its origin is the pointer's tip; JS writes translate + rotate only. */
+.game-cursor {
+  position: fixed; left: 0; top: 0; width: 0; height: 0; z-index: 2147483647;
+  pointer-events: none; will-change: transform; contain: layout style;
+  opacity: 0; transition: opacity .08s linear;
+}
+.game-cursor.gc-visible { opacity: 1; }
+.gc-inner { position: absolute; left: 0; top: 0; transform-origin: 0 0; transition: transform .12s cubic-bezier(.2, .9, .3, 1.3); }
+.gc-svg { position: absolute; display: block; overflow: visible; }
+.gc-shadow { opacity: .5; transform: translate(1.4px, 2.8px); transition: transform .08s, opacity .08s; }
+.gc-shine { opacity: 0; transition: opacity .12s; }
+
+/* over something clickable: a touch bigger and brighter */
+.game-cursor.gc-hover .gc-inner { transform: scale(1.1); }
+.game-cursor.gc-hover .gc-shine { opacity: .2; }
+/* pressed: pushed down into its lip (the tip stays put; the shadow comes up to meet it) */
+.game-cursor.gc-down .gc-inner { transform: scale(.9); transition-duration: .05s; }
+.game-cursor.gc-down .gc-shadow { transform: translate(.5px, 1px); opacity: .6; }
+.game-cursor.gc-down .gc-shine { opacity: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .gc-inner, .gc-shadow, .gc-shine { transition: none; }
+}

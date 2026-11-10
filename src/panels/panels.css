@@ -283,3 +283,31 @@
 .cmdk-empty { padding: 18px 10px; text-align: center; font-weight: 700; color: var(--sp-ink-soft); }
 .cmdk-foot { display: flex; justify-content: space-between; gap: 8px; padding: 6px 12px; border-top: 2px solid #d8c39a; background: var(--sp-parch2); font-size: 11px; font-weight: 700; color: var(--sp-ink-soft); }
 .cmdk-kbd { flex: none; font: 700 12px ui-monospace, 'JetBrains Mono', monospace; color: #2b2018; background: #fff8e8; border: 2px solid #c8b083; border-bottom-width: 3px; border-radius: 7px; padding: 1px 7px; }
+
+/* the panel's inner edge: drag to resize (PanelResizer.tsx). Straddles the 4px border. */
+.sp-resize { position: absolute; top: 0; bottom: 0; left: -12px; width: 18px; z-index: 6; cursor: col-resize; touch-action: none; outline: none; }
+/* the border lights up gold */
+.sp-resize::before {
+  content: ''; position: absolute; top: 0; bottom: 0; left: 8px; width: 4px; opacity: 0; transition: opacity .12s;
+  background: linear-gradient(90deg, #ffe270, #f0a400); box-shadow: 0 0 0 1px rgba(29,19,11,.6), 0 0 12px rgba(255,198,26,.55);
+}
+/* a chunky gold grip, like the HUD's buttons, with three notches */
+.sp-resize-grip {
+  position: absolute; top: 50%; left: 50%; width: 16px; height: 58px; transform: translate(-50%, -50%) scale(.85); opacity: 0;
+  border: 3px solid var(--hud-out); border-radius: 9px; box-sizing: border-box; transition: opacity .12s, transform .12s;
+  background: linear-gradient(90deg, #ffe270 0%, #ffc61a 48%, #f0a400 52%, #e89b00 100%);
+  box-shadow: inset 2px 0 0 rgba(255,255,255,.55), inset -2px 0 0 rgba(0,0,0,.18), 0 3px 0 var(--hud-out);
+}
+.sp-resize-grip::before {
+  content: ''; position: absolute; left: 50%; top: 50%; width: 6px; height: 16px; transform: translate(-50%, -50%);
+  background: repeating-linear-gradient(180deg, rgba(29,19,11,.8) 0 2px, transparent 2px 7px);
+}
+.sp-resize:hover::before, .sp-resize:focus-visible::before, html.coc-panel-resizing .sp-resize::before { opacity: 1; }
+.sp-resize:hover .sp-resize-grip, .sp-resize:focus-visible .sp-resize-grip, html.coc-panel-resizing .sp-resize-grip { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+.sp-resize:focus-visible .sp-resize-grip { outline: 2px solid #fff; outline-offset: 2px; }
+
+/* while the edge is dragged: no text selection, the col-resize cursor wherever the mouse runs,
+   embedded pages and the terminal do not catch the pointer, and nothing eases behind the edge */
+html.coc-panel-resizing, html.coc-panel-resizing * { cursor: col-resize !important; user-select: none !important; -webkit-user-select: none !important; }
+html.coc-panel-resizing iframe, html.coc-panel-resizing .xterm { pointer-events: none; }
+html.coc-panel-resizing :is(.hud-res, .hud-stats, .hud-build, .hud-roster-zone, .zoom-controls, .welcome-layer) { transition: none !important; }

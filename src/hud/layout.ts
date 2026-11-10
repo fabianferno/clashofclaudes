@@ -1,4 +1,5 @@
-import { PANEL_W } from '../village/camera';
+import { useApp } from '../state/store';
+import { getPanelWidth, usePanelWidth } from '../state/panelWidth';
 
 /** Right-edge margin of the Build/Open group. */
 export const BUILD_MARGIN = 14;
@@ -7,8 +8,14 @@ export const BUILD_W = 190;
 /** Right-edge offset of the top-right resources: the zoom column's margin (it stays below them). */
 export const RES_MARGIN = 12;
 
-/** Distance the HUD must stay clear of at the right edge: the open panel, if any. */
-export const panelInset = (panelOpen: boolean) => (panelOpen ? PANEL_W : 0);
+/** Distance the HUD must stay clear of at the right edge: the open panel (as wide as dragged), if any. */
+export const panelInset = (panelOpen: boolean, width = getPanelWidth()) => (panelOpen ? width : 0);
+/** `panelInset` as a hook: re-renders while the panel opens, closes or is being resized. */
+export function usePanelInset(): number {
+  const panelOpen = useApp((s) => s.panelOpen);
+  const width = usePanelWidth((s) => s.width);
+  return panelInset(panelOpen, width);
+}
 /** Space the builders bar keeps free on its right so it never runs under Build/Open. */
 export const rosterReserve = (_panelOpen: boolean) => BUILD_MARGIN + BUILD_W + 12;
 

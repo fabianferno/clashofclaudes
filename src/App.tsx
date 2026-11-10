@@ -15,6 +15,7 @@ import SettingsPage from './panels/SettingsPage';
 import BugReportDialog, { openBugReport } from './panels/BugReport';
 import CommandPalette from './panels/CommandPalette';
 import { preloadTerminal } from './components/LazyTerminalView';
+import GameCursor from './components/GameCursor';
 import TourOverlay from './onboarding/TourOverlay';
 import { startTour } from './onboarding/tour';
 import { loadSettings, tidyOnce } from './state/settings';
@@ -102,6 +103,8 @@ function App() {
           </div>
         </div>
       )}
+    {/* last, above every overlay (Kanban, Settings, the palette, pop-outs) */}
+    <GameCursor />
     </>
   );
 }

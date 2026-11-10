@@ -408,6 +408,8 @@ export interface SceneOptions {
   onSelect?: (sel: Selection | null) => void;
   /** Width of the panel currently covering the right of the window (0 when closed). */
   panelWidth?: () => number;
+  /** Width the panel has when open (it can be dragged wider or narrower); fits leave room for it. */
+  openPanelWidth?: () => number;
   /** Whether the structure/house may stand with its top-left on this tile (drives the green/red footprint). */
   canMove?: (t: MoveTarget, at: Tile) => boolean;
   /** Persist a move released on a valid tile; resolves false when it was not applied. */
@@ -689,6 +691,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     meadow.tilePosition.set(cam.x, cam.y);
   };
   const panelW = () => opts.panelWidth?.() ?? 0;
+  const openPanelW = () => opts.openPanelWidth?.() ?? PANEL_W;
   const villageCam = (): Cam | null =>
     villageTiles ? fitRect(pxRectOfTiles(villageTiles), app.screen.width, app.screen.height, panelW(), 1) : null;
   const jumpTo = (c: Cam) => { cam = c; camTarget = null; applyCam(); };
@@ -1521,7 +1524,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     if (ws?.compound) {
       autoFit = false;
       // the panel opens with the selection, so fit into the space it leaves
-      camTarget = fitRect(pxRectOfCompound(ws.compound), app.screen.width, app.screen.height, PANEL_W, ZMAX);
+      camTarget = fitRect(pxRectOfCompound(ws.compound), app.screen.width, app.screen.height, openPanelW(), ZMAX);
       opts.onSelect?.({ kind: 'workspace', id: ws.id });
     } else {
       fitVillage();
@@ -1543,7 +1546,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     const ws = workspaces.find((w) => w.id === workspaceId);
     if (!ws?.compound) return;
     autoFit = false;
-    camTarget = fitRect(pxRectOfCompound(ws.compound), app.screen.width, app.screen.height, PANEL_W, ZMAX);
+    camTarget = fitRect(pxRectOfCompound(ws.compound), app.screen.width, app.screen.height, openPanelW(), ZMAX);
   };
   const entityIdOf = (sel: Selection) => (sel.kind === 'hall' ? 'hall' : sel.kind === 'workspace' ? `house:${sel.id}`
     : sel.kind === 'session' ? `struct:${sel.id}` : sel.kind === 'quota' ? `collector:${sel.agent}` : `builder:${sel.id}`);
@@ -1560,7 +1563,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     const e = hitEntities().find((x) => x.id === id);
     if (!e) return;
     const p = clickPoint(e);
-    const next = keepVisible(camTarget ?? cam, p.x, p.y, app.screen.width, app.screen.height, PANEL_W, 60);
+    const next = keepVisible(camTarget ?? cam, p.x, p.y, app.screen.width, app.screen.height, openPanelW(), 60);
     if (next) { autoFit = false; camTarget = next; }
   };
 

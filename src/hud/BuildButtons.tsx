@@ -1,13 +1,12 @@
 import { useState } from 'react';
-import { useApp } from '../state/store';
-import { BUILD_MARGIN, BUILD_W, panelInset } from './layout';
+import { BUILD_MARGIN, BUILD_W, usePanelInset } from './layout';
 import { createFolder, openFolder } from '../state/workspaceActions';
 import FolderHint from '../panels/FolderHint';
 import './hud.css';
 
 /** Bottom right: Build (a new workspace) and Open (an existing one). */
 export default function BuildButtons() {
-  const panelOpen = useApp((s) => s.panelOpen);
+  const inset = usePanelInset();
   const [naming, setNaming] = useState<string | null>(null);
 
   const pick = async (choose = false) => {
@@ -15,7 +14,7 @@ export default function BuildButtons() {
   };
 
   return (
-    <div className="hud-build" style={{ right: panelInset(panelOpen) + BUILD_MARGIN, width: BUILD_W, justifyContent: 'flex-end' }} data-testid="build-buttons">
+    <div className="hud-build" style={{ right: inset + BUILD_MARGIN, width: BUILD_W, justifyContent: 'flex-end' }} data-testid="build-buttons">
       {naming !== null && (
         <div className="hud-pop">
           <input

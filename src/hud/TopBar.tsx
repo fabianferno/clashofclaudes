@@ -5,6 +5,7 @@ import { RES_MARGIN, STATS_GAP, panelInset, statsPlacement, type StatsPlacement 
 import ResourceBars from './ResourceBars';
 import BuilderAvatar from './BuilderAvatar';
 import './hud.css';
+import { usePanelWidth } from '../state/panelWidth';
 
 interface PillDef { id: string; badge: BadgeState; label: string; pulse?: boolean }
 const PILLS: PillDef[] = [
@@ -21,6 +22,7 @@ export default function TopBar() {
   const sessionMap = useApp((s) => s.sessions);
   const stats = useApp((s) => s.stats);
   const panelOpen = useApp((s) => s.panelOpen);
+  const panelW = usePanelWidth((s) => s.width); // the panel's edge may be dragged
   const setSelection = useApp((s) => s.setSelection);
   // "Shipped today" must roll over at local midnight even if nothing else re-renders the bar.
   const [day, setDay] = useState(0);
@@ -63,7 +65,7 @@ export default function TopBar() {
     const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
     for (const el of [player.current, res.current]) if (el && ro) ro.observe(el);
     return () => { window.removeEventListener('resize', measure); ro?.disconnect(); };
-  }, [panelOpen]);
+  }, [panelOpen, panelW]);
 
   const midnight = startOfToday();
   const today = stats.recentShips.filter((t) => t >= midnight).length;

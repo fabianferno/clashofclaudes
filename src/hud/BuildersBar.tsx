@@ -1,7 +1,7 @@
 import { useRef, useState, type WheelEvent } from 'react';
 import { useApp } from '../state/store';
 import { CLASS_NAMES, classOf, gearOf, stars } from '../village/look';
-import { panelInset, rosterReserve } from './layout';
+import { rosterReserve, usePanelInset } from './layout';
 import { BADGE_LABEL, badgeOf, builderTarget, liveSessionOf } from './hudState';
 import BuilderAvatar from './BuilderAvatar';
 import './hud.css';
@@ -12,6 +12,7 @@ export default function BuildersBar() {
   const sessions = useApp((s) => s.sessions);
   const selection = useApp((s) => s.selection);
   const panelOpen = useApp((s) => s.panelOpen);
+  const inset = usePanelInset();
   const setSelection = useApp((s) => s.setSelection);
   const [collapsed, setCollapsed] = useState(false);
   const list = useRef<HTMLDivElement>(null);
@@ -23,7 +24,7 @@ export default function BuildersBar() {
   };
 
   return (
-    <div className="hud-roster-zone" style={{ right: panelInset(panelOpen), paddingRight: rosterReserve(panelOpen) }}>
+    <div className="hud-roster-zone" style={{ right: inset, paddingRight: rosterReserve(panelOpen) }}>
       <div data-testid="builders-bar" className={`hud-roster${collapsed ? ' collapsed' : ''}`}>
         <button className="hud-btn grey sm hud-tab" onClick={() => setCollapsed((c) => !c)}>
           {collapsed ? '▴' : '▾'} Builders

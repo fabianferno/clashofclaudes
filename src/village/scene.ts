@@ -6,7 +6,7 @@ import { enclosure, seedOf } from './enclosure';
 import { setVillageSnapshot } from '../screenshot';
 import { townHallTitle } from '../state/names';
 import { indexTrees, underTree, type TreeIndex } from './clearance';
-import { FOREST_FLOOR, forestTile, hazeTexture } from './art/forest';
+import { FOREST_FLOOR, PATCH_PX, forestTile, patchTile, vignetteTexture } from './art/forest';
 import { classOf, gearOf, houseColors, houseStage, scaffoldHeight, type ClassTier, type Gear } from './look';
 import { blockedBy, dropOf, onGround, plazaPoint, retarget, routeHome, routeToSite, standTile, step, takenBy, walkable, type Blocked, type BuilderDrop, type Walker } from './walkers';
 import {
@@ -511,6 +511,11 @@ export function rendererOptions(dpr: number) {
   };
 }
 
+/** The forest's patch layers: world px each repeats over (prime-ish, unrelated to the 512 px tile and each other) and an offset. */
+const PATCHES = [{ seed: 3, period: 1693, shift: 211 }, { seed: 29, period: 2671, shift: 977 }];
+/** How strongly the patches show: enough to break the repeat, not so much they read as clouds. */
+const PATCH_ALPHA = 0.6;
+
 export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = {}): Promise<Scene> {
   const app = new Application();
   await app.init({ resizeTo: canvasHost, ...rendererOptions(window.devicePixelRatio || 1) });
@@ -524,10 +529,12 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
   const overlay = new Container({ sortableChildren: true });
   view.addChild(groundLayer, world, overlay);
   // endless deep forest behind the baked ground (whose grass fades into it): it follows the camera so
-  // zooming out never shows a bare edge, under a haze that makes it read deeper than the village's trees
+  // zooming out never shows a bare edge. Two layers of soft patches at sizes unrelated to its tile
+  // (and to each other) break up its repeat; a light vignette over everything adds the haze.
   const meadow = new TilingSprite({ texture: Texture.from(forestTile()), width: 1, height: 1 });
-  const haze = new Sprite(Texture.from(hazeTexture()));
-  app.stage.addChild(meadow, haze, view);
+  const patches = PATCHES.map((p) => new TilingSprite({ texture: Texture.from(patchTile(p.seed)), width: 1, height: 1, alpha: PATCH_ALPHA }));
+  const vignette = new Sprite(Texture.from(vignetteTexture()));
+  app.stage.addChild(meadow, ...patches, view, vignette);
 
   const ground = new Sprite(Texture.EMPTY);
   groundLayer.addChild(ground);
@@ -701,7 +708,13 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     meadow.width = app.screen.width; meadow.height = app.screen.height;
     meadow.tileScale.set(cam.zoom / 2);
     meadow.tilePosition.set(cam.x, cam.y);
-    haze.width = app.screen.width; haze.height = app.screen.height;
+    patches.forEach((sp, i) => {
+      const p = PATCHES[i];
+      sp.width = app.screen.width; sp.height = app.screen.height;
+      sp.tileScale.set((cam.zoom * p.period) / PATCH_PX);
+      sp.tilePosition.set(cam.x + p.shift * cam.zoom, cam.y + p.shift * 0.6 * cam.zoom);
+    });
+    vignette.width = app.screen.width; vignette.height = app.screen.height;
   };
   const panelW = () => opts.panelWidth?.() ?? 0;
   const openPanelW = () => opts.openPanelWidth?.() ?? PANEL_W;

@@ -4,7 +4,7 @@ import { GAP, HALL, HOUSE, wallRect, gateInside, roadRects, type Rect } from '..
 import { bake, ctx, type Art, type Pt } from './draw';
 import { paintTree, TREE_K, TREE_REACH } from './scenery';
 import { keepClearOfTrees, treeOver } from '../clearance';
-import { grassFade, grassTile } from './forest';
+import { forestField, forestMasks, grassTile } from './forest';
 
 const PAD_TOP = 90;
 const PAD = 40;
@@ -46,6 +46,8 @@ export function drawGround(
   lifted: (t: GroundTree) => boolean = () => false,
 ): HTMLCanvasElement {
   const { forest, blobs, tufts } = groundPlan(b, seed);
+  const field = forestField(b, compounds, clearings, seed);
+  const masks = forestMasks(field, groundOrigin(b), groundBakeSize(b).w, groundBakeSize(b).h);
   const o = groundOrigin(b);
   const { w, h } = groundBakeSize(b);
   return bake(w, h, 0, 0, () => {
@@ -80,19 +82,24 @@ export function drawGround(
         g.stroke();
       }
     }
-    // keep the grass and its detail only inside the diamond, fading toward its edge
+    // keep the grass and its detail only where the field is open, fading as the forest thickens
     g.save();
     g.globalCompositeOperation = 'destination-in';
     g.imageSmoothingEnabled = true;
-    g.drawImage(grassFade(b, o, w, h), o.x, o.y, w, h);
+    g.drawImage(masks.grass, o.x, o.y, w, h);
     g.restore();
-    for (const t of standing(forest, compounds, clearings)) {
+    for (const t of standing(forest, compounds, clearings, field)) {
       if (lifted(t)) continue;
       const p = iso(t.x, t.y);
       g.save(); g.translate(p.x, p.y);
       paintTree(t.pine, t.s);
       g.restore();
     }
+    // the canopy's shade, as deep as the forest (full at the edge, matching the backdrop's)
+    g.save();
+    g.globalCompositeOperation = 'source-atop';
+    g.drawImage(masks.shade, o.x, o.y, w, h);
+    g.restore();
   }, o, GROUND_SCALE).canvas;
 }
 
@@ -116,23 +123,21 @@ function groundPlan(b: Rect, seed: number) {
 }
 
 /**
- * The forest that stands, back to front: sparse near the village, dense further out; never inside a
+ * The forest that stands, back to front: sparse in the open, dense as deep as `field` says; never inside a
  * wall rect + GAP, the hall, a road or a clearing, nor reaching over the hall, a collector or the
  * idle builders' ring from in front (see `keepClearOfTrees`: the ground is drawn under them).
  */
-function standing(forest: GroundTree[], compounds: Compound[], clearings: readonly Rect[]): GroundTree[] {
-  const cx = HALL.x0 + HALL.w / 2, cy = HALL.y0 + HALL.h / 2;
+function standing(forest: GroundTree[], compounds: Compound[], clearings: readonly Rect[], field: (x: number, y: number) => number): GroundTree[] {
   const walls = compounds.map(wallRect);
   const roads = compounds.flatMap(roadRects);
   const keep = keepClearOfTrees(clearings);
   return forest
     .filter((t) => {
-      const d = Math.max(Math.abs(t.x - cx), Math.abs(t.y - cy));
       if (inRect(t.x, t.y, HALL, 1.5)) return false;
       if (walls.some((r) => inRect(t.x, t.y, r, GAP))) return false;
       if (clearings.some((r) => inRect(t.x, t.y, r, CLEARING_PAD))) return false;
       if (roads.some((r) => inRect(t.x, t.y, r, 1))) return false;
-      if (t.r >= Math.max(0.06, Math.min(0.95, (d - 8) / 6))) return false;
+      if (t.r >= Math.max(0.06, Math.min(0.95, field(t.x, t.y)))) return false;
       return !treeOver(t, keep);
     })
     .sort((a, c) => a.x + a.y - (c.x + c.y));
@@ -140,7 +145,7 @@ function standing(forest: GroundTree[], compounds: Compound[], clearings: readon
 
 /** The trees the ground shows (`drawGround`'s forest), back to front. */
 export function groundTrees(b: Rect, compounds: Compound[], seed: number, clearings: readonly Rect[]): GroundTree[] {
-  return standing(groundPlan(b, seed).forest, compounds, clearings);
+  return standing(groundPlan(b, seed).forest, compounds, clearings, forestField(b, compounds, clearings, seed));
 }
 
 /**
@@ -150,7 +155,7 @@ export function groundTrees(b: Rect, compounds: Compound[], seed: number, cleari
  */
 export function treesOverPaths(b: Rect, compounds: Compound[], seed: number, clearings: readonly Rect[], tiles: Map<string, Tile>): GroundTree[] {
   const centres = [...tiles.values()].map((t) => iso(t.x + 0.5, t.y + 0.5));
-  return standing(groundPlan(b, seed).forest, compounds, clearings).filter((t) => {
+  return standing(groundPlan(b, seed).forest, compounds, clearings, forestField(b, compounds, clearings, seed)).filter((t) => {
     const p = iso(t.x, t.y), k = t.s * TREE_K;
     const half = TREE_REACH.half * k + TW / 2, up = TREE_REACH.up * k;
     return centres.some((c) => Math.abs(c.x - p.x) < half && c.y - TH / 2 < p.y && c.y + TH / 2 > p.y - up);

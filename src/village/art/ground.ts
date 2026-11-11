@@ -4,6 +4,7 @@ import { GAP, HALL, HOUSE, wallRect, gateInside, roadRects, type Rect } from '..
 import { bake, ctx, type Art, type Pt } from './draw';
 import { paintTree, TREE_K, TREE_REACH } from './scenery';
 import { keepClearOfTrees, treeOver } from '../clearance';
+import { grassFade, grassTile } from './forest';
 
 const PAD_TOP = 90;
 const PAD = 40;
@@ -49,8 +50,14 @@ export function drawGround(
   const { w, h } = groundBakeSize(b);
   return bake(w, h, 0, 0, () => {
     const g = ctx();
-    // No solid fill: the bake is a rectangle, but its grass detail and forest cover only the village's
-    // diamond, so a fill left flat green corners over the endless meadow drawn behind it (scene.ts).
+    // The village's grass, over the whole rectangle; faded out below (only the diamond keeps it) so
+    // it melts into the deep forest drawn behind the bake (scene.ts).
+    const pattern = g.createPattern(grassTile(), 'repeat');
+    if (pattern) {
+      if (typeof DOMMatrix !== 'undefined') pattern.setTransform?.(new DOMMatrix().scale(0.5)); // the tile is 2x art
+      g.fillStyle = pattern;
+      g.fillRect(o.x, o.y, w, h);
+    }
     for (const t of blobs) {
       const p = iso(t.x, t.y);
       const rgb = t.light ? '120,196,64' : '62,130,34';
@@ -73,6 +80,12 @@ export function drawGround(
         g.stroke();
       }
     }
+    // keep the grass and its detail only inside the diamond, fading toward its edge
+    g.save();
+    g.globalCompositeOperation = 'destination-in';
+    g.imageSmoothingEnabled = true;
+    g.drawImage(grassFade(b, o, w, h), o.x, o.y, w, h);
+    g.restore();
     for (const t of standing(forest, compounds, clearings)) {
       if (lifted(t)) continue;
       const p = iso(t.x, t.y);

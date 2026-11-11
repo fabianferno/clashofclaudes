@@ -14,6 +14,13 @@ export const PANEL_W = 420;
 export const EASE_TAU = 0.25;
 const FIT_MARGIN = 40;
 
+/**
+ * How much larger than their art the village's labels (name plates, status bars, bubbles, chips,
+ * floating text) are drawn at `zoom`: zoomed out they keep the size they have at zoom 1 on screen,
+ * so they stay readable over the whole village; zoomed in they grow with the world.
+ */
+export const labelScale = (zoom: number): number => Math.max(1, 1 / Math.max(ZMIN, zoom));
+
 const clampZoom = (z: number) => Math.min(ZMAX, Math.max(ZMIN, z));
 
 export const worldToScreen = (c: Cam, wx: number, wy: number) => ({ x: wx * c.zoom + c.x, y: wy * c.zoom + c.y });

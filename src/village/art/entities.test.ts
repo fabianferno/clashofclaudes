@@ -223,7 +223,7 @@ test('a hammer stroke holds the hammer up, swings it down fast and rests on the 
 });
 
 describe('ground bake', () => {
-  it('lays no solid fill, so the meadow behind shows past the village diamond', () => {
+  it('fills its grass over the whole rectangle, then masks it to the diamond so the forest behind shows past it', () => {
     const b = { x0: -14, y0: -14, w: 29, h: 29 };
     const fills: Array<[number, number, number, number]> = [];
     const proto = CanvasRenderingContext2D.prototype;
@@ -235,6 +235,15 @@ describe('ground bake', () => {
       proto.fillRect = real;
     }
     const { w, h } = groundBakeSize(b);
-    expect(fills.filter(([, , fw, fh]) => fw >= w * 0.5 && fh >= h * 0.5)).toEqual([]);
+    expect(fills.filter(([, , fw, fh]) => fw >= w * 0.5 && fh >= h * 0.5)).toHaveLength(1);
+    const ops: string[] = [];
+    const desc = Object.getOwnPropertyDescriptor(proto, 'globalCompositeOperation')!;
+    Object.defineProperty(proto, 'globalCompositeOperation', { configurable: true, get: desc.get, set(v: string) { ops.push(v); desc.set!.call(this, v); } });
+    try {
+      drawGround(b, [], 7);
+    } finally {
+      Object.defineProperty(proto, 'globalCompositeOperation', desc);
+    }
+    expect(ops).toContain('destination-in');
   });
 });

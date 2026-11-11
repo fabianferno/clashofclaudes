@@ -171,6 +171,8 @@ function dotTexture(kind: 'dust' | 'smoke' | 'orb'): Texture {
 export class FxRenderer {
   private visuals = new Map<Particle, Sprite | Text>();
   private spare: Record<'dust' | 'smoke' | 'orb', Sprite[]> = { dust: [], smoke: [], orb: [] };
+  /** Floating text's size (see `labelScale`): it stays readable zoomed out. */
+  textScale = 1;
 
   constructor(private layer: Container, private particles: Particles) {
     particles.onRemove = (p) => this.release(p);
@@ -211,7 +213,7 @@ export class FxRenderer {
       if (!live) continue;
       v.position.set(p.x, p.y);
       v.alpha = p.alpha;
-      if (p.kind === 'text') continue;
+      if (p.kind === 'text') { v.scale.set(this.textScale); continue; }
       v.scale.set(p.scale * (p.kind === 'orb' ? 0.55 : 0.6));
     }
   }

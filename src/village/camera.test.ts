@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { ZMAX, ZMIN, ease, fitRect, keepVisible, screenToWorld, worldToScreen, zoomAt, type Cam } from './camera';
+import { ZMAX, ZMIN, ease, fitRect, keepVisible, labelScale, screenToWorld, worldToScreen, zoomAt, type Cam } from './camera';
 
 describe('camera', () => {
+  it('labels keep their zoom-1 screen size when zoomed out and grow with the world when zoomed in', () => {
+    for (const z of [0.25, 0.4, 0.5, 0.8, 1]) expect(labelScale(z) * z).toBeCloseTo(1);
+    expect(labelScale(2)).toBe(1);
+    expect(labelScale(ZMAX)).toBe(1);
+    expect(labelScale(0.1)).toBe(1 / ZMIN);
+  });
+
   it('zoom_at_keeps_point_fixed', () => {
     const c: Cam = { x: 100, y: 50, zoom: 1 };
     const before = screenToWorld(c, 300, 200);

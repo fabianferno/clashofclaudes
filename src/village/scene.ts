@@ -6,6 +6,7 @@ import { enclosure, seedOf } from './enclosure';
 import { setVillageSnapshot } from '../screenshot';
 import { townHallTitle } from '../state/names';
 import { indexTrees, underTree, type TreeIndex } from './clearance';
+import { FOREST_FLOOR, forestTile, hazeTexture } from './art/forest';
 import { classOf, gearOf, houseColors, houseStage, scaffoldHeight, type ClassTier, type Gear } from './look';
 import { blockedBy, dropOf, onGround, plazaPoint, retarget, routeHome, routeToSite, standTile, step, takenBy, walkable, type Blocked, type BuilderDrop, type Walker } from './walkers';
 import {
@@ -17,7 +18,7 @@ import { getTexture, holdTextures, prepareArt, releaseRetired, spriteTextures } 
 import { STATUS_LIFT, statusKey, statusSignature, statusesDue, type StatusTone } from './status';
 import type { MoveTarget, Selection } from '../state/store';
 import {
-  PANEL_W, ZMAX, ease, fitRect, keepVisible, pxRectOfCompound, pxRectOfTiles, screenToWorld, worldToScreen, zoomAt, type Cam,
+  PANEL_W, ZMAX, ease, fitRect, keepVisible, labelScale, pxRectOfCompound, pxRectOfTiles, screenToWorld, worldToScreen, zoomAt, type Cam,
 } from './camera';
 import { DRAG_PX, createDragController } from './drag';
 import { clickPoint, compoundAt, dragTarget, hitTest, selectionOf } from './input';
@@ -95,6 +96,9 @@ const HOUSE_LIFT = [146, 160, 160, 186, 186];
 export const HALL_LIFT = 226;
 /** How much higher than the name plate a house's drag hint floats (the plate is ~20 px tall). */
 const PLATE_CLEAR = 12;
+/** About how tall a name plate or status bar stands, world px at zoom 1: the chip over one rises by
+ * what the label grows when zoomed out. */
+const LABEL_ROOM = 24;
 
 /**
  * How far builders keep off the hall, the collectors and the walls, in tiles. A collector's painted
@@ -420,6 +424,8 @@ export interface SceneDebug {
   cam: Cam;
   /** Client (window) position of an entity's clickable middle: an entity id, or a workspace id for its house. */
   screenOf(id: string): { x: number; y: number } | null;
+  /** Zoom by `factor` about the village's middle at once, no easing (driving a hidden window, whose ticker is stopped). */
+  zoomNow(factor: number): Cam;
 }
 
 export interface SceneOptions {
@@ -501,36 +507,8 @@ export function rendererOptions(dpr: number) {
     autoDensity: true,
     antialias: false,
     preference: 'webgl' as const,
-    background: '#5aa832',
+    background: FOREST_FLOOR,
   };
-}
-
-/** A seamless 512px grass tile (drawn at 2x density, shown at half size) for the ground beyond the baked village. */
-function grassTile(): HTMLCanvasElement {
-  const N = 512, c = document.createElement('canvas');
-  c.width = c.height = N;
-  const g = c.getContext('2d')!;
-  g.fillStyle = '#5aa832'; g.fillRect(0, 0, N, N);
-  let s = 7;
-  const rnd = () => (s = (s * 9301 + 49297) % 233280) / 233280;
-  const wrap = (x: number, y: number, f: (x: number, y: number) => void) => {
-    for (const dx of [-N, 0, N]) for (const dy of [-N, 0, N]) f(x + dx, y + dy);
-  };
-  for (let i = 0; i < 40; i++) {
-    const x = rnd() * N, y = rnd() * N, rx = 40 + rnd() * 80, ry = rx / 2, rgb = rnd() < 0.5 ? '120,196,64' : '62,130,34';
-    wrap(x, y, (px, py) => {
-      const gr = g.createRadialGradient(px, py, 0, px, py, rx);
-      gr.addColorStop(0, `rgba(${rgb},.5)`); gr.addColorStop(1, `rgba(${rgb},0)`);
-      g.fillStyle = gr; g.beginPath(); g.ellipse(px, py, rx, ry, 0, 0, Math.PI * 2); g.fill();
-    });
-  }
-  g.strokeStyle = 'rgba(40,100,20,.5)'; g.lineWidth = 2;
-  for (let i = 0; i < 120; i++) {
-    wrap(rnd() * N, rnd() * N, (x, y) => {
-      g.beginPath(); g.moveTo(x - 4, y); g.lineTo(x - 1, y - 7); g.moveTo(x, y); g.lineTo(x + 1, y - 8); g.moveTo(x + 4, y); g.lineTo(x + 5, y - 6); g.stroke();
-    });
-  }
-  return c;
 }
 
 export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = {}): Promise<Scene> {
@@ -545,9 +523,11 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
   const world = new Container({ sortableChildren: true });
   const overlay = new Container({ sortableChildren: true });
   view.addChild(groundLayer, world, overlay);
-  // endless grass behind the baked ground: it follows the camera so zooming out never shows a bare edge
-  const meadow = new TilingSprite({ texture: Texture.from(grassTile()), width: 1, height: 1 });
-  app.stage.addChild(meadow, view);
+  // endless deep forest behind the baked ground (whose grass fades into it): it follows the camera so
+  // zooming out never shows a bare edge, under a haze that makes it read deeper than the village's trees
+  const meadow = new TilingSprite({ texture: Texture.from(forestTile()), width: 1, height: 1 });
+  const haze = new Sprite(Texture.from(hazeTexture()));
+  app.stage.addChild(meadow, haze, view);
 
   const ground = new Sprite(Texture.EMPTY);
   groundLayer.addChild(ground);
@@ -627,9 +607,9 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     const to = { x: h.x, y: h.y - 40 };
     particles.orbs(from, to, 8);
     particles.later(ORB_SECONDS + 0.2, () => {
-      particles.floatText({ x: to.x, y: to.y - 30 }, `+${o.xpGained} XP`, '#ffffff');
+      particles.floatText({ x: to.x, y: to.y - 30 * labelK }, `+${o.xpGained} XP`, '#ffffff');
       particles.dust(h, 5, false);
-      if (o.levelAfter > o.levelBefore) particles.floatText({ x: to.x, y: to.y - 64 }, 'LEVEL UP!', '#ffe066');
+      if (o.levelAfter > o.levelBefore) particles.floatText({ x: to.x, y: to.y - 64 * labelK }, 'LEVEL UP!', '#ffe066');
     });
   };
   const updateFx = (dt: number) => {
@@ -705,13 +685,23 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
   let cam: Cam = { x: 0, y: 0, zoom: 1 };
   let camTarget: Cam | null = null;
   let autoFit = true; // follow the village rect until the user moves the camera
+  /** Labels' size over their art at the current zoom (see `labelScale`). */
+  let labelK = 1;
   const applyCam = () => {
     view.scale.set(cam.zoom);
+    const k = labelScale(cam.zoom);
+    if (k !== labelK) {
+      labelK = k;
+      for (const rec of sprites.values()) if (rec.entity.kind === 'status') rec.sprite.scale.set(0.5 * k);
+      fxRender.textScale = k;
+      placeChip();
+    }
     view.position.set(cam.x, cam.y);
     meadow.position.set(0, 0);
     meadow.width = app.screen.width; meadow.height = app.screen.height;
     meadow.tileScale.set(cam.zoom / 2);
     meadow.tilePosition.set(cam.x, cam.y);
+    haze.width = app.screen.width; haze.height = app.screen.height;
   };
   const panelW = () => opts.panelWidth?.() ?? 0;
   const openPanelW = () => opts.openPanelWidth?.() ?? PANEL_W;
@@ -728,7 +718,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     autoFit = true;
     camTarget = c;
   };
-  const onResize = () => { if (autoFit) fit(); };
+  const onResize = () => { if (autoFit) fit(); else applyCam(); }; // the forest and haze cover the new size
   app.renderer.on('resize', onResize);
   app.ticker.add((t) => {
     if (!camTarget) return; // idle: no camera work
@@ -1029,6 +1019,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
         v.bubble.visible = needs || stuck;
         if (needs || stuck) {
           setTex(v.bubble, `bubble:${needs ? 'needs' : 'stuck'}`);
+          v.bubble.scale.set(0.5 * labelK);
           v.bubble.position.set(p.x, p.y - HEAD_HEIGHT[v.cls] + Math.sin(time * 6) * 2);
         }
       }
@@ -1093,7 +1084,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       let rec = sprites.get(e.id);
       if (!rec) {
         const sprite = new Sprite();
-        sprite.scale.set(0.5); // art is baked at 2x density
+        sprite.scale.set(e.kind === 'status' ? 0.5 * labelK : 0.5); // art is baked at 2x density
         (e.kind === 'status' ? overlay : world).addChild(sprite);
         rec = { sprite, key: '', entity: e, base: { x: 0, y: 0 } };
         sprites.set(e.id, rec);
@@ -1182,6 +1173,11 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     minions: [...views].flatMap(([builderId, v]) => [...v.minions].filter(([, m]) => m.gone === null)
       .map(([id, m]) => ({ id, builderId, x: m.x, y: m.y, pose: m.pose }))),
     cam: { ...cam },
+    zoomNow: (factor) => {
+      autoFit = false;
+      jumpTo(zoomAt(cam, (app.screen.width - panelW()) / 2, app.screen.height / 2, factor));
+      return { ...cam };
+    },
     screenOf: (id) => {
       const e = hitEntities().find((x) => x.id === id) ?? hitEntities().find((x) => x.id === `house:${id}`);
       if (!e) return null;
@@ -1270,6 +1266,12 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
   chip.addChild(chipBg, chipLabel);
   chip.visible = false;
   overlay.addChild(chip);
+  /** Where the chip floats: `height` world px over (x, y), plus room for the labels grown under it. */
+  let chipAt = { x: 0, y: 0, height: 0 };
+  function placeChip() {
+    chip.scale.set(labelK);
+    chip.position.set(chipAt.x, chipAt.y - chipAt.height - (labelK - 1) * LABEL_ROOM - 22 * labelK);
+  }
   const setChip = (text: string) => {
     if (chipLabel.text === text && chipBg.width) return;
     chipLabel.text = text;
@@ -1319,7 +1321,8 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     const handle = m.group ? lastState.workspaces.find((w) => w.id === m.group)?.compound?.house : null;
     const top = handle ? iso(handle.x + HOUSE / 2, handle.y + HOUSE / 2) : iso(cx, cy);
     setChip(m.chip || 'Drag to move');
-    chip.position.set(top.x, top.y - m.height - 22);
+    chipAt = { x: top.x, y: top.y, height: m.height };
+    placeChip();
     chip.visible = true;
   };
   app.ticker.add(() => {

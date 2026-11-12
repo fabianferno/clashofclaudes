@@ -37,6 +37,9 @@ impl From<&SessionState> for StateKind {
 pub struct Note {
     pub title: String,
     pub body: String,
+    /// For a prompt the app can answer: the `state_since` of that prompt, so the note's Allow
+    /// approves only that prompt (`SessionManager::approve_if`). None for every other note.
+    pub allow_since: Option<i64>,
 }
 
 pub struct Notifier {
@@ -110,14 +113,15 @@ impl Notifier {
         if before == Some(now) {
             return None;
         }
-        let body = match &info.state {
-            SessionState::NeedsYou { reason } => {
-                format!("needs you: {}", reason.chars().take(REASON_MAX_CHARS).collect::<String>())
-            }
-            SessionState::Finished => "finished".to_string(),
+        let (body, allow_since) = match &info.state {
+            SessionState::NeedsYou { reason } => (
+                format!("needs you: {}", reason.chars().take(REASON_MAX_CHARS).collect::<String>()),
+                info.awaiting_decision.then_some(info.state_since),
+            ),
+            SessionState::Finished => ("finished".to_string(), None),
             _ => return None,
         };
-        Some(Note { title: builder_name.to_string(), body })
+        Some(Note { title: builder_name.to_string(), body, allow_since })
     }
 }
 
@@ -222,7 +226,7 @@ mod tests {
         assert_eq!(n.on_update(None, &agent("a", SessionState::Working), "Bob"), None);
         assert_eq!(
             n.on_update(None, &agent("a", needs("run rm")), "Bob"),
-            Some(Note { title: "Bob".into(), body: "needs you: run rm".into() })
+            Some(Note { title: "Bob".into(), body: "needs you: run rm".into(), allow_since: None })
         );
         // Reason changes while staying NeedsYou: no repeat.
         assert_eq!(n.on_update(None, &agent("a", needs("other")), "Bob"), None);
@@ -236,6 +240,19 @@ mod tests {
         // Other states never notify.
         assert_eq!(n.on_update(None, &agent("a", SessionState::Stuck { reason: "x".into() }), "Bob"), None);
         assert_eq!(n.on_update(None, &agent("a", SessionState::Ended { exit_code: Some(0) }), "Bob"), None);
+    }
+
+    #[test]
+    fn a_prompt_the_app_can_answer_carries_its_since() {
+        let n = Notifier::with_focus(false);
+        let mut ask = agent("a", needs("Bash: npm test"));
+        ask.awaiting_decision = true;
+        ask.state_since = 42;
+        assert_eq!(n.on_update(None, &ask, "Bob").and_then(|x| x.allow_since), Some(42));
+        // A question answered in the terminal, and finished work, offer no Allow.
+        let q = agent("b", needs("Waiting in the terminal"));
+        assert_eq!(n.on_update(None, &q, "Bob").map(|x| x.allow_since), Some(None));
+        assert_eq!(n.on_update(None, &agent("c", SessionState::Finished), "Bob").map(|x| x.allow_since), Some(None));
     }
 
     #[test]

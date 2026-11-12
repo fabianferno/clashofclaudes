@@ -42,8 +42,16 @@ struct NotifyState {
     badge: notify::BadgeCache,
 }
 
+/// The notification action type whose one button approves the prompt the note was shown for.
+/// One button only: macOS folds two or more into an "Options" menu whose own click reports the
+/// first action, so a Deny next to it could be picked by a click meant to open the menu (or the
+/// reverse). Deny stays one click away: clicking the note opens the session's briefing.
+const DECIDE_ACTIONS: &str = "decide";
+const ALLOW_ACTION: &str = "allow";
+
 /// Shows `note` (lazily asking permission the first time); silent when refused or on error.
-fn show_note<R: Runtime>(app: &AppHandle<R>, st: &NotifyState, note: notify::Note, session_id: &str) {
+/// `allow`: give it the Allow button (the prompt is still open and the app can answer it).
+fn show_note<R: Runtime>(app: &AppHandle<R>, st: &NotifyState, note: notify::Note, session_id: &str, allow: bool) {
     if st.denied.load(Ordering::SeqCst) {
         return;
     }
@@ -57,7 +65,11 @@ fn show_note<R: Runtime>(app: &AppHandle<R>, st: &NotifyState, note: notify::Not
             }
         }
     }
-    let _ = n.builder().title(note.title).body(note.body).extra("sessionId", session_id).show();
+    let mut b = n.builder().title(note.title).body(note.body).extra("sessionId", session_id);
+    if let Some(since) = note.allow_since.filter(|_| allow) {
+        b = b.action_type_id(DECIDE_ACTIONS).extra("stateSince", since);
+    }
+    let _ = b.show();
 }
 
 /// Recomputes the dock badge from the live sessions (none when the setting is off); the dock is
@@ -283,7 +295,8 @@ pub fn run() {
                             if let Some(note) = ns.notifier.on_update(None, &info, &name)
                                 && notify::wanted(&settings, &info.state)
                             {
-                                show_note(&handle, &ns, note, &info.id);
+                                let allow = note.allow_since.is_some() && st.manager.answerable(&info.id);
+                                show_note(&handle, &ns, note, &info.id, allow);
                             }
                         }
                     }
@@ -342,12 +355,27 @@ pub fn run() {
             let focused = app.get_webview_window("main").is_some_and(|w| w.is_focused().unwrap_or(false));
             app.manage(NotifyState { notifier: notify::Notifier::with_focus(focused), denied: AtomicBool::new(false), badge: notify::BadgeCache::default() });
             let click_handle = app.handle().clone();
+            let _ = app.notification().register_action_types(vec![tauri_plugin_notification::ActionType::builder(DECIDE_ACTIONS)
+                .actions(vec![tauri_plugin_notification::Action::builder(ALLOW_ACTION, "Allow").build()])
+                .build()]);
             let _ = app.notification().on_action(move |a| {
-                if a.action_id() != "tap" {
-                    return;
-                }
-                if let Some(id) = a.notification().and_then(|n| n.extra().get("sessionId")).and_then(|v| v.as_str()) {
-                    focus_and_select(&click_handle, id);
+                let Some(extra) = a.notification().map(|n| n.extra()) else { return };
+                let Some(id) = extra.get("sessionId").and_then(|v| v.as_str()) else { return };
+                match a.action_id() {
+                    "tap" => focus_and_select(&click_handle, id),
+                    ALLOW_ACTION => {
+                        let since = extra.get("stateSince").and_then(|v| v.as_i64());
+                        let approved = since.is_some_and(|since| {
+                            click_handle.try_state::<AppState>().is_some_and(|st| st.manager.approve_if(id, since).is_ok())
+                        });
+                        if approved {
+                            usage::track(&click_handle, usage::Event::PromptAnswered { allowed: true });
+                        } else {
+                            // Answered meanwhile, or a newer prompt is open: show where it stands instead.
+                            focus_and_select(&click_handle, id);
+                        }
+                    }
+                    _ => {}
                 }
             });
             app.manage(AppState {

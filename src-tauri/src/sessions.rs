@@ -238,6 +238,11 @@ impl SessionEntry {
             self.active_prompt = None; // a hook prompt uses the adapter's normal keys
         }
         if awaiting != self.info.awaiting_decision {
+            // A newly armed prompt is a new wait, even with the same text as one answered in the
+            // terminal: `state_since` tells prompts apart (a notification's Allow, `approve_if`).
+            if awaiting {
+                self.info.state_since = now;
+            }
             self.info.awaiting_decision = awaiting;
             changed = true;
         }
@@ -890,20 +895,38 @@ impl SessionManager {
         self.answer(id, false)
     }
 
+    /// Approves the prompt only if it is the one that was open at `since` (its `state_since`): a
+    /// notification's Allow, which may be clicked long after a newer prompt replaced its own.
+    pub fn approve_if(&self, id: &str, since: i64) -> Result<()> {
+        self.answer_if(id, true, Some(since))
+    }
+
+    /// Whether the session's open prompt can be answered from the app (Allow / Deny keys known).
+    pub fn answerable(&self, id: &str) -> bool {
+        let g = self.lock();
+        g.get(id).is_some_and(|e| {
+            e.info.awaiting_decision
+                && matches!(e.info.state, SessionState::NeedsYou { .. })
+                && answer_keys(e, true).is_some()
+                && answer_keys(e, false).is_some()
+        })
+    }
+
     /// One answer per prompt: a second approve/deny errs until a new `PermissionRequested`.
     fn answer(&self, id: &str, approve: bool) -> Result<()> {
+        self.answer_if(id, approve, None)
+    }
+
+    fn answer_if(&self, id: &str, approve: bool, since: Option<i64>) -> Result<()> {
         let mut g = self.lock();
         let e = g.get_mut(id).ok_or_else(|| anyhow!("unknown session {id}"))?;
-        // A screen prompt (e.g. the trust menu) has its own keys; otherwise the adapter's.
-        let keys = match (&e.active_prompt, e.adapter.as_deref()) {
-            (Some(p), _) => Some(if approve { p.approve } else { p.deny }),
-            (None, Some(a)) => if approve { a.approve_keys() } else { a.deny_keys() },
-            (None, None) => None,
-        }
-        .filter(|k| !k.is_empty()) // a prompt with no keys is answered in the terminal
-        .ok_or_else(|| anyhow!("this agent can't be answered from the app; open the terminal"))?;
+        let keys = answer_keys(e, approve)
+            .ok_or_else(|| anyhow!("this agent can't be answered from the app; open the terminal"))?;
         if !e.info.awaiting_decision || !matches!(e.info.state, SessionState::NeedsYou { .. }) {
             bail!("session is not waiting for approval");
+        }
+        if since.is_some_and(|s| s != e.info.state_since) {
+            bail!("that prompt was already answered; a newer one is open");
         }
         let pty = e.pty.clone().ok_or_else(|| anyhow!("session is not running"))?;
         pty.write(keys)?; // only enqueues, so it is fine under the lock
@@ -1392,6 +1415,17 @@ impl std::error::Error for WorkspaceMissing {}
 
 /// The folder can vanish while the app runs, so check the filesystem, not just the load-time
 /// `missing` flag (a PTY spawned in a missing cwd silently falls back to `$HOME`).
+/// The keys that answer the session's open prompt: a screen prompt's own (e.g. the trust menu),
+/// otherwise the adapter's. None when the prompt is answered in the terminal (no keys).
+fn answer_keys(e: &SessionEntry, approve: bool) -> Option<&'static [u8]> {
+    match (&e.active_prompt, e.adapter.as_deref()) {
+        (Some(p), _) => Some(if approve { p.approve } else { p.deny }),
+        (None, Some(a)) => if approve { a.approve_keys() } else { a.deny_keys() },
+        (None, None) => None,
+    }
+    .filter(|k| !k.is_empty())
+}
+
 fn ensure_present(ws: &Workspace) -> Result<()> {
     if ws.missing || !ws.path.is_dir() {
         return Err(WorkspaceMissing(ws.path.clone()).into());
@@ -1794,6 +1828,27 @@ mod tests {
         assert!(wait_until(|| last_update(&fx, &s.id).as_ref() == Some(&i)), "Updated(Working) emitted");
         assert!(fx.mgr.approve(&s.id).is_err(), "already answered");
         assert!(fx.mgr.deny(&s.id).is_err(), "already answered");
+    }
+
+    #[test]
+    fn approve_if_answers_only_the_prompt_it_was_shown_for() {
+        let fx = fixture();
+        let s = fx.mgr.start_with_spec(&fx.ws, &claude("b1"), sleeper(&fx), Arc::new(ClaudeAdapter)).unwrap();
+        assert!(!fx.mgr.answerable(&s.id), "nothing open yet");
+        fx.mgr.on_hook(&s.id, fixture_json("notification_permission.json"));
+        assert!(fx.mgr.answerable(&s.id));
+        let first = info(&fx, &s.id).state_since;
+        // Answered in the app, then a new prompt opens later: the old notification must not approve it.
+        fx.mgr.deny(&s.id).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fx.mgr.on_hook(&s.id, fixture_json("notification_permission.json"));
+        let second = info(&fx, &s.id).state_since;
+        assert_ne!(first, second);
+        assert!(fx.mgr.approve_if(&s.id, first).is_err(), "stale prompt");
+        assert!(info(&fx, &s.id).awaiting_decision, "still open after the refused click");
+        fx.mgr.approve_if(&s.id, second).unwrap();
+        assert_eq!(state(&fx, &s.id), SessionState::Working);
+        assert!(!fx.mgr.answerable(&s.id));
     }
 
     #[test]

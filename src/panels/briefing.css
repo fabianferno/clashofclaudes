@@ -54,6 +54,7 @@
 
 /* The queue's entry in the top bar. */
 .hud-pill.hud-queue { background: linear-gradient(180deg, #ffd85a 0%, #e8a91f 100%); color: #fff; }
+.hud-queue-wait { opacity: .85; }
 .hud-queue kbd { font: 700 11px system-ui; padding: 0 5px; margin-left: 6px; border-radius: 5px; background: rgba(29,19,11,.35); border: 1.5px solid var(--hud-out); }
 
 /* The new-session form's nudge toward the To Do. */

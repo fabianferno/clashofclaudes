@@ -70,7 +70,9 @@ Running several agents makes it easy to start a fifth thread while four are stil
 
 ## Notifications
 
-When the app is in the background, it shows a macOS notification when a session needs you or finishes (title: the builder's name, body: "needs you: ..." or "finished"), and the Dock icon shows how many sessions are waiting. Clicking a notification brings the app forward and selects that session. Notifications never include your task text or terminal output.
+When the app is in the background, it shows a macOS notification when a session needs you or finishes (title: the builder's name, body: "needs you: ..." or "finished"), and the Dock icon shows how many sessions are waiting. Clicking a notification brings the app forward and selects that session. When a Claude Code or Antigravity session asks for permission, the notification has an **Allow** button that answers that one prompt without opening the app; if the prompt was already answered or a newer one is open, the click opens the session instead. To deny, click the notification and use the briefing. Notifications never include your task text or terminal output.
+
+Over each structure, a builder waiting on you (or stuck) shows for how long ("Waiting for you · 7m"), and **▶ N waiting on you** shows how long the longest-stopped builder has waited.
 
 ## Sounds
 

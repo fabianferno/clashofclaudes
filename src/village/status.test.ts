@@ -19,8 +19,19 @@ describe('statusLabel', () => {
   });
 
   it('needs-you and stuck variants', () => {
-    expect(statusLabel(sess({ kind: 'needsYou', reason: 'x' } as SessionState, 9), 5 * MIN)).toBe('Waiting for you');
-    expect(statusLabel(sess({ kind: 'stuck', reason: 'quiet' }, 9), 5 * MIN)).toBe('Stuck');
+    expect(statusLabel(sess({ kind: 'needsYou', reason: 'x' } as SessionState, 9), 30_000)).toBe('Waiting for you');
+    expect(statusLabel(sess({ kind: 'stuck', reason: 'quiet' }, 9), 30_000)).toBe('Stuck');
+  });
+
+  it('a builder waiting on you shows for how long, from its last state change', () => {
+    const needs = { ...sess({ kind: 'needsYou', reason: 'x' } as SessionState, 9), stateSince: 10 * MIN };
+    expect(statusLabel(needs, 10 * MIN + 59_000)).toBe('Waiting for you');
+    expect(statusLabel(needs, 17 * MIN)).toBe('Waiting for you · 7m');
+    expect(statusLabel(needs, 10 * MIN + 75 * MIN)).toBe('Waiting for you · 1h 15m');
+    const stuck = { ...sess({ kind: 'stuck', reason: 'quiet' }, 9), stateSince: MIN };
+    expect(statusLabel(stuck, 13 * MIN)).toBe('Stuck · 12m');
+    // saves from before stateSince was kept: from its start
+    expect(statusLabel(sess({ kind: 'needsYou', reason: 'x' } as SessionState, 0, 2 * MIN), 5 * MIN)).toBe('Waiting for you · 3m');
   });
 
   it('hidden when finished or ended, and for terminals', () => {
@@ -36,7 +47,7 @@ describe('statusLabel', () => {
     expect(keys.size).toBe(1);
     expect(statusKey(s, 4 * MIN)).not.toBe(statusKey(s, 4 * MIN - 1));
     expect(statusKey({ ...s, steps: 5 }, 3 * MIN)).not.toBe(statusKey(s, 3 * MIN));
-    expect(statusKey(sess({ kind: 'stuck', reason: 'quiet' }), 3 * MIN)).toBe('status:stuck:Stuck');
+    expect(statusKey(sess({ kind: 'stuck', reason: 'quiet' }), 3 * MIN)).toBe('status:stuck:Stuck · 3m');
   });
 
   it('elapsed never goes negative', () => {

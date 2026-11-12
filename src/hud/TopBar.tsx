@@ -5,7 +5,7 @@ import { RES_MARGIN, STATS_GAP, panelInset, statsPlacement, type StatsPlacement 
 import ResourceBars from './ResourceBars';
 import BuilderAvatar from './BuilderAvatar';
 import './hud.css';
-import { ownerQueue } from '../state/queue';
+import { ownerQueue, waitedLabel, waitingSince } from '../state/queue';
 import { usePanelWidth } from '../state/panelWidth';
 import { keyLabel } from '../panels/commands';
 import '../panels/briefing.css';
@@ -27,7 +27,21 @@ export default function TopBar() {
   const panelOpen = useApp((s) => s.panelOpen);
   const panelW = usePanelWidth((s) => s.width); // the panel's edge may be dragged
   const workspaces = useApp((s) => s.workspaces);
-  const queued = useMemo(() => ownerQueue({ sessions: sessionMap, workspaces }).length, [sessionMap, workspaces]);
+  const queue = useMemo(() => ownerQueue({ sessions: sessionMap, workspaces }), [sessionMap, workspaces]);
+  const queued = queue.length;
+  // How long the longest-blocked builder (a decision or a question, stopped mid-task) has waited.
+  const blockedSince = useMemo(() => {
+    const t = queue.filter((q) => q.reason === 'decide' || q.reason === 'answer').map((q) => waitingSince(q.session));
+    return t.length ? Math.min(...t) : null;
+  }, [queue]);
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (blockedSince === null) return;
+    setNow(Date.now());
+    const t = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, [blockedSince]);
+  const blockedFor = blockedSince !== null && now - blockedSince >= 60_000 ? waitedLabel(now - blockedSince) : null;
   const setSelection = useApp((s) => s.setSelection);
   // "Shipped today" must roll over at local midnight even if nothing else re-renders the bar.
   const [day, setDay] = useState(0);
@@ -107,9 +121,10 @@ export default function TopBar() {
         </div>
         <div className="hud-pills">
           {queued > 0 && (
-            <button data-testid="pill-queue" className="hud-pill hud-queue ol" title="Take what waits on you, one at a time"
+            <button data-testid="pill-queue" className="hud-pill hud-queue ol"
+              title={blockedFor ? `Take what waits on you, one at a time. A builder has been stopped on you for ${blockedFor}` : 'Take what waits on you, one at a time'}
               onClick={() => useApp.getState().takeNext(null)}>
-              ▶ {queued} waiting on you<kbd>{keyLabel({ key: 'j' })}</kbd>
+              ▶ {queued} waiting on you{blockedFor && <span className="hud-queue-wait"> · {blockedFor}</span>}<kbd>{keyLabel({ key: 'j' })}</kbd>
             </button>
           )}
           {PILLS.map((p) => {

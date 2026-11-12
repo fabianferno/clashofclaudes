@@ -73,3 +73,23 @@ test('no_tokens_shown', () => {
   render(<TopBar />);
   expect(screen.queryByText(/token/i)).toBeNull();
 });
+
+test('the queue shows how long the longest-blocked builder has waited', () => {
+  vi.useFakeTimers({ now: 20 * 60_000 });
+  const workspaces = useApp.getState().workspaces;
+  act(() => useApp.setState({ workspaces: [{ id: 'w', name: 'w', path: '/w', createdAt: 0, missing: false, level: 1, xp: 0 }] as never }));
+  put([B('a'), B('b'), B('c')], [
+    S('1', 'a', 'needsYou', { awaitingDecision: true, stateSince: 13 * 60_000 }),
+    S('2', 'b', 'needsYou', { stateSince: 15 * 60_000 }),
+    // finished work waits for review, but no builder is stopped on it: not counted
+    S('3', 'c', 'finished', { stateSince: 60_000 }),
+  ]);
+  render(<TopBar />);
+  expect(screen.getByTestId('pill-queue').textContent).toContain('3 waiting on you · 7m');
+  act(() => { vi.advanceTimersByTime(60_000); });
+  expect(screen.getByTestId('pill-queue').textContent).toContain('· 8m');
+  // only review left: no wait shown
+  put([B('c')], [S('3', 'c', 'finished', { stateSince: 60_000 })]);
+  expect(screen.getByTestId('pill-queue').textContent).not.toContain('·');
+  act(() => useApp.setState({ workspaces }));
+});

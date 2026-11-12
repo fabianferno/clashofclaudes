@@ -1,5 +1,6 @@
 import type { SessionInfo } from '../api/types';
 import type { Entity } from './scene';
+import { waitingSince } from '../state/queue';
 
 /** The bar over a structure (spec 5.3.2): its colour and text. */
 /** `resource-<agent>`: a collector with plenty left, in its agent's resource colour. */
@@ -12,9 +13,16 @@ export function elapsedLabel(ms: number): string {
   return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 
+/** `base`, then how long it has waited once that reaches a minute: "Waiting for you · 7m". */
+function waited(base: string, s: SessionInfo, now: number): string {
+  const ms = now - waitingSince(s);
+  return ms < 60_000 ? base : `${base} · ${elapsedLabel(ms)}`;
+}
+
 /**
  * What the bar over an agent's structure says, or null when it shows none (finished, ended, terminals).
- * Real data only: elapsed from `startedAt`, steps as reported in SessionInfo.
+ * Real data only: elapsed from `startedAt`, steps as reported in SessionInfo; a builder waiting on
+ * the owner (or stuck) shows for how long, from its last state change.
  */
 export function statusOf(s: SessionInfo, now: number): { tone: StatusTone; label: string } | null {
   if (s.kind.kind !== 'agent') return null;
@@ -22,8 +30,8 @@ export function statusOf(s: SessionInfo, now: number): { tone: StatusTone; label
     case 'starting':
     case 'working':
       return { tone: 'working', label: `${elapsedLabel(now - s.startedAt)} · ${s.steps} ${s.steps === 1 ? 'step' : 'steps'}` };
-    case 'needsYou': return { tone: 'needs', label: 'Waiting for you' };
-    case 'stuck': return { tone: 'stuck', label: 'Stuck' };
+    case 'needsYou': return { tone: 'needs', label: waited('Waiting for you', s, now) };
+    case 'stuck': return { tone: 'stuck', label: waited('Stuck', s, now) };
     default: return null;
   }
 }

@@ -55,8 +55,8 @@ describe('buildEntities', () => {
     const bars = structBars(buildEntities({ ...input, now: 1000 + 12 * 60_000 }));
     expect(Object.fromEntries(bars.map((e) => [e.id, e.texKey]))).toEqual({
       'status:a1': 'status:working:12m · 34 steps',
-      'status:a2': 'status:needs:Waiting for you',
-      'status:a3': 'status:stuck:Stuck',
+      'status:a2': 'status:needs:Waiting for you · 12m',
+      'status:a3': 'status:stuck:Stuck · 12m',
     });
     const bar = bars.find((e) => e.id === 'status:a1')!;
     expect([bar.x, bar.y]).toEqual([spots[0].x + 1, spots[0].y + 1]); // over the structure's centre

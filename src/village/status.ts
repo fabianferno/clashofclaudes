@@ -4,7 +4,7 @@ import type { Entity } from './scene';
 /** The bar over a structure (spec 5.3.2): its colour and text. */
 /** `resource-<agent>`: a collector with plenty left, in its agent's resource colour. */
 /** `house`: a workspace's name plate over its house. */
-export type StatusTone = 'working' | 'needs' | 'stuck' | 'app' | 'house' | 'resource-claude' | 'resource-codex' | 'resource-antigravity';
+export type StatusTone = 'working' | 'needs' | 'stuck' | 'app' | 'resource-claude' | 'resource-codex' | 'resource-antigravity';
 
 /** Elapsed time at minute granularity, so a label (and its texture) changes at most once a minute. */
 export function elapsedLabel(ms: number): string {

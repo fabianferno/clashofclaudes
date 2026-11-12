@@ -164,7 +164,7 @@ export function drawPuff(): Art {
 }
 
 const STATUS_FILL = {
-  working: '#f5a623', needs: '#ff4b3e', stuck: '#8e8e8e', app: '#2fbf71', house: '#9a6634',
+  working: '#f5a623', needs: '#ff4b3e', stuck: '#8e8e8e', app: '#2fbf71',
   'resource-claude': RESOURCE.claude.label, 'resource-codex': RESOURCE.codex.label, 'resource-antigravity': RESOURCE.antigravity.label,
 } as const;
 
@@ -189,15 +189,42 @@ export function drawStatusBar(tone: keyof typeof STATUS_FILL, label: string): Ar
 
 const PLATE_FONT = 15;
 
-/** Width of `label` in the plate's font (an estimate where the canvas cannot measure, as in tests). */
-function plateTextWidth(label: string): number {
+/** Width of `label` in the plates' font (an estimate where the canvas cannot measure, as in tests). */
+function plateTextWidth(label: string, size = PLATE_FONT): number {
   const g = document.createElement('canvas').getContext('2d');
   if (g) {
-    g.font = `400 ${PLATE_FONT}px "Lilita One", sans-serif`;
+    g.font = `400 ${size}px "Lilita One", sans-serif`;
     const w = g.measureText(label).width;
     if (w > 0) return w;
   }
-  return label.length * PLATE_FONT * 0.56;
+  return label.length * size * 0.56;
+}
+
+const HOUSE_PLATE_FONT = 13;
+
+/**
+ * A workspace's name over its house: a light wooden plank nailed at both ends, so it never reads as
+ * one of the dark status pills (resources, timers, apps) over the structures. Anchor: its bottom centre.
+ */
+export function drawHousePlate(label: string): Art {
+  const bw = Math.max(84, Math.ceil(plateTextWidth(label, HOUSE_PLATE_FONT)) + 36);
+  const h = 21;
+  return bake(bw + 8, h + 9, bw / 2 + 4, h + 4, () => {
+    const g = ctx();
+    // the plank's darker underside, a lip under the face
+    roundRect(-bw / 2, -h + 1, bw, h, 5);
+    g.fillStyle = '#7a4e2b'; g.fill(); g.strokeStyle = OUT; g.lineWidth = 2.5; g.stroke();
+    roundRect(-bw / 2, -h - 1, bw, h - 2, 5);
+    const wood = g.createLinearGradient(0, -h - 1, 0, -3);
+    wood.addColorStop(0, '#f0cf8f'); wood.addColorStop(1, '#c9934f');
+    g.fillStyle = wood; g.fill(); g.strokeStyle = OUT; g.lineWidth = 2.5; g.stroke();
+    // grain
+    g.strokeStyle = 'rgba(122, 78, 43, .35)'; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(-bw / 2 + 14, -h + 5); g.lineTo(-bw / 6, -h + 5); g.stroke();
+    g.beginPath(); g.moveTo(bw / 8, -6); g.lineTo(bw / 2 - 14, -6); g.stroke();
+    for (const s of [-1, 1]) dot(s * (bw / 2 - 8), -h / 2 - 2, 2.2, '#5b3a1f', '#3a2412', 1);
+    outlinedText(label, 0, -h / 2 + 3, HOUSE_PLATE_FONT, '#fff8e6', 3);
+  });
 }
 
 /**

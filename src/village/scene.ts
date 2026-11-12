@@ -10,7 +10,7 @@ import { FOREST_FLOOR, PATCH_PX, forestTile, patchTile, vignetteTexture } from '
 import { classOf, gearOf, houseColors, houseStage, scaffoldHeight, type ClassTier, type Gear } from './look';
 import { blockedBy, dropOf, onGround, plazaPoint, retarget, routeHome, routeToSite, standTile, step, takenBy, walkable, type Blocked, type BuilderDrop, type Walker } from './walkers';
 import {
-  GROUND_SCALE, drawPathTile, groundTrees, pathLinks, pathTiles, treesOverPaths, drawGroundTree, drawBuilderShadow, drawBoard, drawBubble, drawBuilder, drawCollector, drawGate, drawGround, drawHall, drawHouse, drawPuff, drawRing, drawStatusBar, drawHallPlate, drawStructure,
+  GROUND_SCALE, drawPathTile, groundTrees, pathLinks, pathTiles, treesOverPaths, drawGroundTree, drawBuilderShadow, drawBoard, drawBubble, drawBuilder, drawCollector, drawGate, drawGround, drawHall, drawHouse, drawPuff, drawRing, drawStatusBar, drawHallPlate, drawHousePlate, drawStructure,
   drawWallSeg, drawRuneStone, groundOrigin,
   hammerPose, type Art, type GroundTree, type Pose,
 } from './art/entities';
@@ -203,7 +203,7 @@ export function buildEntities(input: VillageInput): Entity[] {
     const stage = houseStage(w.level);
     out.push(ent(`house:${w.id}`, 'house', c.house.x + HOUSE, c.house.y + HOUSE, `house:${stage}:${roof}:${wall}`));
     // the workspace's name on a plate over the roof (texture keys split on ':', so the name holds none)
-    out.push({ ...ent(`status:house:${w.id}`, 'status', c.house.x + HOUSE / 2, c.house.y + HOUSE / 2, `status:house:${w.name.replace(/:/g, ' ').slice(0, 24)}`), lift: HOUSE_LIFT[stage] });
+    out.push({ ...ent(`status:house:${w.id}`, 'status', c.house.x + HOUSE / 2, c.house.y + HOUSE / 2, `houseplate:${w.name.replace(/:/g, ' ').slice(0, 24)}`), lift: HOUSE_LIFT[stage] });
     out.push(...wallEntities(w.id, c, spotsIn(input.sessions, w.id, input.boards), w.level));
   }
   for (const s of input.sessions) {
@@ -261,6 +261,7 @@ export function artFor(key: string): Art {
     case 'shadow': return drawBuilderShadow();
     case 'status': return drawStatusBar(a as StatusTone, b);
     case 'hallplate': return drawHallPlate(key.slice('hallplate:'.length));
+    case 'houseplate': return drawHousePlate(key.slice('houseplate:'.length));
     default: throw new Error(`no art for ${key}`);
   }
 }

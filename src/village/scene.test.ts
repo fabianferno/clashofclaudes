@@ -66,7 +66,7 @@ describe('buildEntities', () => {
     const c1 = placeCompound([]);
     const plate = buildEntities({ workspaces: [{ ...ws('w1', c1), name: 'my:app' }], builders: [], sessions: [] })
       .find((e) => e.id === 'status:house:w1')!;
-    expect(plate).toMatchObject({ kind: 'status', texKey: 'status:house:my app', x: c1.house.x + 1.5, y: c1.house.y + 1.5 });
+    expect(plate).toMatchObject({ kind: 'status', texKey: 'houseplate:my app', x: c1.house.x + 1.5, y: c1.house.y + 1.5 });
     expect(plate.lift).toBeGreaterThan(140); // above the roof, not at a structure's height
   });
 

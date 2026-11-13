@@ -10,5 +10,6 @@
 
 ## Ground rules
 
-- [ ] Nothing writes to `~/.claude`, `~/.codex`, `~/.gemini`, `~/.config/opencode` or a project's agent config
+- [ ] Nothing writes to `~/.claude`, `~/.codex`, `~/.gemini`, `~/.config/opencode`, `~/.grok` or a project's agent config
 - [ ] No new network connections
+- [ ] I license this contribution under the MIT License (see CONTRIBUTING › Licensing of contributions)

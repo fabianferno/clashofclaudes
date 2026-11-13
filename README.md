@@ -7,7 +7,7 @@ Claude Code, Codex, Antigravity CLI, OpenCode and Grok Build sessions as builder
 
 <p align="center">
 <img alt="macOS 13+" src="https://img.shields.io/badge/macOS-13%2B-1f2937">
-<img alt="MIT license" src="https://img.shields.io/badge/license-MIT-2f855a">
+<img alt="Business Source License 1.1" src="https://img.shields.io/badge/license-BSL%201.1-2f855a">
 <img alt="Built with Tauri" src="https://img.shields.io/badge/Tauri-2-24c8db">
 </p>
 
@@ -15,7 +15,7 @@ Claude Code, Codex, Antigravity CLI, OpenCode and Grok Build sessions as builder
 
 A macOS desktop app for people who run several coding agents at once. Every workspace is a walled compound in an isometric village, and every running agent session is a builder raising a structure inside it. You see at a glance which agents are working, which need you, which are stuck and which have finished. The real terminal is always one click away.
 
-v1 is Mac only (macOS 13 or later, Apple Silicon and Intel). Free and open source under the MIT license.
+v1 is Mac only (macOS 13 or later, Apple Silicon and Intel). Free to use, with the source here under the [Business Source License 1.1](#license).
 
 **Why:** with three or four agents running in different repos, terminal tabs stop telling you which one is waiting on a permission prompt and which one finished ten minutes ago. Here the answer is on screen: a builder hammering away is working, a "!" bubble needs you, a medal means it shipped. Allow or deny a permission right from the village, or click through to the real terminal.
 
@@ -80,7 +80,11 @@ The app plays a sound when a builder wants a decision, asks you something, finis
 
 ## Privacy
 
-- The app makes **no network connections** except one optional check for updates, which you can turn off in Settings (the gear at the top right, or ⌘,), and the bug reports you choose to send (Help › Report a Bug…). A report holds what you type, app and system details (app, macOS and agent versions, counts of workspaces and sessions, and the last error the app showed, if any; never workspace names or tasks) and, only if you tick it, a screenshot. You see all of it before sending. Builds whose update key or GitHub repository is not configured (the source ships placeholders for both) never check at all.
+- The app makes **no network connections** except these three:
+  - **The update check**, which you can turn off in Settings (the gear at the top right, or ⌘,). Development builds (`pnpm app`) never check.
+  - **Reports you choose to send** (Help › Report a Bug…, Help › Request a Feature…, Settings › Beta feedback). A report holds what you type, app and system details (app, macOS and agent versions, counts of workspaces and sessions, and the last error the app showed, if any; never workspace names or tasks) and, only if you tick it, a screenshot. You see all of it before sending. It goes to the project's Discord.
+  - **Anonymous usage counts, only if you turn them on** (the welcome, or Settings › Data & privacy; off until you do). Each is one of a fixed few: the app opened (with how many workspaces and builders), a session or terminal started (and which agent), a permission prompt allowed or denied, the Kanban opened. Each carries the app and macOS versions, the chip, and a random id made when you turn sharing on and deleted when you turn it off. Never names, paths, tasks, prompts or output. They go to PostHog's EU cloud.
+- A build you make from source has no bug reporting and sends no usage counts unless you give it your own keys (`COC_BUG_WEBHOOK`, `COC_POSTHOG_KEY`; see `src-tauri/build.rs`).
 - Agent output, prompts, file names and folders never leave your machine.
 - To list Codex's models the app runs `codex debug models`; Codex may refresh that list from OpenAI with your own Codex login, as it does when you run it. The app itself sends nothing.
 - The app **never edits your agent configuration**: nothing under `~/.claude`, `~/.codex`, `~/.gemini`, `~/.config/opencode`, `~/.grok`, or a project's `.claude`, `.codex`, `.gemini`, `.opencode` or `.grok`. To get status events it hands each agent a private per-session settings file stored in the app's own data folder (`~/Library/Application Support/dev.clashofclaudes.desktop/sessions/`), and deletes it when the session closes.
@@ -114,4 +118,11 @@ Bug reports, agent-support fixes and art are welcome. See [CONTRIBUTING.md](CONT
 
 ## License
 
-[MIT](LICENSE)
+[Business Source License 1.1](LICENSE). In short:
+
+- **Use it for your own work, freely.** Run it to manage your own agents, at home or at a company, for any kind of project, commercial or not.
+- **Read it, change it, build it, fork it.**
+- **Don't offer it to others as a competing product.** You may not ship it, a modified version or a derivative (its artwork included) as a product or service, paid or free, that lets other people run, monitor or manage AI coding agents.
+- **Each version becomes MIT four years after its release.**
+
+Need something the license doesn't allow? [Ask](https://x.com/fabianferno). The BSL is not an OSI open source license; it's source-available until each version's change date. Fonts and icons from others keep their own licenses: see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

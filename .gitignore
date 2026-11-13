@@ -10,3 +10,6 @@ src-tauri/posthog-key.txt
 
 # Vercel CLI link for the landing site (site/)
 .vercel
+
+# Claude Code working notes (strategy docs), kept out of the public repo
+.claude/docs/

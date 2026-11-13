@@ -14,7 +14,9 @@ below was made without them and is written down here so it can be changed later.
   feature requests from inside the app.
 - **Assets:** app icon (knight), one real screenshot, the painted game art (builders, tents,
   Town Hall, trees, status bubbles). Font Lilita One (the app's UI font).
-- **Constraints:** source is private (no "open source", no repo link, no stars, no license).
+- **Constraints:** the source is public under the Business Source License 1.1 (since 2026-11-13).
+  Call it "source available" or "the source is on GitHub", never "open source" (the BSL is not an
+  OSI license). The footer links the repo; the FAQ explains the license in plain words.
   Not affiliated with Anthropic, OpenAI or Google. No reference to any existing game brand.
   Download URL is the stable `releases/latest/download/Clash-of-Claudes.dmg`.
 

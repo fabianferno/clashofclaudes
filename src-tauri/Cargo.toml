@@ -1,5 +1,5 @@
 [package]
-license = "MIT"
+license = "BUSL-1.1"
 name = "clash-of-claudes"
 version = "0.2.9"
 description = "Run all your coding agents from one village"

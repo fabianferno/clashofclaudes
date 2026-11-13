@@ -38,10 +38,19 @@ CI runs the same on every pull request. For visual changes, attach a screenshot.
 
 These are product promises, not style preferences. PRs that break them can't be merged.
 
-- **Never write to an agent's own configuration**: nothing under `~/.claude`, `~/.codex`, `~/.gemini`, `~/.config/opencode`, or a project's `.claude`, `.codex`, `.gemini`, `.opencode`. Per-session settings go in the app's data folder and are deleted when the session closes.
-- **No network connections** beyond the optional update check.
+- **Never write to an agent's own configuration**: nothing under `~/.claude`, `~/.codex`, `~/.gemini`, `~/.config/opencode`, `~/.grok`, or a project's `.claude`, `.codex`, `.gemini`, `.opencode`, `.grok`. Per-session settings go in the app's data folder and are deleted when the session closes.
+- **No new network connections.** The only ones are the optional update check, reports the user chooses to send, and opt-in anonymous usage counts (README › Privacy). Agent output, prompts, file names and folders never leave the machine.
 - **Never automate an agent's sign-in** or handle its credentials.
 - Tests must not touch the real app data: use `COC_DATA_DIR` with a temporary folder.
+
+## Licensing of contributions
+
+Clash of Claudes is under the [Business Source License 1.1](LICENSE): each version becomes MIT four
+years after its release, and the licensor may grant other terms on request. For that to work for
+every line, **by opening a pull request you agree that your contribution is licensed to the
+licensor (Fabian Ferno) and to everyone else under the MIT License**, and that you have the right to
+contribute it (it's your own work, or you may share it under MIT). The project then ships it under
+the BSL with the rest.
 
 ## Adding or fixing an agent
 

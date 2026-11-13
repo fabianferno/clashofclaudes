@@ -10,6 +10,8 @@ export const site = {
     'A Mac app that turns Claude Code, Codex, Antigravity CLI, OpenCode and Grok Build sessions into builders in a cozy village. See who is working, who needs you, who shipped.',
   download: 'https://github.com/fabianferno/clashofclaudes-releases/releases/latest/download/Clash-of-Claudes.dmg',
   releases: 'https://github.com/fabianferno/clashofclaudes-releases/releases',
+  /** The source, under the Business Source License 1.1. */
+  source: 'https://github.com/fabianferno/clashofclaudes',
   latestApi: 'https://api.github.com/repos/fabianferno/clashofclaudes-releases/releases/latest',
   requirements: 'macOS 13 or later, Apple Silicon or Intel',
   /** Who makes it: the studio credit and the maker's X account for DMs. */
@@ -165,7 +167,7 @@ export const privacy = [
   },
   {
     title: 'Quiet notifications',
-    text: 'Notifications say a builder needs you or finished. They never include your task or terminal output.',
+    text: 'Notifications say a builder needs you or finished, and a permission prompt can be allowed right from one. They never include your task or terminal output.',
   },
 ];
 
@@ -202,6 +204,10 @@ export const faq = [
   {
     q: 'How do I report a bug or ask for a feature?',
     a: 'From the app: Help › Report a Bug… or Help › Request a Feature…, or the Beta feedback card in Settings. Nothing is sent until you read it and press Send. For anything else, send Fabian a DM on X.',
+  },
+  {
+    q: 'Can I see the source code?',
+    a: 'Yes, it is on GitHub under the Business Source License 1.1. You can read it, build it, change it and use it for your own work, at home or at a company. What it does not allow is offering it, or a version of it, to others as a competing product for running or managing coding agents. Each version becomes MIT four years after its release.',
   },
   {
     q: 'Is it made by Anthropic, OpenAI, Google or xAI?',

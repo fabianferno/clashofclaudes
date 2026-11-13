@@ -43,7 +43,7 @@ import Builder from '../../components/Builder.astro';
       <section id="config" aria-labelledby="config-h">
         <h2 id="config-h">Your agent configuration</h2>
         <p>The app never edits your agents’ own configuration: nothing under <code>~/.claude</code>, <code>~/.codex</code>, <code>~/.gemini</code>, <code>~/.config/opencode</code> or <code>~/.grok</code>, and nothing in a project’s <code>.claude</code>, <code>.codex</code>, <code>.gemini</code>, <code>.opencode</code> or <code>.grok</code> folder.</p>
-        <p>To receive status events it hands each session a private settings file kept in the app’s own data folder, <code class="path">~/Library/<wbr />Application&nbsp;Support/<wbr />dev.clashofclaudes.app/<wbr />sessions/</code>, and deletes it when the session closes.</p>
+        <p>To receive status events it hands each session a private settings file kept in the app’s own data folder, <code class="path">~/Library/<wbr />Application&nbsp;Support/<wbr />dev.clashofclaudes.desktop/<wbr />sessions/</code>, and deletes it when the session closes.</p>
         <p>To resume an Antigravity session the app reads, and never writes, <code class="path">~/.gemini/<wbr />antigravity-cli/<wbr />history.jsonl</code>. A Grok Build session starts with its own id, and to resume it the app only checks that Grok saved it under <code class="path">~/.grok/<wbr />sessions/</code>.</p>
       </section>
       <section id="status" aria-labelledby="status-h">
@@ -52,7 +52,7 @@ import Builder from '../../components/Builder.astro';
       </section>
       <section id="notifications" aria-labelledby="notifications-h">
         <h2 id="notifications-h">Notifications</h2>
-        <p>When the app is in the background it can show a macOS notification when a session needs you or finishes. The title is the builder’s name and the body says “needs you” or “finished”. Notifications never include your task text or terminal output.</p>
+        <p>When the app is in the background it can show a macOS notification when a session needs you or finishes. The title is the builder’s name and the body says “needs you” or “finished”. When an agent asks for permission, the notification has an Allow button that answers that one prompt. Notifications never include your task text or terminal output.</p>
       </section>
       <section id="site" aria-labelledby="site-h">
         <h2 id="site-h">This website</h2>

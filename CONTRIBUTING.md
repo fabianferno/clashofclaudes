@@ -45,12 +45,12 @@ These are product promises, not style preferences. PRs that break them can't be 
 
 ## Licensing of contributions
 
-Clash of Claudes is under the [Business Source License 1.1](LICENSE): each version becomes MIT four
-years after its release, and the licensor may grant other terms on request. For that to work for
-every line, **by opening a pull request you agree that your contribution is licensed to the
-licensor (Fabian Ferno) and to everyone else under the MIT License**, and that you have the right to
-contribute it (it's your own work, or you may share it under MIT). The project then ships it under
-the BSL with the rest.
+The code is under the [GPL 3.0 or later](LICENSE). **By opening a pull request you agree that your code
+is licensed to Fabian Ferno and to everyone else under the MIT License**, and that you have the right
+to contribute it (it's your own work, or you may share it under MIT). The project ships it under the
+GPL with the rest; MIT inbound keeps the door open to offering the project under other terms later.
+
+Art is different: see [ASSETS-LICENSE.md](ASSETS-LICENSE.md) › "Art you contribute".
 
 ## Adding or fixing an agent
 

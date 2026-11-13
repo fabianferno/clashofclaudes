@@ -1,7 +1,7 @@
 # Third-party notices
 
-Clash of Claudes is licensed under the Business Source License 1.1 (see `LICENSE`). These parts
-come from others and keep their own licenses. Rust crates and npm packages the app is built with
+Clash of Claudes' code is licensed under the GPL 3.0 or later (see `LICENSE`) and its art under
+`ASSETS-LICENSE.md`. These parts come from others and keep their own licenses. Rust crates and npm packages the app is built with
 carry their licenses in their own packages (`src-tauri/Cargo.lock`, `pnpm-lock.yaml`).
 
 ## Lilita One (font)

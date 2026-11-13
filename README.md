@@ -7,7 +7,7 @@ Claude Code, Codex, Antigravity CLI, OpenCode and Grok Build sessions as builder
 
 <p align="center">
 <img alt="macOS 13+" src="https://img.shields.io/badge/macOS-13%2B-1f2937">
-<img alt="Business Source License 1.1" src="https://img.shields.io/badge/license-BSL%201.1-2f855a">
+<img alt="GPL-3.0-or-later" src="https://img.shields.io/badge/license-GPL--3.0-2f855a">
 <img alt="Built with Tauri" src="https://img.shields.io/badge/Tauri-2-24c8db">
 </p>
 
@@ -15,7 +15,7 @@ Claude Code, Codex, Antigravity CLI, OpenCode and Grok Build sessions as builder
 
 A macOS desktop app for people who run several coding agents at once. Every workspace is a walled compound in an isometric village, and every running agent session is a builder raising a structure inside it. You see at a glance which agents are working, which need you, which are stuck and which have finished. The real terminal is always one click away.
 
-v1 is Mac only (macOS 13 or later, Apple Silicon and Intel). Free to use, with the source here under the [Business Source License 1.1](#license).
+v1 is Mac only (macOS 13 or later, Apple Silicon and Intel). Free and open source under the [GPL 3.0](#license) (the art has its own terms).
 
 **Why:** with three or four agents running in different repos, terminal tabs stop telling you which one is waiting on a permission prompt and which one finished ten minutes ago. Here the answer is on screen: a builder hammering away is working, a "!" bubble needs you, a medal means it shipped. Allow or deny a permission right from the village, or click through to the real terminal.
 
@@ -118,11 +118,8 @@ Bug reports, agent-support fixes and art are welcome. See [CONTRIBUTING.md](CONT
 
 ## License
 
-[Business Source License 1.1](LICENSE). In short:
+The code is free software under the [GNU General Public License, version 3](LICENSE) or (at your option) any later version. Use it, study it, change it and share it; if you distribute a modified version, you must share its source under the same license.
 
-- **Use it for your own work, freely.** Run it to manage your own agents, at home or at a company, for any kind of project, commercial or not.
-- **Read it, change it, build it, fork it.**
-- **Don't offer it to others as a competing product.** You may not ship it, a modified version or a derivative (its artwork included) as a product or service, paid or free, that lets other people run, monitor or manage AI coding agents.
-- **Each version becomes MIT four years after its release.**
+**The art is not GPL.** The painted village, the app icon, the logo and the site's images and videos are © Fabian Ferno, all rights reserved: you may build and run the app with them and share unmodified copies of this repository, but a fork you distribute must bring its own art, name and icon (the app draws the village procedurally without the painted files). Details: [ASSETS-LICENSE.md](ASSETS-LICENSE.md).
 
-Need something the license doesn't allow? [Ask](https://x.com/fabianferno). The BSL is not an OSI open source license; it's source-available until each version's change date. Fonts and icons from others keep their own licenses: see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Fonts and icons from others keep their own licenses: see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

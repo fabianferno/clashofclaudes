@@ -12,7 +12,7 @@ ${site.name} is a macOS desktop app (beta) built by ${site.studio.name} (${site.
 - Download (signed and notarized DMG): ${site.download}
 - Requirements: ${site.requirements}, plus at least one agent CLI installed and signed in
 - Release notes: ${site.releases}
-- Source code (Business Source License 1.1; each version becomes MIT four years after release): ${site.source}
+- Source code (open source: code under GPL 3.0, art under its own terms): ${site.source}
 - Contact: DM @${site.maker.handle} on X (${site.maker.x})
 
 ## What you see

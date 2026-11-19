@@ -14,6 +14,19 @@ decisions (forecast, reserve, stand-ins) and app-wide sounds (Settings › Sound
   between their tents and a "Clash" item in the queue. Cheap once Inspection exists (per-session
   numstat is already there), and it is what the product's name promises.
 
+- **Open the plan for review.** When an agent finishes by asking the owner to review a planning
+  doc (a `.md` spec or plan it wrote), the doc's path in the briefing's last reply, and in its
+  changed files, becomes a link. Clicking it opens the doc rendered as markdown in the panel (the
+  briefing already renders markdown), so the plan can be read and approved, or answered with a
+  follow-up, without leaving the app for an editor.
+
+## Workspace notes
+
+- **A notepad per workspace.** A place to jot ideas and reminders ("add export later", "look at
+  the flaky test") on the workspace itself, apart from the To Do (tasks ready for a builder). Kept
+  in the app's data, never sent anywhere. A note can be turned into a To Do or a new session when
+  it's ready, and the compound could show a small sign or scroll when it has notes.
+
 ## Gamification tied to real signal
 
 XP is volume-based today (Accept = XP), which rewards starting more agents: the opposite of Focus.

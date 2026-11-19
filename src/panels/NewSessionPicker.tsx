@@ -208,7 +208,7 @@ export default function NewSessionPicker({ workspaceId, builderId, task: initial
       )}
       {!sample && (
         <label className="sp-check" title="A new branch in its own folder (in the app's data), from your last commit: its changes wait apart from yours until you merge them">
-          <input type="checkbox" checked={isolate} onChange={(e) => setIsolate(e.target.checked)} /> Work in its own git worktree
+          <input type="checkbox" role="switch" className="set-switch" checked={isolate} onChange={(e) => setIsolate(e.target.checked)} /> Work in its own git worktree
         </label>
       )}
       {elixirNote && <div className="ns-elixir" role="note" data-testid="start-elixir">{elixirNote}</div>}

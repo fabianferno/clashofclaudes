@@ -151,3 +151,4 @@
 .ask-own input:focus { outline: 3px solid rgba(255, 207, 51, .6); outline-offset: 0; }
 .ask-send { align-self: flex-start; }
 .brief-term { font-weight: 800; }
+.sp-check:has(.set-switch) { gap: 9px; margin: 8px 0; }

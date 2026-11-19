@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { setCursorHint } from '../components/GameCursor';
 import { ipc } from '../api/ipc';
 import type { BugReportInfo, ReportKind } from '../api/types';
 import { useApp, type AppState } from '../state/store';
@@ -20,6 +21,7 @@ export async function openBugReport(kind: ReportKind = 'bug', shoot: () => Promi
   st.setSettingsOpen(false);
   await new Promise((r) => setTimeout(r, 60)); // let the village show again under it
   document.body.style.cursor = 'progress';
+  setCursorHint(document.documentElement, 'busy');
   let screenshot: string | null = null;
   try {
     screenshot = (await Promise.race([shoot(), new Promise<string>((r) => setTimeout(() => r(''), CAPTURE_MS))])) || null;
@@ -27,6 +29,7 @@ export async function openBugReport(kind: ReportKind = 'bug', shoot: () => Promi
     screenshot = null;
   } finally {
     document.body.style.cursor = '';
+    setCursorHint(document.documentElement, null);
   }
   useApp.getState().setBugReport({ screenshot, kind });
 }

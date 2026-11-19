@@ -4,6 +4,7 @@ import { iso, toGrid } from './iso';
 import { HALL, HOUSE, STRUCT, gateOutside, gateSide, gateTile, villageRect, wallRect, type Rect } from './layout';
 import { enclosure, seedOf } from './enclosure';
 import { setVillageSnapshot } from '../screenshot';
+import { setCursorHint } from '../components/GameCursor';
 import { townHallTitle } from '../state/names';
 import { indexTrees, underTree, type TreeIndex } from './clearance';
 import { FOREST_FLOOR, PATCH_PX, forestTile, patchTile, vignetteTexture } from './art/forest';
@@ -1480,13 +1481,21 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     return { x: ev.clientX - r.left, y: ev.clientY - r.top };
   };
   const canvas = app.canvas;
+  /** The cursor's shape over the canvas: the game cursor reads the hint, the OS cursor the style. */
+  let cursorHint: 'pointer' | 'grab' | 'grabbing' | null = null;
+  const setCursor = (mode: typeof cursorHint) => {
+    if (mode === cursorHint) return;
+    cursorHint = mode;
+    canvas.style.cursor = mode ?? '';
+    setCursorHint(canvas, mode);
+  };
   let pointerId = -1;
   let downAt = { x: 0, y: 0 };
   const drag = createDragController({
     getCam: () => cam,
     setCam: jumpTo,
     setTarget: (t) => { camTarget = t; },
-    onAutoFitOff: () => { autoFit = false; canvas.style.cursor = 'grabbing'; },
+    onAutoFitOff: () => { autoFit = false; setCursor('grabbing'); },
   });
   // ---- builders: press and drag one to pick it up; drop it on a workspace to put it to work there
   // (idle builders), or on open ground to set it down. A press without a drag is still a click.
@@ -1557,7 +1566,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     bdFx.clear();
     drawnDrop = '';
     groundCache = new Map(); // walls may change before the next drag
-    canvas.style.cursor = '';
+    setCursor(null);
     if (ev) { try { canvas.releasePointerCapture(ev.pointerId); } catch { /* see onDown */ } }
     const v = d && views.get(d.id);
     if (!d || !v) return;
@@ -1629,7 +1638,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       if (!bd.orig) {
         if (Math.hypot(p.x - downAt.x, p.y - downAt.y) <= DRAG_PX) return;
         bd.orig = v.walker;
-        canvas.style.cursor = 'grabbing';
+        setCursor('grabbing');
       }
       const w = screenToWorld(cam, p.x, p.y);
       // the feet stay under the grab point, the figure lifted above the tile it would land on
@@ -1649,7 +1658,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
         if (Math.hypot(p.x - downAt.x, p.y - downAt.y) <= DRAG_PX) return;
         od.moved = true;
         autoFit = false; // a deliberate edit: stop following the village rect
-        canvas.style.cursor = 'grabbing';
+        setCursor('grabbing');
       }
       const w = screenToWorld(cam, p.x, p.y), g = toGrid(w.x, w.y);
       od.target = dragTarget(od.m.tile, od.grab, g);
@@ -1672,17 +1681,22 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     hoverCheckedAt = now;
     const p = localPoint(ev), w = screenToWorld(cam, p.x, p.y);
     const hit = hitTest(hitEntities(), w.x, w.y);
+    // what a press here would do (onDown): pick something up, open or select it, or pan
+    const top = hitTest(entities, w.x, w.y);
+    const m = movableOf(selected, ev.altKey);
+    const carry = hit?.kind === 'builder' || hit?.kind === 'board' || (!!m && top?.id === m.entityId);
+    setCursor(carry ? 'grab' : hit && (selectionOf(hit, lastState.sessions) || hit.kind === 'board') ? 'pointer' : null);
     const id = hit && (hit.kind === 'house' || hit.kind === 'hall') ? hit.id : null;
     if (id !== hovered) {
       hovered = id;
       if (id) opts.onBuildingHover?.(id);
     }
   };
-  const onLeave = () => { hovered = null; };
+  const onLeave = () => { hovered = null; if (!od && !bd && !drag.active) setCursor(null); };
   const endObjectDrag = (ev: PointerEvent | null) => {
     const d = od;
     od = null;
-    canvas.style.cursor = '';
+    setCursor(null);
     if (ev) { try { canvas.releasePointerCapture(ev.pointerId); } catch { /* see onDown */ } }
     if (d && !d.moved && ev && d.m.target.kind === 'board') {
       const key = d.m.target.key;
@@ -1713,13 +1727,13 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     if (bd && ev.pointerId === pointerId) { endBuilderDrag(ev); return; }
     if (od && ev.pointerId === pointerId) { endObjectDrag(ev); return; }
     if (!drag.active || ev.pointerId !== pointerId) return;
-    canvas.style.cursor = '';
+    setCursor(null);
     try { canvas.releasePointerCapture(ev.pointerId); } catch { /* see onDown */ }
     if (drag.up() !== 'click') return;
     const w = screenToWorld(cam, downAt.x, downAt.y);
     opts.onSelect?.(selectionOf(hitTest(hitEntities(), w.x, w.y), lastState.sessions));
   };
-  const onCancel = () => { if (od) endObjectDrag(null); if (bd) endBuilderDrag(null); drag.cancel(); canvas.style.cursor = ''; };
+  const onCancel = () => { if (od) endObjectDrag(null); if (bd) endBuilderDrag(null); drag.cancel(); setCursor(null); };
   const onWheel = (ev: WheelEvent) => {
     ev.preventDefault();
     const p = localPoint(ev);

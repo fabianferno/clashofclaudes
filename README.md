@@ -75,9 +75,9 @@ When the app is in the background, it shows a macOS notification when a session 
 
 Over each structure, a builder waiting on you (or stuck) shows for how long ("Waiting for you · 7m"), and **▶ N waiting on you** shows how long the longest-stopped builder has waited.
 
-## Weather
+## Day and night
 
-The village's weather shows how things stand at a glance. It is sunny while builders work and nothing waits on you, and plain daylight while something does. Night falls once nothing has run for about 20 seconds: houses light up and fireflies come out. A compound with a stuck session gets a storm cloud with rain and lightning until you deal with it. Turn it off in **Settings › Your village**.
+The village follows your clock. Sunrise around 6:30 AM brings a golden light from the left, and sunset around 6:30 PM brings it from the right. From 7 PM the light fades to night, when houses light up and fireflies come out. Morning returns by 7 AM. The hours are fixed: the app never asks where you are. Turn it off in **Settings › Your village**.
 
 ## Menu bar and mini village
 
@@ -91,7 +91,7 @@ The village does not have to be in front for you to see who waits.
 
 The app plays a sound when a builder wants a decision, asks you something, finishes, gets stuck, starts, sends out a minion (subagent) or goes back to work, for every agent and whether the window is in front or not. Pick a macOS sound or one of your own files for each moment in **Settings › Sounds** (a copy of your file is kept in the data folder), set the volume, or turn sounds off. The app plays them itself (`afplay`); it adds nothing to your agents' hooks.
 
-**Village ambience** (off until you turn it on in **Settings › Sounds**) is a quiet bed under those sounds that follows the weather: wind and birds by day, crickets at night, rain under a storm and thunder after its lightning. The window makes it itself (Web Audio, no sound files). It plays only while the window is open: softer while another app is in front, silent while the window is hidden or minimized.
+**Village ambience** (off until you turn it on in **Settings › Sounds**) is a quiet bed under those sounds that follows the time of day: wind and birds by day, with a chorus at dawn, and crickets at night. The window makes it itself (Web Audio, no sound files). It plays only while the window is open: softer while another app is in front, silent while the window is hidden or minimized.
 
 ## Privacy
 

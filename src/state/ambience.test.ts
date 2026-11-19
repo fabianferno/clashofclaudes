@@ -1,19 +1,21 @@
 import { vi } from 'vitest';
-import type { Settings, SessionInfo } from '../api/types';
+import type { Settings } from '../api/types';
 import { useApp } from './store';
 import { DEFAULT_SETTINGS } from './settings';
 import { levelFor, mixFor, watchAmbience, type Ambience, type AmbienceMix } from './ambience';
-import { strike } from '../village/weather';
+import { daylightAtHour } from '../village/daylight';
 
 const on: Settings = { ...DEFAULT_SETTINGS, ambienceOn: true, soundVolume: 100, ambienceVolume: 100 };
 
-test('the mix follows the weather', () => {
-  expect(mixFor({ sky: 'night', storms: [] })).toMatchObject({ crickets: true, birds: 0, rain: 0 });
-  const sunny = mixFor({ sky: 'sunny', storms: [] });
-  expect(sunny.crickets).toBe(false);
-  expect(sunny.birds).toBeGreaterThan(mixFor({ sky: 'day', storms: [] }).birds);
-  expect(mixFor({ sky: 'day', storms: ['w1'] }).rain).toBeGreaterThan(0);
-  expect(mixFor({ sky: 'day', storms: ['w1', 'w2'] }).rain).toBeGreaterThan(mixFor({ sky: 'day', storms: ['w1'] }).rain);
+test('the mix follows the time of day: a dawn chorus, birds by day, crickets at night', () => {
+  const night = mixFor(daylightAtHour(1));
+  expect(night).toMatchObject({ crickets: true, birds: 0 });
+  const noon = mixFor(daylightAtHour(13));
+  expect(noon.crickets).toBe(false);
+  expect(noon.birds).toBeGreaterThan(0);
+  expect(mixFor(daylightAtHour(6.8)).birds).toBeGreaterThan(noon.birds); // dawn chorus
+  expect(mixFor(daylightAtHour(18.5)).birds).toBeLessThanOrEqual(noon.birds); // no chorus at sunset
+  expect(noon.wind).toBeGreaterThan(night.wind);
 });
 
 test('silent unless on, with sounds on and the window shown; softer behind another app', () => {
@@ -28,32 +30,26 @@ test('silent unless on, with sounds on and the window shown; softer behind anoth
   expect(levelFor({ ...on, ambienceVolume: 50 }, 'front')).toBeCloseTo(front / 2);
 });
 
-test('the engine is made only once it is turned on, follows the weather and thunders after lightning', () => {
+test('the engine is made only once it is turned on, and follows the clock', () => {
   const sets: Array<{ mix: AmbienceMix; level: number }> = [];
   const last = () => sets[sets.length - 1];
-  const thunder = vi.fn(), close = vi.fn();
-  const make = vi.fn((): Ambience => ({ set: (mix, level) => sets.push({ mix, level }), thunder, unlock: () => {}, close }));
+  const close = vi.fn();
+  const make = vi.fn((): Ambience => ({ set: (mix, level) => sets.push({ mix, level }), unlock: () => {}, close }));
   vi.spyOn(document, 'hasFocus').mockReturnValue(true);
-  useApp.setState({
-    settings: DEFAULT_SETTINGS, sessions: {},
-    workspaces: [{ id: 'w1', name: 'shop', path: '/w', createdAt: 0, missing: false, level: 1, xp: 0, compound: { x0: 0, y0: 0, w: 8, h: 8, house: { x: 1, y: 1 } } }],
-  });
-  const stop = watchAmbience(make);
+  useApp.setState({ settings: DEFAULT_SETTINGS });
+  let clock = new Date(2026, 10, 20, 23, 0);
+  const stop = watchAmbience(make, () => clock);
   expect(make).not.toHaveBeenCalled();
 
   useApp.setState({ settings: on });
   expect(make).toHaveBeenCalledTimes(1);
   expect(last().level).toBeGreaterThan(0);
-  expect(last().mix.crickets).toBe(true); // nothing runs: night
+  expect(last().mix.crickets).toBe(true); // 11 PM
 
-  strike('w1');
-  expect(thunder).not.toHaveBeenCalled(); // no storm here
-
-  const stuck = { id: 's', workspaceId: 'w1', kind: { kind: 'agent', builderId: 'b' }, state: { kind: 'stuck', reason: 'x' }, stateSince: 1 } as unknown as SessionInfo;
-  useApp.setState({ sessions: { s: stuck } });
-  expect(last().mix.rain).toBeGreaterThan(0);
-  strike('w1');
-  expect(thunder).toHaveBeenCalledTimes(1);
+  clock = new Date(2026, 10, 21, 13, 0);
+  useApp.setState({ settings: { ...on, ambienceVolume: 90 } });
+  expect(last().mix.crickets).toBe(false);
+  expect(last().mix.birds).toBeGreaterThan(0);
 
   useApp.setState({ settings: { ...on, ambienceOn: false } });
   expect(last().level).toBe(0);

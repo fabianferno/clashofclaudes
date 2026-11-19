@@ -8,7 +8,7 @@ export const DEFAULT_SETTINGS: Settings = {
   hapticHover: 'alignment', hapticDrop: 'levelChange',
   elixirReserve: 10, elixirStandIn: false,
   soundsOn: true, soundVolume: 70, sounds: DEFAULT_SOUNDS,
-  weather: true, ambienceOn: false, ambienceVolume: 50,
+  dayNight: true, ambienceOn: false, ambienceVolume: 50,
 };
 
 export { PLAYER_NAME_MAX, cleanName, townHallTitle } from './names';

@@ -3,8 +3,8 @@
 Parked on 2026-11-10 from a product brainstorm. Nothing here is decided: the owner will go
 through it to keep or drop each one. Already built from the same list: elixir that drives
 decisions (forecast, reserve, stand-ins), app-wide sounds (Settings › Sounds), the menu bar
-mini-village, opening a plan from the briefing for review, weather and day/night from state, and the
-village ambience (2026-11-20).
+mini-village, opening a plan from the briefing for review, day and night from the clock, and the village
+ambience (2026-11-20).
 
 ## Workspace notes
 

@@ -202,9 +202,9 @@ export default function SettingsPage() {
             <h3 className="kb-head ol" style={{ background: '#c8860d' }}>Your village</h3>
             <div className="set-body">
               <NameField saved={settings.playerName ?? null} onSave={(playerName) => change({ playerName })} />
-              <Toggle label="Weather and day/night"
-                hint="Sunny while builders work and nothing waits on you, night once nothing runs, and a storm over a compound with a stuck builder."
-                checked={settings.weather !== false} onChange={(on) => change({ weather: on })} />
+              <Toggle label="Day and night"
+                hint="The village follows your clock: a golden sunrise and sunset, and lit houses and fireflies at night."
+                checked={settings.dayNight !== false} onChange={(on) => change({ dayNight: on })} />
               <div className="set-line">
                 <span className="set-note">New here, or want a refresher? Walk through a sample compound again.</span>
                 <button className="hud-btn green sm" onClick={() => { close(); startTour(); }}>Replay the tour</button>
@@ -273,7 +273,7 @@ export default function SettingsPage() {
               {settings.soundsOn !== false && (
                 <>
                   <Toggle label="Village ambience"
-                    hint="A quiet bed under the sounds that follows the weather: birds by day, crickets at night, rain under a storm. Only while the window is open."
+                    hint="A quiet bed under the sounds that follows the time of day: birds by day (a chorus at dawn), crickets at night. Only while the window is open."
                     checked={!!settings.ambienceOn} onChange={(on) => change({ ambienceOn: on })} />
                   {settings.ambienceOn && (
                     <label className="set-line">

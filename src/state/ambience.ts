@@ -1,31 +1,32 @@
 import type { Settings } from '../api/types';
-import { onLightning, weatherOf, type Weather } from '../village/weather';
+import { daylightAt, type Daylight } from '../village/daylight';
 import { useApp } from './store';
 
 /**
- * The village's ambience: a quiet bed under the event sounds that follows the weather (see
- * village/weather.ts). Wind and birds by day, crickets at night, rain while a storm is out and
- * thunder after its lightning. It is synthesized in the window (Web Audio), so there are no
+ * The village's ambience: a quiet bed under the event sounds that follows the time of day (see
+ * village/daylight.ts). Wind all day, birds by day with a chorus at dawn, crickets at night.
+ * It is synthesized in the window (Web Audio), so there are no
  * sound files, and it plays only while the window is open: softer while another app is in front,
  * silent while the window is hidden. Off until turned on in Settings › Sounds.
  */
 
-/** How loud each part of the bed is (0..1 of the master level), and how often birds call. */
+/** How loud the wind is (0..1 of the master level), how often birds call, and whether crickets sing. */
 export interface AmbienceMix {
   wind: number;
-  rain: number;
   /** Bird calls a minute; 0 for none. */
   birds: number;
   crickets: boolean;
 }
 
-export function mixFor(w: Weather): AmbienceMix {
-  const rain = w.storms.length ? Math.min(1, 0.7 + 0.15 * (w.storms.length - 1)) : 0;
-  switch (w.sky) {
-    case 'night': return { wind: 0.35, rain, birds: 0, crickets: true };
-    case 'sunny': return { wind: 0.45, rain, birds: rain ? 3 : 9, crickets: false };
-    default: return { wind: 0.6, rain, birds: rain ? 2 : 5, crickets: false };
-  }
+/** Birds a minute by day, and at the height of the dawn chorus. */
+const BIRDS_DAY = 5;
+const BIRDS_DAWN = 16;
+
+export function mixFor(d: Daylight): AmbienceMix {
+  const day = 1 - d.night;
+  const chorus = d.morning ? d.golden : 0;
+  const birds = day < 0.15 ? 0 : day * (BIRDS_DAY + (BIRDS_DAWN - BIRDS_DAY) * chorus);
+  return { wind: 0.6 - 0.25 * d.night, birds: Math.round(birds * 10) / 10, crickets: d.night > 0.5 };
 }
 
 /** Whether the window is in front, behind another app, or hidden (minimized, or the mini village shown). */
@@ -51,38 +52,30 @@ export function presenceNow(): Presence {
 /** What plays the bed (the Web Audio engine below; tests give a fake). */
 export interface Ambience {
   set(mix: AmbienceMix, level: number): void;
-  thunder(): void;
   /** A user gesture: audio may start now (browsers keep it suspended until one). */
   unlock(): void;
   close(): void;
 }
 
-/** How often the weather is read again while nothing changes (night falls after a quiet while). */
-const RECHECK_MS = 5_000;
+/** How often the clock is read again. */
+const RECHECK_MS = 10_000;
 
 /**
- * Plays the ambience as settings, sessions, the window's presence and the weather change.
+ * Plays the ambience as settings, the window's presence and the time of day change.
  * The engine is made only once the ambience is first on. Returns a stop.
  */
-export function watchAmbience(make: () => Ambience = () => new WebAmbience()): () => void {
+export function watchAmbience(make: () => Ambience = () => new WebAmbience(), now: () => Date = () => new Date()): () => void {
   let engine: Ambience | null = null;
-  let level = 0;
-  let weather: Weather = { sky: 'day', storms: [] };
   const apply = () => {
-    const st = useApp.getState();
-    weather = weatherOf(Object.values(st.sessions), st.workspaces, Date.now());
-    level = levelFor(st.settings, presenceNow());
+    const level = levelFor(useApp.getState().settings, presenceNow());
     if (level > 0 && !engine) {
       try { engine = make(); } catch { return; } // no audio here
     }
-    engine?.set(mixFor(weather), level);
+    engine?.set(mixFor(daylightAt(now())), level);
   };
-  const unsub = useApp.subscribe((st, prev) => {
-    if (st.settings !== prev.settings || st.sessions !== prev.sessions || st.workspaces !== prev.workspaces) apply();
-  });
+  const unsub = useApp.subscribe((st, prev) => { if (st.settings !== prev.settings) apply(); });
   const timer = window.setInterval(apply, RECHECK_MS);
   const unlock = () => engine?.unlock();
-  const offStrike = onLightning(() => { if (level > 0 && weather.storms.length) engine?.thunder(); });
   window.addEventListener('focus', apply);
   window.addEventListener('blur', apply);
   document.addEventListener('visibilitychange', apply);
@@ -92,7 +85,6 @@ export function watchAmbience(make: () => Ambience = () => new WebAmbience()): (
   return () => {
     unsub();
     window.clearInterval(timer);
-    offStrike();
     window.removeEventListener('focus', apply);
     window.removeEventListener('blur', apply);
     document.removeEventListener('visibilitychange', apply);
@@ -111,7 +103,7 @@ const GLIDE = 1.2;
 const SUSPEND_AFTER_MS = 3_000;
 const CRICKETS = [{ f: 4400, every: 0.95 }, { f: 4950, every: 1.25 }];
 
-/** Pink noise (Paul Kellet's economy filter), `seconds` long: the wind's and the rain's grain. */
+/** Pink noise (Paul Kellet's economy filter), `seconds` long: the wind's grain. */
 function pinkNoise(ctx: BaseAudioContext, seconds: number): AudioBuffer {
   const n = Math.floor(ctx.sampleRate * seconds);
   const buf = ctx.createBuffer(1, n, ctx.sampleRate);
@@ -134,11 +126,10 @@ class WebAmbience implements Ambience {
   private readonly ctx: AudioContext;
   private readonly master: GainNode;
   private readonly wind: GainNode;
-  private readonly rain: GainNode;
   private readonly calls: GainNode;
   private readonly noise: AudioBuffer;
   private readonly sources: AudioScheduledSourceNode[] = [];
-  private mix: AmbienceMix = { wind: 0, rain: 0, birds: 0, crickets: false };
+  private mix: AmbienceMix = { wind: 0, birds: 0, crickets: false };
   private level = 0;
   private timer: number | null = null;
   private silentSince: number | null = null;
@@ -166,18 +157,6 @@ class WebAmbience implements Ambience {
     windSrc.connect(windLp).connect(swell).connect(this.wind).connect(this.master);
     this.lfo(0.07, 220, windLp.frequency);
     this.lfo(0.113, 0.25, swell.gain);
-
-    // rain: the same grain, bright and steady
-    const rainSrc = this.loop(1.7);
-    const hp = c.createBiquadFilter();
-    hp.type = 'highpass';
-    hp.frequency.value = 1100;
-    const lp = c.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.value = 7000;
-    this.rain = c.createGain();
-    this.rain.gain.value = 0;
-    rainSrc.connect(hp).connect(lp).connect(this.rain).connect(this.master);
 
     // birds and crickets
     this.calls = c.createGain();
@@ -210,7 +189,6 @@ class WebAmbience implements Ambience {
     const t = this.ctx.currentTime;
     this.master.gain.setTargetAtTime(level, t, GLIDE);
     this.wind.gain.setTargetAtTime(mix.wind, t, GLIDE * 2);
-    this.rain.gain.setTargetAtTime(mix.rain * 0.55, t, GLIDE * 2);
     if (level > 0) {
       this.silentSince = null;
       if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
@@ -292,28 +270,6 @@ class WebAmbience implements Ambience {
       env.gain.linearRampToValueAtTime(0, t + 0.035);
     }
     osc.stop(at + 0.2);
-  }
-
-  /** A roll of thunder a moment after the flash. */
-  thunder(): void {
-    if (this.ctx.state !== 'running') return;
-    const c = this.ctx;
-    const at = c.currentTime + 0.5 + Math.random();
-    const src = c.createBufferSource();
-    src.buffer = this.noise;
-    const lp = c.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.value = 150;
-    const env = c.createGain();
-    env.gain.value = 0;
-    env.gain.setValueAtTime(0, at);
-    env.gain.linearRampToValueAtTime(0.9, at + 0.08);
-    env.gain.linearRampToValueAtTime(0.55, at + 0.4);
-    env.gain.linearRampToValueAtTime(0.8, at + 0.7);
-    env.gain.exponentialRampToValueAtTime(0.001, at + 3.2);
-    src.connect(lp).connect(env).connect(this.master);
-    src.start(at, Math.random() * 2);
-    src.stop(at + 3.3);
   }
 
   close(): void {

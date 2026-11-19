@@ -294,9 +294,9 @@ export interface Settings {
   soundVolume?: number;
   /** The sound file each moment plays; "" is silent. */
   sounds?: Partial<Record<SoundMoment, string>>;
-  /** Weather and day/night over the village, from what the builders do. On until turned off. */
-  weather?: boolean;
-  /** A quiet village ambience under the sounds (birds, crickets, rain), while the window is open. Off until turned on. */
+  /** Day and night over the village, from the owner's clock. On until turned off. */
+  dayNight?: boolean;
+  /** A quiet village ambience under the sounds (birds by day, crickets at night), while the window is open. Off until turned on. */
   ambienceOn?: boolean;
   /** Ambience volume, 0-100, under the sound volume. */
   ambienceVolume?: number;

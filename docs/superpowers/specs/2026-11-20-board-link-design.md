@@ -118,7 +118,9 @@ Answering from a phone arrives with project 2.
 - **Laying ground for unsafe remote approval.** An agent runs with its owner's `vercel` login, so a
   message written "by fabian" may have been written by one of fabian's agents. Nothing in this
   layout may assume that a message from a team member is a decision from a person. (Project 2
-  accepts actions only from the web remote's own project identity, which an agent cannot use.)
+  accepts only actions signed by a phone the owner paired: see `2026-11-20-web-remote-design.md`.
+  An earlier note here said the remote's project identity was enough; an agent with the owner's
+  Vercel login can use that identity.)
 
 ## Constraints
 

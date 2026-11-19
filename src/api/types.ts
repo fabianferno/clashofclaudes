@@ -294,6 +294,12 @@ export interface Settings {
   soundVolume?: number;
   /** The sound file each moment plays; "" is silent. */
   sounds?: Partial<Record<SoundMoment, string>>;
+  /** Weather and day/night over the village, from what the builders do. On until turned off. */
+  weather?: boolean;
+  /** A quiet village ambience under the sounds (birds, crickets, rain), while the window is open. Off until turned on. */
+  ambienceOn?: boolean;
+  /** Ambience volume, 0-100, under the sound volume. */
+  ambienceVolume?: number;
 }
 
 /** A moment that can play a sound (see src/state/sounds.ts and src-tauri/src/sounds.rs). */

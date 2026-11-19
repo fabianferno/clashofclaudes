@@ -1,6 +1,6 @@
 import { Application, Container, Graphics, Sprite, Text, Texture, TilingSprite } from 'pixi.js';
 import type { AgentKind, AgentQuota, Builder, CloseOutcome, Compound, SessionInfo, SessionState, Tile, Workspace } from '../api/types';
-import { iso, toGrid } from './iso';
+import { TW, iso, toGrid } from './iso';
 import { HALL, HOUSE, STRUCT, gateOutside, gateSide, gateTile, villageRect, wallRect, type Rect } from './layout';
 import { enclosure, seedOf } from './enclosure';
 import { setVillageSnapshot } from '../screenshot';
@@ -24,6 +24,8 @@ import { DRAG_PX, createDragController } from './drag';
 import { clickPoint, compoundAt, dragTarget, hitTest, selectionOf } from './input';
 import { COLLECTOR_NAME, collectorLook, collectorTiles, shownCollectors, type CollectorAgent } from './quota';
 import { FxRenderer, POP_SECONDS, ORB_SECONDS, Particles, RELOCATE_SECONDS, lifecycleEvents, type Snap } from './effects';
+import { weatherOf, strike, type Weather } from './weather';
+import { WeatherFx, type Light, type StormSite } from './weatherFx';
 import { MAX_MINIONS, MINION_SCALE, minionSpots, popScale, shownMinions, trailOffset, type MinionSpot } from './minions';
 
 // ---------------------------------------------------------------- pure part
@@ -46,6 +48,8 @@ export interface VillageInput {
   boards?: BoardInput[];
   /** What the owner is called: the hall's plate reads "<name>'s Town Hall" (plain "Town Hall" without one). */
   ownerName?: string | null;
+  /** Weather and day/night from what the builders do (see weather.ts); false: always a clear day. */
+  weather?: boolean;
 }
 
 /** A board: a local web app (see src-tauri/src/apps.rs) or a browser the owner opened; `key` as in the store's `boardItems`. */
@@ -474,6 +478,10 @@ export interface SceneDebug {
   screenOf(id: string): { x: number; y: number } | null;
   /** Zoom by `factor` about the village's middle at once, no easing (driving a hidden window, whose ticker is stopped). */
   zoomNow(factor: number): Cam;
+  /** The weather it is heading for. */
+  weather: { sky: string; storms: string[] };
+  /** Play the weather `seconds` on at once (driving a hidden window, whose ticker is stopped); `w` overrides what the builders say. */
+  weatherNow(seconds: number, w?: Weather): void;
 }
 
 export interface SceneOptions {
@@ -582,7 +590,11 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
   const meadow = new TilingSprite({ texture: Texture.from(forestTile()), width: 1, height: 1 });
   const patches = PATCHES.map((p) => new TilingSprite({ texture: Texture.from(patchTile(p.seed)), width: 1, height: 1, alpha: PATCH_ALPHA }));
   const vignette = new Sprite(Texture.from(vignetteTexture()));
-  app.stage.addChild(meadow, ...patches, view, vignette);
+  // the weather: the sky's tint and sunlight over the village, lights and fireflies through the night's tint
+  const weatherFx = new WeatherFx(strike);
+  app.stage.addChild(meadow, ...patches, view, weatherFx.tint, weatherFx.sun, weatherFx.glow, vignette);
+  weatherFx.storms.zIndex = -1e9; // over the buildings, under the labels
+  overlay.addChild(weatherFx.storms);
 
   const ground = new Sprite(Texture.EMPTY);
   groundLayer.addChild(ground);
@@ -621,6 +633,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     if (statusClock < 1000) return;
     statusClock = 0;
     const now = Date.now();
+    weatherFx.setWeather(weatherOf(lastState.sessions, lastState.workspaces, now), lastState.weather !== false);
     if (statusesDue(entities, lastState.sessions, now, [...collectorEntities(lastState, now), ...boardEntities(lastState)]) !== statusSig) sync(lastState);
   });
   let releaseClock = 0;
@@ -765,6 +778,9 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       sp.tilePosition.set(cam.x + p.shift * cam.zoom, cam.y + p.shift * 0.6 * cam.zoom);
     });
     vignette.width = app.screen.width; vignette.height = app.screen.height;
+    weatherFx.glow.scale.set(cam.zoom);
+    weatherFx.glow.position.set(cam.x, cam.y);
+    weatherFx.resize(app.screen.width, app.screen.height);
   };
   const panelW = () => opts.panelWidth?.() ?? 0;
   const openPanelW = () => opts.openPanelWidth?.() ?? PANEL_W;
@@ -1115,7 +1131,25 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     }
   };
   app.ticker.add((t) => updateBuilders(Math.min(t.deltaMS / 1000, 0.25)));
+  app.ticker.add((t) => { if (weatherFx.busy) weatherFx.update(Math.min(t.deltaMS / 1000, 0.25)); });
   app.ticker.add((t) => updateFx(Math.min(t.deltaMS / 1000, 0.25)));
+
+  /** The weather's places (lit houses, storm sites, where fireflies wander) and what it is heading for. */
+  const syncWeather = (state: VillageInput) => {
+    const hall = iso(HALL.x0 + HALL.w / 2, HALL.y0 + HALL.h / 2);
+    const lights: Light[] = [{ x: hall.x, y: hall.y - 20, r: 170 }];
+    const sites: StormSite[] = [];
+    for (const w of state.workspaces) {
+      const c = w.compound;
+      if (!c) continue;
+      const h = iso(c.house.x + HOUSE / 2, c.house.y + HOUSE / 2);
+      lights.push({ x: h.x, y: h.y - 14, r: 120 });
+      const m = iso(c.x0 + c.w / 2, c.y0 + c.h / 2);
+      sites.push({ id: w.id, x: m.x, y: m.y, spread: Math.min(220, ((c.w + c.h) * TW) / 8) });
+    }
+    weatherFx.setPlaces(lights, sites, villageTiles ? pxRectOfTiles(villageTiles) : null);
+    weatherFx.setWeather(weatherOf(state.sessions, state.workspaces, Date.now()), state.weather !== false);
+  };
 
   const sync = (state: VillageInput) => {
     if (destroyed) return;
@@ -1134,6 +1168,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       relocs.set(r.wsId, { ox: -d.x + (cur?.x ?? 0), oy: -d.y + (cur?.y ?? 0), t: 0 });
     }
     if (!relocs.size) syncGround(compounds, state); // while a compound travels the old ground stays; it is re-baked once at the end
+    syncWeather(state);
     syncBuilders(state);
     entities = buildEntities({ ...state, now: Date.now() });
     gates = entities.filter((e) => e.kind === 'gate').map((e) => {
@@ -1236,6 +1271,11 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       })),
     ],
     groundBakes,
+    weather: { sky: weatherFx.heading.sky, storms: [...weatherFx.heading.storms] },
+    weatherNow: (seconds, w) => {
+      if (w) weatherFx.setWeather(w);
+      for (let t = 0; t < seconds; t += 1 / 30) weatherFx.update(1 / 30);
+    },
     particles: particles.count,
     minions: [...views].flatMap(([builderId, v]) => [...v.minions].filter(([, m]) => m.gone === null)
       .map(([id, m]) => ({ id, builderId, x: m.x, y: m.y, pose: m.pose }))),
@@ -1754,6 +1794,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     sprites.clear();
     unholdTextures();
     fxRender.destroy();
+    weatherFx.destroy();
     const gt = ground.texture;
     app.destroy({ removeView: true }, { children: true, texture: false });
     if (gt !== Texture.EMPTY) gt.destroy(true);

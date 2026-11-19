@@ -63,7 +63,7 @@ Antigravity CLI replaced Gemini CLI for Google's plans; the app supports Antigra
 Running several agents makes it easy to start a fifth thread while four are still waiting on you. The village keeps that in check:
 
 - **Your queue.** Every session waiting on you goes in one queue, in this order: permissions to Allow or Deny, then questions, then stuck sessions, then finished work to review. Oldest wait comes first within each. **▶ N waiting on you** at the top left (or **⌘J**) opens the first item. Deal with it and the next one comes up.
-- **A briefing for each item.** Before the terminal, the panel shows the task, what the agent asks (for Claude Code, the exact tool call, such as `Bash: npm test`) and the agent's last reply (Claude Code and Codex). It also shows the files changed since the session started.
+- **A briefing for each item.** Before the terminal, the panel shows the task, what the agent asks (for Claude Code, the exact tool call, such as `Bash: npm test`) and the agent's last reply (Claude Code and Codex). It also shows the files changed since the session started. When the agent points to a markdown doc it wrote (a plan or a spec, named in its last reply or among the changed files), click the path to read it rendered in the panel, follow links inside it, and approve it or ask for changes from the same card. **Open in editor** opens it in your editor instead.
 - **Close the loop.** For finished work: **Accept** closes it and earns XP. **Follow up** sends your reply into the agent's prompt. **Park** puts it aside, with an optional note, until it changes. **Discard** closes it without XP, and its changes stay on disk.
 - **Fewer threads.** While things wait on you, **+ New session** suggests **Add to To Do** instead. **Settings › Focus** can limit how many sessions work at once.
 - **Elixir that decides.** The collectors forecast each agent's limits at the rate they are burning ("runs out around 3:40 PM, before it refills"): in the collector panel, on the resource bar (its rim glows amber) and once as a notice. To Dos set to start on their own wait while their agent is at or under a reserve (**Settings › Elixir**, 10 % by default), and start once it refills; optionally a free builder whose agent has elixir takes the task instead.
@@ -74,6 +74,10 @@ Running several agents makes it easy to start a fifth thread while four are stil
 When the app is in the background, it shows a macOS notification when a session needs you or finishes (title: the builder's name, body: "needs you: ..." or "finished"), and the Dock icon shows how many sessions wait on you: the same count as **▶ N waiting on you**, so stuck sessions count, and parked or paused ones do not. Clicking a notification brings the app forward and selects that session. When a Claude Code or Antigravity session asks for permission, the notification has an **Allow** button that answers that one prompt without opening the app; if the prompt was already answered or a newer one is open, the click opens the session instead. To deny, click the notification and use the briefing. Notifications never include your task text or terminal output.
 
 Over each structure, a builder waiting on you (or stuck) shows for how long ("Waiting for you · 7m"), and **▶ N waiting on you** shows how long the longest-stopped builder has waited.
+
+## Weather
+
+The village's weather shows how things stand at a glance. It is sunny while builders work and nothing waits on you, and plain daylight while something does. Night falls once nothing has run for about 20 seconds: houses light up and fireflies come out. A compound with a stuck session gets a storm cloud with rain and lightning until you deal with it. Turn it off in **Settings › Your village**.
 
 ## Menu bar and mini village
 
@@ -86,6 +90,8 @@ The village does not have to be in front for you to see who waits.
 ## Sounds
 
 The app plays a sound when a builder wants a decision, asks you something, finishes, gets stuck, starts, sends out a minion (subagent) or goes back to work, for every agent and whether the window is in front or not. Pick a macOS sound or one of your own files for each moment in **Settings › Sounds** (a copy of your file is kept in the data folder), set the volume, or turn sounds off. The app plays them itself (`afplay`); it adds nothing to your agents' hooks.
+
+**Village ambience** (off until you turn it on in **Settings › Sounds**) is a quiet bed under those sounds that follows the weather: wind and birds by day, crickets at night, rain under a storm and thunder after its lightning. The window makes it itself (Web Audio, no sound files). It plays only while the window is open: softer while another app is in front, silent while the window is hidden or minimized.
 
 ## Privacy
 

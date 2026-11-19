@@ -57,6 +57,7 @@ const inputOf = (s: AppState, mini = false): VillageInput => ({
   // boards and their snapshots live in the main window's memory: the mini village has none
   boards: mini ? [] : boardsOf(s),
   ownerName: s.settings?.playerName ?? null,
+  weather: s.settings?.weather !== false,
 });
 
 /** The Pixi village, full-window; syncs from the store on every change (also while hidden). */
@@ -120,7 +121,7 @@ export default function VillageCanvas({ onError, mini = false }: { onError?: (e:
           if (st.workspaces !== prev.workspaces || st.sessions !== prev.sessions || st.builders !== prev.builders || st.lastClosed !== prev.lastClosed
             || st.quotas !== prev.quotas || st.agents !== prev.agents || st.collectorSpots !== prev.collectorSpots
             || st.apps !== prev.apps || st.browsers !== prev.browsers || st.boardSpots !== prev.boardSpots
-            || st.settings?.playerName !== prev.settings?.playerName)
+            || st.settings?.playerName !== prev.settings?.playerName || st.settings?.weather !== prev.settings?.weather)
             s.sync(inputOf(st, mini));
           // the mini village keeps everything in view as compounds come and go
           if (mini && st.workspaces.length !== prev.workspaces.length) s.fitVillage();

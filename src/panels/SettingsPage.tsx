@@ -202,6 +202,9 @@ export default function SettingsPage() {
             <h3 className="kb-head ol" style={{ background: '#c8860d' }}>Your village</h3>
             <div className="set-body">
               <NameField saved={settings.playerName ?? null} onSave={(playerName) => change({ playerName })} />
+              <Toggle label="Weather and day/night"
+                hint="Sunny while builders work and nothing waits on you, night once nothing runs, and a storm over a compound with a stuck builder."
+                checked={settings.weather !== false} onChange={(on) => change({ weather: on })} />
               <div className="set-line">
                 <span className="set-note">New here, or want a refresher? Walk through a sample compound again.</span>
                 <button className="hud-btn green sm" onClick={() => { close(); startTour(); }}>Replay the tour</button>
@@ -267,6 +270,20 @@ export default function SettingsPage() {
                   onChange={(e) => change({ soundVolume: Number(e.target.value) })}
                   onPointerUp={(e) => previewSound((settings.sounds ?? DEFAULT_SOUNDS).finished || DEFAULT_SOUNDS.finished, Number((e.target as HTMLInputElement).value))} />
               </label>
+              {settings.soundsOn !== false && (
+                <>
+                  <Toggle label="Village ambience"
+                    hint="A quiet bed under the sounds that follows the weather: birds by day, crickets at night, rain under a storm. Only while the window is open."
+                    checked={!!settings.ambienceOn} onChange={(on) => change({ ambienceOn: on })} />
+                  {settings.ambienceOn && (
+                    <label className="set-line">
+                      <span className="set-label">Ambience volume</span>
+                      <input type="range" min={5} max={100} step={5} aria-label="Ambience volume" value={settings.ambienceVolume ?? 50}
+                        onChange={(e) => change({ ambienceVolume: Number(e.target.value) })} />
+                    </label>
+                  )}
+                </>
+              )}
               {settings.soundsOn !== false && SOUND_MOMENTS.map(({ moment, label, hint }) => (
                 <SoundRow key={moment} label={label} hint={hint} system={systemSounds} volume={settings.soundVolume ?? 70}
                   value={(settings.sounds ?? DEFAULT_SOUNDS)[moment] ?? DEFAULT_SOUNDS[moment]}

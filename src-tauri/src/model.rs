@@ -202,6 +202,15 @@ pub struct Settings {
     /// The sound file each moment plays (`sounds::MOMENTS`); "" is silent.
     #[serde(default = "crate::sounds::default_sounds")]
     pub sounds: BTreeMap<String, String>,
+    /// Weather and day/night over the village, from what the builders do (drawn by the frontend).
+    #[serde(default = "default_true")]
+    pub weather: bool,
+    /// A quiet village ambience under the sounds, while the window is open (played by the frontend).
+    #[serde(default)]
+    pub ambience_on: bool,
+    /// Ambience volume, 0-100, under the sound volume.
+    #[serde(default = "default_ambience_volume")]
+    pub ambience_volume: u32,
 }
 
 fn default_elixir_reserve() -> u32 {
@@ -209,6 +218,10 @@ fn default_elixir_reserve() -> u32 {
 }
 fn default_sound_volume() -> u32 {
     70
+}
+
+fn default_ambience_volume() -> u32 {
+    50
 }
 
 fn default_haptic_hover() -> String {
@@ -242,6 +255,7 @@ impl Settings {
         }
         self.elixir_reserve = self.elixir_reserve.min(50);
         self.sound_volume = self.sound_volume.min(100);
+        self.ambience_volume = self.ambience_volume.min(100);
         self.sounds = crate::sounds::normalized(std::mem::take(&mut self.sounds));
         self.install_id = if self.share_usage { self.install_id.filter(|i| !i.trim().is_empty()).or_else(|| Some(uuid::Uuid::new_v4().to_string())) } else { None };
         self
@@ -250,6 +264,19 @@ impl Settings {
 
 #[cfg(test)]
 mod settings_tests {
+    #[test]
+    fn weather_is_on_and_ambience_off_for_saves_from_before_them() {
+        let old: Settings = serde_json::from_str("{}").unwrap();
+        assert!(old.weather);
+        assert!(!old.ambience_on);
+        assert_eq!(old.ambience_volume, 50);
+        let set: Settings = serde_json::from_str(r#"{"weather":false,"ambienceOn":true,"ambienceVolume":250}"#).unwrap();
+        let set = set.normalized();
+        assert!(!set.weather);
+        assert!(set.ambience_on);
+        assert_eq!(set.ambience_volume, 100);
+    }
+
     #[test]
     fn global_shortcut_is_on_for_saves_from_before_it_existed() {
         let old: Settings = serde_json::from_str("{}").unwrap();
@@ -322,6 +349,9 @@ impl Default for Settings {
             sounds_on: true,
             sound_volume: default_sound_volume(),
             sounds: crate::sounds::default_sounds(),
+            weather: true,
+            ambience_on: false,
+            ambience_volume: default_ambience_volume(),
         }
     }
 }

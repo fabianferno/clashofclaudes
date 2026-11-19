@@ -6,6 +6,7 @@ import { autoStart } from './state/autoStart';
 import { subscribeState } from './state/hydrate';
 import { watchSounds } from './state/sounds';
 import { watchElixir } from './state/elixirWatch';
+import { watchAmbience } from './state/ambience';
 import { queueReason } from './state/queue';
 import VillageCanvas from './village/VillageCanvas';
 import TopBar from './hud/TopBar';
@@ -55,6 +56,8 @@ function App() {
     // the village's sounds, and a heads-up when an agent's elixir won't last until it refills
     const stopSounds = watchSounds();
     const stopElixir = watchElixir();
+    // the village's ambience, when the owner turned it on (this window only: the mini village stays quiet)
+    const stopAmbience = watchAmbience();
     const settings = loadSettings();
     sub.loaded.then(
       () => {
@@ -75,7 +78,7 @@ function App() {
     settings.then((s) => { if (!cancelled && !s.onboarded) startTour(); }).catch(() => {});
     const preload = window.setTimeout(preloadTerminal, 2000); // after the village's first frames
     const stopSnapshots = autoSnapshots();
-    return () => { cancelled = true; window.clearTimeout(preload); stopLayout?.(); stopAuto(); stopSounds(); stopElixir(); stopSnapshots(); unlisten.forEach((u) => u()); sub.stop(); };
+    return () => { cancelled = true; window.clearTimeout(preload); stopLayout?.(); stopAuto(); stopSounds(); stopElixir(); stopAmbience(); stopSnapshots(); unlisten.forEach((u) => u()); sub.stop(); };
   }, []);
 
   return (

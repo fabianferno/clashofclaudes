@@ -433,7 +433,7 @@ pub fn run() {
             {
                 let h = app.handle().clone();
                 std::thread::spawn(move || {
-                    board::app::refresh(&h);
+                    board::app::connect_at_launch(&h);
                 });
             }
             app.manage(commands::AppsState::default());

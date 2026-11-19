@@ -18,6 +18,12 @@ Differences from the text below:
 - A session closed before it finished gets no `coc.outcome`.
 - Closes for a board being left, or a workspace no longer shared, are retried like other writes.
 - `BOARD_PROFILE` and `BOARD_URL` are given only once the board's URL is known.
+- A close that arrives without an outcome waits 2 seconds for one (the session manager reports a
+  removal before the command knows whether it was accepted or discarded).
+- A close on a board being left is given up after 5 failed tries, so that board cannot hold up
+  the new one.
+- At launch the app keeps looking for the board (5 s, doubling to 5 min) while the failure may
+  pass by itself; reaching it again restarts a worker that had stopped for a missing login.
 
 ## Why
 

@@ -3,12 +3,17 @@
 use std::io::Read;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+
 
 use serde::Serialize;
 use serde_json::Value;
 
 use super::{Write, STATUS_PROFILE};
+
+/// After the child exits, how long its output may still arrive (a helper it left running can hold the pipe open).
+const PIPE_GRACE: Duration = Duration::from_millis(500);
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CliError {
@@ -69,16 +74,27 @@ impl BoardCli for VercelCli {
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| CliError::Retryable(e.to_string()))?;
-        // Read both pipes on their own threads, so a chatty child never blocks on a full pipe.
-        let drain = |mut r: Box<dyn Read + Send>| {
-            std::thread::spawn(move || {
-                let mut s = Vec::new();
-                let _ = r.read_to_end(&mut s);
-                String::from_utf8_lossy(&s).into_owned()
-            })
+        // Each pipe is read on its own thread into a shared buffer, so a chatty child never
+        // blocks on a full pipe, and a helper the child left running (holding the pipe open)
+        // cannot keep this call waiting once the child itself is done.
+        let drain = |r: Option<Box<dyn Read + Send>>| {
+            let buf = Arc::new(Mutex::new(Vec::new()));
+            let into = buf.clone();
+            let reader = r.map(|mut r| {
+                std::thread::spawn(move || {
+                    let mut chunk = [0u8; 8192];
+                    while let Ok(n) = r.read(&mut chunk) {
+                        if n == 0 {
+                            break;
+                        }
+                        into.lock().unwrap_or_else(|e| e.into_inner()).extend_from_slice(&chunk[..n]);
+                    }
+                })
+            });
+            (buf, reader)
         };
-        let out = child.stdout.take().map(|r| drain(Box::new(r)));
-        let err = child.stderr.take().map(|r| drain(Box::new(r)));
+        let (out, out_reader) = drain(child.stdout.take().map(|r| Box::new(r) as Box<dyn Read + Send>));
+        let (err, err_reader) = drain(child.stderr.take().map(|r| Box::new(r) as Box<dyn Read + Send>));
         let started = Instant::now();
         let status = loop {
             match child.try_wait() {
@@ -92,8 +108,13 @@ impl BoardCli for VercelCli {
                 Err(e) => return Err(CliError::Retryable(e.to_string())),
             }
         };
-        let read = |h: Option<std::thread::JoinHandle<String>>| h.and_then(|h| h.join().ok()).unwrap_or_default();
-        Ok(Output { ok: status.success(), stdout: read(out), stderr: read(err) })
+        let exited = Instant::now();
+        let reading = |h: &Option<std::thread::JoinHandle<()>>| h.as_ref().is_some_and(|h| !h.is_finished());
+        while (reading(&out_reader) || reading(&err_reader)) && exited.elapsed() < PIPE_GRACE {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let read = |b: &Arc<Mutex<Vec<u8>>>| String::from_utf8_lossy(&b.lock().unwrap_or_else(|e| e.into_inner())).into_owned();
+        Ok(Output { ok: status.success(), stdout: read(&out), stderr: read(&err) })
     }
 }
 
@@ -314,6 +335,16 @@ mod tests {
         assert!(out.ok);
         assert_eq!(out.stdout.trim(), r#"{"outcome":"posted"}"#);
         assert!(out.stderr.contains("<hint/>"));
+    }
+
+    #[test]
+    fn a_helper_left_holding_the_pipe_does_not_hang_the_call() {
+        // like a CLI that leaves an update check running behind it
+        let cli = VercelCli { program: Some("/bin/sh".into()), cwd: std::env::temp_dir(), timeout: Duration::from_secs(20) };
+        let t = Instant::now();
+        let out = cli.raw(&s(&["-c", "echo '{\"outcome\":\"posted\"}'; sleep 8 &"])).unwrap();
+        assert!(t.elapsed() < Duration::from_secs(4), "{:?}", t.elapsed());
+        assert_eq!(out.stdout.trim(), r#"{"outcome":"posted"}"#);
     }
 
     /// Answers by the first words of the command.

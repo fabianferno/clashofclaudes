@@ -23,6 +23,8 @@ pub type Clock = Arc<dyn Fn() -> i64 + Send + Sync>;
 pub const SETTLE_MS: i64 = 2_000;
 /// After launch, a stored thread whose session has not reported within this time is closed.
 pub const LAUNCH_GRACE_MS: i64 = 5_000;
+/// A close on a board being left is given up after this many tries.
+pub const DRAIN_TRIES: u32 = 5;
 const RETRY_FIRST_MS: i64 = 2_000;
 const RETRY_MAX_MS: i64 = 300_000;
 const IDLE_WAKE: Duration = Duration::from_millis(500);
@@ -60,6 +62,8 @@ struct Drain {
     root: String,
     write: Write,
     target: Target,
+    /// Times it failed in a way worth another try.
+    tries: u32,
 }
 
 #[derive(Default)]
@@ -78,6 +82,18 @@ struct Inner {
     launch: Option<(i64, HashSet<String>)>,
     launched: bool,
     quitting: bool,
+    /// The session whose writes are under way (the lock is not held meanwhile).
+    flying: Option<String>,
+    /// Its workspace stopped being shared while its writes were under way.
+    flying_unshared: bool,
+    /// Counts changes of where the app publishes (on or off, board, owner).
+    generation: u64,
+}
+
+/// The board a record's `board` names.
+fn target_of(key: &str) -> Target {
+    let (team, name) = key.split_once('/').unwrap_or(("", key));
+    Target { team: Some(team.to_string()).filter(|t| !t.is_empty()), name: name.to_string() }
 }
 
 pub struct Publisher {
@@ -150,7 +166,7 @@ impl Publisher {
         let Some(root) = rec.root.clone() else { return };
         let ctx = Ctx { builder: "", agent: AgentKind::Custom, channel: &rec.channel, board: &rec.board, host_id: "", share_details: false, files: &[] };
         let (writes, _) = plan(id, Some(rec), Now::Closed(None), &ctx);
-        inner.drains.extend(writes.into_iter().map(|write| Drain { root: root.clone(), write, target: target.clone() }));
+        inner.drains.extend(writes.into_iter().map(|write| Drain { root: root.clone(), write, target: target.clone(), tries: 0 }));
     }
 
     /// Settings or sharing changed.
@@ -159,6 +175,9 @@ impl Publisher {
         let inner = &mut *g;
         let old = inner.cfg.take();
         let was_on = old.as_ref().is_some_and(|c| c.enabled);
+        if old.as_ref().is_none_or(|o| o.enabled != cfg.enabled || o.target != cfg.target || o.owner != cfg.owner) {
+            inner.generation += 1;
+        }
         if let Some(old) = old.as_ref().filter(|_| was_on) {
             let moved = cfg.enabled && (old.target != cfg.target || old.owner != cfg.owner);
             if moved || !cfg.enabled {
@@ -181,6 +200,21 @@ impl Publisher {
                         }
                     }
                 }
+                self.save(inner);
+            }
+        }
+        if cfg.enabled {
+            // Threads this app left on another board (the board was changed while it could not be
+            // reached, or before a restart): closed there, and forgotten here.
+            let key = cfg.target.key();
+            let elsewhere: Vec<(String, Published)> = inner.store.sessions.iter().filter(|(_, r)| r.board != key).map(|(k, r)| (k.clone(), r.clone())).collect();
+            for (id, rec) in &elsewhere {
+                if !rec.unshared && rec.state != Wire::Closed {
+                    Self::drain(inner, id, rec, &target_of(&rec.board));
+                }
+                inner.store.sessions.remove(id);
+            }
+            if !elsewhere.is_empty() {
                 self.save(inner);
             }
         }
@@ -217,13 +251,19 @@ impl Publisher {
                 self.save(inner);
                 drop(g);
                 self.wake.notify_all();
+            } else if inner.flying.as_deref() == Some(id.as_str()) {
+                inner.flying_unshared = true;
             }
             return;
         }
-        if matches!(inner.pending.get(&id), Some((Pending::Closed(_), _))) {
-            return;
-        }
-        inner.pending.insert(id, (Pending::Live(Box::new(view)), (self.now_ms)()));
+        // The same state again (a tool step, a new reply) keeps its place in line: the settle
+        // time runs from when the state began, or a busy builder would never be published.
+        let at = match inner.pending.get(&id) {
+            Some((Pending::Closed(_), _)) => return,
+            Some((Pending::Live(old), at)) if old.info.state == view.info.state && old.info.state_since == view.info.state_since && old.info.awaiting_decision == view.info.awaiting_decision => *at,
+            _ => (self.now_ms)(),
+        };
+        inner.pending.insert(id, (Pending::Live(Box::new(view)), at));
         drop(g);
         self.wake.notify_all();
     }
@@ -233,7 +273,9 @@ impl Publisher {
         let mut g = self.lock();
         let inner = &mut *g;
         let on_board = inner.store.sessions.get(session_id).is_some_and(|r| r.root.is_some() && !r.unshared);
-        if !on_board {
+        // Its first post may be under way right now: then the close waits for it.
+        let flying = inner.flying.as_deref() == Some(session_id);
+        if !on_board && !flying {
             inner.pending.remove(session_id);
             if inner.store.sessions.remove(session_id).is_some() {
                 self.save(inner);
@@ -361,6 +403,15 @@ impl Publisher {
                 drop(g);
                 let done = self.call(&d.write, Some(&d.root), &d.target).map(|_| Done::Ok).unwrap_or_else(|e| e);
                 let mut g = self.lock();
+                let mut d = d;
+                let done = match done {
+                    Done::Later(m) => {
+                        d.tries += 1;
+                        // A board that never answers must not hold up the others for good.
+                        if d.tries >= DRAIN_TRIES { Done::Dropped(m) } else { Done::Later(m) }
+                    }
+                    other => other,
+                };
                 if matches!(done, Done::Later(_) | Done::Stop(_)) {
                     g.drains.push_front(d);
                 }
@@ -374,17 +425,46 @@ impl Publisher {
             let due = inner
                 .pending
                 .iter()
-                .filter(|(_, (p, at))| !matches!(p, Pending::Live(_)) || now - at >= SETTLE_MS)
+                // A close without an outcome waits too: the outcome may be a moment behind it.
+                .filter(|(_, (p, at))| matches!(p, Pending::Paused | Pending::Closed(Some(_))) || now - at >= SETTLE_MS)
                 .min_by_key(|(_, (_, at))| *at)
                 .map(|(id, _)| id.clone());
             let Some(id) = due else { return };
             let Some((entry, at)) = inner.pending.remove(&id) else { return };
             let prev = inner.store.sessions.get(&id).cloned();
+            let generation = inner.generation;
+            inner.flying = Some(id.clone());
+            inner.flying_unshared = false;
             drop(g);
 
             let (done, record) = self.publish(&id, &entry, prev.as_ref(), &cfg);
             let mut g = self.lock();
             let inner = &mut *g;
+            inner.flying = None;
+            let unshared = std::mem::take(&mut inner.flying_unshared);
+            let moved = inner.generation != generation;
+            if moved || unshared {
+                // Where the app publishes changed while these writes were under way, so their
+                // result is not kept as it is. A thread that existed before was dealt with when
+                // the change came; one posted just now is closed where it was posted.
+                let had_root = prev.as_ref().is_some_and(|p| p.root.is_some());
+                if let Some(rec) = record.filter(|r| r.root.is_some() && !had_root) {
+                    Self::drain(inner, &id, &rec, &cfg.target);
+                    let same_board = inner.cfg.as_ref().is_some_and(|c| c.target == cfg.target && c.owner == cfg.owner);
+                    if same_board && !matches!(entry, Pending::Closed(_)) {
+                        // Off, or no longer shared: sharing again reopens this thread.
+                        inner.store.sessions.insert(id.clone(), Published { unshared: true, state: Wire::Closed, wait: None, ..rec });
+                    }
+                    self.save(inner);
+                }
+                let go_on = self.settle(inner, &done);
+                drop(g);
+                self.wake.notify_all();
+                if !go_on {
+                    return;
+                }
+                continue;
+            }
             match record {
                 Some(_) if matches!(entry, Pending::Closed(_)) && matches!(done, Done::Ok | Done::Nothing) => {
                     inner.store.sessions.remove(&id);
@@ -417,6 +497,8 @@ impl Publisher {
             _ => vec![],
         };
         let board = cfg.target.key();
+        // A record from another board is no record here.
+        let prev = prev.filter(|p| p.board == board);
         let (now, builder, agent, channel) = match entry {
             Pending::Live(v) => (Now::Live(&v.info), v.builder.as_str(), v.agent.clone(), v.channel.as_deref().unwrap_or_default()),
             Pending::Paused => (Now::Paused, "", AgentKind::Custom, ""),

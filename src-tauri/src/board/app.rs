@@ -91,6 +91,36 @@ pub fn ensure_host_id(b: &mut BoardSettings) {
     }
 }
 
+/// How long to wait before looking at the board again after a look that ended in `state`: only a
+/// failure that may pass by itself (offline, a timeout) is worth it. None: stop looking.
+pub fn retry_after(state: &str, tries: u32) -> Option<Duration> {
+    (state == "error").then(|| Duration::from_secs((5u64 << tries.min(10)).min(300)))
+}
+
+/// What a look at the board means: who the owner is, a stopped worker going on once the board is
+/// reached again, and the worker's own news for Settings.
+fn after_status(publisher: &Publisher, link: &Mutex<Link>, s: &mut BoardStatus) {
+    if s.state == "ready" {
+        *link.lock().unwrap_or_else(|e| e.into_inner()) = Link { owner: s.handle.clone(), board_url: s.board_url.clone() };
+        if publisher.stopped_reason().is_some() {
+            publisher.check_again();
+        }
+    }
+    let (last_error, last_write_at) = publisher.status();
+    s.last_error = s.last_error.take().or(last_error);
+    s.last_write_at = last_write_at;
+}
+
+/// At launch: looks at the board until it is reached, or until only the owner can help (no CLI,
+/// not signed in) or the feature is off. Blocking; run it on its own thread.
+pub fn connect_at_launch<R: Runtime>(app: &AppHandle<R>) {
+    let mut tries = 0;
+    while let Some(wait) = retry_after(&refresh(app).state, tries) {
+        std::thread::sleep(wait);
+        tries += 1;
+    }
+}
+
 /// Settings, sharing or the owner changed: tells the publisher, sets what sessions get in their
 /// environment, and hands the publisher every session as it stands (it only learns of them here
 /// and from their updates).
@@ -163,13 +193,8 @@ pub fn refresh<R: Runtime>(app: &AppHandle<R>) -> BoardStatus {
         return BoardStatus { state: "off".into(), ..Default::default() };
     }
     let mut s = status(bs.cli.as_ref(), &target(&board));
-    if s.state == "ready" {
-        *bs.link.lock().unwrap_or_else(|e| e.into_inner()) = Link { owner: s.handle.clone(), board_url: s.board_url.clone() };
-    }
+    after_status(&bs.publisher, &bs.link, &mut s);
     apply(app);
-    let (last_error, last_write_at) = bs.publisher.status();
-    s.last_error = s.last_error.or(last_error);
-    s.last_write_at = last_write_at;
     s
 }
 
@@ -312,5 +337,52 @@ mod tests {
         b.enabled = false;
         assert!(!shares_new(&b), "the feature is off");
         assert!(!shares_new(&BoardSettings { enabled: true, ..Default::default() }));
+    }
+
+    #[test]
+    fn a_failed_first_look_is_tried_again_and_a_missing_login_is_not() {
+        assert_eq!(retry_after("error", 0), Some(Duration::from_secs(5)));
+        assert_eq!(retry_after("error", 2), Some(Duration::from_secs(20)));
+        assert_eq!(retry_after("error", 30), Some(Duration::from_secs(300)));
+        for s in ["ready", "off", "noCli", "oldCli", "signedOut"] {
+            assert_eq!(retry_after(s, 0), None, "{s}");
+        }
+    }
+
+    #[test]
+    fn reaching_the_board_again_restarts_a_stopped_worker() {
+        use crate::board::cli::{CliError, Output};
+        struct SignedOutOnce(std::sync::atomic::AtomicBool);
+        impl BoardCli for SignedOutOnce {
+            fn raw(&self, _: &[String]) -> Result<Output, CliError> {
+                if self.0.swap(false, Ordering::SeqCst) {
+                    return Ok(Output { ok: false, stdout: r#"{"status":"error","reason":"not_authenticated","message":"Run vercel login."}"#.into(), stderr: String::new() });
+                }
+                Ok(Output { ok: true, stdout: r#"{"message":{"id":"msg_1"},"outcome":"posted"}"#.into(), stderr: String::new() })
+            }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let clock = Arc::new(std::sync::atomic::AtomicI64::new(1_000));
+        let c = clock.clone();
+        let p = Publisher::new(Arc::new(SignedOutOnce(AtomicBool::new(true))), dir.path().join("board.json"), Arc::new(|_| vec![]), Arc::new(move || c.load(Ordering::SeqCst)));
+        let d = data();
+        p.configure(config(&d, "ada"));
+        p.update(session_view(&d, "ada", &agent("w1", "b1")).unwrap());
+        clock.fetch_add(10_000, Ordering::SeqCst);
+        p.step();
+        assert!(p.stopped_reason().is_some());
+
+        let link = Mutex::new(Link::default());
+        // Still signed out: it stays stopped, and Settings says so even though nothing else is wrong.
+        let mut s = BoardStatus { state: "signedOut".into(), ..Default::default() };
+        after_status(&p, &link, &mut s);
+        assert!(p.stopped_reason().is_some());
+        // Signed in again: the worker goes on, and the owner is remembered.
+        let mut s = BoardStatus { state: "ready".into(), handle: Some("ada".into()), board_url: Some("https://b".into()), ..Default::default() };
+        after_status(&p, &link, &mut s);
+        assert_eq!(p.stopped_reason(), None);
+        assert_eq!(link.lock().unwrap().owner.as_deref(), Some("ada"));
+        p.step();
+        assert!(p.status().1.is_some(), "it wrote");
     }
 }

@@ -15,6 +15,8 @@ struct FakeCli {
     calls: Mutex<Vec<String>>,
     script: Mutex<VecDeque<Result<String, CliError>>>,
     next_id: AtomicI64,
+    /// Runs once, while the next call is under way (the worker holds no lock then).
+    during: Mutex<Option<Box<dyn FnOnce() + Send>>>,
 }
 
 impl FakeCli {
@@ -24,6 +26,9 @@ impl FakeCli {
     fn take(&self) -> Vec<String> {
         std::mem::take(&mut *self.calls.lock().unwrap())
     }
+    fn during(&self, f: impl FnOnce() + Send + 'static) {
+        *self.during.lock().unwrap() = Some(Box::new(f));
+    }
     fn next(&self, r: Result<&str, CliError>) {
         self.script.lock().unwrap().push_back(r.map(str::to_string));
     }
@@ -32,6 +37,10 @@ impl FakeCli {
 impl BoardCli for FakeCli {
     fn raw(&self, args: &[String]) -> Result<Output, CliError> {
         self.calls.lock().unwrap().push(args.join(" "));
+        let during = self.during.lock().unwrap().take();
+        if let Some(f) = during {
+            f();
+        }
         let scripted = self.script.lock().unwrap().pop_front();
         let stdout = match scripted {
             Some(r) => r?,
@@ -451,4 +460,149 @@ fn real_board_round_trip() {
     p.step();
     assert_eq!(p.status().0, None);
     assert!(Store::load(&path).sessions.is_empty());
+}
+
+const CLOSED: &str = "board label msg_1 coc.state=closed --as village --json --name village";
+
+#[test]
+fn the_managers_removal_arriving_first_does_not_lose_the_outcome() {
+    let r = rig();
+    r.p.update(decide("s1", 1));
+    r.settle();
+    r.cli.take();
+    r.p.closed("s1", None); // the manager's removal comes before the command knows the outcome
+    r.p.step(); // the idle worker looks at once
+    r.p.closed("s1", Some(Outcome::Discarded));
+    r.p.step();
+    assert_eq!(r.cli.take(), ["board label msg_1 coc.state=closed coc.outcome=discarded --unset coc.wait --as village --json --name village"]);
+    r.settle();
+    assert!(r.cli.calls().is_empty());
+}
+
+#[test]
+fn a_close_without_an_outcome_is_written_once_it_has_waited_for_one() {
+    let r = rig();
+    r.p.update(working("s1", 1));
+    r.settle();
+    r.cli.take();
+    r.p.closed("s1", None);
+    r.p.step();
+    assert!(r.cli.calls().is_empty());
+    r.settle();
+    assert_eq!(r.cli.calls(), [CLOSED]);
+}
+
+#[test]
+fn a_busy_builder_still_settles() {
+    let r = rig();
+    r.p.update(working("s1", 1));
+    r.wait(1_500);
+    let mut again = working("s1", 1);
+    again.info.steps = 7; // a tool step: an update, not a new state
+    r.p.update(again);
+    r.wait(600);
+    assert_eq!(r.cli.calls().len(), 1, "{:?}", r.cli.calls());
+}
+
+#[test]
+fn a_session_closed_while_its_first_post_is_under_way_is_closed_on_the_board() {
+    let r = rig();
+    let p = r.p.clone();
+    r.cli.during(move || p.closed("s1", Some(Outcome::Accepted)));
+    r.p.update(working("s1", 1));
+    r.settle();
+    let calls = r.cli.calls();
+    assert_eq!(calls.len(), 2, "{calls:?}");
+    assert!(calls[0].starts_with("board post"));
+    assert_eq!(calls[1], "board label msg_1 coc.state=closed coc.outcome=accepted --as village --json --name village");
+    assert!(r.stored().sessions.is_empty());
+}
+
+#[test]
+fn a_session_closed_while_its_first_post_fails_is_not_posted_later() {
+    let r = rig();
+    let p = r.p.clone();
+    r.cli.during(move || p.closed("s1", None));
+    r.cli.next(Err(CliError::Retryable("offline".into())));
+    r.p.update(working("s1", 1));
+    r.settle();
+    r.wait(600_000);
+    assert_eq!(r.cli.calls().len(), 1, "{:?}", r.cli.calls());
+    assert!(r.stored().sessions.is_empty());
+}
+
+#[test]
+fn turning_off_while_a_post_is_under_way_closes_what_it_posted() {
+    let r = rig();
+    let p = r.p.clone();
+    r.cli.during(move || p.configure(Config { enabled: false, ..cfg("village") }));
+    r.p.update(working("s1", 1));
+    r.settle();
+    let calls = r.cli.take();
+    assert_eq!(calls.len(), 2, "{calls:?}");
+    assert_eq!(calls[1], CLOSED);
+    assert!(r.stored().sessions["s1"].unshared);
+    r.p.update(working("s1", 2));
+    r.settle();
+    assert!(r.cli.calls().is_empty());
+}
+
+#[test]
+fn unsharing_while_a_post_is_under_way_closes_what_it_posted() {
+    let r = rig();
+    let p = r.p.clone();
+    r.cli.during(move || p.update(SessionView { channel: None, ..working("s1", 1) }));
+    r.p.update(working("s1", 1));
+    r.settle();
+    let calls = r.cli.take();
+    assert_eq!(calls.len(), 2, "{calls:?}");
+    assert_eq!(calls[1], CLOSED);
+    assert!(r.stored().sessions["s1"].unshared);
+}
+
+#[test]
+fn changing_the_board_while_a_post_is_under_way_leaves_nothing_open_on_the_old_one() {
+    let r = rig();
+    let p = r.p.clone();
+    r.cli.during(move || p.configure(cfg("ops")));
+    r.p.update(working("s1", 1));
+    r.settle();
+    let calls = r.cli.take();
+    assert_eq!(calls.len(), 2, "{calls:?}");
+    assert!(calls[0].ends_with("--name village"));
+    assert_eq!(calls[1], CLOSED);
+    assert!(r.stored().sessions.is_empty(), "the old board's thread is not remembered as the new board's");
+}
+
+#[test]
+fn threads_from_another_board_are_closed_there_at_launch() {
+    let mut seed = Store::default();
+    seed.sessions.insert("s1".into(), Published { board: "acme/old".into(), ..record("msg_old") });
+    let r = rig_with(Some(seed));
+    r.p.configure(cfg("village"));
+    r.p.step();
+    assert_eq!(r.cli.take(), ["board label msg_old coc.state=closed --as village --json --name old --scope acme"]);
+    assert!(r.stored().sessions.is_empty());
+    r.p.update(working("s1", 1));
+    r.settle();
+    assert!(r.cli.calls()[0].starts_with("board post"), "{:?}", r.cli.calls());
+}
+
+#[test]
+fn a_board_that_keeps_failing_does_not_hold_up_the_new_one_for_good() {
+    let r = rig();
+    r.p.update(working("s1", 1));
+    r.settle();
+    r.cli.take();
+    for _ in 0..DRAIN_TRIES {
+        r.cli.next(Err(CliError::Retryable("old board down".into())));
+    }
+    r.p.configure(cfg("ops"));
+    r.p.update(working("s1", 1));
+    for _ in 0..(DRAIN_TRIES + 2) {
+        r.wait(400_000);
+    }
+    let calls = r.cli.calls();
+    assert_eq!(calls.iter().filter(|c| c.ends_with("--name village")).count(), DRAIN_TRIES as usize, "{calls:?}");
+    assert!(calls.last().unwrap().starts_with("board post") && calls.last().unwrap().ends_with("--name ops"), "{calls:?}");
 }

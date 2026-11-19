@@ -1119,6 +1119,21 @@ impl SessionManager {
         Ok(r)
     }
 
+    /// Where a relative path in what the session wrote is read from: its folder (its worktree when
+    /// it has one), then that folder's repository root (git names changed files from there).
+    pub fn doc_bases(&self, id: &str) -> Result<Vec<PathBuf>> {
+        let dir = {
+            let g = self.lock();
+            let e = g.get(id).ok_or_else(|| anyhow!("unknown session {id}"))?;
+            e.info.worktree.as_ref().map_or_else(|| e.workspace_path.clone(), |wt| wt.path.clone())
+        };
+        let mut bases = vec![dir.clone()];
+        if let Some(top) = git::toplevel(&dir).filter(|t| *t != dir) {
+            bases.push(top);
+        }
+        Ok(bases)
+    }
+
     pub fn tick(&self, now_ms: i64) {
         let mut g = self.lock();
         for e in g.values_mut().filter(|e| !e.exited) {

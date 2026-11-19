@@ -4,6 +4,7 @@ pub mod apps;
 pub mod attachments;
 pub mod commands;
 #[cfg(debug_assertions)]
+pub mod docs;
 pub mod driver;
 pub mod git;
 pub mod history;
@@ -515,6 +516,7 @@ pub fn run() {
             commands::system_sounds,
             commands::import_sound,
             commands::review_session,
+            commands::read_session_doc,
             commands::attach_session,
             commands::detach_session,
             commands::ack_output,

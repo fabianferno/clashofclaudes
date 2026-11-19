@@ -4,7 +4,7 @@ import type { SessionInfo, SessionState } from '../api/types';
 
 const ipcMock = vi.hoisted(() => ({
   approve: vi.fn(), deny: vi.fn(), reviewSession: vi.fn(), closeSession: vi.fn(), stopSession: vi.fn(), resumeSession: vi.fn(),
-  parkSession: vi.fn(), writeSession: vi.fn(),
+  parkSession: vi.fn(), writeSession: vi.fn(), readSessionDoc: vi.fn(), openInEditor: vi.fn(),
 }));
 vi.mock('../api/ipc', () => ({ ipc: ipcMock }));
 vi.mock('../components/TerminalView', () => ({ default: () => <div className="terminal" /> }));
@@ -181,4 +181,44 @@ describe('a question from another agent', () => {
     expect(screen.queryByLabelText('Follow up')).toBeNull();
     expect(screen.queryByTestId('question-picker')).toBeNull();
   });
+});
+
+test('a plan named in its last reply opens here, rendered, and Back returns to the briefing', async () => {
+  ipcMock.readSessionDoc.mockImplementation(async (_id: string, path: string) => (path === 'docs/plan.md'
+    ? { path: '/w/docs/plan.md', text: '# The plan\n\n1. Add the toggle\n\nDetails in [the spec](specs/toggle.md).' }
+    : { path: '/w/docs/specs/toggle.md', text: '## Toggle spec' }));
+  ipcMock.openInEditor.mockResolvedValue(undefined);
+  useApp.getState().upsertSession(sess('a', { kind: 'finished' }, { lastMessage: 'Wrote the plan to `docs/plan.md`; please review.' }));
+  render(<SessionPanel sessionId="a" />);
+
+  fireEvent.click(screen.getByTitle('Open docs/plan.md here'));
+  expect(ipcMock.readSessionDoc).toHaveBeenCalledWith('a', 'docs/plan.md');
+  expect(await screen.findByText('The plan')).toBeTruthy();
+  expect(screen.queryByText('Its last reply')).toBeNull();
+  // follow up on it from the same card
+  expect(screen.getByLabelText('Follow up')).toBeTruthy();
+  expect(screen.getByText('Accept +XP')).toBeTruthy();
+
+  // a link inside the doc is relative to the doc's folder
+  fireEvent.click(screen.getByText('the spec'));
+  expect(ipcMock.readSessionDoc).toHaveBeenLastCalledWith('a', '/w/docs/specs/toggle.md');
+  expect(await screen.findByText('Toggle spec')).toBeTruthy();
+  fireEvent.click(screen.getByText('← Back'));
+  expect(await screen.findByText('The plan')).toBeTruthy();
+
+  fireEvent.click(screen.getByText('Open in editor'));
+  expect(ipcMock.openInEditor).toHaveBeenCalledWith('/w/docs/plan.md');
+  fireEvent.click(screen.getByText('← Briefing'));
+  expect(screen.getByText('Its last reply')).toBeTruthy();
+});
+
+test('a changed markdown file opens in the reader; a missing one says so', async () => {
+  ipcMock.reviewSession.mockResolvedValue({ isGit: true, branch: 'main', files: [{ path: 'src/theme.ts', added: 1, removed: 0 }], untracked: ['docs/PLAN.md'], otherSessionsActive: false });
+  ipcMock.readSessionDoc.mockRejectedValue('docs/PLAN.md is not there (moved or deleted?)');
+  useApp.getState().upsertSession(sess('a', { kind: 'finished' }));
+  render(<SessionPanel sessionId="a" />);
+  fireEvent.click(await screen.findByText(/in 2 files/));
+  expect(screen.getByText('src/theme.ts').tagName).toBe('SPAN');
+  fireEvent.click(screen.getByText('docs/PLAN.md'));
+  expect(await screen.findByText('docs/PLAN.md is not there (moved or deleted?)')).toBeTruthy();
 });

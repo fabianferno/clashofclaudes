@@ -52,7 +52,7 @@ fn git_line(dir: &Path, args: &[&str]) -> Option<String> {
     (!s.is_empty()).then_some(s)
 }
 
-fn toplevel(dir: &Path) -> Option<PathBuf> {
+pub(crate) fn toplevel(dir: &Path) -> Option<PathBuf> {
     git_line(dir, &["rev-parse", "--show-toplevel"]).map(PathBuf::from)
 }
 

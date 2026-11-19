@@ -4,7 +4,7 @@ import type { Review, SessionInfo } from '../api/types';
 import { useApp } from '../state/store';
 import { QUEUE_LABEL, ownerQueue, queueReason, waitedLabel, waitingSince, type QueueReason } from '../state/queue';
 import { isDemoId } from '../onboarding/demo';
-import Markdown from './Markdown';
+import Markdown, { docPath } from './Markdown';
 import QuestionPicker from './QuestionPicker';
 import { plainText } from './markdownText';
 import './briefing.css';
@@ -61,6 +61,8 @@ export default function Briefing({ session: s, canApprove, answering, onAllow, o
   const [sending, setSending] = useState(false);
   const [parking, setParking] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // a plan or spec it pointed to, open for reading in place of the briefing's sections
+  const [doc, setDoc] = useState<OpenDoc | null>(null);
   const shownFor = useRef(s.id);
 
   useEffect(() => {
@@ -70,8 +72,19 @@ export default function Briefing({ session: s, canApprove, answering, onAllow, o
   // a different session: start clean
   if (shownFor.current !== s.id) {
     shownFor.current = s.id;
-    setReply(''); setParking(null); setError(null); setShowFiles(false); setTaskOpen(false);
+    setReply(''); setParking(null); setError(null); setShowFiles(false); setTaskOpen(false); setDoc(null);
   }
+
+  const openDoc = (path: string, from?: string) => {
+    // a link inside a doc is relative to that doc's folder
+    const want = from && !/^(?:\/|~\/|file:)/.test(path) ? `${from.slice(0, from.lastIndexOf('/') + 1)}${path}` : path;
+    const sid = s.id;
+    setDoc({ asked: want, back: doc });
+    ipc.readSessionDoc(sid, want).then(
+      (d) => setDoc((cur) => (cur?.asked === want && shownFor.current === sid ? { ...cur, path: d.path, text: d.text } : cur)),
+      (e) => setDoc((cur) => (cur?.asked === want && shownFor.current === sid ? { ...cur, error: String(e) } : cur)),
+    );
+  };
 
   // what it changed, read once per wait (a new state may bring new changes)
   const reviewKey = `${s.id}:${s.stateSince ?? 0}:${s.state.kind}`;
@@ -126,7 +139,7 @@ export default function Briefing({ session: s, canApprove, answering, onAllow, o
   const canReply = live && !questions && !(reason === 'decide' && canApprove);
 
   return (
-    <div className={`brief sp-box${parked ? ' brief-parked' : ''}`} data-testid="briefing">
+    <div className={`brief sp-box${parked ? ' brief-parked' : ''}${doc ? ' brief-reading' : ''}`} data-testid="briefing">
       <div className="brief-top">
         <span className="brief-tag ol" style={{ background: parked ? 'var(--hud-idle)' : TAG_COLOR[reason] }}>{parked ? 'Parked' : QUEUE_LABEL[reason]}</span>
         <span className="brief-wait">waiting {waitedLabel(now - waitingSince(s))}</span>
@@ -145,6 +158,10 @@ export default function Briefing({ session: s, canApprove, answering, onAllow, o
         </div>
       )}
 
+      {doc ? (
+        <DocReader doc={doc} onBack={() => setDoc(doc.back)} onClose={() => setDoc(null)}
+          onOpen={(p) => openDoc(p, doc.path ?? doc.asked)} />
+      ) : (<>
       {s.task && (
         <div className="brief-sec">
           <div className="brief-h">Task</div>
@@ -179,7 +196,7 @@ export default function Briefing({ session: s, canApprove, answering, onAllow, o
       {s.lastMessage && (
         <div className="brief-sec">
           <div className="brief-h">Its last reply</div>
-          <Markdown className="brief-reply md" text={s.lastMessage} />
+          <Markdown className="brief-reply md" text={s.lastMessage} onDoc={(p) => openDoc(p)} />
         </div>
       )}
 
@@ -200,8 +217,8 @@ export default function Briefing({ session: s, canApprove, answering, onAllow, o
                 </button>
                 {showFiles && (
                   <ul className="brief-files">
-                    {r.files.map((f) => <li key={f.path}><span>{f.path}</span> <b className="brief-plus">+{f.added}</b> <b className="brief-minus">−{f.removed}</b></li>)}
-                    {r.untracked.map((p) => <li key={p}><span>{p}</span> <b className="brief-new">new</b></li>)}
+                    {r.files.map((f) => <li key={f.path}><FilePath path={f.path} onOpen={openDoc} /> <b className="brief-plus">+{f.added}</b> <b className="brief-minus">−{f.removed}</b></li>)}
+                    {r.untracked.map((p) => <li key={p}><FilePath path={p} onOpen={openDoc} /> <b className="brief-new">new</b></li>)}
                   </ul>
                 )}
                 {r.otherSessionsActive && <div className="sp-d">Other sessions were working in this folder too.</div>}
@@ -210,13 +227,15 @@ export default function Briefing({ session: s, canApprove, answering, onAllow, o
         </div>
       )}
 
+      </>)}
+
       {error && <div className="panel-warn">{error}</div>}
 
       <div className="brief-foot">
       {canReply && (
         <form className="brief-reply-form" onSubmit={(e) => { e.preventDefault(); void send(); }}>
           <textarea aria-label="Follow up" rows={reply.includes('\n') ? 3 : 1} value={reply} disabled={sending}
-            placeholder={reason === 'review' ? 'Follow up: ask for a change…' : 'Answer it…'}
+            placeholder={doc ? 'Follow up on the plan: approve it or ask for changes…' : reason === 'review' ? 'Follow up: ask for a change…' : 'Answer it…'}
             onChange={(e) => setReply(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }} />
           <button type="submit" className="hud-btn blue sm" disabled={sending || !reply.trim()}>Send</button>
@@ -248,6 +267,47 @@ export default function Briefing({ session: s, canApprove, answering, onAllow, o
         </form>
       )}
       </div>
+    </div>
+  );
+}
+
+interface OpenDoc {
+  /** The path as the agent wrote it (or as a link in another doc resolved it). */
+  asked: string;
+  /** Read: its absolute path and text. */
+  path?: string;
+  text?: string;
+  error?: string;
+  /** The doc it was opened from, for Back. */
+  back: OpenDoc | null;
+}
+
+/** A changed file's path; a markdown one opens in the reader. */
+function FilePath({ path, onOpen }: { path: string; onOpen: (path: string) => void }) {
+  if (!docPath(path)) return <span>{path}</span>;
+  return (
+    <span><a className="brief-doclink" href="#" title={`Read ${path} here`} onClick={(e) => { e.preventDefault(); onOpen(path); }}>{path}</a></span>
+  );
+}
+
+/** A plan or spec the agent pointed to, rendered, with the way back to the briefing. */
+function DocReader({ doc, onBack, onClose, onOpen }: { doc: OpenDoc; onBack: () => void; onClose: () => void; onOpen: (path: string) => void }) {
+  const shown = doc.path ?? doc.asked;
+  const name = shown.slice(shown.lastIndexOf('/') + 1);
+  return (
+    <div className="brief-sec brief-doc" data-testid="doc-reader">
+      <div className="brief-doc-bar">
+        <button type="button" className="sp-link" onClick={doc.back ? onBack : onClose}>← {doc.back ? 'Back' : 'Briefing'}</button>
+        <span className="brief-doc-name" title={shown}>{name}</span>
+        {doc.path && (
+          <button type="button" className="sp-link" title="Open it in your editor" onClick={() => { void ipc.openInEditor(doc.path!).catch(() => {}); }}>
+            Open in editor
+          </button>
+        )}
+      </div>
+      {doc.error ? <div className="sp-d">{doc.error}</div>
+        : doc.text === undefined ? <div className="sp-d">Reading {name}…</div>
+        : <Markdown className="brief-doc-body md" text={doc.text} onDoc={onOpen} />}
     </div>
   );
 }

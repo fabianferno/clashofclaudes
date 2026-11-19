@@ -957,6 +957,17 @@ pub async fn review_session(id: String, state: State<'_, AppState>) -> Result<Re
     state.manager.review(&id).map_err(fmt_err)
 }
 
+/// A markdown doc the session points to (a plan or spec it wrote), read to show in its briefing.
+#[tauri::command]
+pub async fn read_session_doc(id: String, path: String, state: State<'_, AppState>) -> Result<crate::docs::Doc, String> {
+    let bases = state.manager.doc_bases(&id).map_err(fmt_err)?;
+    let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+    tauri::async_runtime::spawn_blocking(move || crate::docs::read(&path, &bases, home.as_deref()))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(fmt_err)
+}
+
 /// Returns the scrollback snapshot, then streams the session's output to `on_data`.
 ///
 /// Framing (both the returned body and every channel message): raw bytes

@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from 'react';
+import { createContext, Fragment, useContext, type ReactNode } from 'react';
 import { openUrl } from '@tauri-apps/plugin-opener';
 
 /**
@@ -6,8 +6,41 @@ import { openUrl } from '@tauri-apps/plugin-opener';
  * fenced code, quotes, rules, tables, and inline code / bold / italic / strike / links.
  * It builds React elements (never innerHTML), so an agent's text cannot inject markup.
  */
-export default function Markdown({ text, className }: { text: string; className?: string }) {
-  return <div className={className}>{blocks(text.replace(/\r\n?/g, '\n').split('\n'))}</div>;
+export default function Markdown({ text, className, onDoc }: {
+  text: string;
+  className?: string;
+  /** Given: a markdown file's path (in code, a link or the text) becomes a link that opens it here. */
+  onDoc?: (path: string) => void;
+}) {
+  const body = <div className={className}>{blocks(text.replace(/\r\n?/g, '\n').split('\n'))}</div>;
+  return onDoc ? <DocOpener.Provider value={onDoc}>{body}</DocOpener.Provider> : body;
+}
+
+const DocOpener = createContext<((path: string) => void) | null>(null);
+
+/** A path to a markdown file, as agents write them: `docs/plan.md`, `~/.claude/plans/x.md`, `/abs/PLAN.md`. */
+export const DOC_PATH = /^(?:file:\/\/)?(?:~\/|\/|\.{1,2}\/)?(?:[\w.@+-]+\/)*[\w.@+-]*\w\.(?:md|markdown|mdx)$/i;
+
+/** `path` with a trailing `:line` or `:line:col` (as agents cite files) taken off; null when it is not a doc's path. */
+export function docPath(text: string): string | null {
+  const p = text.trim().replace(/(?:#L?\d+|:\d+(?::\d+)?)$/, '');
+  return DOC_PATH.test(p) ? p : null;
+}
+
+function safeDecode(s: string): string {
+  try { return decodeURI(s); } catch { return s; }
+}
+
+/** Opens `path` in the reader when there is one, else shows `children` as they are. */
+function DocLink({ path, children }: { path: string; children: ReactNode }) {
+  const open = useContext(DocOpener);
+  if (!open) return <>{children}</>;
+  return (
+    <a className="md-link md-doc" href="#" title={`Open ${path} here`}
+      onClick={(e) => { e.preventDefault(); open(path); }}>
+      {children}
+    </a>
+  );
 }
 
 const FENCE = /^\s*(```|~~~)\s*([\w+-]*)\s*$/;
@@ -126,7 +159,7 @@ function cells(row: string): string[] {
   return row.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
 }
 
-const INLINE = /(`+)([\s\S]+?)\1|\*\*([^*]+?)\*\*|__([^_]+?)__|~~([^~]+?)~~|\*([^*\s][^*]*?)\*|(?<![\w])_([^_\s][^_]*?)_(?![\w])|\[([^\]]+)\]\(([^)\s]+)\)|(https?:\/\/[^\s<>()]+[^\s<>().,;:!?'"])/g;
+const INLINE = /(`+)([\s\S]+?)\1|\*\*([^*]+?)\*\*|__([^_]+?)__|~~([^~]+?)~~|\*([^*\s][^*]*?)\*|(?<![\w])_([^_\s][^_]*?)_(?![\w])|\[([^\]]+)\]\(([^)\s]+)\)|(https?:\/\/[^\s<>()]+[^\s<>().,;:!?'"])|(?<![\w.@+/~:-])((?:~\/|\/|\.{1,2}\/)?(?:[\w.@+-]+\/)*[\w.@+-]*\w\.(?:md|markdown|mdx))(?![\w/])/gi;
 
 function inline(s: string): ReactNode[] {
   const out: ReactNode[] = [];
@@ -135,12 +168,17 @@ function inline(s: string): ReactNode[] {
     const at = m.index!;
     if (at > last) out.push(s.slice(last, at));
     const k = out.length;
-    if (m[1]) out.push(<code key={k} className="md-code">{m[2].trim()}</code>);
+    if (m[1]) {
+      const code = <code key={k} className="md-code">{m[2].trim()}</code>;
+      const doc = docPath(m[2]);
+      out.push(doc ? <DocLink key={k} path={doc}>{code}</DocLink> : code);
+    }
     else if (m[3] || m[4]) out.push(<strong key={k}>{inline(m[3] ?? m[4])}</strong>);
     else if (m[5]) out.push(<del key={k}>{inline(m[5])}</del>);
     else if (m[6] || m[7]) out.push(<em key={k}>{inline(m[6] ?? m[7])}</em>);
     else if (m[8]) out.push(link(k, m[9], inline(m[8])));
     else if (m[10]) out.push(link(k, m[10], m[10]));
+    else if (m[11]) out.push(<DocLink key={k} path={m[11]}>{m[11]}</DocLink>);
     last = at + m[0].length;
   }
   if (last < s.length) out.push(s.slice(last));
@@ -148,6 +186,8 @@ function inline(s: string): ReactNode[] {
 }
 
 function link(key: number, href: string, children: ReactNode): ReactNode {
+  const doc = /^https?:\/\//i.test(href) ? null : docPath(safeDecode(href));
+  if (doc) return <DocLink key={key} path={doc}>{children}</DocLink>;
   if (!/^https?:\/\//i.test(href)) return <span key={key} className="md-link-off">{children}</span>;
   return (
     <a key={key} className="md-link" href={href} title={href}

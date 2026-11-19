@@ -27,6 +27,20 @@
   background: #fffaf0; border: 2px solid #d8c39a; border-left: 5px solid #c79a3e; border-radius: 8px; padding: 6px 9px;
   max-height: 180px; overflow-y: auto;
 }
+/* a plan or spec the agent pointed to, read in place of the briefing (DocReader) */
+.brief.brief-reading { max-height: 72vh; }
+.brief-doc { gap: 6px; }
+.brief-doc-bar { display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 800; }
+.brief-doc-name {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font: 700 12px ui-monospace, SFMono-Regular, monospace; color: #5c4630;
+}
+.brief-doc-body {
+  font-size: 13px; line-height: 1.5; color: #2b2018; word-break: break-word;
+  background: #fffaf0; border: 2px solid #d8c39a; border-radius: 8px; padding: 8px 12px;
+}
+.md .md-doc .md-code, .brief-doclink { color: #1f5fa8; }
+.brief-doclink { text-decoration: underline; cursor: pointer; }
 /* markdown in the last reply and the task */
 .md { white-space: normal; }
 .brief-less { align-self: flex-start; background: none; border: 0; padding: 0; cursor: pointer; font: 800 12px system-ui, sans-serif; color: #8a6c47; text-decoration: underline; }

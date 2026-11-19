@@ -101,6 +101,8 @@ export const ipc = {
   /** Copies a sound file into the data folder; returns the copy's path. */
   importSound: (path: string) => invoke<string>('import_sound', { path }),
   reviewSession: (id: string) => invoke<Review>('review_session', { id }),
+  /** A markdown doc the session points to (a plan it wrote): `path` as written, relative to its folder or repository. */
+  readSessionDoc: (id: string, path: string) => invoke<{ path: string; text: string }>('read_session_doc', { id, path }),
   detachSession: (id: string) => invoke<void>('detach_session', { id }),
   /** The terminal finished writing output up to stream position `offset`; lets the next frame through. */
   ackOutput: (id: string, offset: number) => invoke<void>('ack_output', { id, offset }),

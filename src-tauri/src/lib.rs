@@ -21,6 +21,7 @@ pub mod persist;
 pub mod platform;
 pub mod pty;
 pub mod queue;
+pub mod raid;
 pub mod quota;
 pub mod saved;
 pub mod scrollback;
@@ -265,6 +266,8 @@ pub fn run() {
             }
             std::fs::create_dir_all(&data_dir)?;
             let data_path = data_dir.join("state.json");
+            // the raid report's log: what shipped and how long sessions waited on the owner
+            app.manage(raid::RaidState(Mutex::new(raid::RaidLog::load(&data_dir.join("raid.json")))));
             let mut data = persist::load(&data_path);
             persist::mark_missing(&mut data);
             // images pasted into a task that was never added or started
@@ -295,6 +298,9 @@ pub fn run() {
             let (handle, chans) = (app.handle().clone(), channels.clone());
             let emit: Emit = Arc::new(move |ev| match ev {
                 ManagerEvent::Updated(info) => {
+                    if let Some(r) = handle.try_state::<raid::RaidState>() {
+                        r.lock().observe(&info, quota::now_ms());
+                    }
                     if let Some(ns) = handle.try_state::<NotifyState>()
                         && let Some(st) = handle.try_state::<AppState>()
                         && let model::SessionKind::Agent { builder_id: bid } = &info.kind
@@ -327,6 +333,9 @@ pub fn run() {
                     tray::refresh(&handle);
                 }
                 ManagerEvent::Removed { id } => {
+                    if let Some(r) = handle.try_state::<raid::RaidState>() {
+                        r.lock().removed(&id, quota::now_ms());
+                    }
                     if let Some(ns) = handle.try_state::<NotifyState>() {
                         ns.notifier.forget(&id);
                     }
@@ -495,6 +504,8 @@ pub fn run() {
             commands::set_compound,
             commands::set_workspace_color,
             commands::set_workspace_notes,
+            commands::raid_report,
+            commands::save_raid_card,
             commands::set_collector_spot,
             commands::move_compound,
             commands::set_session_spot,

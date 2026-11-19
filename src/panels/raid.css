@@ -1,0 +1,48 @@
+/* The raid report card (RaidReport.tsx). Everything inside .raid-card is what Export saves. */
+.raid-bg { z-index: 1000; } /* over the HUD */
+.raid-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; width: min(520px, calc(100vw - 32px)); max-height: calc(100vh - 48px); }
+.raid-card {
+  width: 100%; box-sizing: border-box; overflow: auto; padding: 0 0 12px;
+  background: linear-gradient(180deg, #f6ead0 0%, #ead5ab 100%); color: #2b2018;
+  border: 4px solid var(--hud-out, #2b2018); border-radius: 18px; box-shadow: 0 6px 0 var(--hud-out, #2b2018);
+}
+.raid-head {
+  display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 14px 16px 12px;
+  background: linear-gradient(180deg, #d0532f 0%, #a93a1d 100%); border-bottom: 4px solid var(--hud-out, #2b2018);
+  border-radius: 13px 13px 0 0;
+}
+.raid-head h2 { margin: 0; font: 400 30px 'Lilita One', sans-serif; color: #fff; letter-spacing: 1px; }
+.raid-day { font: 800 13px system-ui, sans-serif; color: #ffe2c2; }
+.raid-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 14px 14px 4px; }
+.raid-stat {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; padding: 10px 6px;
+  background: #fffaf0; border: 3px solid var(--hud-out, #2b2018); border-radius: 12px; box-shadow: 0 3px 0 var(--hud-out, #2b2018);
+}
+.raid-num { font: 400 24px 'Lilita One', sans-serif; color: #fff; line-height: 1.1; white-space: nowrap; }
+.raid-shipped .raid-num { color: #ffd23f; }
+.raid-waited .raid-num { color: #ffb347; font-size: 21px; }
+.raid-lines .raid-num { font-size: 20px; }
+.raid-num .raid-plus { color: #7ed957; font-weight: 400; }
+.raid-num .raid-minus { color: #ff7a6b; font-weight: 400; }
+.raid-label { font: 800 11px system-ui, sans-serif; color: #6b5a45; line-height: 1.25; }
+.raid-sec { font: 400 15px 'Lilita One', sans-serif; color: #8a6c47; letter-spacing: .5px; text-transform: uppercase; margin: 12px 16px 6px; }
+.raid-empty { font: 700 13px system-ui, sans-serif; color: #6b5a45; padding: 4px 16px 6px; }
+.raid-list { list-style: none; margin: 0; padding: 0 14px; display: flex; flex-direction: column; gap: 6px; }
+.raid-list li {
+  display: flex; align-items: center; gap: 10px; padding: 7px 10px;
+  background: #fffaf0; border: 2px solid #d8c39a; border-radius: 10px;
+}
+.raid-dot { flex: none; width: 14px; height: 14px; border-radius: 50%; border: 2.5px solid var(--hud-out, #2b2018); }
+.raid-what { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.raid-title { font: 800 13px system-ui, sans-serif; color: #2b2018; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.raid-meta { font: 700 11px system-ui, sans-serif; color: #8a6c47; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.raid-diff { flex: none; font: 700 12px ui-monospace, SFMono-Regular, monospace; }
+.raid-diff .raid-plus { color: #2f7d1d; }
+.raid-diff .raid-minus { color: #b02218; }
+.raid-brand { margin: 12px 16px 0; text-align: right; font: 400 12px 'Lilita One', sans-serif; color: #b09468; letter-spacing: .4px; }
+.raid-actions { display: flex; gap: 8px; }
+
+/* The top bar's offer of the day's report (TopBar.tsx). */
+.hud-pill.hud-raid { background: linear-gradient(180deg, #d0532f 0%, #a93a1d 100%); color: #fff; padding-right: 6px; }
+.hud-raid-x { margin-left: auto; padding: 0 7px; border-radius: 99px; background: rgba(29,19,11,.35); font-size: 13px; line-height: 20px; }
+.hud-raid-x:hover { background: rgba(29,19,11,.6); }

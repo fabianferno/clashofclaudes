@@ -1119,6 +1119,21 @@ impl SessionManager {
         Ok(r)
     }
 
+    /// Lines added and removed in the session's folder since it started (its new files count as
+    /// added); zeros outside git.
+    pub fn lines_changed(&self, id: &str) -> Result<(u32, u32)> {
+        let r = self.review(id)?;
+        if !r.is_git {
+            return Ok((0, 0));
+        }
+        let added: u32 = r.files.iter().map(|f| f.added).sum();
+        let removed: u32 = r.files.iter().map(|f| f.removed).sum();
+        // git names new files from the repository's root
+        let root = self.doc_bases(id)?.pop().unwrap_or_default();
+        let new: u32 = r.untracked.iter().map(|p| crate::raid::count_lines(&root.join(p))).sum();
+        Ok((added.saturating_add(new), removed))
+    }
+
     /// Where a relative path in what the session wrote is read from: its folder (its worktree when
     /// it has one), then that folder's repository root (git names changed files from there).
     pub fn doc_bases(&self, id: &str) -> Result<Vec<PathBuf>> {

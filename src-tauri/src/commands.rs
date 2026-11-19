@@ -492,6 +492,13 @@ pub async fn resume_session(id: String, app: AppHandle, state: State<'_, AppStat
 /// `discard`: the owner did not want its work; it earns nothing even when finished.
 pub async fn close_session(id: String, discard: Option<bool>, app: AppHandle, state: State<'_, AppState>) -> Result<CloseOutcome, String> {
     state.channels.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
+    // for the raid report, should it be accepted: what it was and what it changed, read before it goes
+    let before_close = state.manager.list().into_iter().find(|s| s.id == id);
+    let lines = if before_close.as_ref().is_some_and(|s| matches!(s.kind, SessionKind::Agent { .. })) {
+        state.manager.lines_changed(&id).unwrap_or((0, 0))
+    } else {
+        (0, 0)
+    };
     let mut closed = state.manager.close(&id).map_err(fmt_err)?;
     if let Some(saved) = closed.saved.take() {
         record_history(&state, saved, &app);
@@ -517,8 +524,49 @@ pub async fn close_session(id: String, discard: Option<bool>, app: AppHandle, st
             let _ = app.emit("workspace-updated", w);
         }
         let _ = app.emit("stats-updated", stats);
+        if let (Some(s), Some(raid)) = (before_close, app.try_state::<crate::raid::RaidState>()) {
+            raid.lock().ship(ship_of(&state, &s, lines, now_ms()));
+        }
     }
     Ok(outcome)
+}
+
+/// The raid report's record of an accepted session.
+fn ship_of(state: &AppState, s: &SessionInfo, (added, removed): (u32, u32), at: i64) -> crate::raid::Ship {
+    let builder = match &s.kind {
+        SessionKind::Agent { builder_id } => state.data().builders.iter().find(|b| &b.id == builder_id).cloned(),
+        SessionKind::Terminal => None,
+    };
+    let first_line = |t: &str| t.lines().map(str::trim).find(|l| !l.is_empty()).map(|l| l.chars().take(120).collect::<String>());
+    crate::raid::Ship {
+        at,
+        workspace_id: s.workspace_id.clone(),
+        builder_name: builder.as_ref().map_or_else(|| "Builder".to_string(), |b| b.name.clone()),
+        agent: builder.map_or(crate::model::AgentKind::Custom, |b| b.agent),
+        title: s.title.as_deref().and_then(first_line).or_else(|| s.task.as_deref().and_then(first_line)),
+        added,
+        removed,
+    }
+}
+
+/// Saves an exported raid report card (a base64 PNG) in Downloads and shows it in Finder; returns its path.
+#[tauri::command]
+pub fn save_raid_card(png: String, day: String, app: AppHandle) -> Result<String, String> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(png.trim()).map_err(|e| e.to_string())?;
+    let downloads = std::env::var_os("HOME").map(PathBuf::from).ok_or("no home folder")?.join("Downloads");
+    let path = crate::raid::save_card(&downloads, &day, &bytes).map_err(fmt_err)?;
+    let _ = app.opener().reveal_item_in_dir(&path);
+    Ok(path.to_string_lossy().into_owned())
+}
+
+/// What happened between `from` and `to` (ms; the window passes its local day): accepted work and time waited on the owner.
+#[tauri::command]
+pub fn raid_report(from: i64, to: i64, app: AppHandle) -> crate::raid::RaidReport {
+    match app.try_state::<crate::raid::RaidState>() {
+        Some(r) => r.lock().report(from, to, now_ms()),
+        None => crate::raid::RaidReport { ships: vec![], waited_ms: 0, waiting_now: 0 },
+    }
 }
 
 /// Serializes reads and writes of `history.json`.

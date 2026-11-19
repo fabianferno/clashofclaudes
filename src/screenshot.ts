@@ -8,6 +8,20 @@ export function setVillageSnapshot(fn: (() => Promise<string>) | null): void {
   villageFn = fn;
 }
 
+/**
+ * Runs `f` (an html-to-image capture) with animation frames driven by a timer: html-to-image waits
+ * on requestAnimationFrame, which never fires while the webview is hidden (occluded or screen locked).
+ */
+export async function withTimerFrames<T>(f: () => Promise<T>): Promise<T> {
+  const raf = window.requestAnimationFrame;
+  window.requestAnimationFrame = (cb) => window.setTimeout(() => cb(performance.now()), 0);
+  try {
+    return await f();
+  } finally {
+    window.requestAnimationFrame = raf;
+  }
+}
+
 export interface CaptureOptions {
   /** Scale down to at most this many px wide. */
   maxWidth?: number;
@@ -38,20 +52,11 @@ export async function captureWindow(village: (() => Promise<string>) | null = vi
     await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = () => rej(new Error('village image failed')); img.src = 'data:image/png;base64,' + png; });
     ctx.drawImage(img, 0, 0, out.width, out.height);
   }
-  // html-to-image waits on requestAnimationFrame, which never fires while the webview is hidden
-  // (occluded or screen locked): run frames off a timer for the duration of the capture.
-  const raf = window.requestAnimationFrame;
-  window.requestAnimationFrame = (cb) => window.setTimeout(() => cb(performance.now()), 0);
-  let dom: HTMLCanvasElement;
-  try {
-    dom = await toCanvas(document.body, {
-      width: w, height: h, pixelRatio: dpr * k, backgroundColor: undefined as unknown as string,
-      style: { background: 'transparent' },
-      filter: (n) => !(n instanceof HTMLCanvasElement) && !(n instanceof HTMLElement && n.classList.contains('village')),
-    });
-  } finally {
-    window.requestAnimationFrame = raf;
-  }
+  const dom = await withTimerFrames(() => toCanvas(document.body, {
+    width: w, height: h, pixelRatio: dpr * k, backgroundColor: undefined as unknown as string,
+    style: { background: 'transparent' },
+    filter: (n) => !(n instanceof HTMLCanvasElement) && !(n instanceof HTMLElement && n.classList.contains('village')),
+  }));
   ctx.drawImage(dom, 0, 0, out.width, out.height);
   const url = out.toDataURL(opts.type ?? 'image/png', opts.quality);
   return url.slice(url.indexOf(',') + 1);

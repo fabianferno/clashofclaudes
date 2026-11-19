@@ -19,6 +19,8 @@ import PopOutApp from './panels/PopOutApp';
 import Kanban from './panels/Kanban';
 import SettingsPage from './panels/SettingsPage';
 import BugReportDialog, { openBugReport } from './panels/BugReport';
+import RaidReport from './panels/RaidReport';
+import { watchRaidNudge } from './state/raid';
 import CommandPalette from './panels/CommandPalette';
 import { preloadTerminal } from './components/LazyTerminalView';
 import GameCursor from './components/GameCursor';
@@ -58,6 +60,8 @@ function App() {
     const stopElixir = watchElixir();
     // the village's ambience, when the owner turned it on (this window only: the mini village stays quiet)
     const stopAmbience = watchAmbience();
+    // after 6 PM the top bar offers the day's raid report, once
+    const stopRaid = watchRaidNudge();
     const settings = loadSettings();
     sub.loaded.then(
       () => {
@@ -78,7 +82,7 @@ function App() {
     settings.then((s) => { if (!cancelled && !s.onboarded) startTour(); }).catch(() => {});
     const preload = window.setTimeout(preloadTerminal, 2000); // after the village's first frames
     const stopSnapshots = autoSnapshots();
-    return () => { cancelled = true; window.clearTimeout(preload); stopLayout?.(); stopAuto(); stopSounds(); stopElixir(); stopAmbience(); stopSnapshots(); unlisten.forEach((u) => u()); sub.stop(); };
+    return () => { cancelled = true; window.clearTimeout(preload); stopLayout?.(); stopAuto(); stopSounds(); stopElixir(); stopAmbience(); stopRaid(); stopSnapshots(); unlisten.forEach((u) => u()); sub.stop(); };
   }, []);
 
   return (
@@ -93,6 +97,7 @@ function App() {
     <PopOutApp />
     <SettingsPage />
     <BugReportDialog />
+    <RaidReport />
     <TourOverlay />
     <UpdateToast />
     <CommandPalette />

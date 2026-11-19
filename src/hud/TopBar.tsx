@@ -9,6 +9,8 @@ import { ownerQueue, waitedLabel, waitingSince } from '../state/queue';
 import { usePanelWidth } from '../state/panelWidth';
 import { keyLabel } from '../panels/commands';
 import '../panels/briefing.css';
+import '../panels/raid.css';
+import { markSeen, openRaidReport } from '../state/raid';
 
 interface PillDef { id: string; badge: BadgeState; label: string; pulse?: boolean }
 const PILLS: PillDef[] = [
@@ -27,6 +29,7 @@ export default function TopBar() {
   const panelOpen = useApp((s) => s.panelOpen);
   const panelW = usePanelWidth((s) => s.width); // the panel's edge may be dragged
   const workspaces = useApp((s) => s.workspaces);
+  const raidNudge = useApp((s) => s.raidNudge);
   const queue = useMemo(() => ownerQueue({ sessions: sessionMap, workspaces }), [sessionMap, workspaces]);
   const queued = queue.length;
   // How long the longest-blocked builder (a decision or a question, stopped mid-task) has waited.
@@ -126,6 +129,14 @@ export default function TopBar() {
               onClick={() => useApp.getState().takeNext(null)}>
               ▶ {queued} waiting on you{blockedFor && <span className="hud-queue-wait"> · {blockedFor}</span>}<kbd>{keyLabel({ key: 'j' })}</kbd>
             </button>
+          )}
+          {raidNudge && (
+            <div data-testid="pill-raid" role="button" tabIndex={0} className="hud-pill hud-raid ol" title="What shipped today, and how long builders waited on you"
+              onClick={openRaidReport} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openRaidReport(); } }}>
+              📜 Today's raid report
+              <button type="button" className="hud-raid-x" aria-label="Not today" title="Not today"
+                onClick={(e) => { e.stopPropagation(); markSeen(); }}>✕</button>
+            </div>
           )}
           {PILLS.map((p) => {
             const items = byState[p.badge];

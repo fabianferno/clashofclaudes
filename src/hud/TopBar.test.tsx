@@ -93,3 +93,20 @@ test('the queue shows how long the longest-blocked builder has waited', () => {
   expect(screen.getByTestId('pill-queue').textContent).not.toContain('·');
   act(() => useApp.setState({ workspaces }));
 });
+
+test('the evening offer of the raid report opens it, or is put off until tomorrow', () => {
+  localStorage.clear();
+  act(() => useApp.setState({ raidNudge: true, raidOpen: false }));
+  render(<TopBar />);
+  fireEvent.click(screen.getByTestId('pill-raid'));
+  expect(useApp.getState().raidOpen).toBe(true);
+  expect(useApp.getState().raidNudge).toBe(false);
+  expect(screen.queryByTestId('pill-raid')).toBeNull();
+
+  act(() => useApp.setState({ raidNudge: true, raidOpen: false }));
+  localStorage.clear();
+  fireEvent.click(screen.getByLabelText('Not today'));
+  expect(useApp.getState().raidOpen).toBe(false);
+  expect(useApp.getState().raidNudge).toBe(false);
+  expect(localStorage.getItem('coc.raidSeen')).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+});

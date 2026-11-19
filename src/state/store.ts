@@ -247,6 +247,11 @@ export interface AppState {
   setSettings: (s: Settings) => void;
   /** The bug/feature report dialog, with the window as it looked when it opened (base64 JPEG), if captured. */
   bugReport: { screenshot: string | null; kind: ReportKind } | null;
+  /** The raid report card is open. */
+  raidOpen: boolean;
+  setRaidOpen: (open: boolean) => void;
+  /** The top bar offers today's raid report (evening, not yet seen; see state/raid.ts). */
+  raidNudge: boolean;
   setBugReport: (r: { screenshot: string | null; kind: ReportKind } | null) => void;
   /** An update was found (by the scheduled check or Settings' Check now); the toast offers it. */
   updateAvailable: FoundUpdate | null;
@@ -290,6 +295,8 @@ export const useApp = create<AppState>((set, get) => ({
   settingsOpen: false,
   settings: null,
   bugReport: null,
+  raidOpen: false,
+  raidNudge: false,
   updateAvailable: null,
   browsers: [],
   selectedSessionId: null,
@@ -433,6 +440,7 @@ export const useApp = create<AppState>((set, get) => ({
   setPaletteOpen: (paletteOpen, seed) => set({ paletteOpen, paletteSeed: paletteOpen ? seed ?? null : null }),
   setSettings: (settings) => set({ settings }),
   setBugReport: (bugReport) => set({ bugReport }),
+  setRaidOpen: (raidOpen) => set({ raidOpen }),
   setUpdateAvailable: (updateAvailable) => set({ updateAvailable }),
   setBrowserUrl: (id, url) => set((st) => ({ browsers: st.browsers.map((b) => (b.id === id ? { ...b, url } : b)) })),
   setBoardSpots: (boardSpots) => set({ boardSpots }),

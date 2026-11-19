@@ -5,6 +5,7 @@ import AgentsStatus from './AgentsStatus';
 import FolderHint from './FolderHint';
 import { CLASS_NAMES, PALETTE, classOf, gearOf, houseColors, stars } from '../village/look';
 import BuilderAvatar from '../hud/BuilderAvatar';
+import { openRaidReport } from '../state/raid';
 import { BADGE_LABEL, badgeOf, builderTarget, liveSessionOf } from '../hud/hudState';
 
 export default function TownHallPanel() {
@@ -37,6 +38,7 @@ export default function TownHallPanel() {
           <button className="hud-btn sm" title="Every workspace's sessions and To Do on one board" onClick={() => useApp.getState().setKanban(KANBAN_ALL)}>Kanban</button>
         )}
         <button className="hud-btn blue sm" onClick={() => void wsActions.openFolder()}>Open workspace</button>
+        <button className="hud-btn sm" title="What shipped today, and how long builders waited on you" onClick={openRaidReport}>Raid report</button>
         {newName === null
           ? <button className="hud-btn sm" onClick={() => setNewName('')}>New workspace</button>
           : (

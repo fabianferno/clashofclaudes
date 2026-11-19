@@ -1,6 +1,6 @@
 import { invoke, Channel } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type { HistoryEntry, HapticKind, Todo, AppPreview, AgentAccount, AgentInfo, AgentKind, AgentQuota, Builder, CloseOutcome, Compound, ConfirmQuit, Frame, ListState, Review, SessionInfo, Settings, Stats, Tile, UpdateStatus, Workspace, BugReport, BugReportInfo, ReportKind } from './types';
+import type { HistoryEntry, HapticKind, Todo, AppPreview, AgentAccount, AgentInfo, AgentKind, AgentQuota, Builder, CloseOutcome, Compound, ConfirmQuit, Frame, ListState, Review, SessionInfo, Settings, Stats, Tile, UpdateStatus, Workspace, BugReport, BugReportInfo, ReportKind, RaidReport } from './types';
 
 const SKIP_FLAG = 1n << 63n;
 
@@ -103,6 +103,10 @@ export const ipc = {
   /** Copies a sound file into the data folder; returns the copy's path. */
   importSound: (path: string) => invoke<string>('import_sound', { path }),
   reviewSession: (id: string) => invoke<Review>('review_session', { id }),
+  /** What shipped and how long builders waited on the owner between `from` and `to` (ms). */
+  raidReport: (from: number, to: number) => invoke<RaidReport>('raid_report', { from, to }),
+  /** Saves an exported raid report card (base64 PNG) in Downloads; returns its path. */
+  saveRaidCard: (png: string, day: string) => invoke<string>('save_raid_card', { png, day }),
   /** A markdown doc the session points to (a plan it wrote): `path` as written, relative to its folder or repository. */
   readSessionDoc: (id: string, path: string) => invoke<{ path: string; text: string }>('read_session_doc', { id, path }),
   detachSession: (id: string) => invoke<void>('detach_session', { id }),

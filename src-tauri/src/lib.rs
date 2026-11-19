@@ -95,13 +95,18 @@ pub(crate) fn refresh_badge<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
-/// A notification was clicked: bring the window up and ask the frontend to select the session.
-fn focus_and_select<R: Runtime>(app: &AppHandle<R>, session_id: &str) {
+/// Brings the village's window up: shown again if it was closed (hidden), out of the Dock, in front.
+pub(crate) fn show_main<R: Runtime>(app: &AppHandle<R>) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.show();
         let _ = w.unminimize();
         let _ = w.set_focus();
     }
+}
+
+/// A notification was clicked: bring the window up and ask the frontend to select the session.
+fn focus_and_select<R: Runtime>(app: &AppHandle<R>, session_id: &str) {
+    show_main(app);
     let _ = app.emit("select-session", serde_json::json!({ "id": session_id }));
 }
 
@@ -438,11 +443,12 @@ pub fn run() {
                 });
             }
             if let WindowEvent::CloseRequested { api, .. } = event {
+                // Closing the window only puts it away: the builders keep working and the app stays
+                // in the menu bar and the Dock. Quitting (⌘Q, the menus) is guarded in `run` below.
                 let st = window.state::<AppState>();
-                let live = st.manager.running_process_count();
-                if commands::should_block_exit(live, st.exit_confirmed.load(Ordering::SeqCst)) {
+                if commands::close_hides(st.exit_confirmed.load(Ordering::SeqCst)) {
                     api.prevent_close();
-                    commands::emit_confirm_quit(window.app_handle(), live, false);
+                    let _ = window.hide();
                 }
             }
         })
@@ -514,13 +520,19 @@ pub fn run() {
         .run(|app, event| {
             // Quit from the menu or Cmd+Q (see `app_menu`) never raises CloseRequested, so guard
             // the exit itself.
-            if let tauri::RunEvent::ExitRequested { api, .. } = event {
-                let st = app.state::<AppState>();
-                let live = st.manager.running_process_count();
-                if commands::should_block_exit(live, st.exit_confirmed.load(Ordering::SeqCst)) {
-                    api.prevent_exit();
-                    commands::emit_confirm_quit(app, live, false);
+            match event {
+                tauri::RunEvent::ExitRequested { api, .. } => {
+                    let st = app.state::<AppState>();
+                    let live = st.manager.running_process_count();
+                    if commands::should_block_exit(live, st.exit_confirmed.load(Ordering::SeqCst)) {
+                        api.prevent_exit();
+                        commands::emit_confirm_quit(app, live, false);
+                    }
                 }
+                // The Dock icon clicked with the window closed (hidden): bring it back.
+                #[cfg(target_os = "macos")]
+                tauri::RunEvent::Reopen { has_visible_windows: false, .. } => show_main(app),
+                _ => {}
             }
         });
 }

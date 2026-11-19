@@ -1126,12 +1126,19 @@ struct UpdateProgress {
     pct: Option<u8>,
 }
 
+/// Whether closing the window only hides it (the app stays in the menu bar and the Dock, sessions
+/// keep running). Once quitting is confirmed (`exit_confirmed`) the window is let go.
+pub fn close_hides(exit_confirmed: bool) -> bool {
+    !exit_confirmed
+}
+
 /// Whether a close/exit request must be held back for the user to confirm.
 pub fn should_block_exit(live: usize, confirmed: bool) -> bool {
     live > 0 && !confirmed
 }
 
 pub fn emit_confirm_quit(app: &AppHandle, live: usize, restart: bool) {
+    crate::show_main(app); // the question is asked in the window, which may be closed (hidden)
     let _ = app.emit("confirm-quit", ConfirmQuit { live, restart });
 }
 
@@ -1171,6 +1178,12 @@ mod tests {
         assert!(!should_block_exit(0, false));
         assert!(should_block_exit(2, false));
         assert!(!should_block_exit(2, true));
+    }
+
+    #[test]
+    fn closing_the_window_hides_it_until_the_app_is_quitting() {
+        assert!(close_hides(false));
+        assert!(!close_hides(true), "a confirmed quit lets the window go");
     }
 
     #[test]

@@ -2,7 +2,7 @@ import { useRef, useState, type WheelEvent } from 'react';
 import { useApp } from '../state/store';
 import { CLASS_NAMES, classOf, gearOf, stars } from '../village/look';
 import { rosterReserve, usePanelInset } from './layout';
-import { BADGE_LABEL, badgeOf, builderTarget, liveSessionOf } from './hudState';
+import { BADGE_LABEL, badgeOf, builderTarget, byStatus, liveSessionOf } from './hudState';
 import BuilderAvatar from './BuilderAvatar';
 import './hud.css';
 
@@ -30,7 +30,7 @@ export default function BuildersBar() {
           {collapsed ? '▴' : '▾'} Builders
         </button>
         {builders.length > 0 && <div ref={list} data-testid="builders-list" className="hud-cards" onWheel={onWheel}>
-          {builders.map((b) => {
+          {byStatus(builders, all).map((b) => {
             const tier = classOf(b.agent, b.model);
             const live = liveSessionOf(b.id, all);
             const badge = badgeOf(live);

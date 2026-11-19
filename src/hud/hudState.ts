@@ -29,6 +29,15 @@ export function badgeOf(s: SessionInfo | undefined): BadgeState {
   }
 }
 
+/** Roster order: what wants the owner first (asking, stuck, done to review), then at work, then free. */
+const BADGE_RANK: Record<BadgeState, number> = { needs: 0, stuck: 1, finished: 2, working: 3, idle: 4 };
+
+/** Builders by status (BADGE_RANK); recruitment order within a status, so cards only move when it changes. */
+export function byStatus(builders: Builder[], sessions: SessionInfo[]): Builder[] {
+  const rank = new Map(builders.map((b) => [b.id, BADGE_RANK[badgeOf(liveSessionOf(b.id, sessions))]]));
+  return [...builders].sort((a, b) => rank.get(a.id)! - rank.get(b.id)!);
+}
+
 export const BADGE_LABEL: Record<BadgeState, string> = {
   working: 'Working', needs: 'Needs you', stuck: 'Stuck', finished: 'Ready', idle: 'Idle',
 };

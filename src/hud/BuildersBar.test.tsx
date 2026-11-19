@@ -59,3 +59,15 @@ test('no empty card container with zero builders', () => {
   expect(screen.queryByTestId('builders-list')).toBeNull();
   expect(screen.getByRole('button', { name: /Builders/ })).toBeTruthy();
 });
+
+test('cards sort by status: needs you, stuck, ready, working, idle; recruitment order within a status', () => {
+  const b = (id: string): Builder => ({ ...claude, id, name: id });
+  const s = (id: string, kind: string) => ({ id: `s-${id}`, workspaceId: 'w', kind: { kind: 'agent', builderId: id }, state: { kind }, rev: 1, startedAt: 0 } as unknown as SessionInfo);
+  act(() => useApp.setState({
+    builders: ['idle1', 'work', 'ready', 'idle2', 'stuck', 'needs'].map(b),
+    sessions: Object.fromEntries([s('work', 'working'), s('ready', 'finished'), s('stuck', 'stuck'), s('needs', 'needsYou')].map((x) => [x.id, x])),
+  }));
+  render(<BuildersBar />);
+  const order = [...screen.getByTestId('builders-list').querySelectorAll('[data-testid^="builder-card-"]')].map((e) => e.getAttribute('data-testid')!.slice('builder-card-'.length));
+  expect(order).toEqual(['needs', 'stuck', 'ready', 'work', 'idle1', 'idle2']);
+});

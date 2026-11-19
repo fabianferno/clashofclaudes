@@ -2,6 +2,8 @@ import { useEffect } from 'react';
 import { useApp, type Selection } from '../state/store';
 import { CLASS_NAMES, PALETTE, classOf } from '../village/look';
 import { usePanelWidth } from '../state/panelWidth';
+import { usePanelZoom } from '../state/panelZoom';
+import { zoomKey } from '../village/zoomKey';
 import PanelResizer from './PanelResizer';
 import SessionPanel from './SessionPanel';
 import BuilderPanel from './BuilderPanel';
@@ -21,6 +23,7 @@ export default function SidePanel() {
   const setSelection = useApp((s) => s.setSelection);
   const onClosed = useApp((s) => s.onClosed);
   const width = usePanelWidth((s) => s.width);
+  const zoom = usePanelZoom((s) => s.zoom);
   const open = selection !== null;
 
   useEffect(() => {
@@ -36,12 +39,49 @@ export default function SidePanel() {
     return () => window.removeEventListener('keydown', onKey);
   }, [open]);
 
+  // ⌘+ / ⌘- / ⌘0 (and a trackpad pinch) size the panel's text while the pointer is over it or
+  // something in it has focus. The terminal keeps its own text size (its handler runs first).
+  useEffect(() => {
+    if (!open) return;
+    const panel = () => document.querySelector<HTMLElement>('[data-testid="side-panel"]');
+    const onKey = (e: KeyboardEvent) => {
+      const z = zoomKey(e);
+      const el = panel();
+      if (!z || !el || useApp.getState().covers > 0) return;
+      const focused = el.contains(document.activeElement) && document.activeElement !== document.body;
+      if (!focused && !el.matches(':hover')) return;
+      if ((document.activeElement as HTMLElement | null)?.closest?.('.xterm')) return;
+      e.preventDefault();
+      e.stopImmediatePropagation(); // not the village's zoom too
+      usePanelZoom.getState().step(z);
+    };
+    // A pinch arrives as a ctrl-wheel; step once per notch's worth of travel.
+    let pinch = 0;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey || useApp.getState().covers > 0) return;
+      const t = e.target as HTMLElement | null;
+      if (!t?.closest?.('[data-testid="side-panel"]') || t.closest('.xterm')) return;
+      e.preventDefault();
+      pinch += e.deltaY;
+      while (Math.abs(pinch) >= 40) {
+        usePanelZoom.getState().step(pinch < 0 ? 'in' : 'out');
+        pinch -= Math.sign(pinch) * 40;
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    window.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      window.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('wheel', onWheel);
+    };
+  }, [open]);
+
   if (!selection) return null;
   const head = headOf(selection, { workspaces, builders, sessions });
   if (!head) return null;
 
   return (
-    <aside className="side-panel" style={{ width }} data-testid="side-panel">
+    <aside className="side-panel" style={{ width, ['--sp-zoom' as string]: zoom }} data-testid="side-panel">
       <PanelResizer />
       <header className="sp-head">
         <div className="sp-titles">

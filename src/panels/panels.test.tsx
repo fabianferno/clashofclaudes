@@ -26,6 +26,7 @@ vi.mock('./SessionPanel', async () => {
 vi.mock('./NewSessionPicker', () => ({ default: () => null }));
 import { useApp } from '../state/store';
 import SidePanel from './SidePanel';
+import { usePanelZoom } from '../state/panelZoom';
 import WorkspacePanel, { CUSTOM_COLOR_MS } from './WorkspacePanel';
 import TownHallPanel from './TownHallPanel';
 import BuilderPanel from './BuilderPanel';
@@ -351,4 +352,26 @@ test('open_in_finder_opens_the_workspace_folder', () => {
   render(<WorkspacePanel workspaceId="w1" />);
   fireEvent.click(screen.getByRole('button', { name: 'Open in Finder' }));
   expect(ipc.openInFinder).toHaveBeenCalledWith('/p/proj');
+});
+
+test('cmd +/- over the side panel sizes its text, not the village', () => {
+  usePanelZoom.setState({ zoom: 1 });
+  render(<SidePanel />);
+  act(() => useApp.getState().setSelection({ kind: 'hall' }));
+  const panel = document.querySelector<HTMLElement>('.side-panel')!;
+  const village = vi.fn();
+  window.addEventListener('keydown', village);
+  // pointer elsewhere: left to the village
+  fireEvent.keyDown(window, { key: '=', metaKey: true });
+  expect(usePanelZoom.getState().zoom).toBe(1);
+  expect(village).toHaveBeenCalledTimes(1);
+  // focus inside the panel: the panel's text grows
+  act(() => screen.getByRole('button', { name: 'Close panel' }).focus());
+  fireEvent.keyDown(window, { key: '=', metaKey: true });
+  expect(usePanelZoom.getState().zoom).toBe(1.1);
+  expect(village).toHaveBeenCalledTimes(1);
+  expect(panel.style.getPropertyValue('--sp-zoom')).toBe('1.1');
+  fireEvent.keyDown(window, { key: '0', metaKey: true });
+  expect(usePanelZoom.getState().zoom).toBe(1);
+  window.removeEventListener('keydown', village);
 });

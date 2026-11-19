@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ipc } from '../api/ipc';
-import type { AskQuestion } from '../api/types';
+import type { AgentKind, AskQuestion } from '../api/types';
 import { answerKeys, isAnswered, type AskAnswer } from './askKeys';
 
 const enc = new TextEncoder();
@@ -17,6 +17,8 @@ async function press(id: string, keys: string[]): Promise<void> {
 
 interface Props {
   sessionId: string;
+  /** Whose picker: the keys differ (see `answerKeys`). */
+  agent: AgentKind;
   questions: AskQuestion[];
   /** Sent: the queue may move on. */
   onAnswered: () => void;
@@ -28,7 +30,7 @@ interface Props {
  * offers, plus a line for the owner's own words. One single-choice question goes with one click;
  * several questions, or a multiple-choice one, go together with "Send answers".
  */
-export default function QuestionPicker({ sessionId, questions, onAnswered, onError }: Props) {
+export default function QuestionPicker({ sessionId, agent, questions, onAnswered, onError }: Props) {
   const [answers, setAnswers] = useState<AskAnswer[]>(() => questions.map(() => ({ picked: [], text: '' })));
   const [sending, setSending] = useState(false);
   const oneClick = questions.length === 1 && !questions[0].multiSelect;
@@ -38,7 +40,7 @@ export default function QuestionPicker({ sessionId, questions, onAnswered, onErr
     if (sending) return;
     setSending(true);
     try {
-      await press(sessionId, answerKeys(questions, final));
+      await press(sessionId, answerKeys(questions, final, agent));
       onAnswered();
     } catch (e) {
       onError(String(e));

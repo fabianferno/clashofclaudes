@@ -54,7 +54,7 @@ const LAST_MESSAGE_MAX: usize = 4000;
 /// Longest pending tool call kept, in characters.
 const ASKING_MAX: usize = 400;
 /// Why a session with an open picker (`questions`) needs the owner.
-pub const QUESTION_REASON: &str = "Claude asks you a question";
+pub const QUESTION_REASON: &str = "Has a question for you";
 
 /// `text` trimmed and cut to `max` characters (a long reply keeps its end: that is where the
 /// summary and the question are).
@@ -278,7 +278,8 @@ impl SessionEntry {
                 self.info.state = SessionState::NeedsYou { reason: p.reason.into() };
                 self.info.state_since = now;
                 self.info.parked = None;
-                self.info.awaiting_decision = true;
+                // a prompt without keys is answered in the terminal: no Allow/Deny for it
+                self.info.awaiting_decision = !p.approve.is_empty() && !p.deny.is_empty();
                 self.active_prompt = Some(p);
                 self.quiet_since_ms = now;
                 true
@@ -778,6 +779,9 @@ impl SessionManager {
                 return;
             }
             let Some(adapter) = e.adapter.clone() else { return };
+            if adapter.from_other_conversation(&body, e.conversation.as_deref()) {
+                return;
+            }
             reply_adapter = Some(adapter.clone());
             let now = now_ms();
             let mut changed = false;
@@ -2421,7 +2425,9 @@ printf '\033]7501;state=done:app=grok\033\\'; sleep 5"#;
         let spec = LaunchSpec { program: "/bin/sh".into(), args: vec!["-c".into(), script.into()], env: vec![], cwd: fx.ws.path.clone() };
         let s = fx.mgr.start_with_spec(&fx.ws, &b, spec, Arc::new(crate::adapters::GrokAdapter)).unwrap();
         // Only a report gets here: without the reply the script exits.
-        assert!(wait_until(|| state(&fx, &s.id) == SessionState::NeedsYou { reason: "Pick one".into() }), "got {:?}", state(&fx, &s.id));
+        assert!(wait_until(|| state(&fx, &s.id) == SessionState::NeedsYou { reason: QUESTION_REASON.into() }), "got {:?}", state(&fx, &s.id));
+        let q = &info(&fx, &s.id).questions;
+        assert_eq!((q.len(), q[0].question.as_str(), q[0].options.len()), (1, "Pick one", 0), "its question, answered in the terminal");
         fx.mgr.write(&s.id, b"1").unwrap();
         assert!(wait_until(|| state(&fx, &s.id) == SessionState::Working));
         std::thread::sleep(Duration::from_millis(300));

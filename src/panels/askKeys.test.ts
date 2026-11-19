@@ -31,6 +31,21 @@ describe('answerKeys', () => {
   });
 });
 
+describe('answerKeys for Codex', () => {
+  // checked against codex-cli 0.166.0's request_user_input menu in a real pty
+  const fruit3: AskQuestion = { question: 'Favourite fruit?', header: null, options: opts('Apple', 'Pear', 'Plum'), multiSelect: false };
+  const animal: AskQuestion = { question: 'Favourite animal?', header: null, options: opts('Cat', 'Dog'), multiSelect: false };
+
+  it('a digit per question, no review screen', () => {
+    expect(answerKeys([fruit3, animal], [{ picked: [2], text: '' }, { picked: [1], text: '' }], 'codex')).toEqual(['3', '2']);
+  });
+
+  it('typed words go in as a note on "None of the above"', () => {
+    expect(answerKeys([fruit3, animal], [{ picked: [], text: 'kiwi 42' }, { picked: [1], text: '' }], 'codex'))
+      .toEqual([D, D, D, '\t', 'kiwi 42', '\r', '2']);
+  });
+});
+
 describe('isAnswered', () => {
   it('needs an option or words', () => {
     expect(isAnswered(fruit, undefined)).toBe(false);

@@ -4,6 +4,7 @@
 //! so no hook files are needed. Spec: https://www.superlogical.com/rex/docs/build/program-status. Parsing is lenient: `:` or `;` separate the
 //! fields, BEL or ST ends the sequence, unknown keys are ignored, and `msg` is base64 when it
 //! decodes to UTF-8 (raw text otherwise). Sequences may arrive split across reads.
+use crate::model::AskQuestion;
 use crate::status::StatusEvent;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -152,7 +153,15 @@ impl Osc7501 {
                 vec![StatusEvent::ToolUsed, StatusEvent::PromptSubmitted]
             }
             "blocked" => match r.kind.as_deref() {
-                Some("question") => vec![StatusEvent::AskedInTerminal { message: msg("Has a question for you") }],
+                // The question's text, without its options (the report has none): shown in the
+                // briefing as one to answer in the terminal.
+                Some("question") => match r.msg.as_deref().map(str::trim).filter(|m| !m.is_empty()) {
+                    Some(q) => vec![StatusEvent::ToolPending {
+                        summary: "Question".into(),
+                        questions: vec![AskQuestion { question: q.chars().take(400).collect(), header: None, options: vec![], multi_select: false }],
+                    }],
+                    None => vec![StatusEvent::AskedInTerminal { message: "Has a question for you".into() }],
+                },
                 Some("auth") => vec![],
                 // Not a turn yet: the trust menu comes before any `working`, and approving it
                 // returns agy to an idle prompt (Esc on it exits agy instead).
@@ -235,6 +244,12 @@ mod tests {
         assert_eq!(
             p.events(&rep("blocked", Some("question"), None)),
             vec![StatusEvent::AskedInTerminal { message: "Has a question for you".into() }]
+        );
+        // with its text (agy 1.5.12, Grok 1.0.77 send it; never the options): a terminal question
+        let q = AskQuestion { question: "Which color do you prefer?".into(), header: None, options: vec![], multi_select: false };
+        assert_eq!(
+            p.events(&rep("blocked", Some("question"), Some(" Which color do you prefer? "))),
+            vec![StatusEvent::ToolPending { summary: "Question".into(), questions: vec![q] }]
         );
         assert_eq!(p.events(&rep("error", None, None)), vec![StatusEvent::Failed { reason: "reported an error".into() }]);
         assert!(p.events(&rep("clear", None, None)).is_empty());

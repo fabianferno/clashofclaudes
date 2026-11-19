@@ -157,3 +157,28 @@ describe('a question picker', () => {
     await waitFor(() => expect(typed()).toEqual(['2', '\x1b[B', '\x1b[B', '\x1b[B', '\r', '1', '1']));
   });
 });
+
+describe('a question from another agent', () => {
+  const asked = (agent: 'codex' | 'grok', questions: SessionInfo['questions']) => {
+    useApp.setState({ builders: [{ id: 'b-a', name: 'A', agent, model: null, effort: null, customCommand: null }] });
+    useApp.getState().upsertSession(sess('a', { kind: 'needsYou', reason: 'Has a question for you' }, { questions }));
+  };
+  const typed = () => ipcMock.writeSession.mock.calls.map(([, b]) => new TextDecoder().decode(new Uint8Array(b as number[])));
+
+  test("Codex's picker takes Codex's keys", async () => {
+    asked('codex', [{ question: 'Favourite fruit?', header: null, multiSelect: false, options: [{ label: 'Apple' }, { label: 'Pear' }] }]);
+    render(<SessionPanel sessionId="a" />);
+    fireEvent.change(screen.getByLabelText('Your own answer'), { target: { value: 'kiwi' } });
+    fireEvent.click(screen.getByText('Send'));
+    await waitFor(() => expect(typed()).toEqual(['\x1b[B', '\x1b[B', '\t', 'kiwi', '\r']));
+  });
+
+  test('a question without options is answered in the terminal, not in a box that would type into its menu', () => {
+    asked('grok', [{ question: 'Which colour do you prefer?', header: null, multiSelect: false, options: [] }]);
+    render(<SessionPanel sessionId="a" />);
+    expect(screen.getByText('Which colour do you prefer?')).toBeTruthy();
+    expect(screen.getByText('Answer it in the terminal below.')).toBeTruthy();
+    expect(screen.queryByLabelText('Follow up')).toBeNull();
+    expect(screen.queryByTestId('question-picker')).toBeNull();
+  });
+});

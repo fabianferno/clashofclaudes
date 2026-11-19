@@ -191,6 +191,11 @@ pub trait AgentAdapter: Send + Sync {
     fn task_title(&self, _raw: &str) -> Option<String> {
         None
     }
+    /// A hook payload about another conversation than the session's `conversation` (one of the
+    /// agent's own side threads): ignored.
+    fn from_other_conversation(&self, _body: &serde_json::Value, _conversation: Option<&str>) -> bool {
+        false
+    }
     /// The agent's conversation id named by a hook payload, once there is a conversation to resume.
     fn conversation_of(&self, _body: &serde_json::Value) -> Option<String> {
         None

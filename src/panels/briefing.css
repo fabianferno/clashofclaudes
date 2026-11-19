@@ -136,3 +136,4 @@
 .ask-own input.on, .ask-own input:focus { border-style: solid; border-color: var(--hud-out); background: #fff8e8; }
 .ask-own input:focus { outline: 3px solid rgba(255, 207, 51, .6); outline-offset: 0; }
 .ask-send { align-self: flex-start; }
+.brief-term { font-weight: 800; }

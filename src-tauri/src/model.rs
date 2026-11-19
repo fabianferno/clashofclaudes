@@ -392,6 +392,7 @@ pub struct SessionInfo {
 }
 
 /// One question of an open picker, with its options in the order the agent's picker numbers them.
+/// No options: the agent named only the question (a terminal status report), answered there.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct AskQuestion {

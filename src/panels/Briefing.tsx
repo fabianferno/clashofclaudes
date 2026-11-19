@@ -48,6 +48,7 @@ interface Props {
  */
 export default function Briefing({ session: s, canApprove, answering, onAllow, onDeny, onClose, onDealt }: Props) {
   const sessions = useApp((st) => st.sessions);
+  const agent = useApp((st) => (s.kind.kind === 'agent' ? st.builders.find((b) => b.id === (s.kind as { builderId: string }).builderId)?.agent : undefined));
   const workspaces = useApp((st) => st.workspaces);
   const inQueue = useApp((st) => st.selection?.kind === 'session' && st.selection.id === s.id && !!st.selection.queue);
   const queue = useMemo(() => ownerQueue({ sessions, workspaces }), [sessions, workspaces]);
@@ -98,6 +99,8 @@ export default function Briefing({ session: s, canApprove, answering, onAllow, o
   const live = !s.paused && s.state.kind !== 'ended';
   // its open picker, answered here with the same options as in the terminal
   const questions = live && reason !== 'stuck' && s.questions?.length ? s.questions : null;
+  // the agent named only the question (its status report has no options): answered in its terminal
+  const terminalOnly = !!questions?.every((q) => q.options.length === 0);
 
   const act = async (p: () => Promise<unknown>, dealt = true) => {
     setError(null);
@@ -157,8 +160,13 @@ export default function Briefing({ session: s, canApprove, answering, onAllow, o
       {questions ? (
         <div className="brief-sec">
           <div className="brief-h">{questions.length > 1 ? `It asks ${questions.length} questions` : 'It asks'}</div>
-          <QuestionPicker key={`${s.id}:${s.stateSince ?? 0}:${JSON.stringify(questions)}`} sessionId={s.id} questions={questions}
-            onAnswered={onDealt} onError={setError} />
+          {terminalOnly || !agent ? (
+            <>
+              {questions.map((q, i) => <div key={i} className="ask-text">{q.question}</div>)}
+              <div className="sp-d brief-term">Answer it in the terminal below.</div>
+            </>
+          ) : <QuestionPicker key={`${s.id}:${s.stateSince ?? 0}:${JSON.stringify(questions)}`} sessionId={s.id} agent={agent} questions={questions}
+            onAnswered={onDealt} onError={setError} />}
         </div>
       ) : (asked || s.asking) && (
         <div className="brief-sec">

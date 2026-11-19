@@ -1,18 +1,29 @@
 //! OpenAI Codex CLI adapter.
 //!
-//! Codex is not installed where this was written: every format below comes from the
-//! documentation (docs/superpowers/research/2026-10-31-agents-and-release.md section 1) and is
-//! covered by unit tests only. Unverified until an owner check on a real install: the exact
-//! `-c notify=[...]` behavior, the trust/approval screen wording, and the argument order.
+//! Nothing is written to disk: the `notify` command, the hooks and the developer instructions
+//! travel as `-c` overrides, so `~/.codex`, `<repo>/.codex` and `CODEX_HOME` are never touched.
 //!
-//! Nothing is written to disk: the `notify` command and the developer instructions travel as
-//! `-c` overrides, so `~/.codex`, `<repo>/.codex` and `CODEX_HOME` are never touched.
+//! Verified against codex-cli 0.166.0 in a pty (gpt-5.6-luna):
+//!   * `notify` reports only `agent-turn-complete`, also for Codex's own side threads: a title
+//!     thread finishes first, with its own `thread-id` and a reply like `{"title":"…"}`.
+//!   * Hooks given with `-c hooks={…}` run once trusted, and their trust can come the same way:
+//!     `hooks.state."/<session-flags>/config.toml:<event>:<group>:<handler>".trusted_hash` is
+//!     the hash of the hook's normalized config (see `hook_trust_hash`), so no `/hooks` review.
+//!     Payloads (stdin JSON) carry `session_id` (the thread), `hook_event_name`, `tool_name`,
+//!     `tool_input`. `PermissionRequest` fires only when an approval prompt is really shown.
+//!   * Approval menus (commands and file edits) read "1. Yes, proceed (y)" … "3. No, and tell
+//!     Codex what to do differently (esc)": `y` approves, Esc declines.
+//!   * `request_user_input` (plan mode, or the `default_mode_request_user_input` feature) asks
+//!     1–3 single-choice questions `{id, header, question, options: [{label, description}]}`.
+//!     Its menu adds "None of the above" (row n+1): a digit answers and moves on (the last one
+//!     submits all); typed words go Down to that row, Tab ("add notes"), the words, Enter.
 use super::claude::SHARED_FOLDER_NOTE;
 use super::{AgentAdapter, Detection, DetectionCache, LaunchRequest, ModelChoice, ScreenPrompt, DETECTION_TTL};
 use crate::model::AgentKind;
 use crate::platform::{output_within, RunOutcome};
 use crate::pty::LaunchSpec;
 use crate::status::{StatusEvent, StatusPolicy};
+use sha2::{Digest, Sha256};
 use std::path::Path;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -44,6 +55,77 @@ fn notify_array(hook_url: &str) -> String {
         "printf '%s' \"$1\" | curl -s -m 2 -o /dev/null -X POST -H 'Content-Type: application/json' --data-binary @- '{hook_url}'"
     );
     format!("[{}]", ["sh", "-c", &script, "coc-notify"].map(toml_string).join(","))
+}
+
+/// The hook events the app listens to, as Codex names them in config and in trust keys, and
+/// whether they take a tool matcher (`*`: every tool). Codex drops a matcher on prompt events,
+/// and the trust hash with it, so none is given there.
+const HOOK_EVENTS: [(&str, &str, bool); 4] = [
+    ("UserPromptSubmit", "user_prompt_submit", false),
+    ("PreToolUse", "pre_tool_use", true),
+    ("PermissionRequest", "permission_request", true),
+    ("PostToolUse", "post_tool_use", true),
+];
+
+/// Codex's trust hash for a `-c` hook `{matcher = "*", hooks = [{type = "command", command}]}`
+/// (no matcher when `tools` is false) under `event` (`pre_tool_use`): `sha256:` + hex SHA-256 of
+/// the hook's normalized config as
+/// compact JSON with sorted keys (codex-rs `hooks/src/discovery.rs` `hook_hash` and
+/// `config/src/fingerprint.rs` `version_for_toml`; normalizing adds `async = false` and
+/// `timeout = 600`). Matched the hash Codex 0.166.0 reports in `hooks/list`. Should a later
+/// Codex hash differently, it skips the hooks as untrusted and the app falls back to `notify`.
+pub(super) fn hook_trust_hash(event: &str, command: &str, tools: bool) -> String {
+    let mut identity = serde_json::json!({
+        "event_name": event,
+        "hooks": [{"async": false, "command": command, "timeout": 600, "type": "command"}],
+    });
+    if tools {
+        identity["matcher"] = "*".into();
+    }
+    let canonical = canonical_json(&identity);
+    let digest = Sha256::digest(canonical.as_bytes());
+    format!("sha256:{}", digest.iter().map(|b| format!("{b:02x}")).collect::<String>())
+}
+
+/// `v` as compact JSON with every object's keys sorted, whatever serde_json's map order.
+fn canonical_json(v: &serde_json::Value) -> String {
+    match v {
+        serde_json::Value::Object(m) => {
+            let mut keys: Vec<&String> = m.keys().collect();
+            keys.sort();
+            let fields: Vec<String> = keys.iter().map(|k| format!("{}:{}", serde_json::Value::from(k.as_str()), canonical_json(&m[*k]))).collect();
+            format!("{{{}}}", fields.join(","))
+        }
+        serde_json::Value::Array(a) => format!("[{}]", a.iter().map(canonical_json).collect::<Vec<_>>().join(",")),
+        other => other.to_string(),
+    }
+}
+
+/// The `-c hooks={…}` value: each event posts its payload to the app, already trusted.
+fn hooks_table(hook_url: &str) -> String {
+    let command = super::claude::hook_command(hook_url);
+    let state: Vec<String> = HOOK_EVENTS
+        .iter()
+        .map(|(_, key, tools)| {
+            let id = toml_string(&format!("/<session-flags>/config.toml:{key}:0:0"));
+            format!("{id}={{trusted_hash={}}}", toml_string(&hook_trust_hash(key, &command, *tools)))
+        })
+        .collect();
+    let events = HOOK_EVENTS.iter().map(|(name, _, tools)| {
+        let matcher = if *tools { "matcher=\"*\"," } else { "" };
+        format!("{name}=[{{{matcher}hooks=[{{type=\"command\",command={}}}]}}]", toml_string(&command))
+    });
+    format!("hooks={{state={{{}}},{}}}", state.join(","), events.collect::<Vec<_>>().join(","))
+}
+
+/// Codex's own title thread (`{"title": "…"}` as its whole reply), which reports through `notify`
+/// like the conversation does: not the session's turn, nor its conversation.
+fn is_title_thread(body: &serde_json::Value) -> bool {
+    body.get("last-assistant-message")
+        .and_then(|v| v.as_str())
+        .and_then(|t| serde_json::from_str::<serde_json::Value>(t).ok())
+        .and_then(|v| v.as_object().map(|o| o.len() == 1 && o.contains_key("title")))
+        .unwrap_or(false)
 }
 
 /// First `\d+\.\d+\.\d+` in `s` (`codex-cli 0.137.0`).
@@ -194,6 +276,8 @@ impl AgentAdapter for CodexAdapter {
             format!("developer_instructions={}", toml_string(SHARED_FOLDER_NOTE)),
             "-c".into(),
             format!("notify={}", notify_array(req.hook_url)),
+            "-c".into(),
+            hooks_table(req.hook_url),
         ]);
         if let Some(c) = req.resume {
             // the options above are the root command's; `resume` takes them on
@@ -222,7 +306,23 @@ impl AgentAdapter for CodexAdapter {
         }
     }
     fn parse_hook(&self, body: &serde_json::Value) -> Vec<StatusEvent> {
+        if let Some(event) = body.get("hook_event_name").and_then(|v| v.as_str()) {
+            let tool = body.get("tool_name").and_then(|v| v.as_str());
+            let input = body.get("tool_input");
+            let pending = |tool: &str| StatusEvent::ToolPending {
+                summary: super::claude::tool_summary(tool, input, body.get("cwd").and_then(|v| v.as_str())),
+                questions: if tool == "request_user_input" { super::claude::ask_questions(input) } else { vec![] },
+            };
+            return match (event, tool) {
+                ("UserPromptSubmit", _) => vec![StatusEvent::PromptSubmitted],
+                ("PreToolUse", Some(t)) => vec![pending(t)],
+                ("PermissionRequest", Some(t)) => vec![pending(t), StatusEvent::PermissionRequested { message: "Codex wants your approval".into() }],
+                ("PostToolUse", _) => vec![StatusEvent::ToolUsed],
+                _ => vec![],
+            };
+        }
         match body.get("type").and_then(|v| v.as_str()) {
+            Some("agent-turn-complete") if is_title_thread(body) => vec![],
             Some("agent-turn-complete") => {
                 let reply = body.get("last-assistant-message").and_then(|v| v.as_str()).filter(|t| !t.trim().is_empty());
                 reply.map(|t| StatusEvent::AssistantMessage { text: t.to_string() }).into_iter().chain([StatusEvent::TurnFinished]).collect()
@@ -231,13 +331,27 @@ impl AgentAdapter for CodexAdapter {
         }
     }
     fn conversation_of(&self, body: &serde_json::Value) -> Option<String> {
-        body.get("thread-id").and_then(|v| v.as_str()).map(String::from)
+        // hooks name the conversation's thread; a notify may come from a side thread (the title)
+        let id = if body.get("hook_event_name").is_some() { body.get("session_id") } else { body.get("thread-id") };
+        id.and_then(|v| v.as_str()).filter(|_| !is_title_thread(body)).map(String::from)
+    }
+    fn from_other_conversation(&self, body: &serde_json::Value, conversation: Option<&str>) -> bool {
+        // a turn of another thread (Codex's side threads) is not the session's
+        let thread = body.get("thread-id").and_then(|v| v.as_str());
+        body.get("type").is_some() && matches!((thread, conversation), (Some(t), Some(c)) if t != c)
+    }
+    fn approve_keys(&self) -> Option<&'static [u8]> {
+        Some(b"y")
+    }
+    fn deny_keys(&self) -> Option<&'static [u8]> {
+        Some(b"\x1b")
     }
     fn screen_prompts(&self) -> Vec<ScreenPrompt> {
-        // Empty keys: the user answers in the terminal (canApprove is false).
+        // The approval menu (its hook may be untrusted: the screen still finds it) takes the
+        // adapter's keys; the folder-trust menu's keys are unverified: answered in the terminal.
         vec![
             ScreenPrompt { needle: "allowCodextoworkinthisfolder", reason: "Trust this folder?", approve: b"", deny: b"" },
-            ScreenPrompt { needle: "Yesproceed", reason: "Codex wants approval", approve: b"", deny: b"" },
+            ScreenPrompt { needle: "Yesproceed", reason: "Codex wants your approval", approve: b"y", deny: b"\x1b" },
         ]
     }
 }
@@ -287,6 +401,8 @@ mod tests {
             format!("developer_instructions=\"{SHARED_FOLDER_NOTE}\""),
             "-c".into(),
             expected_notify(),
+            "-c".into(),
+            hooks_table(URL),
             "--".into(),
             task.into(),
         ];
@@ -313,15 +429,85 @@ mod tests {
         let body = json!({"type": "agent-turn-complete", "thread-id": "t-1"});
         assert_eq!(CodexAdapter.conversation_of(&body).as_deref(), Some("t-1"));
         assert_eq!(CodexAdapter.conversation_of(&json!({})), None);
+        // hooks name it as `session_id`
+        let hook = json!({"hook_event_name": "UserPromptSubmit", "session_id": "t-2", "prompt": "hi"});
+        assert_eq!(CodexAdapter.conversation_of(&hook).as_deref(), Some("t-2"));
+    }
+
+    /// Codex's title thread, as notify reported it on 0.166.0 (before the conversation's turn).
+    fn title_turn() -> serde_json::Value {
+        json!({"type": "agent-turn-complete", "thread-id": "title-thread", "turn-id": "u", "client": "codex-tui",
+            "input-messages": ["Generate a concise, single-line task title …"], "last-assistant-message": "{\"title\":\"Choose a preferred color\"}"})
+    }
+
+    #[test]
+    fn codex_side_threads_are_not_the_session() {
+        assert_eq!(CodexAdapter.parse_hook(&title_turn()), vec![], "the title thread's turn is not the session's");
+        assert_eq!(CodexAdapter.conversation_of(&title_turn()), None, "nor its conversation");
+        let other = json!({"type": "agent-turn-complete", "thread-id": "t-9", "last-assistant-message": "done"});
+        assert!(CodexAdapter.from_other_conversation(&other, Some("t-1")));
+        assert!(!CodexAdapter.from_other_conversation(&other, Some("t-9")));
+        assert!(!CodexAdapter.from_other_conversation(&other, None), "no conversation known yet");
+        let hook = json!({"hook_event_name": "PostToolUse", "session_id": "t-3"});
+        assert!(!CodexAdapter.from_other_conversation(&hook, Some("t-1")), "hooks name the conversation itself");
+        // a reply that merely mentions a title is a reply
+        let reply = json!({"type": "agent-turn-complete", "thread-id": "t-1", "last-assistant-message": "{\"title\":\"x\",\"body\":1}"});
+        assert_eq!(CodexAdapter.parse_hook(&reply).last(), Some(&StatusEvent::TurnFinished));
+    }
+
+    #[test]
+    fn codex_hook_trust_hash_matches_codex() {
+        // the hash Codex 0.166.0's `hooks/list` reported for this command under PreToolUse
+        let cmd = "/private/tmp/claude-502/-Users-fabianferno-Documents-clashofclaudes/3b88b361-cf03-4e6a-9044-ebdb2e16df1f/scratchpad/hook.sh";
+        assert_eq!(hook_trust_hash("pre_tool_use", cmd, true), "sha256:21d5c65bb08719ac8fc7743f332d1f79f6573eb45551c23e4fe2cdc0d2f8f4c5");
+        assert_eq!(hook_trust_hash("permission_request", cmd, true), "sha256:83c02d2b253c3f8931390007d42b7df20a08df84d90354f1b9dfbff97d291bf5");
+        // a prompt event's hook has no matcher (Codex drops it): reported for the app's own command
+        let app = crate::adapters::claude::hook_command("http://127.0.0.1:47123/hook/tok/sid");
+        assert_eq!(hook_trust_hash("user_prompt_submit", &app, false), "sha256:568876c50c27f60622ca4307186306df8704a28a96ace119da2aa2220bde904c");
+    }
+
+    #[test]
+    fn codex_hooks_table_parses_back_trusted() {
+        let v: toml::Table = toml::from_str(&hooks_table(URL)).unwrap();
+        let hooks = v["hooks"].as_table().unwrap();
+        let cmd = crate::adapters::claude::hook_command(URL);
+        for (name, key, tools) in HOOK_EVENTS {
+            let group = &hooks[name].as_array().unwrap()[0];
+            assert_eq!(group.get("matcher").and_then(|m| m.as_str()), tools.then_some("*"));
+            assert_eq!(group["hooks"].as_array().unwrap()[0]["command"].as_str(), Some(cmd.as_str()));
+            let state = &hooks["state"][&format!("/<session-flags>/config.toml:{key}:0:0")];
+            assert_eq!(state["trusted_hash"].as_str(), Some(hook_trust_hash(key, &cmd, tools).as_str()));
+        }
+    }
+
+    #[test]
+    fn codex_hooks_report_prompts_tools_approvals_and_questions() {
+        assert_eq!(CodexAdapter.parse_hook(&json!({"hook_event_name": "UserPromptSubmit", "prompt": "hi"})), vec![StatusEvent::PromptSubmitted]);
+        let bash = json!({"hook_event_name": "PermissionRequest", "tool_name": "Bash", "cwd": "/w",
+            "tool_input": {"command": "echo Green > color.txt", "description": "May I write it?"}});
+        assert_eq!(CodexAdapter.parse_hook(&bash), vec![
+            StatusEvent::ToolPending { summary: "Bash: echo Green > color.txt".into(), questions: vec![] },
+            StatusEvent::PermissionRequested { message: "Codex wants your approval".into() },
+        ]);
+        assert_eq!(CodexAdapter.parse_hook(&json!({"hook_event_name": "PostToolUse", "tool_name": "Bash"})), vec![StatusEvent::ToolUsed]);
+        // as observed on 0.166.0
+        let ask = json!({"hook_event_name": "PreToolUse", "tool_name": "request_user_input", "tool_input": {"questions": [
+            {"header": "Color", "id": "preferred_color", "question": "Which color do you prefer?",
+             "options": [{"label": "Red", "description": "Choose red."}, {"label": "Green", "description": "Choose green."}]}]}});
+        let ev = CodexAdapter.parse_hook(&ask);
+        let StatusEvent::ToolPending { questions, .. } = &ev[0] else { panic!("{ev:?}") };
+        assert_eq!((questions.len(), questions[0].header.as_deref(), questions[0].options[1].label.as_str(), questions[0].multi_select),
+            (1, Some("Color"), "Green", false));
+        assert_eq!(CodexAdapter.parse_hook(&json!({"hook_event_name": "PreToolUse"})), vec![], "no tool name");
     }
 
     #[test]
     fn codex_optional_args_omitted() {
         let d = tempfile::tempdir().unwrap();
         let spec = CodexAdapter.launch(&req(d.path(), None, None, None)).unwrap();
-        assert_eq!(spec.args.len(), 4);
+        assert_eq!(spec.args.len(), 6);
         let spec = CodexAdapter.launch(&req(d.path(), None, None, Some(""))).unwrap();
-        assert_eq!(spec.args.len(), 4, "an empty task is not passed");
+        assert_eq!(spec.args.len(), 6, "an empty task is not passed");
     }
 
     #[test]
@@ -438,12 +624,13 @@ mod tests {
     }
 
     #[test]
-    fn codex_screen_prompts_are_terminal_only() {
+    fn codex_approvals_take_y_and_esc() {
         let ps = CodexAdapter.screen_prompts();
         assert_eq!(ps.len(), 2);
-        assert!(ps.iter().all(|p| p.approve.is_empty() && p.deny.is_empty()));
-        assert_eq!(CodexAdapter.approve_keys(), None);
-        assert_eq!(CodexAdapter.deny_keys(), None);
+        assert!(ps[0].approve.is_empty() && ps[0].deny.is_empty(), "the folder-trust menu is answered in the terminal");
+        assert_eq!((ps[1].approve, ps[1].deny), (&b"y"[..], &b"\x1b"[..]));
+        assert_eq!(CodexAdapter.approve_keys(), Some(&b"y"[..]));
+        assert_eq!(CodexAdapter.deny_keys(), Some(&b"\x1b"[..]));
         let text = crate::status::screen_text(b"\x1b[1m Yes,\x1b[0m allow Codex to work in this folder without asking");
         assert!(text.contains(ps[0].needle));
         assert!(crate::status::screen_text(b"1. Yes, proceed (y)").contains(ps[1].needle));

@@ -116,9 +116,19 @@ const zones = new Set<Zone>();
 let listening = false;
 let dragging: string[] = [];
 
+/**
+ * The drop position in CSS px. Tauri calls it physical, but on macOS wry hands over the WKWebView's
+ * own point coordinates unscaled, so they are already CSS px there; dividing them by the Retina
+ * ratio aimed at the wrong spot (half way to the top-left) and drops missed the field.
+ */
+export function dropPoint(p: { x: number; y: number }, mac = /Mac/.test(navigator.platform), ratio = window.devicePixelRatio || 1) {
+  const r = mac ? 1 : ratio;
+  return { x: p.x / r, y: p.y / r };
+}
+
 function zoneAt(p: { x: number; y: number }): Zone | undefined {
-  const r = window.devicePixelRatio || 1;
-  const hit = document.elementFromPoint(p.x / r, p.y / r);
+  const { x, y } = dropPoint(p);
+  const hit = document.elementFromPoint(x, y);
   return hit ? [...zones].find((z) => z.el.current?.contains(hit)) : undefined;
 }
 

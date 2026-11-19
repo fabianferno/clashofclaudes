@@ -9,6 +9,7 @@ import BuilderPicker from './BuilderPicker';
 import { StateTag } from './tags';
 import { isDemoId } from '../onboarding/demo';
 import { sessionName, taskTooltip } from './sessionName';
+import { plainText } from './markdownText';
 import { houseColors } from '../village/look';
 import './briefing.css';
 import { heldText, isLow } from '../state/elixir';
@@ -244,7 +245,7 @@ function TodoCard({ todo, idle, all, disabled, tag }: { todo: Todo; idle: Builde
   return (
     <article className="kb-card kb-todo" data-testid={`kb-todo-${todo.id}`}>
       {tag}
-      {todo.text && <div className="kb-title">{todo.text}</div>}
+      {todo.text && <div className="kb-title" title={todo.text}>{plainText(todo.text) || todo.text}</div>}
       <AttachmentStrip names={todo.images ?? []} />
       {auto && (
         <div className="kb-reason" style={{ color: 'var(--sp-ink-soft)' }}>

@@ -104,3 +104,15 @@ test('Park puts it aside with a note; it shows parked with a way back', async ()
   await act(async () => { fireEvent.click(screen.getByText('Back to queue')); });
   expect(ipcMock.parkSession).toHaveBeenLastCalledWith('a', null);
 });
+
+test('the task shows as plain text, and as markdown once opened', async () => {
+  useApp.getState().upsertSession(sess('m', { kind: 'finished' }, { task: '## Add **dark** mode\n\n- toggle\n- theme' }));
+  const { container } = render(<SessionPanel sessionId="m" />);
+  const task = await screen.findByTitle('Show all');
+  expect(task.textContent).toBe('Add dark mode toggle theme');
+  fireEvent.click(task);
+  expect(container.querySelector('.brief-task strong')?.textContent).toBe('dark');
+  expect(container.querySelectorAll('.brief-task li')).toHaveLength(2);
+  fireEvent.click(screen.getByText('Show less'));
+  expect(screen.getByTitle('Show all')).toBeTruthy();
+});

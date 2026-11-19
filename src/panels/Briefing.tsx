@@ -5,6 +5,7 @@ import { useApp } from '../state/store';
 import { QUEUE_LABEL, ownerQueue, queueReason, waitedLabel, waitingSince, type QueueReason } from '../state/queue';
 import { isDemoId } from '../onboarding/demo';
 import Markdown from './Markdown';
+import { plainText } from './markdownText';
 import './briefing.css';
 
 const enc = new TextEncoder();
@@ -139,7 +140,12 @@ export default function Briefing({ session: s, canApprove, answering, onAllow, o
       {s.task && (
         <div className="brief-sec">
           <div className="brief-h">Task</div>
-          <div className={`brief-task${taskOpen ? ' open' : ''}`} onClick={() => setTaskOpen((o) => !o)} title={taskOpen ? '' : 'Show all'}>{s.task}</div>
+          {taskOpen
+            ? <>
+                <Markdown className="brief-task open md" text={s.task} />
+                <button type="button" className="brief-less" onClick={() => setTaskOpen(false)}>Show less</button>
+              </>
+            : <div className="brief-task" onClick={() => setTaskOpen(true)} title="Show all">{plainText(s.task) || s.task}</div>}
         </div>
       )}
 

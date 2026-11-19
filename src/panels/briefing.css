@@ -27,7 +27,9 @@
   background: #fffaf0; border: 2px solid #d8c39a; border-left: 5px solid #c79a3e; border-radius: 8px; padding: 6px 9px;
   max-height: 180px; overflow-y: auto;
 }
-/* markdown in the last reply */
+/* markdown in the last reply and the task */
+.md { white-space: normal; }
+.brief-less { align-self: flex-start; background: none; border: 0; padding: 0; cursor: pointer; font: 800 12px system-ui, sans-serif; color: #8a6c47; text-decoration: underline; }
 .md > :first-child { margin-top: 0; }
 .md > :last-child { margin-bottom: 0; }
 .md .md-p { margin: 0 0 6px; }

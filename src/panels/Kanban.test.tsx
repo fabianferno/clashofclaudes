@@ -78,7 +78,7 @@ test("a card is named by the agent's title once it has one, the task as its tool
   act(() => useApp.getState().upsertSession(sess('s2', 'b2', { kind: 'working' })));
   render(<Kanban />);
   const named = screen.getByText('Reel from content dump');
-  expect(named.getAttribute('title')).toBe(long);
+  expect(named.getAttribute('title')).toBe(long.trim()); // as plain text
   expect(screen.queryByText(long)).toBeNull();
   expect(screen.getByText('Task s2')).toBeTruthy(); // no title yet: the task
 });

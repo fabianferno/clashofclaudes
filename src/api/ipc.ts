@@ -106,6 +106,10 @@ export const ipc = {
   ackOutput: (id: string, offset: number) => invoke<void>('ack_output', { id, offset }),
   /** `restart`: relaunch into an installed update instead of exiting. */
   quitNow: (restart = false) => invoke<void>('quit_now', { restart }),
+  /** Opens the mini village (a small window that stays on top), or closes it. */
+  toggleMini: () => invoke<void>('toggle_mini'),
+  /** From the mini village: bring the main window up, on this session when one is given. */
+  focusSession: (id: string | null) => invoke<void>('focus_session', { id }),
   getSettings: () => invoke<Settings>('get_settings'),
   /** The global shortcut: on in Settings, and whether another app holds its keys. */
   shortcutStatus: () => invoke<{ enabled: boolean; taken: boolean }>('shortcut_status'),

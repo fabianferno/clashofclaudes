@@ -174,3 +174,8 @@ test('a key that is no shortcut, or ⌘J with nobody waiting, is left alone', ()
   expect(screen.queryByRole('dialog')).toBeNull();
   window.removeEventListener('keydown', seen);
 });
+
+test('the palette offers the mini village', () => {
+  const cmd = paletteCommands(useApp.getState()).find((c) => c.id === 'mini-village');
+  expect(cmd).toMatchObject({ group: 'Actions', label: 'Mini village' });
+});

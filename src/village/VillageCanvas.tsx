@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { openUrl } from '@tauri-apps/plugin-opener';
+import { ipc } from '../api/ipc';
 import { boardItems, moveValid, useApp, type AppState } from '../state/store';
 import ZoomControls from '../hud/ZoomControls';
 import { getPanelWidth, usePanelWidth } from '../state/panelWidth';
@@ -45,7 +46,7 @@ async function decodeSnapshots(s: AppState): Promise<boolean> {
   return changed;
 }
 
-const inputOf = (s: AppState): VillageInput => ({
+const inputOf = (s: AppState, mini = false): VillageInput => ({
   workspaces: s.workspaces,
   sessions: Object.values(s.sessions),
   builders: s.builders,
@@ -53,12 +54,18 @@ const inputOf = (s: AppState): VillageInput => ({
   quotas: s.quotas,
   installed: s.agents.filter((a) => a.installed).map((a) => a.kind),
   collectorSpots: s.collectorSpots,
-  boards: boardsOf(s),
+  // boards and their snapshots live in the main window's memory: the mini village has none
+  boards: mini ? [] : boardsOf(s),
   ownerName: s.settings?.playerName ?? null,
 });
 
 /** The Pixi village, full-window; syncs from the store on every change (also while hidden). */
-export default function VillageCanvas({ onError }: { onError?: (e: unknown) => void } = {}) {
+/**
+ * `mini`: the mini village's (src/MiniApp.tsx). It only shows: a click brings the main window up on
+ * what was clicked, nothing can be moved, there are no boards, zoom buttons or haptics, and the
+ * whole village is kept in view.
+ */
+export default function VillageCanvas({ onError, mini = false }: { onError?: (e: unknown) => void; mini?: boolean } = {}) {
   const host = useRef<HTMLDivElement>(null);
   const [scene, setScene] = useState<Scene | null>(null);
 
@@ -68,7 +75,15 @@ export default function VillageCanvas({ onError }: { onError?: (e: unknown) => v
     let made: Scene | null = null;
     let unsub: (() => void) | null = null;
     let cancelled = false;
-    createScene(el, {
+    createScene(el, mini ? {
+      // a builder or a structure: the main window, on its session; anything else: the main window
+      onSelect: (sel) => { if (sel) ipc.focusSession(sel.kind === 'session' ? sel.id : null).catch((e) => console.error(e)); },
+      canMove: () => false,
+      onMove: async () => false,
+      onClosedConsumed: (id) => useApp.getState().consumeClosed(id),
+      panelWidth: () => 0,
+      openPanelWidth: () => 0,
+    } : {
       onSelect: (sel) => useApp.getState().setSelection(sel),
       canMove: (t, at) => moveValid(useApp.getState(), t, at),
       onMove: (t, at) => useApp.getState().village.commitMove(t, at, onError),
@@ -91,7 +106,8 @@ export default function VillageCanvas({ onError }: { onError?: (e: unknown) => v
         made = s;
         setScene(s);
         setProbeScene(s);
-        s.sync(inputOf(useApp.getState()));
+        s.sync(inputOf(useApp.getState(), mini));
+        if (mini) s.fitVillage();
         s.select(useApp.getState().selection);
         s.setCovered(useApp.getState().covers > 0);
         splashReady('scene');
@@ -99,13 +115,15 @@ export default function VillageCanvas({ onError }: { onError?: (e: unknown) => v
           if (st.zoomRequest !== prev.zoomRequest && st.zoomRequest) s.fitCompound(st.zoomRequest.id);
           if (st.covers !== prev.covers) s.setCovered(st.covers > 0);
           if (st.snapshots !== prev.snapshots || st.apps !== prev.apps || st.browsers !== prev.browsers)
-            void decodeSnapshots(st).then((changed) => { if (changed && !cancelled) s.sync(inputOf(useApp.getState())); });
+            void decodeSnapshots(st).then((changed) => { if (changed && !cancelled) s.sync(inputOf(useApp.getState(), mini)); });
           if (st.selection !== prev.selection) { s.reveal(st.selection); s.select(st.selection); }
           if (st.workspaces !== prev.workspaces || st.sessions !== prev.sessions || st.builders !== prev.builders || st.lastClosed !== prev.lastClosed
             || st.quotas !== prev.quotas || st.agents !== prev.agents || st.collectorSpots !== prev.collectorSpots
             || st.apps !== prev.apps || st.browsers !== prev.browsers || st.boardSpots !== prev.boardSpots
             || st.settings?.playerName !== prev.settings?.playerName)
-            s.sync(inputOf(st));
+            s.sync(inputOf(st, mini));
+          // the mini village keeps everything in view as compounds come and go
+          if (mini && st.workspaces.length !== prev.workspaces.length) s.fitVillage();
         });
       },
       (e) => { console.error('village scene failed to start', e); splashReady('scene'); },
@@ -129,6 +147,15 @@ export default function VillageCanvas({ onError }: { onError?: (e: unknown) => v
     });
   }, [scene]);
 
+  // The mini village's window resized: fit the whole village to its new size (once the drag settles).
+  useEffect(() => {
+    if (!scene || !mini) return;
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const onResize = () => { clearTimeout(t); t = setTimeout(() => scene.fitVillage(), 150); };
+    window.addEventListener('resize', onResize);
+    return () => { clearTimeout(t); window.removeEventListener('resize', onResize); };
+  }, [scene, mini]);
+
   // Cmd +/- like the zoom buttons, unless a pop-out or the Kanban covers the village
   useEffect(() => {
     if (!scene) return;
@@ -146,7 +173,7 @@ export default function VillageCanvas({ onError }: { onError?: (e: unknown) => v
   return (
     <>
       <div ref={host} className="village" data-testid="village" />
-      {scene && <ZoomControls onZoomIn={() => scene.zoomBy(1.25)} onZoomOut={() => scene.zoomBy(1 / 1.25)} onFit={() => scene.fitVillage()} />}
+      {scene && !mini && <ZoomControls onZoomIn={() => scene.zoomBy(1.25)} onZoomOut={() => scene.zoomBy(1 / 1.25)} onFit={() => scene.fitVillage()} />}
     </>
   );
 }

@@ -3,6 +3,7 @@ import { ipc } from './api/ipc';
 import { autoLayout, useApp } from './state/store';
 import { autoSnapshots } from './state/snapshots';
 import { autoStart } from './state/autoStart';
+import { subscribeState } from './state/hydrate';
 import { watchSounds } from './state/sounds';
 import { watchElixir } from './state/elixirWatch';
 import { queueReason } from './state/queue';
@@ -35,15 +36,11 @@ function App() {
 
   useEffect(() => {
     let cancelled = false;
+    const onError = (e: unknown) => useApp.getState().setError(String(e));
     const unlisten: Array<() => void> = [];
-    const keep = (p: Promise<() => void>) =>
-      p.then((u) => (cancelled ? u() : unlisten.push(u)), (e) => useApp.getState().setError(String(e)));
-    keep(ipc.onSessionUpdated((s) => useApp.getState().upsertSession(s)));
-    keep(ipc.onSessionRemoved((id) => useApp.getState().removeSession(id)));
-    keep(ipc.onWorkspaceUpdated((w) => useApp.getState().updateWorkspace(w)));
-    keep(ipc.onStatsUpdated((s) => useApp.getState().setStats(s)));
-    keep(ipc.onQuotaUpdated((q) => useApp.getState().setQuota(q)));
-    keep(ipc.onAppsUpdated((a) => useApp.getState().setApps(a)));
+    const keep = (p: Promise<() => void>) => p.then((u) => (cancelled ? u() : unlisten.push(u)), onError);
+    // the backend's updates into the store, then what it holds (shared with the mini village)
+    const sub = subscribeState(onError);
     keep(ipc.onSelectSession((id) => {
       // a notification of something waiting on the owner opens it as their queue's item: dealt with, the next comes up
       const s = useApp.getState().sessions[id];
@@ -54,36 +51,31 @@ function App() {
     keep(ipc.onOpenBugReport((kind) => void openBugReport(kind)));
     let stopLayout: (() => void) | null = null;
     // To Dos set to start on their own start once their builder is free (waits for the first state)
-    const stopAuto = autoStart((e) => useApp.getState().setError(String(e)));
+    const stopAuto = autoStart(onError);
     // the village's sounds, and a heads-up when an agent's elixir won't last until it refills
     const stopSounds = watchSounds();
     const stopElixir = watchElixir();
     const settings = loadSettings();
-    ipc.listState()
-      .then((s) => {
+    sub.loaded.then(
+      () => {
         if (cancelled) return;
-        useApp.getState().hydrate(s);
         splashReady('state');
         // Compounds for workspaces without one, spots for sessions without one.
-        stopLayout = autoLayout((e) => useApp.getState().setError(String(e)));
-        settings.then((st) => { if (!cancelled) return tidyOnce(st).catch((e) => useApp.getState().setError(String(e))); }, () => {});
-      })
-      .catch((e) => {
+        stopLayout = autoLayout(onError);
+        settings.then((st) => { if (!cancelled) return tidyOnce(st).catch(onError); }, () => {});
+      },
+      () => {
         if (cancelled) return;
-        useApp.getState().markLoaded(); // the welcome card must not stay hidden forever
         splashReady('state');
-        useApp.getState().setError(String(e));
         // Workspaces added from here on still need compounds and spots.
-        stopLayout = autoLayout((err) => useApp.getState().setError(String(err)));
-      });
-    ipc.getQuotas().then((q) => !cancelled && useApp.getState().setQuotas(q)).catch(() => {}); // collectors just stay unread
-    ipc.getApps().then((a) => !cancelled && useApp.getState().setApps(a)).catch(() => {}); // boards come with the next scan
-    ipc.detectAgents().then((a) => !cancelled && useApp.getState().setAgents(a)).catch((e) => useApp.getState().setError(String(e)));
+        stopLayout = autoLayout(onError);
+      },
+    );
     // the welcome (and its tour) until the owner has been through it once; Settings can replay it
     settings.then((s) => { if (!cancelled && !s.onboarded) startTour(); }).catch(() => {});
     const preload = window.setTimeout(preloadTerminal, 2000); // after the village's first frames
     const stopSnapshots = autoSnapshots();
-    return () => { cancelled = true; window.clearTimeout(preload); stopLayout?.(); stopAuto(); stopSounds(); stopElixir(); stopSnapshots(); unlisten.forEach((u) => u()); };
+    return () => { cancelled = true; window.clearTimeout(preload); stopLayout?.(); stopAuto(); stopSounds(); stopElixir(); stopSnapshots(); unlisten.forEach((u) => u()); sub.stop(); };
   }, []);
 
   return (

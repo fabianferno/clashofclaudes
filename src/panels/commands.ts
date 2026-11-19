@@ -126,6 +126,8 @@ export function paletteCommands(st: State): Command[] {
   }
   out.push(
     { id: 'hall', group: 'Actions', label: 'Town Hall', hint: 'Every workspace and builder', run: go({ kind: 'hall' }) },
+    { id: 'mini-village', group: 'Actions', label: 'Mini village', hint: 'A small village that stays on top of other apps', keywords: 'float pin window picture always on top monitor',
+      run: () => ipc.toggleMini().catch((e) => useApp.getState().setError(String(e))) },
     { id: 'kanban:all', group: 'Actions', label: 'Kanban: all workspaces', hint: 'Every session and To Do on one board', keywords: 'board todo',
       run: () => { toVillage(); useApp.getState().setKanban(KANBAN_ALL); } },
   );

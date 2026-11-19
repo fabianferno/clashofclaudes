@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { ipc } from '../api/ipc';
 import { idleBuilders, useApp } from '../state/store';
 import type { AgentKind, Builder } from '../api/types';
-import { CLASS_NAMES, classOf } from '../village/look';
+import { CLASS_NAMES, classOf, gearOf, stars } from '../village/look';
 import BuilderAvatar from '../hud/BuilderAvatar';
 import BuilderPreview from './BuilderPreview';
 import { modelPlaceholder } from './BuilderPanel';
@@ -162,7 +162,7 @@ export default function NewSessionPicker({ workspaceId, builderId }: { workspace
             <button key={b.id} type="button" className={`sp-row${choice === b.id ? ' picked' : ''}`} onClick={() => setPicked(b.id)}>
               <span className="hud-av sp-row-av"><BuilderAvatar agent={b.agent} model={b.model} effort={b.effort} size={38} /></span>
               <span className="sp-rowtext">
-                <span className="sp-t">{b.name}</span>
+                <span className="sp-t">{b.name} <span className="hud-stars">{'★'.repeat(stars(gearOf(b.effort)))}</span></span>
                 <span className="sp-d">{CLASS_NAMES[classOf(b.agent, b.model)]} · {b.agent}</span>
               </span>
             </button>

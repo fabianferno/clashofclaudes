@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 use crate::model::{AgentKind, SessionInfo, SessionState, Workspace};
 use crate::queue::{queue_reason, QueueReason};
 
+pub mod cli;
+
 #[cfg(test)]
 mod tests;
 

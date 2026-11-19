@@ -76,6 +76,9 @@ pub struct Workspace {
     /// The owner's notepad for this workspace: ideas and reminders, apart from the To Do. Kept here only.
     #[serde(default)]
     pub notes: String,
+    /// Its agent sessions are published to the team's board (while Settings › Team is on).
+    #[serde(default)]
+    pub board_shared: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -214,6 +217,34 @@ pub struct Settings {
     /// Ambience volume, 0-100, under the sound volume.
     #[serde(default = "default_ambience_volume")]
     pub ambience_volume: u32,
+    /// The village on the owner's Vercel Board (`board/`). Off until they turn it on.
+    #[serde(default)]
+    pub board: BoardSettings,
+}
+
+/// Settings › Team (Vercel Board): what the app writes to the team's board, through the `vercel` CLI.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct BoardSettings {
+    pub enabled: bool,
+    /// The Vercel team's slug; None is the login's default team.
+    pub team: Option<String>,
+    /// The board's name on that team.
+    pub name: String,
+    /// Tasks, tool calls, the agent's last reply and changed file names are written, not only states.
+    pub share_details: bool,
+    /// Sessions in shared workspaces get `BOARD_PROFILE` and `BOARD_URL`, so their own posts carry the builder's name.
+    pub session_env: bool,
+    /// A workspace added later starts shared.
+    pub share_new: bool,
+    /// A random id for this install's village (`coc.host`), made when the feature is first turned on.
+    pub host_id: Option<String>,
+}
+
+impl Default for BoardSettings {
+    fn default() -> Self {
+        Self { enabled: false, team: None, name: "village".into(), share_details: true, session_env: true, share_new: false, host_id: None }
+    }
 }
 
 fn default_elixir_reserve() -> u32 {
@@ -355,6 +386,7 @@ impl Default for Settings {
             day_night: true,
             ambience_on: false,
             ambience_volume: default_ambience_volume(),
+            board: BoardSettings::default(),
         }
     }
 }
@@ -488,6 +520,25 @@ pub struct Subagent {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn settings_without_board_load_with_defaults() {
+        let s: Settings = serde_json::from_value(json!({"updatesEnabled": false})).unwrap();
+        assert!(!s.board.enabled);
+        assert_eq!(s.board.name, "village");
+        assert!(s.board.share_details);
+        assert!(s.board.session_env);
+        assert!(!s.board.share_new);
+        assert_eq!(s.board.team, None);
+        assert_eq!(s.board.host_id, None);
+        assert_eq!(Settings::default().board, s.board);
+    }
+
+    #[test]
+    fn workspace_without_board_shared_loads_false() {
+        let w: Workspace = serde_json::from_value(json!({"id":"w","name":"n","path":"/p","createdAt":1})).unwrap();
+        assert!(!w.board_shared);
+    }
 
     #[test]
     fn serde_shapes_are_stable() {

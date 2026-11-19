@@ -84,7 +84,7 @@ pub fn workspace_from_path(path: &Path, now: i64) -> anyhow::Result<Workspace> {
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .ok_or_else(|| anyhow!("{} has no folder name", path.display()))?;
-    Ok(Workspace { id: Uuid::new_v4().to_string(), name, path: path.to_path_buf(), created_at: now, missing: false, level: 1, xp: 0, compound: None, color: None, notes: String::new() })
+    Ok(Workspace { id: Uuid::new_v4().to_string(), name, path: path.to_path_buf(), created_at: now, missing: false, level: 1, xp: 0, compound: None, color: None, notes: String::new(), board_shared: false })
 }
 
 /// Trimmed builder name, 1 to 40 characters.
@@ -1266,7 +1266,7 @@ mod tests {
 
     #[test]
     fn flag_missing_marks_only_that_workspace_once() {
-        let ws = |id: &str| Workspace { id: id.into(), name: id.into(), path: PathBuf::from("/nope"), created_at: 0, missing: false, level: 1, xp: 0, compound: None, color: None, notes: String::new() };
+        let ws = |id: &str| Workspace { id: id.into(), name: id.into(), path: PathBuf::from("/nope"), created_at: 0, missing: false, level: 1, xp: 0, compound: None, color: None, notes: String::new(), board_shared: false };
         let mut d = AppData { workspaces: vec![ws("a"), ws("b")], ..AppData::default() };
         let w = flag_workspace_missing(&mut d, "b").unwrap();
         assert!(w.missing && w.id == "b");
@@ -1290,7 +1290,7 @@ mod tests {
     #[test]
     fn workspace_notes_are_kept_whole_and_capped() {
         let mut d = AppData::default();
-        d.workspaces.push(Workspace { id: "w1".into(), name: "w".into(), path: PathBuf::from("/nope"), created_at: 0, missing: false, level: 1, xp: 0, compound: None, color: None, notes: String::new() });
+        d.workspaces.push(Workspace { id: "w1".into(), name: "w".into(), path: PathBuf::from("/nope"), created_at: 0, missing: false, level: 1, xp: 0, compound: None, color: None, notes: String::new(), board_shared: false });
         let w = apply_workspace_notes(&mut d, "w1", "  add export later\n").unwrap();
         assert_eq!(w.notes, "  add export later\n");
         assert_eq!(d.workspaces[0].notes, "  add export later\n");
@@ -1305,7 +1305,7 @@ mod tests {
     #[test]
     fn house_colour_is_set_checked_and_cleared() {
         let mut d = AppData::default();
-        d.workspaces.push(Workspace { id: "w1".into(), name: "w".into(), path: PathBuf::from("/nope"), created_at: 0, missing: false, level: 1, xp: 0, compound: None, color: None, notes: String::new() });
+        d.workspaces.push(Workspace { id: "w1".into(), name: "w".into(), path: PathBuf::from("/nope"), created_at: 0, missing: false, level: 1, xp: 0, compound: None, color: None, notes: String::new(), board_shared: false });
         assert_eq!(apply_workspace_color(&mut d, "w1", Some("#3FA34D")).unwrap().color.as_deref(), Some("#3fa34d"));
         for bad in ["3fa34d", "#3fa34", "#3fa34g", "red", "#3fa34d0"] {
             assert!(apply_workspace_color(&mut d, "w1", Some(bad)).is_err(), "{bad}");
@@ -1352,7 +1352,7 @@ mod tests {
     }
 
     fn village() -> AppData {
-        let ws = Workspace { id: "w1".into(), name: "w".into(), path: PathBuf::from("/nope"), created_at: 0, missing: false, level: 1, xp: 0, compound: None, color: None, notes: String::new() };
+        let ws = Workspace { id: "w1".into(), name: "w".into(), path: PathBuf::from("/nope"), created_at: 0, missing: false, level: 1, xp: 0, compound: None, color: None, notes: String::new(), board_shared: false };
         AppData { workspaces: vec![ws], ..AppData::default() }
     }
 

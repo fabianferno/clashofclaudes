@@ -76,3 +76,7 @@ test('a village tidied under older spacing rules is tidied again once', async ()
   await tidyOnce({ ...DEFAULT_SETTINGS, spotsTidied: true }); // tidied before spotsTidy existed
   expect(tidy.mock.calls).toEqual([['w1']]);
 });
+
+test('Vercel Board is off by default, with a board named village', () => {
+  expect(DEFAULT_SETTINGS.board).toEqual({ enabled: false, team: null, name: 'village', shareDetails: true, sessionEnv: true, shareNew: false, hostId: null });
+});

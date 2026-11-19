@@ -14,6 +14,25 @@ export interface Compound {
   house: Tile;
 }
 
+/** A finished session the owner accepted, for the raid report (`raid.rs`). */
+export interface RaidShip {
+  at: number;
+  workspaceId: string;
+  builderName: string;
+  agent: AgentKind;
+  title: string | null;
+  added: number;
+  removed: number;
+}
+
+/** One day's raid report. */
+export interface RaidReport {
+  ships: RaidShip[];
+  /** Time sessions waited on the owner, added up over sessions, ongoing waits included. */
+  waitedMs: number;
+  waitingNow: number;
+}
+
 export interface Stats {
   shippedTotal: number;
   /** Ship times in ms, last 48 h. */
@@ -34,6 +53,8 @@ export interface Workspace {
   color?: string | null;
   /** The owner's notepad for this workspace (kept in the app's data only). */
   notes?: string;
+  /** Its agent sessions are published to the team's Vercel Board (while Settings › Team is on). */
+  boardShared?: boolean;
 }
 
 export interface Builder {
@@ -302,6 +323,20 @@ export interface Settings {
   ambienceOn?: boolean;
   /** Ambience volume, 0-100, under the sound volume. */
   ambienceVolume?: number;
+  /** The village on the owner's Vercel Board. Off until they turn it on. */
+  board?: BoardSettings;
+}
+
+/** Settings › Team (Vercel Board). */
+export interface BoardSettings {
+  enabled: boolean;
+  /** The Vercel team's slug; null is the login's default team. */
+  team: string | null;
+  name: string;
+  shareDetails: boolean;
+  sessionEnv: boolean;
+  shareNew: boolean;
+  hostId: string | null;
 }
 
 /** A moment that can play a sound (see src/state/sounds.ts and src-tauri/src/sounds.rs). */

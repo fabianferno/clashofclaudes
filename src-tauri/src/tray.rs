@@ -181,13 +181,8 @@ fn model_now<R: Runtime>(app: &AppHandle<R>) -> TrayModel {
         &|id| name_in(&workspaces, id, "Workspace"),
         &|id| state.manager.answerable(id),
         crate::quota::now_ms(),
-        mini_open(app),
+        crate::mini::is_open(app),
     )
-}
-
-/// Whether the mini village is open (its menu item's checkmark).
-fn mini_open<R: Runtime>(_app: &AppHandle<R>) -> bool {
-    false
 }
 
 fn build_menu<R: Runtime>(app: &AppHandle<R>, m: &TrayModel) -> tauri::Result<Menu<R>> {
@@ -276,7 +271,7 @@ pub fn on_menu_event(app: &AppHandle, id: &str) -> bool {
         }
         TrayAction::Open { id } => crate::focus_and_select(app, &id),
         TrayAction::OpenVillage => crate::show_main(app),
-        TrayAction::ToggleMini => {}
+        TrayAction::ToggleMini => crate::mini::toggle(app),
         TrayAction::Quit => app.exit(0),
     }
     true

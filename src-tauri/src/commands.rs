@@ -48,6 +48,16 @@ impl AppState {
         self.data_path.parent().unwrap_or(Path::new("."))
     }
 
+    /// Changes where the mini village stands or whether it is open (`f` gets what was saved), and
+    /// writes it down when `persist`.
+    pub(crate) fn update_mini(&self, persist: bool, f: impl FnOnce(Option<crate::model::MiniWindow>) -> Option<crate::model::MiniWindow>) {
+        let mut d = self.data();
+        d.mini_window = f(d.mini_window);
+        if persist {
+            let _ = self.save(&d);
+        }
+    }
+
     /// Persists the current data (call with the guard still held so writes stay ordered).
     fn save(&self, d: &AppData) -> Result<(), String> {
         if let Some(dir) = self.data_path.parent() {

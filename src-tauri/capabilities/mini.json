@@ -1,0 +1,9 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "mini",
+  "description": "Capability for the mini village's web view: it listens to the app's events and draws",
+  "windows": ["mini"],
+  "permissions": [
+    "core:default"
+  ]
+}

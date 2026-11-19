@@ -86,6 +86,7 @@ mod tests {
             stats: Stats::default(),
             settings: Settings::default(),
             collector_spots: [(AgentKind::Codex, Tile { x: 9, y: -3 })].into(),
+            mini_window: Some(crate::model::MiniWindow { x: -300.5, y: 16.0, w: 360.0, h: 240.0, open: true }),
             todos: vec![Todo { id: "t1".into(), workspace_id: "w1".into(), text: "Fix the login page".into(), images: vec![], created_at: 7, auto: false, builder_id: None, worktree: false }],
             workspaces: vec![Workspace {
                 id: "w1".into(),

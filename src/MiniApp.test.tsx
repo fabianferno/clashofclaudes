@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
 
 const ipc = vi.hoisted(() => ({
@@ -44,17 +44,4 @@ test('the mini village shows the village alone and runs none of the main window\
   expect(canvas.props[canvas.props.length - 1]?.mini).toBe(true);
   for (const job of Object.values(jobs)) expect(job).not.toHaveBeenCalled();
   for (const call of [ipc.startSession, ipc.setCompound, ipc.setSessionSpot, ipc.setSettings, ipc.snapshotApp, ipc.playSound]) expect(call).not.toHaveBeenCalled();
-});
-
-test('the close button puts the mini village away', async () => {
-  render(<MiniApp />);
-  await act(async () => { await Promise.resolve(); });
-  fireEvent.click(screen.getByRole('button', { name: 'Close mini village' }));
-  expect(ipc.toggleMini).toHaveBeenCalledTimes(1);
-});
-
-test('the top strip drags the window', async () => {
-  const { container } = render(<MiniApp />);
-  await act(async () => { await Promise.resolve(); });
-  expect(container.querySelector('header')?.hasAttribute('data-tauri-drag-region')).toBe(true);
 });

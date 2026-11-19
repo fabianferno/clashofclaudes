@@ -8,6 +8,7 @@ pub mod driver;
 pub mod git;
 pub mod history;
 pub mod hooks;
+pub mod mini;
 pub mod model;
 pub mod bugreport;
 pub mod notify;
@@ -419,6 +420,8 @@ pub fn run() {
             spawn_app_scanner(app.handle().clone());
             // the menu bar item: the queue's count and its menu, also while the window is closed
             tray::init(app.handle())?;
+            // the mini village, when it was open at the last quit
+            mini::restore(app.handle());
             // ⌃⌥⌘J from any app, unless Settings turned it off
             app.manage(shortcut::Hotkey::default());
             let hotkey = app.state::<commands::AppState>().data().settings.global_shortcut;
@@ -527,6 +530,8 @@ pub fn run() {
             commands::install_update,
             commands::restart_for_update,
             shortcut::shortcut_status,
+            mini::toggle_mini,
+            mini::focus_session,
             commands::driver_result,
         ])
         .build(tauri::generate_context!())

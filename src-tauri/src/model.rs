@@ -102,6 +102,21 @@ pub struct AppData {
     /// Tasks written down for the workspaces and not started yet (the Kanban's To Do), oldest first.
     #[serde(default)]
     pub todos: Vec<Todo>,
+    /// Where the mini village was last left, and whether it was open (`mini.rs`).
+    #[serde(default)]
+    pub mini_window: Option<MiniWindow>,
+}
+
+/// The mini village's window: its place and size in screen points, and whether it is open (it
+/// comes back on the next launch when it was).
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MiniWindow {
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+    pub open: bool,
 }
 
 /// A task the owner wrote down for a workspace; starting it hands it to a builder as a session.
@@ -321,6 +336,7 @@ impl Default for AppData {
             settings: Settings::default(),
             collector_spots: BTreeMap::new(),
             todos: Vec::new(),
+            mini_window: None,
         }
     }
 }

@@ -116,3 +116,44 @@ test('the task shows as plain text, and as markdown once opened', async () => {
   fireEvent.click(screen.getByText('Show less'));
   expect(screen.getByTitle('Show all')).toBeTruthy();
 });
+
+describe('a question picker', () => {
+  const fruit = { question: 'Pick a fruit', header: 'Fruit', multiSelect: false, options: [{ label: 'Apple', description: 'crisp' }, { label: 'Banana' }] };
+  const colors = { question: 'Pick colors', header: 'Colors', multiSelect: true, options: [{ label: 'Red' }, { label: 'Blue' }] };
+  const asking = (questions: typeof fruit[]) =>
+    sess('a', { kind: 'needsYou', reason: 'Claude asks you a question' }, { asking: 'AskUserQuestion', questions });
+  const typed = () => ipcMock.writeSession.mock.calls.map(([, b]) => new TextDecoder().decode(new Uint8Array(b as number[])));
+
+  test('shows the options as buttons and answers one question with one click', async () => {
+    useApp.getState().upsertSession(asking([fruit]));
+    render(<SessionPanel sessionId="a" />);
+    expect(screen.getByText('Pick a fruit')).toBeTruthy();
+    expect(screen.getByText('crisp')).toBeTruthy();
+    expect(screen.queryByText('AskUserQuestion')).toBeNull();
+    expect(screen.queryByLabelText('Follow up')).toBeNull(); // typing there would land in the picker
+    expect(screen.queryByText('Allow')).toBeNull(); // Allow's key would pick the first option
+    fireEvent.click(screen.getByRole('radio', { name: /Banana/ }));
+    await waitFor(() => expect(typed()).toEqual(['2']));
+  });
+
+  test('own words go through the "Type something" row', async () => {
+    useApp.getState().upsertSession(asking([fruit]));
+    render(<SessionPanel sessionId="a" />);
+    fireEvent.change(screen.getByLabelText('Your own answer'), { target: { value: 'kiwi' } });
+    fireEvent.click(screen.getByText('Send'));
+    await waitFor(() => expect(typed()).toEqual(['3', 'kiwi', '\r']));
+  });
+
+  test('several questions go together once each is answered', async () => {
+    useApp.getState().upsertSession(asking([colors, fruit]));
+    render(<SessionPanel sessionId="a" />);
+    const sendAll = screen.getByText('Send answers') as HTMLButtonElement;
+    expect(sendAll.disabled).toBe(true);
+    fireEvent.click(screen.getByRole('checkbox', { name: /Blue/ }));
+    fireEvent.click(screen.getByRole('radio', { name: /Apple/ }));
+    expect(ipcMock.writeSession).not.toHaveBeenCalled();
+    expect(sendAll.disabled).toBe(false);
+    fireEvent.click(sendAll);
+    await waitFor(() => expect(typed()).toEqual(['2', '\x1b[B', '\x1b[B', '\x1b[B', '\r', '1', '1']));
+  });
+});

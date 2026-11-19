@@ -382,9 +382,34 @@ pub struct SessionInfo {
     /// The tool call the agent is about to make (`Bash: npm test`), while it waits on it.
     #[serde(default)]
     pub asking: Option<String>,
+    /// The questions it asks with a picker (Claude's AskUserQuestion), while the picker is open:
+    /// the briefing offers their options as buttons.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub questions: Vec<AskQuestion>,
     /// The owner put it aside (out of the queue) with this note (maybe empty), until its state changes.
     #[serde(default)]
     pub parked: Option<String>,
+}
+
+/// One question of an open picker, with its options in the order the agent's picker numbers them.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AskQuestion {
+    pub question: String,
+    /// A short label for the question (`Auth method`).
+    #[serde(default)]
+    pub header: Option<String>,
+    pub options: Vec<AskOption>,
+    /// Several options may be picked (checkboxes) instead of one.
+    #[serde(default)]
+    pub multi_select: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct AskOption {
+    pub label: String,
+    #[serde(default)]
+    pub description: Option<String>,
 }
 
 /// A subagent the session's agent spawned, from its start hook until its stop hook.

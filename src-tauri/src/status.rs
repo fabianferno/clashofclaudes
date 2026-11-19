@@ -1,6 +1,6 @@
 // Session status state machine. Pure: no I/O, no clocks.
 
-use crate::model::SessionState;
+use crate::model::{AskQuestion, SessionState};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum StatusEvent {
@@ -28,8 +28,9 @@ pub enum StatusEvent {
     SubagentsDone,
     /// The agent's reply at the end of a turn (for the briefing). Leaves the state alone.
     AssistantMessage { text: String },
-    /// The tool call the agent is about to make, summarized (`Bash: npm test`). Leaves the state alone.
-    ToolPending { summary: String },
+    /// The tool call the agent is about to make, summarized (`Bash: npm test`). Leaves the state
+    /// alone, unless it carries `questions`: a picker is open and the agent waits on the owner.
+    ToolPending { summary: String, questions: Vec<AskQuestion> },
 }
 
 #[derive(Clone, Debug, PartialEq)]

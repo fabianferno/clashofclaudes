@@ -53,6 +53,8 @@ const TICK_EVERY: Duration = Duration::from_secs(1);
 const LAST_MESSAGE_MAX: usize = 4000;
 /// Longest pending tool call kept, in characters.
 const ASKING_MAX: usize = 400;
+/// Why a session with an open picker (`questions`) needs the owner.
+pub const QUESTION_REASON: &str = "Claude asks you a question";
 
 /// `text` trimmed and cut to `max` characters (a long reply keeps its end: that is where the
 /// summary and the question are).
@@ -176,6 +178,25 @@ impl SessionEntry {
     /// Feeds one status event; returns true when `info` changed.
     fn apply(&mut self, ev: &StatusEvent, now: i64) -> bool {
         let mut changed = false;
+        // An open picker waits on the owner; it is answered with its options, not Allow/Deny
+        // (Allow's key would pick the first option): its permission prompt arms nothing.
+        let asked = StatusEvent::AskedInTerminal { message: QUESTION_REASON.into() };
+        let ev = match ev {
+            StatusEvent::PermissionRequested { .. } if !self.info.questions.is_empty() => &asked,
+            StatusEvent::ToolPending { summary, questions } => {
+                let summary = cap_text(summary, ASKING_MAX);
+                if self.info.asking.as_ref() != Some(&summary) || &self.info.questions != questions {
+                    self.info.asking = Some(summary);
+                    self.info.questions = questions.clone();
+                    changed = true;
+                }
+                if questions.is_empty() || !self.is_live() {
+                    return changed;
+                }
+                &asked
+            }
+            _ => ev,
+        };
         let subs = &mut self.info.subagents;
         match ev {
             StatusEvent::SubagentStarted { id, agent_type } if !subs.iter().any(|s| &s.id == id) => {
@@ -197,14 +218,6 @@ impl SessionEntry {
                 self.info.last_message = Some(text);
                 return true;
             }
-            StatusEvent::ToolPending { summary } => {
-                let summary = cap_text(summary, ASKING_MAX);
-                if self.info.asking.as_ref() == Some(&summary) {
-                    return false;
-                }
-                self.info.asking = Some(summary);
-                return true;
-            }
             // the agent is gone, and its subagents with it
             StatusEvent::Exited { .. } => changed |= !std::mem::take(subs).is_empty(),
             _ => {}
@@ -215,7 +228,7 @@ impl SessionEntry {
         }
         // the call it was waiting on ran, or the turn moved on: nothing pending any more
         if matches!(ev, StatusEvent::ToolUsed | StatusEvent::TurnFinished | StatusEvent::PromptSubmitted | StatusEvent::Exited { .. })
-            && self.info.asking.take().is_some()
+            && (self.info.asking.take().is_some() | !std::mem::take(&mut self.info.questions).is_empty())
         {
             changed = true;
         }
@@ -551,6 +564,7 @@ impl SessionManager {
             state_since: now,
             last_message: None,
             asking: None,
+            questions: vec![],
             parked: None,
         };
         if adapter.is_some()
@@ -719,6 +733,7 @@ impl SessionManager {
                 if was_live {
                     e.info.state_since = now_ms();
                     e.info.asking = None;
+                    e.info.questions.clear();
                 }
                 was_live
             } else {
@@ -939,6 +954,7 @@ impl SessionManager {
         } else if !screen_prompt {
             e.info.state = SessionState::NeedsYou { reason: DENIED_REASON.into() };
             e.info.asking = None;
+            e.info.questions.clear();
         } // denying a screen prompt (trust menu) exits the agent: the exit moves the state on
         e.quiet_since_ms = now_ms();
         e.info.state_since = e.quiet_since_ms;
@@ -1191,6 +1207,7 @@ impl SessionManager {
                     state_since: if s.state_since > 0 { s.state_since } else { s.started_at },
                     last_message: s.last_message,
                     asking: None,
+                    questions: vec![],
                     parked: s.parked,
                 };
                 let mut e = SessionEntry::new(info, ws.path.clone(), None, terminal_policy(), None, now);
@@ -1752,6 +1769,31 @@ mod tests {
         fx.mgr.approve(&s.id).unwrap();
         // Hooks for unknown sessions are ignored.
         fx.mgr.on_hook("nope", fixture_json("stop.json"));
+    }
+
+    #[test]
+    fn a_question_picker_waits_on_the_owner_without_allow() {
+        let fx = fixture();
+        let s = fx.mgr.start_with_spec(&fx.ws, &claude("b1"), sleeper(&fx), Arc::new(ClaudeAdapter)).unwrap();
+        let q = serde_json::json!({"questions": [{"question": "Pick a fruit", "header": "Fruit", "multiSelect": false,
+            "options": [{"label": "Apple", "description": "crisp"}, {"label": "Banana"}]}]});
+        fx.mgr.on_hook(&s.id, serde_json::json!({"hook_event_name": "PreToolUse", "cwd": "/x", "tool_name": "AskUserQuestion", "tool_input": q}));
+        let i = info(&fx, &s.id);
+        assert_eq!(i.state, SessionState::NeedsYou { reason: QUESTION_REASON.into() }, "a picker waits on the owner by itself");
+        assert_eq!(i.questions.len(), 1);
+        assert_eq!(i.questions[0].options[1].label, "Banana");
+        // its permission prompt follows: still the question, and Allow ("1") is not offered
+        fx.mgr.on_hook(&s.id, fixture_json("notification_permission.json"));
+        let i = info(&fx, &s.id);
+        assert_eq!((i.state.clone(), i.awaiting_decision), (SessionState::NeedsYou { reason: QUESTION_REASON.into() }, false));
+        assert!(fx.mgr.approve(&s.id).is_err());
+        // answered (in the app or the terminal): the tool ran, the picker is gone
+        fx.mgr.on_hook(&s.id, fixture_json("post_tool_use.json"));
+        let i = info(&fx, &s.id);
+        assert_eq!((i.state.clone(), i.questions.len(), i.asking.clone()), (SessionState::Working, 0, None));
+        // a later ordinary prompt arms Allow again
+        fx.mgr.on_hook(&s.id, fixture_json("notification_permission.json"));
+        assert!(info(&fx, &s.id).awaiting_decision);
     }
 
     #[test]

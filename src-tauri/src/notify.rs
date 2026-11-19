@@ -204,6 +204,7 @@ mod tests {
             state_since: 0,
             last_message: None,
             asking: None,
+            questions: vec![],
             parked: None,
         }
     }

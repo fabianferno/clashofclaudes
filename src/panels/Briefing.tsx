@@ -5,6 +5,7 @@ import { useApp } from '../state/store';
 import { QUEUE_LABEL, ownerQueue, queueReason, waitedLabel, waitingSince, type QueueReason } from '../state/queue';
 import { isDemoId } from '../onboarding/demo';
 import Markdown from './Markdown';
+import QuestionPicker from './QuestionPicker';
 import { plainText } from './markdownText';
 import './briefing.css';
 
@@ -94,6 +95,9 @@ export default function Briefing({ session: s, canApprove, answering, onAllow, o
   const parked = s.parked != null;
   const state = s.state;
   const asked = state.kind === 'needsYou' || state.kind === 'stuck' ? state.reason : null;
+  const live = !s.paused && s.state.kind !== 'ended';
+  // its open picker, answered here with the same options as in the terminal
+  const questions = live && reason !== 'stuck' && s.questions?.length ? s.questions : null;
 
   const act = async (p: () => Promise<unknown>, dealt = true) => {
     setError(null);
@@ -115,7 +119,8 @@ export default function Briefing({ session: s, canApprove, answering, onAllow, o
     setParking(null);
   });
   const unpark = () => act(async () => { useApp.getState().upsertSession(await ipc.parkSession(s.id, null)); }, false);
-  const canReply = !s.paused && s.state.kind !== 'ended' && !(reason === 'decide' && canApprove);
+  // typing would land in the picker or the Allow/Deny menu, not in the agent's prompt
+  const canReply = live && !questions && !(reason === 'decide' && canApprove);
 
   return (
     <div className={`brief sp-box${parked ? ' brief-parked' : ''}`} data-testid="briefing">
@@ -149,7 +154,13 @@ export default function Briefing({ session: s, canApprove, answering, onAllow, o
         </div>
       )}
 
-      {(asked || s.asking) && (
+      {questions ? (
+        <div className="brief-sec">
+          <div className="brief-h">{questions.length > 1 ? `It asks ${questions.length} questions` : 'It asks'}</div>
+          <QuestionPicker key={`${s.id}:${s.stateSince ?? 0}:${JSON.stringify(questions)}`} sessionId={s.id} questions={questions}
+            onAnswered={onDealt} onError={setError} />
+        </div>
+      ) : (asked || s.asking) && (
         <div className="brief-sec">
           <div className="brief-h">{reason === 'stuck' ? 'What went wrong' : 'It asks'}</div>
           {asked && <div className="brief-ask">{asked}</div>}
@@ -205,7 +216,7 @@ export default function Briefing({ session: s, canApprove, answering, onAllow, o
       )}
 
       <div className="brief-actions">
-        {reason === 'decide' && canApprove && (
+        {reason === 'decide' && canApprove && !questions && (
           <>
             <button className="hud-btn sm" data-tour="allow" disabled={answering} onClick={() => { onAllow(); }}>Allow</button>
             <button className="hud-btn red sm" disabled={answering} onClick={() => { onDeny(); }}>Deny</button>

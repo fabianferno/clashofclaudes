@@ -108,8 +108,20 @@ export interface SessionInfo {
   lastMessage?: string | null;
   /** The tool call it is about to make (`Bash: npm test`), while it waits on it. */
   asking?: string | null;
+  /** The questions of its open picker (Claude's AskUserQuestion), offered as buttons; absent when none. */
+  questions?: AskQuestion[];
   /** Put aside out of the owner's queue, with this note (maybe empty), until its state changes. */
   parked?: string | null;
+}
+
+/** One question of an agent's open picker; options in the order its picker numbers them. */
+export interface AskQuestion {
+  question: string;
+  /** A short label for the question (`Auth method`). */
+  header?: string | null;
+  options: { label: string; description?: string | null }[];
+  /** Several options may be picked instead of one. */
+  multiSelect: boolean;
 }
 
 /** A subagent a session's agent spawned (Claude's Agent tool), from its start until its stop. */

@@ -12,9 +12,17 @@
 //! (`permission_prompt` | `idle_prompt` observed) and a `message`. `SubagentStart` and
 //! `SubagentStop` carry the subagent's `agent_id` and `agent_type`; `Stop` lists the turn's
 //! `background_tasks` (observed on 2.1.318 with two parallel Agent-tool subagents).
+//! The AskUserQuestion picker, confirmed against 2.1.328 the same way (haiku, a pty): a
+//! single-select question takes the option's digit and moves on; its "Type something" row
+//! (digit n+1 for n options) takes typed text and Enter. A multi-select question toggles an
+//! option per digit without moving the cursor (row 1); Down moves to "Type something" (typing
+//! there checks it) and on to its "Submit"/"Next" row, where Enter moves on (Tab inside the
+//! text row only moves down a row). Several questions, or any multi-select one, end on a
+//! "Review your answers" screen whose `1` is "Submit answers". Keys sent too fast in one write
+//! may be read as one input: the app sends them one at a time (`src/panels/askKeys.ts`).
 //! Fixture paths: `/Users/<name>/` was rewritten to `/home/user/` to avoid leaking a username.
 use super::{AgentAdapter, Detection, DetectionCache, LaunchRequest, ScreenPrompt, DETECTION_TTL};
-use crate::model::AgentKind;
+use crate::model::{AgentKind, AskOption, AskQuestion};
 use crate::pty::LaunchSpec;
 use crate::status::{StatusEvent, StatusPolicy};
 use std::path::PathBuf;
@@ -49,6 +57,43 @@ pub(crate) fn tool_summary(tool: &str, input: Option<&serde_json::Value>, cwd: O
     match what {
         Some(w) => format!("{tool}: {}", w.split_whitespace().collect::<Vec<_>>().join(" ")),
         None => tool.to_string(),
+    }
+}
+
+/// The questions of an AskUserQuestion call (`{questions: [{question, header, options: [{label,
+/// description}], multiSelect}]}`); empty when the input has none the app could offer as buttons.
+/// The picker numbers options from 1 and takes a digit per option, so at most 8 are kept (the
+/// next numbers are its own "Type something" and "Chat about this" rows).
+pub(crate) fn ask_questions(input: Option<&serde_json::Value>) -> Vec<AskQuestion> {
+    const MAX_QUESTIONS: usize = 4;
+    const MAX_OPTIONS: usize = 8;
+    const MAX_TEXT: usize = 400;
+    let text = |v: Option<&serde_json::Value>| {
+        v.and_then(|v| v.as_str()).map(str::trim).filter(|t| !t.is_empty()).map(|t| t.chars().take(MAX_TEXT).collect::<String>())
+    };
+    let Some(qs) = input.and_then(|i| i.get("questions")).and_then(|q| q.as_array()) else { return vec![] };
+    let parsed: Option<Vec<AskQuestion>> = qs
+        .iter()
+        .take(MAX_QUESTIONS)
+        .map(|q| {
+            let options: Vec<AskOption> = q
+                .get("options")?
+                .as_array()?
+                .iter()
+                .map(|o| Some(AskOption { label: text(o.get("label"))?, description: text(o.get("description")) }))
+                .collect::<Option<_>>()?;
+            (!options.is_empty() && options.len() <= MAX_OPTIONS).then_some(AskQuestion {
+                question: text(q.get("question"))?,
+                header: text(q.get("header")),
+                options,
+                multi_select: q.get("multiSelect").and_then(|m| m.as_bool()).unwrap_or(false),
+            })
+        })
+        .collect();
+    // all or nothing: a picker the app can't fully mirror is answered in the terminal
+    match parsed {
+        Some(p) if p.len() == qs.len() => p,
+        _ => vec![],
     }
 }
 
@@ -236,7 +281,8 @@ impl AgentAdapter for ClaudeAdapter {
                 let Some(tool) = body.get("tool_name").and_then(|v| v.as_str()) else { return vec![] };
                 let cwd = body.get("cwd").and_then(|v| v.as_str());
                 // a CwdChanged here too would re-check worktrees before every tool: not needed
-                return vec![StatusEvent::ToolPending { summary: tool_summary(tool, body.get("tool_input"), cwd) }];
+                let questions = if tool == "AskUserQuestion" { ask_questions(body.get("tool_input")) } else { vec![] };
+                return vec![StatusEvent::ToolPending { summary: tool_summary(tool, body.get("tool_input"), cwd), questions }];
             }
             Some("PostToolUse") => out.push(StatusEvent::ToolUsed),
             Some("Stop") => {
@@ -494,10 +540,10 @@ mod tests {
     #[test]
     fn pre_tool_use_names_the_pending_call() {
         let ev = |tool: &str, input: serde_json::Value| ClaudeAdapter.parse_hook(&json!({"hook_event_name": "PreToolUse", "cwd": "/w", "tool_name": tool, "tool_input": input}));
-        assert_eq!(ev("Bash", json!({"command": "npm  test\n -- --watch"})), vec![ToolPending { summary: "Bash: npm test -- --watch".into() }]);
-        assert_eq!(ev("Edit", json!({"file_path": "/w/src/app.ts"})), vec![ToolPending { summary: "Edit: src/app.ts".into() }]);
-        assert_eq!(ev("Edit", json!({"file_path": "/elsewhere/x.ts"})), vec![ToolPending { summary: "Edit: /elsewhere/x.ts".into() }]);
-        assert_eq!(ev("TodoWrite", json!({"todos": []})), vec![ToolPending { summary: "TodoWrite".into() }]);
+        assert_eq!(ev("Bash", json!({"command": "npm  test\n -- --watch"})), vec![ToolPending { summary: "Bash: npm test -- --watch".into(), questions: vec![] }]);
+        assert_eq!(ev("Edit", json!({"file_path": "/w/src/app.ts"})), vec![ToolPending { summary: "Edit: src/app.ts".into(), questions: vec![] }]);
+        assert_eq!(ev("Edit", json!({"file_path": "/elsewhere/x.ts"})), vec![ToolPending { summary: "Edit: /elsewhere/x.ts".into(), questions: vec![] }]);
+        assert_eq!(ev("TodoWrite", json!({"todos": []})), vec![ToolPending { summary: "TodoWrite".into(), questions: vec![] }]);
         assert_eq!(ClaudeAdapter.parse_hook(&json!({"hook_event_name": "PreToolUse"})), vec![], "no tool name");
     }
 
@@ -533,6 +579,28 @@ mod tests {
         // a turn that leaves background tasks running keeps its minions
         let busy = json!({"hook_event_name": "Stop", "background_tasks": [{"id": "x"}]});
         assert_eq!(ClaudeAdapter.parse_hook(&busy), vec![TurnFinished]);
+    }
+
+    #[test]
+    fn an_ask_user_question_call_carries_its_options() {
+        let input = json!({"questions": [
+            {"question": " Pick colors ", "header": "Colors", "multiSelect": true, "options": [{"label": "Red", "description": "warm"}, {"label": "Blue"}]},
+            {"question": "Pick a fruit", "options": [{"label": "Apple"}]}
+        ]});
+        let ev = ClaudeAdapter.parse_hook(&json!({"hook_event_name": "PreToolUse", "tool_name": "AskUserQuestion", "tool_input": input}));
+        let StatusEvent::ToolPending { summary, questions } = &ev[0] else { panic!("{ev:?}") };
+        assert_eq!(summary, "AskUserQuestion");
+        assert_eq!(questions, &vec![
+            AskQuestion {
+                question: "Pick colors".into(), header: Some("Colors".into()), multi_select: true,
+                options: vec![AskOption { label: "Red".into(), description: Some("warm".into()) }, AskOption { label: "Blue".into(), description: None }],
+            },
+            AskQuestion { question: "Pick a fruit".into(), header: None, multi_select: false, options: vec![AskOption { label: "Apple".into(), description: None }] },
+        ]);
+        // one question the app can't mirror (no options, an option without a label): the terminal answers it
+        assert_eq!(ask_questions(Some(&json!({"questions": [{"question": "a", "options": []}]}))), vec![]);
+        assert_eq!(ask_questions(Some(&json!({"questions": [{"question": "a", "options": [{"label": "x"}]}, {"question": "b", "options": [{}]}]}))), vec![]);
+        assert_eq!(ask_questions(None), vec![]);
     }
 
     #[test]

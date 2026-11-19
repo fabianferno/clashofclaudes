@@ -4,7 +4,7 @@ import { findSpot, gapBetween, placeCompound, wallRect } from './layout';
 import { COLLECTOR_SLOT } from './quota';
 import { enclosure, seedOf } from './enclosure';
 import { scaffoldHeight } from './look';
-import { HALL_LIFT, buildEntities, hopOf, siteDepth, needsRefit, rendererOptions, structureLook, type VillageInput, gateAwareDepth } from './scene';
+import { HALL_LIFT, buildEntities, hopOf, siteDepth, needsRefit, rendererOptions, structureLook, type VillageInput, gateAwareDepth, footprintAwareDepth, walkerDepth, type FootDepth } from './scene';
 import { statusSignature, statusesDue } from './status';
 
 const ws = (id: string, compound: Compound | null, level = 1): Workspace => ({
@@ -326,5 +326,41 @@ describe('gateAwareDepth', () => {
   it('leaves builders away from every gate alone', () => {
     expect(gateAwareDepth(10, 10, 20.006, [north, west])).toBe(20.006);
     expect(gateAwareDepth(4.5, 2, 6.5, [north])).toBe(6.5); // two tiles in: plain depth again
+  });
+});
+
+describe('footprintAwareDepth', () => {
+  // a tent at (10,10)-(12,12), sorting by its front corner
+  const tent: FootDepth = { x0: 10, y0: 10, x1: 12, y1: 12, depth: 24.005 };
+  const d = (x: number, y: number) => footprintAwareDepth(x, y, x + y + 0.006, [tent]);
+
+  it('draws a builder walking along its east or south side over it', () => {
+    expect(d(12.5, 10.5)).toBeGreaterThan(tent.depth); // east side, x + y = 23
+    expect(d(10.5, 12.5)).toBeGreaterThan(tent.depth); // south side
+    expect(d(12.5, 9.5)).toBe(12.5 + 9.5 + 0.006); // off its corner: no overlap to settle
+  });
+
+  it('draws a builder behind its north or west side under it', () => {
+    expect(d(11, 9.5)).toBeLessThan(tent.depth);
+    expect(d(9.5, 11)).toBeLessThan(tent.depth);
+  });
+
+  it('leaves a builder far from it alone', () => {
+    expect(d(16, 10.5)).toBe(16 + 10.5 + 0.006);
+  });
+
+  it('between a building it is in front of and one it is behind, it is drawn between them', () => {
+    const house: FootDepth = { x0: 13, y0: 10, x1: 16, y1: 13, depth: 29.004 }; // just east of the tent
+    const z = footprintAwareDepth(12.5, 11, 23.506, [tent, house]); // in the lane between them
+    expect(z).toBeGreaterThan(tent.depth);
+    expect(z).toBeLessThan(house.depth);
+  });
+});
+
+describe('walkerDepth', () => {
+  it('passing a gate, the gate decides', () => {
+    const g = { x: 10, y: 13, alongX: true, depth: 24.002 };
+    const tent: FootDepth = { x0: 10, y0: 10, x1: 12, y1: 12, depth: 24.005 };
+    expect(walkerDepth(10.5, 13.2, [g], [tent])).toBeLessThan(g.depth); // still behind the wall line
   });
 });

@@ -349,6 +349,53 @@ export function gateAwareDepth(px: number, py: number, depth: number, gates: rea
   return depth;
 }
 
+/** A footprint a builder walks around (the hall, a house, a tent, a collector, a board), with its sprite's depth. */
+export interface FootDepth { x0: number; y0: number; x1: number; y1: number; depth: number }
+
+/** How near (tiles) a footprint must be for its sprite and a builder's to overlap on screen. */
+const FOOT_NEAR = 2;
+
+/** The footprints of the village's buildings, from their entities (whose x/y is the front corner). */
+export function footprints(entities: readonly Entity[]): FootDepth[] {
+  const out: FootDepth[] = [];
+  for (const e of entities) {
+    const w = e.kind === 'hall' ? HALL.w : e.kind === 'house' ? HOUSE
+      : e.kind === 'structure' || e.kind === 'collector' || e.kind === 'board' ? STRUCT : 0;
+    const h = e.kind === 'hall' ? HALL.h : w;
+    if (w) out.push({ x0: e.x - w, y0: e.y - h, x1: e.x, y1: e.y, depth: e.depth });
+  }
+  return out;
+}
+
+/**
+ * Depth for a walker at tile point (px, py) beside the buildings. A footprint sorts by its front
+ * corner, so plain x + y puts a builder walking along its east or south side (in front of it on
+ * screen) under it, as his x + y is the smaller. Past a footprint's front edge (x >= x1 or y >= y1)
+ * he is in front of it; short of its back edge (x <= x0 or y <= y0), behind it. Among the
+ * footprints near enough to overlap him he is drawn over every one he is in front of and under
+ * every one he is behind; if those disagree, over (a builder never vanishes under a roof).
+ */
+export function footprintAwareDepth(px: number, py: number, depth: number, feet: readonly FootDepth[]): number {
+  let lo = -Infinity, hi = Infinity;
+  for (const f of feet) {
+    if (px < f.x0 - FOOT_NEAR || px > f.x1 + FOOT_NEAR || py < f.y0 - FOOT_NEAR || py > f.y1 + FOOT_NEAR) continue;
+    const front = px >= f.x1 || py >= f.y1, behind = px <= f.x0 || py <= f.y0;
+    if (front && !behind) lo = Math.max(lo, f.depth);
+    else if (behind && !front) hi = Math.min(hi, f.depth);
+  }
+  if (depth > lo && depth < hi) return depth;
+  if (lo === -Infinity) return hi - 0.0004;
+  if (hi === Infinity || hi <= lo) return lo + 0.0004;
+  return (lo + hi) / 2;
+}
+
+/** A walker's depth at tile point (px, py): passing a gate, by the gate; otherwise beside the buildings. */
+export function walkerDepth(px: number, py: number, gates: readonly GateDepth[], feet: readonly FootDepth[]): number {
+  const depth = px + py + KIND_RANK.builder * 0.001;
+  const g = gateAwareDepth(px, py, depth, gates);
+  return g !== depth ? g : footprintAwareDepth(px, py, depth, feet);
+}
+
 export function siteDepth(c: Compound, spots: readonly Tile[]): number {
   // the house and structures sort by their front corner plus their kind's rank (see `ent`): outrank them
   return Math.max(c.house.x + c.house.y + 2 * HOUSE, ...spots.map((s) => s.x + s.y + 2 * STRUCT)) + KIND_RANK.builder * 0.001;
@@ -558,6 +605,8 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
   let entities: Entity[] = [];
   /** The compounds' gates, for builders walking through them (see `gateAwareDepth`). */
   let gates: GateDepth[] = [];
+  /** The buildings' footprints, for builders walking beside them (see `footprintAwareDepth`). */
+  let feet: FootDepth[] = [];
   let lastState: VillageInput = { workspaces: [], sessions: [], builders: [] };
   let destroyed = false;
   const views = new Map<string, BuilderView>();
@@ -987,7 +1036,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       // its own depth (its spot is clear of anything in front that would cover it); one huddled at its
       // builder's feet, or standing in front of it, is drawn over the builder, which at its site is
       // lifted over the whole compound (`siteZ`)
-      const depth = gateAwareDepth(m.x, m.y, m.x + m.y + KIND_RANK.builder * 0.001, gates);
+      const depth = walkerDepth(m.x, m.y, gates, feet);
       const builderAtSite = !!v.site && w.mode === 'atSite' && !v.held;
       const inFront = builderAtSite && !moving && (spot?.huddled || m.x + m.y > w.x + w.y);
       m.sprite.zIndex = (inFront ? Math.max(depth, v.siteZ) : depth) + 0.00001 * (1 + m.slot);
@@ -1014,7 +1063,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       const hop = v.pose === 'cheer' && !v.held ? hopOf(time, (hashOf(w.id) % 100) / 100) : { lift: 0, squash: 1 };
       v.sprite.position.set(p.x + (ro?.x ?? 0), p.y + (ro?.y ?? 0) - (v.held ? HELD_LIFT : 0) - hop.lift);
       v.sprite.scale.set(0.5 * (2 - hop.squash), 0.5 * hop.squash); // feet planted: the anchor is at the feet
-      v.sprite.zIndex = v.held ? 20000 : gateAwareDepth(w.x, w.y, w.x + w.y + KIND_RANK.builder * 0.001, gates);
+      v.sprite.zIndex = v.held ? 20000 : walkerDepth(w.x, w.y, gates, feet);
       // the shadow stays on the ground, smaller and fainter while the builder is in the air
       v.shadow.visible = !v.held;
       if (!v.held) {
@@ -1091,6 +1140,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       const side = e.texKey.split(':')[1];
       return { x: e.x - 1, y: e.y - 1, alongX: side === 'n' || side === 's', depth: e.depth };
     });
+    feet = footprints(entities);
     statusSig = statusSignature(entities);
     // Fetch every live texture first: this refreshes their LRU slots before anything new can evict them.
     const tex = entities.map((e) => getTexture(e.texKey, () => artFor(e.texKey)));

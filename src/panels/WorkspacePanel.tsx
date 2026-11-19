@@ -4,6 +4,7 @@ import { ipc } from '../api/ipc';
 import NewSessionPicker from './NewSessionPicker';
 import HistoryList from './HistoryList';
 import WorkspaceNotes from './WorkspaceNotes';
+import { WorkspaceShare } from './TeamSettings';
 import { boardItems, browserUrl, sessionsByWorkspace, useApp } from '../state/store';
 import { HOUSE_SWATCHES, houseColors, xpNeed } from '../village/look';
 import { StateTag } from './tags';
@@ -131,6 +132,7 @@ export default function WorkspacePanel({ workspaceId }: { workspaceId: string })
           <button type="button" className="hud-btn grey sm" onClick={() => { setAddr(null); setErr(null); }}>Cancel</button>
         </form>
       )}
+      <WorkspaceShare workspaceId={workspaceId} onError={setErr} />
       <WorkspaceNotes key={workspaceId} workspaceId={workspaceId} onStartSession={(task) => { setFormTask(task); setForm(true); }} />
       <div className="sp-sec">Sessions ({agentSessions.length})</div>
       {agentSessions.length === 0 && <div className="sp-note">No sessions running. Plots are empty.</div>}

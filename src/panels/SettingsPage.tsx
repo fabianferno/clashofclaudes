@@ -3,6 +3,7 @@ import { getVersion } from '@tauri-apps/api/app';
 import { ipc } from '../api/ipc';
 import type { Settings } from '../api/types';
 import { useApp } from '../state/store';
+import TeamSettings from './TeamSettings';
 import { DEFAULT_SETTINGS, PLAYER_NAME_MAX, cleanName, loadSettings, saveSettings, townHallTitle } from '../state/settings';
 import { startTour } from '../onboarding/tour';
 import AgentsStatus from './AgentsStatus';
@@ -310,6 +311,13 @@ export default function SettingsPage() {
               <Toggle label="Count on the Dock icon" hint="Builders waiting on you: the same count as the menu bar." checked={settings.dockBadge} onChange={(on) => change({ dockBadge: on })} />
               <Toggle label={`${GLOBAL_KEYS} opens your queue from any app`} hint="The first builder waiting on you, or the village when none is." checked={settings.globalShortcut !== false} onChange={setShortcut} />
               {keysTaken && settings.globalShortcut !== false && <div className="set-note">{GLOBAL_KEYS} is taken by another app</div>}
+            </div>
+          </section>
+
+          <section className="set-card" aria-label="Team">
+            <h3 className="kb-head ol" style={{ background: '#3d6fd6' }}>Team (Vercel Board)</h3>
+            <div className="set-body">
+              <TeamSettings board={settings.board ?? DEFAULT_SETTINGS.board!} onChange={(board) => change({ board })} />
             </div>
           </section>
 

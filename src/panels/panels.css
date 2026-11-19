@@ -262,6 +262,8 @@
 .set-switch:checked::after { transform: translateX(18px); }
 .set-switch:focus-visible { outline: 2px solid #2f6fb5; outline-offset: 2px; }
 .set-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.set-cmd { flex: 1; min-width: 0; padding: 5px 9px; background: #2a2118; color: #fff8e8; border-radius: 8px; font: 700 12.5px ui-monospace, Menlo, monospace; overflow-wrap: anywhere; user-select: all; }
+.set-name select { flex: none; max-width: 190px; }
 .set-play { width: 34px; padding: 0; }
 .set-haptic { display: inline-flex; gap: 6px; align-items: center; flex: none; }
 /* a pad that plays the chosen haptic as the pointer comes onto it, like a house in the village */

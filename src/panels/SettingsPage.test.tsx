@@ -12,6 +12,8 @@ const ipc = vi.hoisted(() => ({
   playSound: vi.fn().mockResolvedValue(undefined),
   importSound: vi.fn(),
   shortcutStatus: vi.fn().mockResolvedValue({ enabled: true, taken: false }),
+  boardStatus: vi.fn().mockResolvedValue({ state: 'ready', handle: 'ada', boardUrl: 'https://b', teams: [], lastError: null, lastWriteAt: null }),
+  boardCheck: vi.fn(),
 }));
 vi.mock('../api/ipc', () => ({ ipc }));
 vi.mock('@tauri-apps/api/app', () => ({ getVersion: vi.fn().mockResolvedValue('0.1.0') }));
@@ -194,4 +196,13 @@ test('no note about the shortcut when its keys are free', async () => {
   await screen.findByText('Version 0.1.0');
   expect(box('⌃⌥⌘J opens your queue from any app').checked).toBe(true); // on until turned off, also for saves from before it existed
   expect(screen.queryByText('⌃⌥⌘J is taken by another app')).toBeNull();
+});
+
+test('Team (Vercel Board) is off until its switch is turned on, and saves with the settings', async () => {
+  await act(async () => { render(<SettingsPage />); });
+  expect(screen.getByRole('region', { name: 'Team' })).toBeTruthy();
+  expect(screen.getByText('Team (Vercel Board)')).toBeTruthy();
+  expect(box('Connect this village to Vercel Board').checked).toBe(false);
+  await act(async () => { fireEvent.click(box('Connect this village to Vercel Board')); });
+  expect(ipc.setSettings).toHaveBeenLastCalledWith(expect.objectContaining({ board: { ...DEFAULT_SETTINGS.board, enabled: true } }));
 });

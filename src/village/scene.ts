@@ -985,9 +985,12 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       m.sprite.position.set(x, y);
       m.sprite.scale.set(size);
       // its own depth (its spot is clear of anything in front that would cover it); one huddled at its
-      // builder's feet is drawn with the builder, over the site
+      // builder's feet, or standing in front of it, is drawn over the builder, which at its site is
+      // lifted over the whole compound (`siteZ`)
       const depth = gateAwareDepth(m.x, m.y, m.x + m.y + KIND_RANK.builder * 0.001, gates);
-      m.sprite.zIndex = (spot?.huddled && !moving ? v.siteZ : depth) + 0.00001 * (1 + m.slot);
+      const builderAtSite = !!v.site && w.mode === 'atSite' && !v.held;
+      const inFront = builderAtSite && !moving && (spot?.huddled || m.x + m.y > w.x + w.y);
+      m.sprite.zIndex = (inFront ? Math.max(depth, v.siteZ) : depth) + 0.00001 * (1 + m.slot);
       setTex(m.shadow, 'shadow');
       m.shadow.position.set(x, y);
       m.shadow.scale.set(size * SHADOW_SIZE[0]);

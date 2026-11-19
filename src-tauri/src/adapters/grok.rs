@@ -73,6 +73,39 @@ fn has_conversation(home: &Path, id: &str) -> bool {
     dirs.flatten().any(|d| d.path().join(id).join("summary.json").is_file())
 }
 
+/// The `GROK_CONFIG` value that sets this session's model and effort: `--model` and
+/// `--reasoning-effort` (`-m`, `--effort`) also save themselves as the user's defaults. Verified
+/// on Grok Build 1.0.89 in a PTY: `--reasoning-effort=medium` alone, with no prompt sent, rewrote
+/// `default_reasoning_effort` in `~/.grok/config.toml` within two seconds of launch. The overlay
+/// is a merged layer above `config.toml` whose allowlist includes `models` (docs 05); in the same
+/// setup it changed the effort the footer showed and a turn ran at, and its `models.default` was
+/// the model Grok tried first (`--debug-file`: "preferred model … source=config"), while
+/// `config.toml` stayed byte-identical. It lives in the environment only, so nothing is written.
+/// An overlay of the user's own (`existing`, a JSON object) keeps its other keys; one that isn't
+/// an object is ignored by Grok anyway and is replaced.
+fn session_overlay(model: Option<&str>, effort: Option<&str>, existing: Option<&str>) -> Option<String> {
+    if model.is_none() && effort.is_none() {
+        return None;
+    }
+    let mut root = existing
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok())
+        .filter(|v| v.is_object())
+        .unwrap_or_else(|| serde_json::json!({}));
+    let obj = root.as_object_mut()?;
+    let models = obj.entry("models").or_insert_with(|| serde_json::json!({}));
+    if !models.is_object() {
+        *models = serde_json::json!({});
+    }
+    let models = models.as_object_mut()?;
+    if let Some(m) = model {
+        models.insert("default".into(), m.into());
+    }
+    if let Some(e) = effort {
+        models.insert("default_reasoning_effort".into(), e.into());
+    }
+    Some(root.to_string())
+}
+
 fn probe() -> Detection {
     super::probe_program("grok", parse_version)
 }
@@ -121,19 +154,17 @@ impl AgentAdapter for GrokAdapter {
             None => format!("--session-id={}", req.session_id),
         }];
         args.push(format!("--rules={SHARED_FOLDER_NOTE}"));
-        if let Some(m) = req.model {
-            args.push(format!("--model={m}"));
-        }
-        if let Some(e) = req.effort {
-            args.push(format!("--reasoning-effort={e}"));
-        }
+        // Model and effort go in the overlay, never as flags: the flags overwrite the user's
+        // defaults in `config.toml` (see `session_overlay`).
+        let existing = std::env::var("GROK_CONFIG").ok();
+        let env = session_overlay(req.model, req.effort, existing.as_deref()).map(|o| ("GROK_CONFIG".to_string(), o)).into_iter().collect();
         if let Some(d) = super::images_dir(req.images) {
             args.push(format!("--add-dir={}", d.to_string_lossy()));
         }
         if let Some(t) = req.task.filter(|t| !t.is_empty()) {
             args.extend(["--".into(), t.into()]);
         }
-        Ok(LaunchSpec { program: "grok".into(), args, env: vec![], cwd: req.cwd.to_path_buf() })
+        Ok(LaunchSpec { program: "grok".into(), args, env, cwd: req.cwd.to_path_buf() })
     }
     fn find_conversation(&self, _cwd: &Path, _since_ms: i64, session_id: &str) -> Option<String> {
         has_conversation(&grok_home()?, session_id).then(|| session_id.to_string())
@@ -179,14 +210,32 @@ mod tests {
             [
                 "--session-id=sid".to_string(),
                 format!("--rules={SHARED_FOLDER_NOTE}"),
-                "--model=grok-4.7".into(),
-                "--reasoning-effort=high".into(),
                 "--".into(),
                 "-rf: fix it".into(),
             ]
         );
-        assert!(spec.env.is_empty());
+        // Model and effort ride in the overlay, not in flags that would save them as defaults.
+        assert!(!spec.args.iter().any(|a| a.starts_with("--model") || a.starts_with("--reasoning-effort") || a.starts_with("--effort")));
+        let [(k, v)] = &spec.env[..] else { panic!("one env var: {:?}", spec.env) };
+        assert_eq!(k, "GROK_CONFIG");
+        let v: serde_json::Value = serde_json::from_str(v).unwrap();
+        assert_eq!(v["models"], serde_json::json!({"default": "grok-4.7", "default_reasoning_effort": "high"}));
         assert!(!Path::new("/nonexistent").exists(), "launching created nothing");
+    }
+
+    #[test]
+    fn the_overlay_sets_only_what_was_chosen_and_keeps_the_users_own() {
+        let parse = |s: Option<String>| serde_json::from_str::<serde_json::Value>(&s.unwrap()).unwrap();
+        assert_eq!(session_overlay(None, None, Some(r#"{"features":{}}"#)), None, "nothing chosen: the user's overlay is left alone");
+        assert_eq!(parse(session_overlay(Some("grok-4.7"), None, None)), serde_json::json!({"models": {"default": "grok-4.7"}}));
+        assert_eq!(parse(session_overlay(None, Some("low"), None)), serde_json::json!({"models": {"default_reasoning_effort": "low"}}));
+        let mine = r#"{"features":{"x":true},"models":{"default":"theirs","web_search":"grok-4.7"}}"#;
+        assert_eq!(
+            parse(session_overlay(None, Some("xhigh"), Some(mine))),
+            serde_json::json!({"features": {"x": true}, "models": {"default": "theirs", "web_search": "grok-4.7", "default_reasoning_effort": "xhigh"}})
+        );
+        assert_eq!(parse(session_overlay(Some("m"), None, Some("not json"))), serde_json::json!({"models": {"default": "m"}}));
+        assert_eq!(parse(session_overlay(Some("m"), None, Some(r#"{"models":3}"#))), serde_json::json!({"models": {"default": "m"}}));
     }
 
     #[test]

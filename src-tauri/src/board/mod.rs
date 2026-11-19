@@ -12,6 +12,8 @@ use crate::model::{AgentKind, SessionInfo, SessionState, Workspace};
 use crate::queue::{queue_reason, QueueReason};
 
 pub mod cli;
+pub mod publisher;
+pub mod store;
 
 #[cfg(test)]
 mod tests;

@@ -13,6 +13,7 @@ pub mod bugreport;
 pub mod notify;
 pub mod osc;
 pub mod title;
+pub mod tray;
 pub mod persist;
 pub mod platform;
 pub mod pty;
@@ -105,7 +106,7 @@ pub(crate) fn show_main<R: Runtime>(app: &AppHandle<R>) {
 }
 
 /// A notification was clicked: bring the window up and ask the frontend to select the session.
-fn focus_and_select<R: Runtime>(app: &AppHandle<R>, session_id: &str) {
+pub(crate) fn focus_and_select<R: Runtime>(app: &AppHandle<R>, session_id: &str) {
     show_main(app);
     let _ = app.emit("select-session", serde_json::json!({ "id": session_id }));
 }
@@ -235,7 +236,9 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .menu(app_menu)
         .on_menu_event(|app, event| {
-            if event.id() == QUIT_MENU_ID {
+            if tray::on_menu_event(app, event.id().as_ref()) {
+                // the menu bar's menu
+            } else if event.id() == QUIT_MENU_ID {
                 app.exit(0);
             } else if event.id() == SETTINGS_MENU_ID {
                 let _ = app.emit("open-settings", ());
@@ -316,6 +319,7 @@ pub fn run() {
                     }
                     let _ = handle.emit("session-updated", info);
                     refresh_badge(&handle);
+                    tray::refresh(&handle);
                 }
                 ManagerEvent::Removed { id } => {
                     if let Some(ns) = handle.try_state::<NotifyState>() {
@@ -323,6 +327,7 @@ pub fn run() {
                     }
                     let _ = handle.emit("session-removed", Removed { id });
                     refresh_badge(&handle);
+                    tray::refresh(&handle);
                 }
                 ManagerEvent::Output { id, offset, data } => {
                     if let Some(ch) = chans.lock().unwrap_or_else(|e| e.into_inner()).get(&id) {
@@ -410,6 +415,8 @@ pub fn run() {
             };
             usage::track(app.handle(), usage::Event::AppOpened { workspaces, builders });
             spawn_app_scanner(app.handle().clone());
+            // the menu bar item: the queue's count and its menu, also while the window is closed
+            tray::init(app.handle())?;
             #[cfg(debug_assertions)]
             {
                 app.manage(Arc::new(driver::Driver::default()));

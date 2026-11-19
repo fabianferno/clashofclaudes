@@ -39,6 +39,8 @@ pub struct ClosedSession {
     pub is_agent: bool,
     pub reached_finished: bool,
     pub stuck: bool,
+    /// An agent session whose conversation is known, as it stood (for the history); None otherwise.
+    pub saved: Option<SavedSession>,
 }
 
 /// Initial PTY size until the UI sends a resize.
@@ -974,6 +976,7 @@ impl SessionManager {
             is_agent: matches!(entry.info.kind, SessionKind::Agent { .. }),
             reached_finished: entry.info.reached_finished,
             stuck: matches!(entry.info.state, SessionState::Stuck { .. }),
+            saved: Some(entry.saved()).filter(|s| matches!(s.kind, SessionKind::Agent { .. }) && s.conversation.is_some()),
         };
         if let Some(p) = &entry.pty {
             let _ = p.kill();
@@ -1248,15 +1251,8 @@ impl SessionManager {
             }
             g.remove(id).expect("found above")
         };
-        // a session the app started in its own worktree carries on there (its conversation lives there)
-        let in_worktree;
-        let ws = match &old.info.worktree {
-            Some(wt) if wt.path.starts_with(self.data_dir.join("worktrees")) && wt.path.exists() => {
-                in_worktree = Workspace { path: git::matching_folder(&ws.path, &wt.path), ..ws.clone() };
-                &in_worktree
-            }
-            _ => ws,
-        };
+        let in_worktree = self.in_own_worktree(ws, old.info.worktree.as_ref());
+        let ws = in_worktree.as_ref().unwrap_or(ws);
         let res = match (&old.info.kind, builder) {
             (SessionKind::Terminal, _) => {
                 self.spawn(ws, SessionKind::Terminal, None, id.to_string(), terminal_launch(&ws.path), None, terminal_policy(), Some(old.saved()))
@@ -1268,6 +1264,39 @@ impl SessionManager {
             self.lock().insert(id.to_string(), old);
         }
         res
+    }
+
+    /// A session the app started in its own worktree carries on there (its conversation lives
+    /// there) while that folder exists: the workspace as seen from it.
+    fn in_own_worktree(&self, ws: &Workspace, wt: Option<&WorktreeInfo>) -> Option<Workspace> {
+        let wt = wt.filter(|wt| wt.path.starts_with(self.data_dir.join("worktrees")) && wt.path.exists())?;
+        Some(Workspace { path: git::matching_folder(&ws.path, &wt.path), ..ws.clone() })
+    }
+
+    /// Opens a closed session's conversation again as a new session (from the history), with
+    /// `builder` (of the same agent), keeping its task, title, progress and last reply. It rests
+    /// at the agent's prompt until the owner types.
+    pub fn continue_conversation(&self, ws: &Workspace, builder: &Builder, mut prior: SavedSession) -> Result<SessionInfo> {
+        ensure_present(ws)?;
+        if prior.conversation.is_none() {
+            bail!("this session has no conversation to continue");
+        }
+        self.ensure_builder_free(&self.lock(), &builder.id)?;
+        let id = Uuid::new_v4().to_string();
+        prior.id = id.clone();
+        prior.kind = SessionKind::Agent { builder_id: builder.id.clone() };
+        prior.spot = None; // its old place may be taken; it gets a new one
+        prior.rev = 0;
+        prior.parked = None;
+        prior.state = Some(SessionState::Finished);
+        prior.reached_finished = false; // XP again only for new work
+        prior.started_at = now_ms();
+        prior.state_since = prior.started_at;
+        let in_worktree = self.in_own_worktree(ws, prior.worktree.as_ref());
+        if in_worktree.is_none() {
+            prior.worktree = None;
+        }
+        self.resume_agent(in_worktree.as_ref().unwrap_or(ws), builder, &id, prior)
     }
 
     fn resume_agent(&self, ws: &Workspace, builder: &Builder, id: &str, prior: SavedSession) -> Result<SessionInfo> {
@@ -1875,8 +1904,10 @@ mod tests {
         let fx = fixture();
         let a = fx.mgr.start_with_spec(&fx.ws, &claude("b1"), sleeper(&fx), Arc::new(ClaudeAdapter)).unwrap();
         fx.mgr.on_hook(&a.id, fixture_json("stop.json"));
-        let closed = fx.mgr.close(&a.id).unwrap();
-        assert_eq!(closed, ClosedSession { workspace_id: "w1".into(), is_agent: true, reached_finished: true, stuck: false });
+        let mut closed = fx.mgr.close(&a.id).unwrap();
+        let saved = closed.saved.take().expect("a conversation it named: kept for the history");
+        assert_eq!(saved.conversation.as_deref(), fixture_json("stop.json")["session_id"].as_str());
+        assert_eq!(closed, ClosedSession { workspace_id: "w1".into(), is_agent: true, reached_finished: true, stuck: false, saved: None });
         let b = fx.mgr.start_with_spec(&fx.ws, &claude("b2"), sleeper(&fx), Arc::new(ClaudeAdapter)).unwrap();
         let closed = fx.mgr.close(&b.id).unwrap();
         assert!(closed.is_agent && !closed.reached_finished);
@@ -2486,6 +2517,25 @@ printf '\033]7501;state=idle:app=antigravity\033\\'; sleep 5"#;
         assert!(!list.iter().any(|s| s.id == gone.id));
         assert_eq!(m.running_process_count(), 0, "nothing runs until resumed");
         assert_eq!(saved::load(&fx.data_dir.join("sessions.json")).len(), 2);
+    }
+
+    #[test]
+    fn a_closed_conversation_continues_as_a_new_session() {
+        let fx = fixture();
+        let b = custom("b1", "sleep 5");
+        let a = fx.mgr.start_agent(&fx.ws, &b, Some("fix it"), &[]).unwrap();
+        fx.mgr.set_spot(&a.id, Tile { x: 2, y: 2 }).unwrap();
+        let mut prior = fx.mgr.lock().get(&a.id).unwrap().saved();
+        fx.mgr.close(&a.id).unwrap();
+        assert!(fx.mgr.continue_conversation(&fx.ws, &b, prior.clone()).is_err(), "no conversation to continue");
+        prior.conversation = Some("conv-1".into());
+        prior.reached_finished = true;
+        let r = fx.mgr.continue_conversation(&fx.ws, &b, prior.clone()).unwrap();
+        assert_ne!(r.id, a.id);
+        assert_eq!((r.task.as_deref(), r.spot, r.reached_finished), (Some("fix it"), None, false));
+        assert_eq!(fx.mgr.lock().get(&r.id).unwrap().conversation.as_deref(), Some("conv-1"));
+        assert!(fx.mgr.continue_conversation(&fx.ws, &b, prior).is_err(), "the builder is busy");
+        fx.mgr.shutdown(KILL_GRACE);
     }
 
     #[test]

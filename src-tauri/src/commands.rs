@@ -4,6 +4,8 @@
 use crate::adapters::{AdapterRegistry, AgentAdapter};
 use crate::attachments;
 use crate::git::{self, Review};
+use crate::history::{self, HistoryEntry};
+use crate::saved::SavedSession;
 use crate::model::{AgentKind, AppData, Builder, Compound, SessionInfo, SessionKind, Settings, Stats, Tile, Todo, Workspace};
 use crate::persist;
 use crate::updater::{self, UpdateStatus};
@@ -481,6 +483,9 @@ pub async fn resume_session(id: String, app: AppHandle, state: State<'_, AppStat
 pub async fn close_session(id: String, discard: Option<bool>, app: AppHandle, state: State<'_, AppState>) -> Result<CloseOutcome, String> {
     state.channels.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
     let mut closed = state.manager.close(&id).map_err(fmt_err)?;
+    if let Some(saved) = closed.saved.take() {
+        record_history(&state, saved, &app);
+    }
     let discard = discard.unwrap_or(false) && closed.is_agent;
     if discard {
         closed.reached_finished = false;
@@ -504,6 +509,114 @@ pub async fn close_session(id: String, discard: Option<bool>, app: AppHandle, st
         let _ = app.emit("stats-updated", stats);
     }
     Ok(outcome)
+}
+
+/// Serializes reads and writes of `history.json`.
+static HISTORY_LOCK: Mutex<()> = Mutex::new(());
+
+fn history_path(state: &AppState) -> PathBuf {
+    state.data_dir().join("history.json")
+}
+
+/// Adds a closed agent session (with a known conversation) to the history.
+fn record_history(state: &AppState, saved: SavedSession, app: &AppHandle) {
+    let SessionKind::Agent { builder_id } = &saved.kind else { return };
+    let Some(conversation) = saved.conversation.clone() else { return };
+    let (agent, builder_name) = match state.data().builders.iter().find(|b| &b.id == builder_id) {
+        Some(b) => (b.agent.clone(), b.name.clone()),
+        None => return,
+    };
+    let e = HistoryEntry {
+        id: saved.id,
+        workspace_id: saved.workspace_id,
+        builder_id: builder_id.clone(),
+        agent,
+        builder_name,
+        task: saved.task,
+        title: saved.title,
+        last_message: saved.last_message,
+        conversation,
+        started_at: saved.started_at,
+        closed_at: now_ms(),
+        steps: saved.steps,
+        reached_finished: saved.reached_finished,
+        worktree: saved.worktree,
+    };
+    let _g = HISTORY_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let path = history_path(state);
+    let mut list = history::load(&path);
+    history::push(&mut list, e);
+    if let Err(err) = history::save(&path, &list) {
+        eprintln!("saving the session history: {err:#}");
+    }
+    let _ = app.emit("history-updated", ());
+}
+
+/// Closed agent sessions that can be opened again, newest first (all workspaces).
+#[tauri::command]
+pub fn list_history(state: State<'_, AppState>) -> Vec<HistoryEntry> {
+    let _g = HISTORY_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    history::load(&history_path(&state))
+}
+
+/// Opens a past session's conversation again as a new session with `builder_id` (the one it had
+/// when None), which must run the same agent. The entry leaves the history while it is open; it
+/// comes back when that session is closed.
+#[tauri::command]
+pub async fn continue_history(id: String, builder_id: Option<String>, app: AppHandle, state: State<'_, AppState>) -> Result<SessionInfo, String> {
+    let entry = {
+        let _g = HISTORY_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        history::load(&history_path(&state)).into_iter().find(|e| e.id == id).ok_or("this session is no longer in the history")?
+    };
+    let ws = find_workspace(&state, &entry.workspace_id)?;
+    let want = builder_id.unwrap_or_else(|| entry.builder_id.clone());
+    let builder = state.data().builders.iter().find(|b| b.id == want).cloned().ok_or("that builder was deleted")?;
+    if builder.agent != entry.agent {
+        return Err("that builder runs a different agent; a conversation continues on its own agent".into());
+    }
+    let prior = SavedSession {
+        id: entry.id.clone(),
+        workspace_id: entry.workspace_id.clone(),
+        kind: SessionKind::Agent { builder_id: builder.id.clone() },
+        task: entry.task.clone(),
+        title: entry.title.clone(),
+        state: None,
+        started_at: entry.started_at,
+        steps: entry.steps,
+        reached_finished: false,
+        spot: None,
+        worktree: entry.worktree.clone(),
+        conversation: Some(entry.conversation.clone()),
+        rev: 0,
+        running: false,
+        state_since: 0,
+        last_message: entry.last_message.clone(),
+        parked: None,
+    };
+    let s = state.manager.continue_conversation(&ws, &builder, prior).map_err(|e| start_err(&app, &state, &entry.workspace_id, e))?;
+    {
+        let _g = HISTORY_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let path = history_path(&state);
+        let mut list = history::load(&path);
+        if history::take(&mut list, &id).is_some() {
+            let _ = history::save(&path, &list);
+        }
+    }
+    let _ = app.emit("history-updated", ());
+    Ok(s)
+}
+
+/// Removes an entry from the history (the agent's own files are left alone).
+#[tauri::command]
+pub fn forget_history(id: String, app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let _g = HISTORY_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let path = history_path(&state);
+    let mut list = history::load(&path);
+    if history::take(&mut list, &id).is_some() {
+        history::save(&path, &list).map_err(fmt_err)?;
+    }
+    let _ = app.emit("history-updated", ());
+    Ok(())
 }
 
 /// What closing a session did, for the UI notice.
@@ -1153,7 +1266,7 @@ mod tests {
     }
 
     fn closed(is_agent: bool, reached_finished: bool, stuck: bool) -> ClosedSession {
-        ClosedSession { workspace_id: "w1".into(), is_agent, reached_finished, stuck }
+        ClosedSession { workspace_id: "w1".into(), is_agent, reached_finished, stuck, saved: None }
     }
 
     #[test]

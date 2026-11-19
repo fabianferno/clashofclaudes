@@ -78,6 +78,7 @@
 .sp-browser-form input { flex: 1; min-width: 0; border: 2px solid #c8b083; border-radius: 8px; padding: 5px 8px; background: #fff8e8; font: 600 13px system-ui; color: #2b2018; }
 .sp-browser-row { display: flex; gap: 6px; align-items: center; }
 .sp-browser-row .sp-row { flex: 1; min-width: 0; }
+.sp-history-row, .sp-history-row:hover { cursor: default; transform: none; }
 .picker-list { margin-bottom: 8px; }
 .picker-list .sp-row { padding: 6px 10px 6px 6px; }
 .sp-row-av { flex: none; width: 38px; height: 38px; border-width: 2px; border-radius: 8px; }

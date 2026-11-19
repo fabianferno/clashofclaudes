@@ -53,6 +53,24 @@ export type SessionState =
 
 export type SessionKind = { kind: 'agent'; builderId: string } | { kind: 'terminal' };
 
+/** A closed agent session that can be opened again on its conversation (`history.json`). */
+export interface HistoryEntry {
+  id: string;
+  workspaceId: string;
+  builderId: string;
+  agent: AgentKind;
+  builderName: string;
+  task: string | null;
+  title: string | null;
+  lastMessage: string | null;
+  conversation: string;
+  startedAt: number;
+  closedAt: number;
+  steps: number;
+  reachedFinished: boolean;
+  worktree: WorktreeInfo | null;
+}
+
 export interface WorktreeInfo {
   path: string;
   branch: string | null;

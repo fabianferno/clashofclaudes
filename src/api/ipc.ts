@@ -1,6 +1,6 @@
 import { invoke, Channel } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type { HapticKind, Todo, AppPreview, AgentAccount, AgentInfo, AgentKind, AgentQuota, Builder, CloseOutcome, Compound, ConfirmQuit, Frame, ListState, Review, SessionInfo, Settings, Stats, Tile, UpdateStatus, Workspace, BugReport, BugReportInfo, ReportKind } from './types';
+import type { HistoryEntry, HapticKind, Todo, AppPreview, AgentAccount, AgentInfo, AgentKind, AgentQuota, Builder, CloseOutcome, Compound, ConfirmQuit, Frame, ListState, Review, SessionInfo, Settings, Stats, Tile, UpdateStatus, Workspace, BugReport, BugReportInfo, ReportKind } from './types';
 
 const SKIP_FLAG = 1n << 63n;
 
@@ -72,6 +72,12 @@ export const ipc = {
   resumeSession: (id: string) => invoke<SessionInfo>('resume_session', { id }),
   /** `discard`: the owner didn't want its work: no XP even when finished. */
   closeSession: (id: string, discard = false) => invoke<CloseOutcome>('close_session', { id, discard }),
+  /** Closed agent sessions that can be continued, newest first (all workspaces). */
+  listHistory: () => invoke<HistoryEntry[]>('list_history'),
+  /** Opens a past session's conversation again as a new session; `builderId` runs the same agent (its own builder when null). */
+  continueHistory: (id: string, builderId: string | null = null) => invoke<SessionInfo>('continue_history', { id, builderId }),
+  forgetHistory: (id: string) => invoke<void>('forget_history', { id }),
+  onHistoryUpdated: (cb: () => void): Promise<UnlistenFn> => listen('history-updated', () => cb()),
   /** Puts a session aside out of the queue with a note; null takes it back. */
   parkSession: (id: string, note: string | null) => invoke<SessionInfo>('park_session', { id, note }),
   setCompound: (workspaceId: string, compound: Compound) =>

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { ipc } from '../api/ipc';
 import NewSessionPicker from './NewSessionPicker';
+import HistoryList from './HistoryList';
 import { boardItems, browserUrl, sessionsByWorkspace, useApp } from '../state/store';
 import { HOUSE_SWATCHES, houseColors, xpNeed } from '../village/look';
 import { StateTag } from './tags';
@@ -131,6 +132,7 @@ export default function WorkspacePanel({ workspaceId }: { workspaceId: string })
       {agentSessions.map((s) => row(s, false))}
       {terminals.length > 0 && <div className="sp-sec">Terminals ({terminals.length})</div>}
       {terminals.map((s) => row(s, true))}
+      <HistoryList workspaceId={workspaceId} onError={setErr} />
       {boards.length > 0 && <div className="sp-sec">Browsers ({boards.length})</div>}
       {boards.map((b) => (
         <div key={b.key} className="sp-browser-row">

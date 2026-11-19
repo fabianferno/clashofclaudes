@@ -12,6 +12,10 @@ const ipc = vi.hoisted(() => ({
   getSettings: vi.fn().mockResolvedValue({ updatesEnabled: true }),
   setSettings: vi.fn(async (s: unknown) => s),
   setWorkspaceColor: vi.fn(async (id: string, color: string | null) => ({ ...ws(), id, color })),
+  listHistory: vi.fn().mockResolvedValue([]),
+  onHistoryUpdated: vi.fn().mockResolvedValue(() => {}),
+  continueHistory: vi.fn(),
+  forgetHistory: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock('../api/ipc', () => ({ ipc }));
 const sessionPanel = vi.hoisted(() => ({ mounts: 0 }));

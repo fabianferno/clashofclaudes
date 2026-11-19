@@ -6,6 +6,7 @@ pub mod commands;
 #[cfg(debug_assertions)]
 pub mod driver;
 pub mod git;
+pub mod history;
 pub mod hooks;
 pub mod model;
 pub mod bugreport;
@@ -456,6 +457,9 @@ pub fn run() {
             commands::stop_session,
             commands::resume_session,
             commands::close_session,
+            commands::list_history,
+            commands::continue_history,
+            commands::forget_history,
             commands::set_compound,
             commands::set_workspace_color,
             commands::set_collector_spot,

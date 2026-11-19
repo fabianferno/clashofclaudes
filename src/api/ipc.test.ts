@@ -72,3 +72,12 @@ test('resume_session takes the session id', async () => {
   await ipc.resumeSession('s1');
   expect(invoke).toHaveBeenCalledWith('resume_session', { id: 's1' });
 });
+
+test('the Team (Vercel Board) commands', async () => {
+  const call = vi.mocked(invoke);
+  call.mockClear();
+  await ipc.boardStatus();
+  await ipc.boardCheck();
+  await ipc.setWorkspaceShared('w1', true);
+  expect(call.mock.calls).toEqual([['board_status'], ['board_check'], ['set_workspace_shared', { workspaceId: 'w1', shared: true }]]);
+});

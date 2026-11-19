@@ -351,7 +351,13 @@ pub struct SessionManager {
     save_lock: Mutex<()>,
     /// An update was sent since the last save (steps, finished): the next tick saves.
     unsaved: AtomicBool,
+    /// Extra environment for agent sessions (see `EnvHook`).
+    env_hook: Mutex<Option<EnvHook>>,
 }
+
+/// Extra environment variables for an agent session's own process, by its workspace and builder
+/// (the board's `BOARD_PROFILE` and `BOARD_URL`). Terminals get none.
+pub type EnvHook = Arc<dyn Fn(&Workspace, &Builder) -> Vec<(String, String)> + Send + Sync>;
 
 /// Counts a spawn in flight for as long as it lives.
 struct SpawnGuard<'a>(&'a AtomicUsize);
@@ -429,6 +435,7 @@ impl SessionManager {
             saved_path: data_dir.join("sessions.json"),
             save_lock: Mutex::new(()),
             unsaved: AtomicBool::new(false),
+            env_hook: Mutex::new(None),
             data_dir,
         });
         // Output flushes every 16 ms and the 1 s silence tick, parked while no session has a
@@ -454,6 +461,20 @@ impl SessionManager {
 
     fn lock(&self) -> MutexGuard<'_, Sessions> {
         self.sessions.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Sets (or clears) what adds environment variables to agent sessions started from now on.
+    pub fn set_env_hook(&self, hook: Option<EnvHook>) {
+        *self.env_hook.lock().unwrap_or_else(|e| e.into_inner()) = hook;
+    }
+
+    /// `spec` with the hook's variables for this workspace and builder.
+    fn with_hook_env(&self, mut spec: LaunchSpec, ws: &Workspace, builder: &Builder) -> LaunchSpec {
+        let hook = self.env_hook.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        if let Some(hook) = hook {
+            spec.env.extend(hook(ws, builder));
+        }
+        spec
     }
 
     /// Stamps the next `rev` and queues the update; every emitted info goes through here.
@@ -519,6 +540,7 @@ impl SessionManager {
     fn spawn_agent(&self, ws: &Workspace, builder: &Builder, task: Option<&str>, id: String, spec: LaunchSpec, adapter: Arc<dyn AgentAdapter>) -> Result<SessionInfo> {
         let kind = SessionKind::Agent { builder_id: builder.id.clone() };
         let policy = adapter.policy();
+        let spec = self.with_hook_env(spec, ws, builder);
         self.spawn(ws, kind, task, id, spec, Some(adapter), policy, None)
     }
 
@@ -1383,6 +1405,7 @@ impl SessionManager {
         let res = adapter.launch(&req).and_then(|spec| {
             let kind = SessionKind::Agent { builder_id: builder.id.clone() };
             let policy = adapter.policy();
+            let spec = self.with_hook_env(spec, ws, builder);
             self.spawn(ws, kind, None, id.to_string(), spec, Some(adapter.clone()), policy, Some(prior))
         });
         if res.is_err() {
@@ -2635,6 +2658,43 @@ printf '\033]7501;state=idle:app=antigravity\033\\'; sleep 5"#;
         assert_eq!(fx.mgr.lock().get(&r.id).unwrap().conversation.as_deref(), Some("conv-1"));
         assert!(fx.mgr.continue_conversation(&fx.ws, &b, prior).is_err(), "the builder is busy");
         fx.mgr.shutdown(KILL_GRACE);
+    }
+
+    fn board_env() -> EnvHook {
+        Arc::new(|ws: &Workspace, b: &Builder| if ws.board_shared { vec![("BOARD_PROFILE".to_string(), format!("p-{}", b.name))] } else { vec![] })
+    }
+
+    #[test]
+    fn env_hook_reaches_agent_sessions_and_not_terminals() {
+        let fx = fixture();
+        fx.mgr.set_env_hook(Some(board_env()));
+        let shared = Workspace { board_shared: true, ..fx.ws.clone() };
+        let read = |name: &str| std::fs::read_to_string(fx.ws.path.join(name)).unwrap_or_default();
+        fx.mgr.start_agent(&shared, &custom("b1", "printf '[%s]' \"$BOARD_PROFILE\" > agent.txt; sleep 5"), None, &[]).unwrap();
+        assert!(wait_until(|| read("agent.txt") == "[p-b1]"), "{:?}", read("agent.txt"));
+        // not shared: the hook decides, and gives nothing
+        fx.mgr.start_agent(&fx.ws, &custom("b2", "printf '[%s]' \"$BOARD_PROFILE\" > private.txt; sleep 5"), None, &[]).unwrap();
+        assert!(wait_until(|| read("private.txt") == "[]"), "{:?}", read("private.txt"));
+        let t = fx.mgr.start_terminal(&shared).unwrap();
+        fx.mgr.write(&t.id, b"printf '[%s]' \"$BOARD_PROFILE\" > term.txt\n").unwrap();
+        assert!(wait_until(|| read("term.txt") == "[]"), "{:?}", read("term.txt"));
+    }
+
+    #[test]
+    fn env_hook_applies_on_resume() {
+        let fx = fixture();
+        let shared = Workspace { board_shared: true, ..fx.ws.clone() };
+        let b = custom("b1", "printf '[%s]' \"$BOARD_PROFILE\" >> runs.txt; sleep 5");
+        let a = fx.mgr.start_agent(&shared, &b, None, &[]).unwrap();
+        let read = || std::fs::read_to_string(fx.ws.path.join("runs.txt")).unwrap_or_default();
+        assert!(wait_until(|| read() == "[]"));
+        fx.mgr.shutdown(KILL_GRACE);
+        let m = relaunch(&fx);
+        m.set_env_hook(Some(board_env()));
+        m.restore(std::slice::from_ref(&shared), std::slice::from_ref(&b));
+        m.resume(&shared, Some(&b), &a.id).unwrap();
+        assert!(wait_until(|| read() == "[][p-b1]"), "{:?}", read());
+        m.shutdown(KILL_GRACE);
     }
 
     #[test]

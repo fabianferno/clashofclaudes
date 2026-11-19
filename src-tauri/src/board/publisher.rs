@@ -14,6 +14,11 @@ use crate::model::{AgentKind, SessionInfo, SessionState};
 #[path = "publisher_tests.rs"]
 mod tests;
 
+/// The names of the files a session changed.
+pub type Files = Arc<dyn Fn(&str) -> Vec<String> + Send + Sync>;
+/// The time now, in milliseconds.
+pub type Clock = Arc<dyn Fn() -> i64 + Send + Sync>;
+
 /// A state must have lasted this long before it is written, so a flicker writes once.
 pub const SETTLE_MS: i64 = 2_000;
 /// After launch, a stored thread whose session has not reported within this time is closed.
@@ -80,8 +85,8 @@ pub struct Publisher {
     wake: Condvar,
     cli: Arc<dyn BoardCli>,
     store_path: PathBuf,
-    files: Arc<dyn Fn(&str) -> Vec<String> + Send + Sync>,
-    now_ms: Arc<dyn Fn() -> i64 + Send + Sync>,
+    files: Files,
+    now_ms: Clock,
 }
 
 /// What one attempt to publish came to.
@@ -101,8 +106,8 @@ impl Publisher {
     pub fn new(
         cli: Arc<dyn BoardCli>,
         store_path: PathBuf,
-        files: Arc<dyn Fn(&str) -> Vec<String> + Send + Sync>,
-        now_ms: Arc<dyn Fn() -> i64 + Send + Sync>,
+        files: Files,
+        now_ms: Clock,
     ) -> Arc<Publisher> {
         let inner = Inner { store: Store::load(&store_path), backoff_ms: RETRY_FIRST_MS, ..Default::default() };
         Arc::new(Publisher { inner: Mutex::new(inner), wake: Condvar::new(), cli, store_path, files, now_ms })
@@ -112,8 +117,8 @@ impl Publisher {
     pub fn start(
         cli: Arc<dyn BoardCli>,
         store_path: PathBuf,
-        files: Arc<dyn Fn(&str) -> Vec<String> + Send + Sync>,
-        now_ms: Arc<dyn Fn() -> i64 + Send + Sync>,
+        files: Files,
+        now_ms: Clock,
     ) -> Arc<Publisher> {
         let p = Publisher::new(cli, store_path, files, now_ms);
         let worker = Arc::downgrade(&p);

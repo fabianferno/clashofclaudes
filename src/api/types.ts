@@ -377,3 +377,15 @@ export interface BugReport {
   /** Base64 JPEG of the window. */
   screenshot: string | null;
 }
+
+/** Settings › Team: the connection to Vercel Board, as `vercel` reports it. */
+export interface BoardStatus {
+  state: 'off' | 'noCli' | 'oldCli' | 'signedOut' | 'ready' | 'error';
+  /** The owner's Vercel username. */
+  handle: string | null;
+  boardUrl: string | null;
+  /** The login's team slugs; empty when they could not be listed. */
+  teams: string[];
+  lastError: string | null;
+  lastWriteAt: number | null;
+}

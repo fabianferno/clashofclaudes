@@ -191,6 +191,7 @@ pub fn add_workspace(path: String, state: State<'_, AppState>) -> Result<Workspa
     let p = std::fs::canonicalize(&path).with_context(|| format!("cannot open {path}")).map_err(fmt_err)?;
     let ws = workspace_from_path(&p, now_ms()).map_err(fmt_err)?;
     let mut d = state.data();
+    ws.board_shared = crate::board::app::shares_new(&d.settings.board);
     if d.workspaces.iter().any(|w| w.path == ws.path) {
         return Err("this folder is already added".into());
     }
@@ -246,6 +247,7 @@ pub async fn create_workspace(parent: Option<String>, name: String, app: AppHand
     };
     let ws = workspace_from_path(&p, now_ms()).map_err(fmt_err)?;
     let mut d = state.data();
+    ws.board_shared = crate::board::app::shares_new(&d.settings.board);
     d.workspaces.push(ws.clone());
     state.save(&d)?;
     Ok(ws)
@@ -504,6 +506,8 @@ pub async fn close_session(id: String, discard: Option<bool>, app: AppHandle, st
         record_history(&state, saved, &app);
     }
     let discard = discard.unwrap_or(false) && closed.is_agent;
+    // the team's board: a finished session was accepted or discarded; one closed earlier just ended
+    crate::board::app::on_closed(&app, &id, if discard { Some(false) } else { closed.reached_finished.then_some(true) });
     if discard {
         closed.reached_finished = false;
     }
@@ -1108,7 +1112,12 @@ pub fn detach_session(id: String, state: State<'_, AppState>) {
 async fn shutdown_and_exit(app: &AppHandle, state: &AppState, restart: bool) {
     state.exit_confirmed.store(true, Ordering::SeqCst);
     let manager = state.manager.clone();
-    let _ = tauri::async_runtime::spawn_blocking(move || manager.shutdown(crate::pty::KILL_GRACE)).await;
+    let board_app = app.clone();
+    let _ = tauri::async_runtime::spawn_blocking(move || {
+        crate::board::app::on_quit(&board_app); // live threads on the team's board read "paused"
+        manager.shutdown(crate::pty::KILL_GRACE)
+    })
+    .await;
     if restart {
         app.restart();
     }
@@ -1132,9 +1141,11 @@ pub fn set_settings(settings: Settings, app: AppHandle, state: State<'_, AppStat
     let saved = {
         let mut d = state.data();
         d.settings = settings.normalized();
+        crate::board::app::ensure_host_id(&mut d.settings.board);
         state.save(&d)?;
         d.settings.clone()
     };
+    crate::board::app::apply(&app); // the team's board follows its switch (no call to the board here)
     crate::refresh_badge(&app); // the Dock badge setting shows at once
     crate::shortcut::apply(&app, saved.global_shortcut); // and the shortcut's keys are taken or let go
     Ok(saved)

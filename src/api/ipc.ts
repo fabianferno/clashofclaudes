@@ -1,6 +1,6 @@
 import { invoke, Channel } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type { HistoryEntry, HapticKind, Todo, AppPreview, AgentAccount, AgentInfo, AgentKind, AgentQuota, Builder, CloseOutcome, Compound, ConfirmQuit, Frame, ListState, Review, SessionInfo, Settings, Stats, Tile, UpdateStatus, Workspace, BugReport, BugReportInfo, ReportKind, RaidReport } from './types';
+import type { HistoryEntry, HapticKind, Todo, AppPreview, AgentAccount, AgentInfo, AgentKind, AgentQuota, Builder, CloseOutcome, Compound, ConfirmQuit, Frame, ListState, Review, SessionInfo, Settings, Stats, Tile, UpdateStatus, Workspace, BugReport, BugReportInfo, ReportKind, RaidReport, BoardStatus } from './types';
 
 const SKIP_FLAG = 1n << 63n;
 
@@ -122,6 +122,12 @@ export const ipc = {
   /** The global shortcut: on in Settings, and whether another app holds its keys. */
   shortcutStatus: () => invoke<{ enabled: boolean; taken: boolean }>('shortcut_status'),
   setSettings: (settings: Settings) => invoke<Settings>('set_settings', { settings }),
+  /** Settings › Team: where the connection to Vercel Board stands (runs the `vercel` CLI). */
+  boardStatus: () => invoke<BoardStatus>('board_status'),
+  /** After installing, updating or signing in to `vercel`: look again. */
+  boardCheck: () => invoke<BoardStatus>('board_check'),
+  /** Shares a workspace on the team's board, or stops. */
+  setWorkspaceShared: (workspaceId: string, shared: boolean) => invoke<Workspace>('set_workspace_shared', { workspaceId, shared }),
   /** The folder holding the app's data. */
   dataFolder: () => invoke<string>('data_folder'),
   bugReportInfo: () => invoke<BugReportInfo>('bug_report_info'),

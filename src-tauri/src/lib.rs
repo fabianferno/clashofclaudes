@@ -328,6 +328,7 @@ pub fn run() {
                             }
                         }
                     }
+                    board::app::on_update(&handle, &info);
                     let _ = handle.emit("session-updated", info);
                     refresh_badge(&handle);
                     tray::refresh(&handle);
@@ -339,6 +340,7 @@ pub fn run() {
                     if let Some(ns) = handle.try_state::<NotifyState>() {
                         ns.notifier.forget(&id);
                     }
+                    board::app::on_closed(&handle, &id, None);
                     let _ = handle.emit("session-removed", Removed { id });
                     refresh_badge(&handle);
                     tray::refresh(&handle);
@@ -366,6 +368,7 @@ pub fn run() {
             app.manage(commands::QuotaState { store: quotas, poller });
             #[cfg(debug_assertions)]
             let data_dir_for_driver = data_dir.clone();
+            let board_dir = data_dir.clone();
             let manager = SessionManager::new(adapters::AdapterRegistry::new(), Arc::new(hooks), data_dir, emit);
             let _ = cell.set(Arc::downgrade(&manager));
             // The sessions listed when the app last ran come back paused; then the dirs no session
@@ -373,6 +376,12 @@ pub fn run() {
             // thread: each is a process spawn).
             manager.restore(&data.workspaces, &data.builders);
             manager.sweep_stale_session_dirs();
+            // The team's board (Settings › Team): its worker, fed from the session updates above.
+            {
+                let m = Arc::downgrade(&manager);
+                let files = Arc::new(move |id: &str| m.upgrade().and_then(|m| m.review(id).ok()).map(|r| r.files.into_iter().map(|f| f.path).chain(r.untracked).collect()).unwrap_or_default());
+                app.manage(board::app::BoardState::new(&board_dir, files));
+            }
             {
                 let (m, workspaces, builders) = (manager.clone(), data.workspaces.clone(), data.builders.clone());
                 std::thread::spawn(move || {
@@ -420,6 +429,13 @@ pub fn run() {
                 exit_confirmed: AtomicBool::new(false),
                 pending_update: Mutex::new(None),
             });
+            // The team's board, when it is on: who the owner is there (a `vercel` call, so off this thread).
+            {
+                let h = app.handle().clone();
+                std::thread::spawn(move || {
+                    board::app::refresh(&h);
+                });
+            }
             app.manage(commands::AppsState::default());
             app.manage(snapshot::Snapper::default());
             let (workspaces, builders) = {
@@ -481,6 +497,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::list_state,
+            board::app::board_status,
+            board::app::board_check,
+            board::app::set_workspace_shared,
             commands::detect_agents,
             commands::add_workspace,
             commands::create_workspace,

@@ -9,6 +9,9 @@ import { isDemoId } from '../onboarding/demo';
 import { sessionName } from './sessionName';
 import Briefing from './Briefing';
 import { queueReason } from '../state/queue';
+import { useTermShown } from '../components/terminalShown';
+import Markdown from './Markdown';
+import { plainText } from './markdownText';
 
 function elapsed(from: number, now: number): string {
   const s = Math.max(0, Math.floor((now - from) / 1000));
@@ -24,6 +27,8 @@ export default function SessionPanel({ sessionId, onClosed }: { sessionId: strin
   const [error, setError] = useState<string | null>(null);
   const [answering, setAnswering] = useState(false);
   const [popped, setPopped] = useState(false);
+  const termShown = useTermShown((s) => s.shown);
+  const setTermShown = useTermShown((s) => s.set);
   // opened popped out (a Kanban card): pop out at once
   const askPop = useApp((s) => (s.selection?.kind === 'session' && s.selection.id === sessionId && s.selection.popout ? s.selection : null));
   useEffect(() => { if (askPop) setPopped(true); }, [askPop]);
@@ -111,6 +116,9 @@ export default function SessionPanel({ sessionId, onClosed }: { sessionId: strin
   const briefed = session.kind.kind === 'agent' && !session.paused && queueReason({ ...session, parked: null }) !== null;
   const paused = !!session.paused;
   const resume = () => run(ipc.resumeSession(sessionId).then((s) => useApp.getState().upsertSession(s)));
+  // An agent's terminal is behind a toggle; a shell session is nothing but its terminal.
+  const isAgent = session.kind.kind === 'agent';
+  const showTerm = !isAgent || termShown;
 
   return (
     <section className="panel session-panel">
@@ -139,6 +147,11 @@ export default function SessionPanel({ sessionId, onClosed }: { sessionId: strin
         {!paused && <button className="hud-btn grey sm" onClick={() => run(ipc.stopSession(sessionId))}>Stop</button>}
         <button className="hud-btn grey sm" data-tour={briefed ? undefined : 'close-session'} onClick={() => void close()}>Close</button>
         {!paused && <button className="hud-btn blue sm" onClick={() => setPopped(true)}>Pop out</button>}
+        {isAgent && !paused && !popped && (
+          <button type="button" className="hud-btn grey sm term-toggle" aria-pressed={termShown} onClick={() => setTermShown(!termShown)}>
+            {termShown ? 'Hide terminal' : 'Show terminal'}
+          </button>
+        )}
       </div>
       {error && <div className="panel-warn">{error}</div>}
       {briefed && (
@@ -159,9 +172,42 @@ export default function SessionPanel({ sessionId, onClosed }: { sessionId: strin
           <div className="terminal-placeholder">Terminal popped out — ✕ to return</div>
           <PopOutTerminal sessionId={sessionId} readOnly={readOnly} title={title} onClose={closePop} />
         </>
-      ) : (
+      ) : showTerm ? (
         <TerminalView sessionId={sessionId} readOnly={readOnly} />
-      )}
+      ) : !briefed ? (
+        <SessionGlance task={session.task} asking={session.asking ?? null} lastMessage={session.lastMessage ?? null} ended={readOnly} />
+      ) : null}
     </section>
+  );
+}
+
+/** What an agent session is up to, in place of its terminal: the task, what it is about to run, its last reply. */
+function SessionGlance({ task, asking, lastMessage, ended }: { task: string | null; asking: string | null; lastMessage: string | null; ended: boolean }) {
+  const [taskOpen, setTaskOpen] = useState(false);
+  return (
+    <div className="brief sp-box session-glance" data-testid="session-glance">
+      {task && (
+        <div className="brief-sec">
+          <div className="brief-h">Task</div>
+          {taskOpen
+            ? <Markdown className="brief-task open md" text={task} />
+            : <div className="brief-task" onClick={() => setTaskOpen(true)} title="Show all">{plainText(task) || task}</div>}
+        </div>
+      )}
+      {asking && (
+        <div className="brief-sec">
+          <div className="brief-h">Running</div>
+          <code className="brief-call">{asking}</code>
+        </div>
+      )}
+      {lastMessage
+        ? (
+          <div className="brief-sec">
+            <div className="brief-h">Its last reply</div>
+            <Markdown className="brief-reply md" text={lastMessage} />
+          </div>
+        )
+        : <div className="sp-d">{ended ? 'It has ended. Show terminal to read its output.' : 'Working on it. Show terminal to watch it live.'}</div>}
+    </div>
   );
 }

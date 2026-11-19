@@ -326,3 +326,6 @@
 html.coc-panel-resizing, html.coc-panel-resizing * { cursor: col-resize !important; user-select: none !important; -webkit-user-select: none !important; }
 html.coc-panel-resizing iframe, html.coc-panel-resizing .xterm { pointer-events: none; }
 html.coc-panel-resizing :is(.hud-res, .hud-stats, .hud-build, .hud-roster-zone, .zoom-controls, .welcome-layer) { transition: none !important; }
+/* the terminal is hidden: the briefing (or the glance) takes the panel's height */
+.session-panel > .brief:last-child { flex: 1; max-height: none; margin-bottom: 0; }
+.session-glance .brief-reply { max-height: none; }

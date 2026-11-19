@@ -17,6 +17,7 @@ vi.mock('../api/ipc', () => ({
 vi.mock('../components/TerminalView', () => ({ default: ({ sessionId }: { sessionId: string }) => <div className="terminal" tabIndex={0} data-sid={sessionId} /> }));
 import SessionPanel from './SessionPanel';
 import { useApp } from '../state/store';
+import { useTermShown } from '../components/terminalShown';
 
 const sess = (state: SessionState, awaitingDecision: boolean): SessionInfo => ({
   id: 's1', workspaceId: 'w1', kind: { kind: 'agent', builderId: 'b1' }, task: null, state, steps: 0,
@@ -30,6 +31,7 @@ beforeEach(() => {
   closeSession.mockReset();
   stopSession.mockReset();
   resumeSession.mockReset();
+  useTermShown.setState({ shown: false });
   useApp.setState({
     error: null, selection: null, panelOpen: false,
     workspaces: [], sessions: {}, selectedSessionId: null,
@@ -92,6 +94,7 @@ test('worktree sessions show a branch chip', () => {
 });
 
 test('pop_out_mounts_single_terminal', () => {
+  useTermShown.setState({ shown: true });
   useApp.getState().upsertSession(sess({ kind: 'working' }, false));
   const { container } = render(<SessionPanel sessionId="s1" />);
   expect(container.querySelectorAll('.terminal').length).toBe(1);
@@ -159,6 +162,7 @@ test('terminal sessions have no Edit builder link', () => {
 });
 
 test('switching sessions keeps the terminal host and resets per-session state', async () => {
+  useTermShown.setState({ shown: true });
   useApp.getState().upsertSession(sess({ kind: 'finished' }, false));
   useApp.getState().upsertSession({ ...sess({ kind: 'working' }, false), id: 's2' });
   const { container, rerender } = render(<SessionPanel sessionId="s1" />);
@@ -229,6 +233,7 @@ test('the briefing goes once the session works again, and reads the changes anew
 });
 
 test('a paused session offers Resume instead of a terminal, and resuming shows it running', async () => {
+  useTermShown.setState({ shown: true });
   useApp.getState().upsertSession({ ...sess({ kind: 'ended', exitCode: null }, false), paused: true });
   const { container } = render(<SessionPanel sessionId="s1" />);
   expect(screen.getByText('Paused')).toBeTruthy();
@@ -270,4 +275,25 @@ test('Pop out from the panel closes back to the panel', async () => {
   fireEvent.click(await screen.findByRole('button', { name: 'Close terminal' }));
   expect(useApp.getState().kanban).toBeNull();
   expect(useApp.getState().selection).toEqual({ kind: 'session', id: 's1' });
+});
+
+test('an agent session hides its terminal by default and shows its last reply; the toggle brings the terminal', () => {
+  useApp.getState().upsertSession({ ...sess({ kind: 'working' }, false), task: 'Fix the bug', lastMessage: 'Done with step one' });
+  const { container } = render(<SessionPanel sessionId="s1" />);
+  expect(container.querySelector('.terminal')).toBeNull();
+  expect(screen.getByText('Done with step one')).toBeTruthy();
+  expect(screen.getByText('Fix the bug')).toBeTruthy();
+  fireEvent.click(screen.getByText('Show terminal'));
+  expect(container.querySelector('.terminal')).toBeTruthy();
+  expect(screen.queryByTestId('session-glance')).toBeNull();
+  expect(useTermShown.getState().shown).toBe(true);
+  fireEvent.click(screen.getByText('Hide terminal'));
+  expect(container.querySelector('.terminal')).toBeNull();
+});
+
+test('a shell session always shows its terminal, with no toggle', () => {
+  useApp.getState().upsertSession({ ...sess({ kind: 'working' }, false), kind: { kind: 'terminal' } as never });
+  const { container } = render(<SessionPanel sessionId="s1" />);
+  expect(container.querySelector('.terminal')).toBeTruthy();
+  expect(screen.queryByText('Show terminal')).toBeNull();
 });

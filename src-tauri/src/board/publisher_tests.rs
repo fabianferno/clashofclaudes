@@ -412,3 +412,43 @@ fn quitting_forgets_states_that_had_not_settled() {
     r.settle();
     assert_eq!(r.cli.calls(), ["board label msg_1 coc.state=paused --as village --json --name village"]);
 }
+
+/// Against the real board: `COC_BOARD_VERCEL=/path/to/vercel cargo test real_board -- --ignored --nocapture`.
+/// Writes one thread to the board `coc-spike` on the login's default team and prints its root id.
+#[test]
+#[ignore]
+fn real_board_round_trip() {
+    use crate::board::cli::VercelCli;
+    let program = std::env::var("COC_BOARD_VERCEL").expect("COC_BOARD_VERCEL");
+    let dir = tempfile::tempdir().unwrap();
+    let cli = Arc::new(VercelCli { program: Some(program.into()), cwd: dir.path().to_path_buf(), timeout: Duration::from_secs(60) });
+    let clock = Arc::new(AtomicI64::new(1_000_000));
+    let c = clock.clone();
+    let path = dir.path().join("board.json");
+    let p = Publisher::new(cli, path.clone(), Arc::new(|_| vec!["src/export.rs".to_string(), "README.md".to_string()]), Arc::new(move || c.load(Ordering::SeqCst)));
+    let st = crate::board::cli::status(p.cli.as_ref(), &Target { team: None, name: "coc-spike".into() });
+    assert_eq!(st.state, "ready", "{st:?}");
+    let owner = st.handle.unwrap();
+    p.configure(Config { owner: owner.clone(), ..cfg("coc-spike") });
+    let id = format!("real-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs());
+    let chan = Some(format!("v/{owner}/w/real-run"));
+    let go = |v: SessionView| {
+        p.update(SessionView { channel: chan.clone(), ..v });
+        clock.fetch_add(SETTLE_MS, Ordering::SeqCst);
+        p.step();
+        assert_eq!(p.status().0, None, "the board refused a write");
+    };
+    go(working(&id, 1));
+    go(decide(&id, 2));
+    go(working(&id, 3));
+    let mut done = view(&id, SessionState::Finished, 4);
+    done.info.last_message = Some("Export added, tests pass.".into());
+    done.info.title = Some("CSV export".into());
+    go(done);
+    let root = Store::load(&path).sessions[&id].root.clone().unwrap();
+    println!("ROOT {root} CHANNEL {}", chan.clone().unwrap());
+    p.closed(&id, Some(Outcome::Accepted));
+    p.step();
+    assert_eq!(p.status().0, None);
+    assert!(Store::load(&path).sessions.is_empty());
+}

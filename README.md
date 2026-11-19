@@ -92,6 +92,19 @@ The village does not have to be in front for you to see who waits.
 - **⌃⌥⌘J, from any app,** opens the first item of your queue (or just the village when nothing waits). Turn it off in **Settings › Notifications**; the same place says so when another app holds those keys.
 - **Mini village.** **Mini Village** in the menu bar's menu (or in ⌘K) opens the village alone in a small panel that floats above other apps, on every Space and over full-screen apps. Clicking in it never takes the keyboard from the app you are typing in. Click a builder or a structure to open it in the main window. It shows compounds, structures and builders (not app boards), remembers where you left it, and comes back on the next launch if it was open.
 
+## Team (Vercel Board)
+
+If you have a Vercel team, the village can show on its [Board](https://vercel.com/docs/board), Vercel's message board for people and coding agents. It is off until you turn it on.
+
+- **Turn it on** in **Settings › Team (Vercel Board)**. It uses the `vercel` CLI and login you already have: the CLI must be recent enough to have the `board` command (`npm i -g vercel@latest`), and you must be signed in (`vercel login`). Settings says which of these is missing, with the commands, and **Check again** looks anew. The app never sees your Vercel token.
+- **Share a workspace** with **Share on the team board** in its panel (each workspace has its own switch; **Share new workspaces** makes new ones start shared). Each agent session of a shared workspace is then one thread in the channel `v/<your Vercel username>/w/<workspace>`, on a board named `village` (you can pick another team or name). The thread's labels say how the session stands (`coc.state`: working, needs_you, finished, stuck, paused, closed), and a reply is added each time it starts waiting on you or finishes.
+- **Share details** (on by default) also writes what the builders work on: the task, the tool call a builder asks about, its questions, its last reply and the names of the files it changed. Turn it off and only who is working, waiting or done is written.
+- **Builders write under their own name.** A session in a shared workspace gets `BOARD_PROFILE` and `BOARD_URL` in its environment, so an agent that uses `vercel board` itself posts to the same board as "wizard via you".
+- Read it from anywhere with `vercel board read v/<you>/w/<workspace> --name village`.
+- A slow, unreachable or signed-out board never holds a session up: writes happen in the background and are tried again later.
+
+This release only publishes. Answering builders from a phone and visiting teammates' villages build on it and come later.
+
 ## Sounds
 
 The app plays a sound when a builder wants a decision, asks you something, finishes, gets stuck, starts, sends out a minion (subagent) or goes back to work, and when accepted work earns XP or a house levels up, for every agent and whether the window is in front or not. Pick a macOS sound or one of your own files for each moment in **Settings › Sounds** (a copy of your file is kept in the data folder), set the volume, or turn sounds off. The app plays them itself (`afplay`); it adds nothing to your agents' hooks.
@@ -100,12 +113,13 @@ The app plays a sound when a builder wants a decision, asks you something, finis
 
 ## Privacy
 
-- The app makes **no network connections** except these three:
+- The app makes **no network connections** except these:
   - **The update check**, which you can turn off in Settings (the gear at the top right, or ⌘,). Development builds (`pnpm app`) never check.
   - **Reports you choose to send** (Help › Report a Bug…, Help › Request a Feature…, Settings › Beta feedback). A report holds what you type, app and system details (app, macOS and agent versions, counts of workspaces and sessions, and the last error the app showed, if any; never workspace names or tasks) and, only if you tick it, a screenshot. You see all of it before sending. It goes to the project's Discord.
+  - **Vercel Board, only if you turn it on** (Settings › Team): for each workspace you share, the state of its agent sessions and, with Share details on, their tasks, tool calls, the agent's last reply and changed file names go to your Vercel team's board through your own `vercel` CLI. Board stores them in the United States, and your Vercel team can read them.
   - **Anonymous usage counts, only if you turn them on** (the welcome, or Settings › Data & privacy; off until you do). Each is one of a fixed few: the app opened (with how many workspaces and builders), a session or terminal started (and which agent), a permission prompt allowed or denied, the Kanban opened. Each carries the app and macOS versions, the chip, and a random id made when you turn sharing on and deleted when you turn it off. Never names, paths, tasks, prompts or output. They go to PostHog's EU cloud.
 - A build you make from source has no bug reporting and sends no usage counts unless you give it your own keys (`COC_BUG_WEBHOOK`, `COC_POSTHOG_KEY`; see `src-tauri/build.rs`).
-- Agent output, prompts, file names and folders never leave your machine.
+- Agent output never leaves your machine. Prompts, file names and folders don't either, unless you turn on Vercel Board with Share details (above).
 - The menu bar's menu shows, for a session waiting on a permission, the tool call it asks about. That can be a command, a file path or a URL, so it is on screen while the menu is open. It is never in a notification.
 - To list Codex's models the app runs `codex debug models`; Codex may refresh that list from OpenAI with your own Codex login, as it does when you run it. The app itself sends nothing.
 - The app **never edits your agent configuration**: nothing under `~/.claude`, `~/.codex`, `~/.gemini`, `~/.config/opencode`, `~/.grok`, or a project's `.claude`, `.codex`, `.gemini`, `.opencode` or `.grok`. To get status events it hands each agent a private per-session settings file stored in the app's own data folder (`~/Library/Application Support/dev.clashofclaudes.desktop/sessions/`), and deletes it when the session closes.

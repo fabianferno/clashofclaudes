@@ -550,7 +550,12 @@ pub fn run() {
                 }
                 // The Dock icon clicked with the window closed (hidden): bring it back.
                 #[cfg(target_os = "macos")]
-                tauri::RunEvent::Reopen { has_visible_windows: false, .. } => show_main(app),
+                tauri::RunEvent::Reopen { .. } => {
+                    let showing = app.get_webview_window("main").map(|w| (w.is_visible().unwrap_or(false), w.is_minimized().unwrap_or(false)));
+                    if showing.is_none_or(|(visible, minimized)| commands::reopen_shows(visible, minimized)) {
+                        show_main(app);
+                    }
+                }
                 _ => {}
             }
         });

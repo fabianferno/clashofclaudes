@@ -1143,6 +1143,13 @@ pub fn close_hides(exit_confirmed: bool) -> bool {
     !exit_confirmed
 }
 
+/// Whether a click on the Dock icon must bring the village's window back: when it is closed
+/// (hidden) or minimized. macOS's own "has visible windows" also counts the mini village's panel,
+/// so it cannot be asked.
+pub fn reopen_shows(main_visible: bool, main_minimized: bool) -> bool {
+    !main_visible || main_minimized
+}
+
 /// Whether a close/exit request must be held back for the user to confirm.
 pub fn should_block_exit(live: usize, confirmed: bool) -> bool {
     live > 0 && !confirmed
@@ -1189,6 +1196,15 @@ mod tests {
         assert!(!should_block_exit(0, false));
         assert!(should_block_exit(2, false));
         assert!(!should_block_exit(2, true));
+    }
+
+    #[test]
+    fn the_dock_icon_brings_back_a_window_that_is_not_showing() {
+        // closed (hidden) or minimized: back it comes, whatever else is on screen (the mini village)
+        assert!(reopen_shows(false, false));
+        assert!(reopen_shows(true, true));
+        assert!(reopen_shows(false, true));
+        assert!(!reopen_shows(true, false), "already showing: macOS brings it forward itself");
     }
 
     #[test]

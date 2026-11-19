@@ -1,6 +1,6 @@
 # Menu bar village and mini village: design
 
-Date: 2026-11-19. Status: owner's answers folded in, waiting for approval.
+Date: 2026-11-19. Status: built (2026-11-19). Two things differ from this text, both in Design › 5: the panel is a native NSPanel that hosts the web view (Tauri's own window stays hidden as its owner), because converting Tauri's window in place aborts on close on macOS 27; and it has the system's small title bar instead of a web-drawn strip. Its geometry is saved beside the settings, not in them.
 
 ## Why
 

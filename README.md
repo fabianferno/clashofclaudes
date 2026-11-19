@@ -37,6 +37,7 @@ To ship a release, see [docs/release.md](docs/release.md).
 - Click a compound to open its Workspace panel, then **+ New session**. Pick a builder, an agent, and optionally a model, effort and a first task. The agent starts in a real terminal in that workspace.
 - Click any builder or structure to open its live terminal in the side panel. The terminal can be popped out to a larger view.
 - **+ Terminal** in the same panel opens a plain shell in the workspace.
+- Closing the window does not quit: your builders keep working, and the app stays in the menu bar and the Dock. Click either to bring the window back. **⌘Q** (or **Quit** in the menu bar's menu) quits.
 
 The app does not install agents, log in for you, or manage API keys. Each agent uses the login you already set up for it.
 
@@ -70,9 +71,17 @@ Running several agents makes it easy to start a fifth thread while four are stil
 
 ## Notifications
 
-When the app is in the background, it shows a macOS notification when a session needs you or finishes (title: the builder's name, body: "needs you: ..." or "finished"), and the Dock icon shows how many sessions are waiting. Clicking a notification brings the app forward and selects that session. When a Claude Code or Antigravity session asks for permission, the notification has an **Allow** button that answers that one prompt without opening the app; if the prompt was already answered or a newer one is open, the click opens the session instead. To deny, click the notification and use the briefing. Notifications never include your task text or terminal output.
+When the app is in the background, it shows a macOS notification when a session needs you or finishes (title: the builder's name, body: "needs you: ..." or "finished"), and the Dock icon shows how many sessions wait on you: the same count as **▶ N waiting on you**, so stuck sessions count, and parked or paused ones do not. Clicking a notification brings the app forward and selects that session. When a Claude Code or Antigravity session asks for permission, the notification has an **Allow** button that answers that one prompt without opening the app; if the prompt was already answered or a newer one is open, the click opens the session instead. To deny, click the notification and use the briefing. Notifications never include your task text or terminal output.
 
 Over each structure, a builder waiting on you (or stuck) shows for how long ("Waiting for you · 7m"), and **▶ N waiting on you** shows how long the longest-stopped builder has waited.
+
+## Menu bar and mini village
+
+The village does not have to be in front for you to see who waits.
+
+- **Menu bar.** The crossed swords in the menu bar show how many sessions wait on you. Their menu lists the queue in its order (up to ten): the builder, what it waits on, and for how long. A Claude Code or Antigravity session asking for permission has **Allow** and **Deny** right there, and they answer without bringing the window forward; anything else opens in the village. A permission's row shows the tool call it asks about (`Bash: npm test`), cut to 60 characters. Rows never show your task text.
+- **⌃⌥⌘J, from any app,** opens the first item of your queue (or just the village when nothing waits). Turn it off in **Settings › Notifications**; the same place says so when another app holds those keys.
+- **Mini village.** **Mini Village** in the menu bar's menu (or in ⌘K) opens the village alone in a small panel that floats above other apps, on every Space and over full-screen apps. Clicking in it never takes the keyboard from the app you are typing in. Click a builder or a structure to open it in the main window. It shows compounds, structures and builders (not app boards), remembers where you left it, and comes back on the next launch if it was open.
 
 ## Sounds
 
@@ -86,6 +95,7 @@ The app plays a sound when a builder wants a decision, asks you something, finis
   - **Anonymous usage counts, only if you turn them on** (the welcome, or Settings › Data & privacy; off until you do). Each is one of a fixed few: the app opened (with how many workspaces and builders), a session or terminal started (and which agent), a permission prompt allowed or denied, the Kanban opened. Each carries the app and macOS versions, the chip, and a random id made when you turn sharing on and deleted when you turn it off. Never names, paths, tasks, prompts or output. They go to PostHog's EU cloud.
 - A build you make from source has no bug reporting and sends no usage counts unless you give it your own keys (`COC_BUG_WEBHOOK`, `COC_POSTHOG_KEY`; see `src-tauri/build.rs`).
 - Agent output, prompts, file names and folders never leave your machine.
+- The menu bar's menu shows, for a session waiting on a permission, the tool call it asks about. That can be a command, a file path or a URL, so it is on screen while the menu is open. It is never in a notification.
 - To list Codex's models the app runs `codex debug models`; Codex may refresh that list from OpenAI with your own Codex login, as it does when you run it. The app itself sends nothing.
 - The app **never edits your agent configuration**: nothing under `~/.claude`, `~/.codex`, `~/.gemini`, `~/.config/opencode`, `~/.grok`, or a project's `.claude`, `.codex`, `.gemini`, `.opencode` or `.grok`. To get status events it hands each agent a private per-session settings file stored in the app's own data folder (`~/Library/Application Support/dev.clashofclaudes.desktop/sessions/`), and deletes it when the session closes.
 - Status events arrive on a localhost-only server protected by a random per-session token.

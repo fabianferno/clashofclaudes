@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 /// The moments that can play a sound (keys of `Settings::sounds`; see `src/state/sounds.ts`).
-pub const MOMENTS: [&str; 7] = ["decide", "answer", "finished", "stuck", "start", "minion", "working"];
+pub const MOMENTS: [&str; 9] = ["decide", "answer", "finished", "stuck", "start", "minion", "working", "xp", "levelUp"];
 
 pub const SYSTEM_DIR: &str = "/System/Library/Sounds";
 
@@ -30,6 +30,8 @@ pub fn default_sounds() -> BTreeMap<String, String> {
         "finished" => system("Hero"),
         "start" => system("Glass"),
         "minion" => system("Pop"),
+        "xp" => system("Bottle"),
+        "levelUp" => system("Submarine"),
         _ => String::new(),
     };
     MOMENTS.iter().map(|m| (m.to_string(), pick(m))).collect()

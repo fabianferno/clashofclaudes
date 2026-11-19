@@ -1,5 +1,6 @@
 import type { SessionInfo, SessionState, SoundMoment } from '../api/types';
-import { soundsFor, watchSounds, REPEAT_MS } from './sounds';
+import { closeSound, soundsFor, watchSounds, REPEAT_MS, XP_DELAY_MS } from './sounds';
+import { ORB_SECONDS } from '../village/effects';
 import { useApp } from './store';
 
 const now = 1_800_000_000_000;
@@ -60,4 +61,31 @@ test('the watcher plays nothing for the first state, and one sound for builders 
   expect(played).toEqual(['finished', 'working', 'finished']);
   stop();
   vi.useRealTimers();
+});
+
+test('accepted work plays XP as the orbs land, or a level up instead', () => {
+  vi.useFakeTimers();
+  try {
+    const played: string[] = [];
+    const stop = watchSounds((m) => played.push(m));
+    const o = { earnedXp: true, xpGained: 100, levelBefore: 1, levelAfter: 1, workspaceId: 'w1', unfinished: false, stuck: false, discarded: false };
+    useApp.getState().onClosed(o, 'a');
+    expect(played).toEqual([]);
+    vi.advanceTimersByTime(XP_DELAY_MS);
+    expect(played).toEqual(['xp']);
+    useApp.getState().onClosed({ ...o, levelAfter: 2 }, 'b');
+    vi.advanceTimersByTime(XP_DELAY_MS);
+    expect(played).toEqual(['xp', 'levelUp']);
+    useApp.getState().onClosed({ ...o, earnedXp: false, discarded: true }, 'c');
+    vi.advanceTimersByTime(XP_DELAY_MS);
+    expect(played).toEqual(['xp', 'levelUp']);
+    stop();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('the XP sound waits as long as the orbs fly', () => {
+  expect(XP_DELAY_MS).toBe((ORB_SECONDS + 0.2) * 1000);
+  expect(closeSound({ earnedXp: false, xpGained: 0, levelBefore: 1, levelAfter: 1, workspaceId: 'w', unfinished: true, stuck: false, discarded: false })).toBeNull();
 });

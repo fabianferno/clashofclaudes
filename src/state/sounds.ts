@@ -1,5 +1,5 @@
 import { ipc } from '../api/ipc';
-import type { SessionInfo, SoundMoment } from '../api/types';
+import type { CloseOutcome, SessionInfo, SoundMoment } from '../api/types';
 import { DEFAULT_SOUNDS } from './soundDefaults';
 import { currentSettings } from './settings';
 import { useApp } from './store';
@@ -15,7 +15,18 @@ export const SOUND_MOMENTS: Array<{ moment: SoundMoment; label: string; hint: st
   { moment: 'start', label: 'Session starts', hint: 'A builder starts on a task' },
   { moment: 'minion', label: 'A minion joins', hint: 'An agent sends out a subagent' },
   { moment: 'working', label: 'Back to work', hint: 'You answered, and the builder picks up again' },
+  { moment: 'xp', label: 'XP earned', hint: 'You accepted finished work, and its house gains XP' },
+  { moment: 'levelUp', label: 'Level up', hint: 'A house reaches its next level (instead of XP earned)' },
 ];
+
+/** The XP sound waits for the orbs to reach the house and its "+100 XP" to rise (ORB_SECONDS + 0.2 in village/effects.ts). */
+export const XP_DELAY_MS = 1400;
+
+/** The sound a close outcome plays: a level up, else the XP; nothing when it earned none. */
+export function closeSound(o: CloseOutcome): SoundMoment | null {
+  if (!o.earnedXp) return null;
+  return o.levelAfter > o.levelBefore ? 'levelUp' : 'xp';
+}
 
 /** What a session waits on the owner for, as a sound moment; null while it does not. */
 function attention(s: SessionInfo | undefined): SoundMoment | null {
@@ -78,7 +89,17 @@ export function previewSound(path: string, volume?: number): void {
  */
 export function watchSounds(play: (m: SoundMoment) => void = playMoment): () => void {
   const last = new Map<SoundMoment, number>();
-  return useApp.subscribe((st, prev) => {
+  const timers = new Set<ReturnType<typeof setTimeout>>();
+  const unsub = useApp.subscribe((st, prev) => {
+    // work accepted: XP (or a level up) as the orbs land
+    if (st.lastClosed !== prev.lastClosed) {
+      for (const [id, o] of Object.entries(st.lastClosed)) {
+        const m = id in prev.lastClosed ? null : closeSound(o);
+        if (!m) continue;
+        const t = setTimeout(() => { timers.delete(t); play(m); }, XP_DELAY_MS);
+        timers.add(t);
+      }
+    }
     if (st.sessions === prev.sessions || !prev.loaded) return;
     const now = Date.now();
     const moments = new Set<SoundMoment>();
@@ -89,4 +110,5 @@ export function watchSounds(play: (m: SoundMoment) => void = playMoment): () => 
       play(m);
     }
   });
+  return () => { unsub(); for (const t of timers) clearTimeout(t); timers.clear(); };
 }

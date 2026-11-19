@@ -89,7 +89,7 @@ The village does not have to be in front for you to see who waits.
 
 ## Sounds
 
-The app plays a sound when a builder wants a decision, asks you something, finishes, gets stuck, starts, sends out a minion (subagent) or goes back to work, for every agent and whether the window is in front or not. Pick a macOS sound or one of your own files for each moment in **Settings › Sounds** (a copy of your file is kept in the data folder), set the volume, or turn sounds off. The app plays them itself (`afplay`); it adds nothing to your agents' hooks.
+The app plays a sound when a builder wants a decision, asks you something, finishes, gets stuck, starts, sends out a minion (subagent) or goes back to work, and when accepted work earns XP or a house levels up, for every agent and whether the window is in front or not. Pick a macOS sound or one of your own files for each moment in **Settings › Sounds** (a copy of your file is kept in the data folder), set the volume, or turn sounds off. The app plays them itself (`afplay`); it adds nothing to your agents' hooks.
 
 **Village ambience** (off until you turn it on in **Settings › Sounds**) is a quiet bed under those sounds that follows the time of day: wind and birds by day, with a chorus at dawn, and crickets at night. The window makes it itself (Web Audio, no sound files). It plays only while the window is open: softer while another app is in front, silent while the window is hidden or minimized.
 

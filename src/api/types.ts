@@ -303,7 +303,7 @@ export interface Settings {
 }
 
 /** A moment that can play a sound (see src/state/sounds.ts and src-tauri/src/sounds.rs). */
-export type SoundMoment = 'decide' | 'answer' | 'finished' | 'stuck' | 'start' | 'minion' | 'working';
+export type SoundMoment = 'decide' | 'answer' | 'finished' | 'stuck' | 'start' | 'minion' | 'working' | 'xp' | 'levelUp';
 
 /** A trackpad haptic (AppKit's patterns, a double tick, or none); felt only on a Force Touch trackpad. */
 export type HapticKind = 'off' | 'alignment' | 'generic' | 'levelChange' | 'double';

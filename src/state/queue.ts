@@ -22,6 +22,7 @@ export const QUEUE_LABEL: Record<QueueReason, string> = {
   review: 'Ready to review',
 };
 
+// Mirrored in src-tauri/src/queue.rs (menu bar, Dock badge): change both, and both tests.
 /** Why the session waits on the owner, or null when it does not. */
 export function queueReason(s: SessionInfo): QueueReason | null {
   if (s.kind.kind !== 'agent' || s.paused || s.parked != null) return null;

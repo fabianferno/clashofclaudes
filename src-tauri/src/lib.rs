@@ -16,6 +16,7 @@ pub mod title;
 pub mod persist;
 pub mod platform;
 pub mod pty;
+pub mod queue;
 pub mod quota;
 pub mod saved;
 pub mod scrollback;
@@ -73,12 +74,19 @@ fn show_note<R: Runtime>(app: &AppHandle<R>, st: &NotifyState, note: notify::Not
     let _ = b.show();
 }
 
-/// Recomputes the dock badge from the live sessions (none when the setting is off); the dock is
+/// The owner's queue right now: the live sessions that wait on them, in a workspace that is there.
+pub(crate) fn queue_now<R: Runtime>(app: &AppHandle<R>) -> Vec<queue::QueueItem> {
+    let Some(state) = app.try_state::<AppState>() else { return Vec::new() };
+    let ids: Vec<String> = state.data.lock().unwrap_or_else(|e| e.into_inner()).workspaces.iter().map(|w| w.id.clone()).collect();
+    queue::owner_queue(&state.manager.list(), &ids)
+}
+
+/// Recomputes the dock badge from the owner's queue (none when the setting is off); the dock is
 /// only touched on a change.
 pub(crate) fn refresh_badge<R: Runtime>(app: &AppHandle<R>) {
     let Some(state) = app.try_state::<AppState>() else { return };
     let shown = state.data.lock().unwrap_or_else(|e| e.into_inner()).settings.dock_badge;
-    let n = if shown { notify::badge_count(&state.manager.list()) } else { 0 };
+    let n = if shown { queue_now(app).len() as i64 } else { 0 };
     if app.try_state::<NotifyState>().is_some_and(|ns| !ns.badge.changed(n)) {
         return;
     }

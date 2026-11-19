@@ -125,17 +125,6 @@ impl Notifier {
     }
 }
 
-/// Agent sessions in NeedsYou or Finished. Terminals never count.
-pub fn badge_count(sessions: &[SessionInfo]) -> i64 {
-    sessions
-        .iter()
-        .filter(|s| {
-            matches!(s.kind, SessionKind::Agent { .. })
-                && matches!(s.state, SessionState::NeedsYou { .. } | SessionState::Finished)
-        })
-        .count() as i64
-}
-
 /// The last badge value set, so the dock is only touched when the count changes.
 #[derive(Default)]
 pub struct BadgeCache(Mutex<Option<i64>>);
@@ -292,18 +281,6 @@ mod tests {
     }
 
     #[test]
-    fn badge_counts_needs_and_finished() {
-        let s = vec![
-            agent("1", needs("x")),
-            agent("2", SessionState::Finished),
-            agent("3", SessionState::Working),
-            agent("4", SessionState::Stuck { reason: "s".into() }),
-            info("5", SessionKind::Terminal, SessionState::Finished),
-        ];
-        assert_eq!(badge_count(&s), 2);
-    }
-
-    #[test]
     fn enters_notifiable_only_on_a_new_needs_or_finished_entry() {
         let n = Notifier::new();
         let fin = agent("a", SessionState::Finished);
@@ -338,7 +315,6 @@ mod tests {
 
     #[test]
     fn badge_clears_at_zero() {
-        assert_eq!(badge_count(&[]), 0);
         assert_eq!(badge_value(0), None);
         assert_eq!(badge_value(3), Some(3));
     }

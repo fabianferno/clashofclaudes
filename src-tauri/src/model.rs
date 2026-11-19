@@ -138,7 +138,7 @@ pub struct Settings {
     /// Notify when a builder finishes (while the window is in the background).
     #[serde(default = "default_true")]
     pub notify_finished: bool,
-    /// The Dock icon counts the sessions that need you or finished.
+    /// The Dock icon counts the sessions waiting on the owner (their queue).
     #[serde(default = "default_true")]
     pub dock_badge: bool,
     /// What the owner asked to be called: the plate over the Town Hall reads "<name>'s Town Hall".

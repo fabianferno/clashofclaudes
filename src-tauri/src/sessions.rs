@@ -922,6 +922,12 @@ impl SessionManager {
         self.answer_if(id, true, Some(since))
     }
 
+    /// Denies the prompt only if it is the one that was open at `since`: the menu bar's Deny, which
+    /// may be clicked on a menu built before a newer prompt replaced its own.
+    pub fn deny_if(&self, id: &str, since: i64) -> Result<()> {
+        self.answer_if(id, false, Some(since))
+    }
+
     /// Whether the session's open prompt can be answered from the app (Allow / Deny keys known).
     pub fn answerable(&self, id: &str) -> bool {
         let g = self.lock();
@@ -1924,6 +1930,21 @@ mod tests {
         fx.mgr.approve_if(&s.id, second).unwrap();
         assert_eq!(state(&fx, &s.id), SessionState::Working);
         assert!(!fx.mgr.answerable(&s.id));
+    }
+
+    #[test]
+    fn deny_if_ignores_a_replaced_prompt() {
+        let fx = fixture();
+        let s = fx.mgr.start_with_spec(&fx.ws, &claude("b1"), sleeper(&fx), Arc::new(ClaudeAdapter)).unwrap();
+        fx.mgr.on_hook(&s.id, fixture_json("notification_permission.json"));
+        let open = info(&fx, &s.id).state_since;
+        // a menu built for an older prompt: its Deny must not answer the one open now
+        assert!(fx.mgr.deny_if(&s.id, open - 1).is_err(), "stale prompt");
+        let i = info(&fx, &s.id);
+        assert!(i.awaiting_decision, "still open after the refused click");
+        assert_eq!(i.state_since, open);
+        fx.mgr.deny_if(&s.id, open).unwrap();
+        assert_eq!(state(&fx, &s.id), SessionState::NeedsYou { reason: DENIED_REASON.into() });
     }
 
     #[test]

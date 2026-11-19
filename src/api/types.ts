@@ -262,7 +262,7 @@ export interface Settings {
   notifyNeedsYou: boolean;
   /** Notify when a builder finishes, while the window is in the background. */
   notifyFinished: boolean;
-  /** The Dock icon counts the sessions that need you or finished. */
+  /** The Dock icon counts the sessions waiting on you (your queue). */
   dockBadge: boolean;
   /** What the owner asked to be called (the Town Hall's plate); null until given. */
   playerName?: string | null;

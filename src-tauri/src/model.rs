@@ -73,6 +73,9 @@ pub struct Workspace {
     /// The house's roof colour (`#rrggbb`) the owner chose; None picks one from the id.
     #[serde(default)]
     pub color: Option<String>,
+    /// The owner's notepad for this workspace: ideas and reminders, apart from the To Do. Kept here only.
+    #[serde(default)]
+    pub notes: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

@@ -83,6 +83,8 @@ export const ipc = {
   setCompound: (workspaceId: string, compound: Compound) =>
     invoke<Workspace>('set_compound', { workspaceId, compound }),
   /** null goes back to the automatic colour. */
+  /** Replaces a workspace's notepad. */
+  setWorkspaceNotes: (workspaceId: string, notes: string) => invoke<Workspace>('set_workspace_notes', { workspaceId, notes }),
   setWorkspaceColor: (workspaceId: string, color: string | null) =>
     invoke<Workspace>('set_workspace_color', { workspaceId, color }),
   setSessionSpot: (id: string, spot: Tile) => invoke<SessionInfo>('set_session_spot', { id, spot }),

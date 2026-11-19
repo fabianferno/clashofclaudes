@@ -68,6 +68,7 @@ Running several agents makes it easy to start a fifth thread while four are stil
 - **Fewer threads.** While things wait on you, **+ New session** suggests **Add to To Do** instead. **Settings › Focus** can limit how many sessions work at once.
 - **Elixir that decides.** The collectors forecast each agent's limits at the rate they are burning ("runs out around 3:40 PM, before it refills"): in the collector panel, on the resource bar (its rim glows amber) and once as a notice. To Dos set to start on their own wait while their agent is at or under a reserve (**Settings › Elixir**, 10 % by default), and start once it refills; optionally a free builder whose agent has elixir takes the task instead.
 - **A To Do that runs itself.** Tick **Start on its own** on a To Do and it starts when its builder is free and the limit allows. Tick **Own worktree** (on a To Do or in + New session) and the session starts in a new git worktree, on a new branch from your last commit. The worktree is kept in the app's data folder (`worktrees/`). Its changes stay apart from yours until you merge the branch. Uncommitted changes in your folder are not carried over.
+- **Notes for later.** Each workspace's panel has a notepad for ideas and reminders that aren't tasks yet ("add export later"). It saves as you type, in the app's data only. **Move to To Do** moves the selected text, or the line the cursor is on, to the To Do. **Start a session** starts one with it as the task. A small scroll on the house's name plate shows which workspaces have notes.
 
 ## Notifications
 

@@ -3,19 +3,8 @@
 Parked on 2026-11-10 from a product brainstorm. Nothing here is decided: the owner will go
 through it to keep or drop each one. Already built from the same list: elixir that drives
 decisions (forecast, reserve, stand-ins), app-wide sounds (Settings › Sounds), the menu bar
-mini-village, opening a plan from the briefing for review, day and night from the clock, and the village
-ambience (2026-11-20).
-
-## Workspace notes
-
-- **A notepad per workspace.** A place to jot ideas and reminders ("add export later", "look at
-  the flaky test") on the workspace itself, apart from the To Do (tasks ready for a builder). Kept
-  in the app's data, never sent anywhere. A note can be turned into a To Do or a new session when
-  it's ready, and the compound could show a small sign or scroll when it has notes.
-
-## Gamification
-
-- **Sounds for XP and level-ups.** Settings › Sounds now exists; adding moments is cheap.
+mini-village, opening a plan from the briefing for review, day and night from the clock, the village ambience,
+sounds for XP and level-ups, and a notepad per workspace (2026-11-20).
 
 ## Launch (Product Hunt, git-trends)
 

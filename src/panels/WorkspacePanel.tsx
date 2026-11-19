@@ -3,6 +3,7 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import { ipc } from '../api/ipc';
 import NewSessionPicker from './NewSessionPicker';
 import HistoryList from './HistoryList';
+import WorkspaceNotes from './WorkspaceNotes';
 import { boardItems, browserUrl, sessionsByWorkspace, useApp } from '../state/store';
 import { HOUSE_SWATCHES, houseColors, xpNeed } from '../village/look';
 import { StateTag } from './tags';
@@ -16,6 +17,8 @@ export default function WorkspacePanel({ workspaceId }: { workspaceId: string })
   const browsers = useApp((s) => s.browsers);
   const hiddenApps = useApp((s) => s.hiddenApps);
   const [form, setForm] = useState(false);
+  // a session started from the notepad: its task
+  const [formTask, setFormTask] = useState<string | undefined>(undefined);
   // the + Browser address, while it is being typed
   const [addr, setAddr] = useState<string | null>(null);
   // a builder dropped on this workspace opens the form with them picked
@@ -49,12 +52,13 @@ export default function WorkspacePanel({ workspaceId }: { workspaceId: string })
   if (form || preset || (asked && !ws.missing)) {
     const back = () => {
       setForm(false);
+      setFormTask(undefined);
       if (preset || asked) useApp.getState().setSelection({ kind: 'workspace', id: workspaceId });
     };
     return (
       <>
         <button className="hud-btn grey sm" onClick={back}>‹ Back</button>
-        <NewSessionPicker key={`${workspaceId}:${preset ?? ''}`} workspaceId={workspaceId} builderId={preset} />
+        <NewSessionPicker key={`${workspaceId}:${preset ?? ''}`} workspaceId={workspaceId} builderId={preset} task={formTask} />
       </>
     );
   }
@@ -127,6 +131,7 @@ export default function WorkspacePanel({ workspaceId }: { workspaceId: string })
           <button type="button" className="hud-btn grey sm" onClick={() => { setAddr(null); setErr(null); }}>Cancel</button>
         </form>
       )}
+      <WorkspaceNotes key={workspaceId} workspaceId={workspaceId} onStartSession={(task) => { setFormTask(task); setForm(true); }} />
       <div className="sp-sec">Sessions ({agentSessions.length})</div>
       {agentSessions.length === 0 && <div className="sp-note">No sessions running. Plots are empty.</div>}
       {agentSessions.map((s) => row(s, false))}

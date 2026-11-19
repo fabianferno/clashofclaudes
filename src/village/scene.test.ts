@@ -70,6 +70,15 @@ describe('buildEntities', () => {
     expect(plate.lift).toBeGreaterThan(140); // above the roof, not at a structure's height
   });
 
+  it('a_house_with_notes_has_a_scroll_on_its_plate', () => {
+    const c1 = placeCompound([]);
+    const plate = (notes?: string) => buildEntities({ workspaces: [{ ...ws('w1', c1), name: 'app', notes }], builders: [], sessions: [] })
+      .find((e) => e.id === 'status:house:w1')!.texKey;
+    expect(plate('add export')).toBe('noteplate:app');
+    expect(plate('  \n ')).toBe('houseplate:app');
+    expect(plate(undefined)).toBe('houseplate:app');
+  });
+
   it('the_hall_carries_its_owners_name_on_a_plate_over_the_flag', () => {
     const plateOf = (ownerName?: string | null) => buildEntities({ workspaces: [], builders: [], sessions: [], ownerName })
       .find((e) => e.id === 'status:hall')!;

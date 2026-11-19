@@ -206,8 +206,10 @@ const HOUSE_PLATE_FONT = 13;
  * A workspace's name over its house: a light wooden plank nailed at both ends, so it never reads as
  * one of the dark status pills (resources, timers, apps) over the structures. Anchor: its bottom centre.
  */
-export function drawHousePlate(label: string): Art {
-  const bw = Math.max(84, Math.ceil(plateTextWidth(label, HOUSE_PLATE_FONT)) + 36);
+export function drawHousePlate(label: string, notes = false): Art {
+  // a workspace with notes: a little scroll pinned at the plank's right end, the text moved over for it
+  const extra = notes ? 22 : 0;
+  const bw = Math.max(84, Math.ceil(plateTextWidth(label, HOUSE_PLATE_FONT)) + 36 + extra);
   const h = 21;
   return bake(bw + 8, h + 9, bw / 2 + 4, h + 4, () => {
     const g = ctx();
@@ -222,9 +224,27 @@ export function drawHousePlate(label: string): Art {
     g.strokeStyle = 'rgba(122, 78, 43, .35)'; g.lineWidth = 1;
     g.beginPath(); g.moveTo(-bw / 2 + 14, -h + 5); g.lineTo(-bw / 6, -h + 5); g.stroke();
     g.beginPath(); g.moveTo(bw / 8, -6); g.lineTo(bw / 2 - 14, -6); g.stroke();
-    for (const s of [-1, 1]) dot(s * (bw / 2 - 8), -h / 2 - 2, 2.2, '#5b3a1f', '#3a2412', 1);
-    outlinedText(label, 0, -h / 2 + 3, HOUSE_PLATE_FONT, '#fff8e6', 3);
+    for (const s of notes ? [-1] : [-1, 1]) dot(s * (bw / 2 - 8), -h / 2 - 2, 2.2, '#5b3a1f', '#3a2412', 1);
+    outlinedText(label, -extra / 2, -h / 2 + 3, HOUSE_PLATE_FONT, '#fff8e6', 3);
+    if (notes) noteScroll(bw / 2 - 13, -h / 2 - 2);
   });
+}
+
+/** A small rolled scroll with two lines of ink, centred on (x, y): a workspace's notes. */
+function noteScroll(x: number, y: number): void {
+  const g = ctx();
+  g.save();
+  g.translate(x, y);
+  g.rotate(-0.12);
+  roundRect(-6, -7, 12, 14, 1.5);
+  g.fillStyle = '#fbf0d2'; g.fill(); g.strokeStyle = OUT; g.lineWidth = 1.8; g.stroke();
+  for (const ry of [-8.5, 6.5]) {
+    roundRect(-7.5, ry, 15, 3.4, 1.7);
+    g.fillStyle = '#d9b26a'; g.fill(); g.strokeStyle = OUT; g.lineWidth = 1.5; g.stroke();
+  }
+  g.strokeStyle = '#8a6c47'; g.lineWidth = 1.2;
+  for (const ly of [-2.5, 1.5]) { g.beginPath(); g.moveTo(-3.5, ly); g.lineTo(3.5, ly); g.stroke(); }
+  g.restore();
 }
 
 /**

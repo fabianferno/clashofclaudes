@@ -84,7 +84,7 @@ pub fn workspace_from_path(path: &Path, now: i64) -> anyhow::Result<Workspace> {
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .ok_or_else(|| anyhow!("{} has no folder name", path.display()))?;
-    Ok(Workspace { id: Uuid::new_v4().to_string(), name, path: path.to_path_buf(), created_at: now, missing: false, level: 1, xp: 0, compound: None, color: None })
+    Ok(Workspace { id: Uuid::new_v4().to_string(), name, path: path.to_path_buf(), created_at: now, missing: false, level: 1, xp: 0, compound: None, color: None, notes: String::new() })
 }
 
 /// Trimmed builder name, 1 to 40 characters.
@@ -724,6 +724,31 @@ pub fn set_workspace_color(workspace_id: String, color: Option<String>, app: App
     Ok(ws)
 }
 
+/// The longest notepad kept (characters); a longer one is refused rather than cut.
+pub const NOTES_MAX: usize = 100_000;
+
+/// Replaces workspace `id`'s notepad.
+pub fn apply_workspace_notes(d: &mut AppData, id: &str, notes: &str) -> Result<Workspace, String> {
+    if notes.chars().count() > NOTES_MAX {
+        return Err(format!("notes are limited to {NOTES_MAX} characters"));
+    }
+    let w = d.workspaces.iter_mut().find(|w| w.id == id).ok_or("unknown workspace")?;
+    w.notes = notes.to_string();
+    Ok(w.clone())
+}
+
+#[tauri::command]
+pub fn set_workspace_notes(workspace_id: String, notes: String, app: AppHandle, state: State<'_, AppState>) -> Result<Workspace, String> {
+    let ws = {
+        let mut d = state.data();
+        let ws = apply_workspace_notes(&mut d, &workspace_id, &notes)?;
+        state.save(&d)?;
+        ws
+    };
+    let _ = app.emit("workspace-updated", ws.clone());
+    Ok(ws)
+}
+
 /// Moves workspace `id`'s whole compound by (dx, dy): walls, house and every structure inside.
 pub fn apply_compound_shift(d: &mut AppData, id: &str, dx: i32, dy: i32) -> Result<Workspace, String> {
     let w = d.workspaces.iter_mut().find(|w| w.id == id).ok_or("unknown workspace")?;
@@ -1241,7 +1266,7 @@ mod tests {
 
     #[test]
     fn flag_missing_marks_only_that_workspace_once() {
-        let ws = |id: &str| Workspace { id: id.into(), name: id.into(), path: PathBuf::from("/nope"), created_at: 0, missing: false, level: 1, xp: 0, compound: None, color: None };
+        let ws = |id: &str| Workspace { id: id.into(), name: id.into(), path: PathBuf::from("/nope"), created_at: 0, missing: false, level: 1, xp: 0, compound: None, color: None, notes: String::new() };
         let mut d = AppData { workspaces: vec![ws("a"), ws("b")], ..AppData::default() };
         let w = flag_workspace_missing(&mut d, "b").unwrap();
         assert!(w.missing && w.id == "b");
@@ -1263,9 +1288,24 @@ mod tests {
     }
 
     #[test]
+    fn workspace_notes_are_kept_whole_and_capped() {
+        let mut d = AppData::default();
+        d.workspaces.push(Workspace { id: "w1".into(), name: "w".into(), path: PathBuf::from("/nope"), created_at: 0, missing: false, level: 1, xp: 0, compound: None, color: None, notes: String::new() });
+        let w = apply_workspace_notes(&mut d, "w1", "  add export later\n").unwrap();
+        assert_eq!(w.notes, "  add export later\n");
+        assert_eq!(d.workspaces[0].notes, "  add export later\n");
+        assert!(apply_workspace_notes(&mut d, "w1", &"x".repeat(NOTES_MAX + 1)).is_err());
+        assert_eq!(d.workspaces[0].notes, "  add export later\n");
+        assert!(apply_workspace_notes(&mut d, "nope", "x").is_err());
+        // saves from before notes read as none
+        let old: Workspace = serde_json::from_str(r#"{"id":"w","name":"w","path":"/p","createdAt":0}"#).unwrap();
+        assert_eq!(old.notes, "");
+    }
+
+    #[test]
     fn house_colour_is_set_checked_and_cleared() {
         let mut d = AppData::default();
-        d.workspaces.push(Workspace { id: "w1".into(), name: "w".into(), path: PathBuf::from("/nope"), created_at: 0, missing: false, level: 1, xp: 0, compound: None, color: None });
+        d.workspaces.push(Workspace { id: "w1".into(), name: "w".into(), path: PathBuf::from("/nope"), created_at: 0, missing: false, level: 1, xp: 0, compound: None, color: None, notes: String::new() });
         assert_eq!(apply_workspace_color(&mut d, "w1", Some("#3FA34D")).unwrap().color.as_deref(), Some("#3fa34d"));
         for bad in ["3fa34d", "#3fa34", "#3fa34g", "red", "#3fa34d0"] {
             assert!(apply_workspace_color(&mut d, "w1", Some(bad)).is_err(), "{bad}");
@@ -1312,7 +1352,7 @@ mod tests {
     }
 
     fn village() -> AppData {
-        let ws = Workspace { id: "w1".into(), name: "w".into(), path: PathBuf::from("/nope"), created_at: 0, missing: false, level: 1, xp: 0, compound: None, color: None };
+        let ws = Workspace { id: "w1".into(), name: "w".into(), path: PathBuf::from("/nope"), created_at: 0, missing: false, level: 1, xp: 0, compound: None, color: None, notes: String::new() };
         AppData { workspaces: vec![ws], ..AppData::default() }
     }
 

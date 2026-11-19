@@ -207,7 +207,7 @@ export function buildEntities(input: VillageInput): Entity[] {
     const stage = houseStage(w.level);
     out.push(ent(`house:${w.id}`, 'house', c.house.x + HOUSE, c.house.y + HOUSE, `house:${stage}:${roof}:${wall}`));
     // the workspace's name on a plate over the roof (texture keys split on ':', so the name holds none)
-    out.push({ ...ent(`status:house:${w.id}`, 'status', c.house.x + HOUSE / 2, c.house.y + HOUSE / 2, `houseplate:${w.name.replace(/:/g, ' ').slice(0, 24)}`), lift: HOUSE_LIFT[stage] });
+    out.push({ ...ent(`status:house:${w.id}`, 'status', c.house.x + HOUSE / 2, c.house.y + HOUSE / 2, `${w.notes?.trim() ? 'noteplate' : 'houseplate'}:${w.name.replace(/:/g, ' ').slice(0, 24)}`), lift: HOUSE_LIFT[stage] });
     out.push(...wallEntities(w.id, c, spotsIn(input.sessions, w.id, input.boards), w.level));
   }
   for (const s of input.sessions) {
@@ -266,6 +266,7 @@ export function artFor(key: string): Art {
     case 'status': return drawStatusBar(a as StatusTone, b);
     case 'hallplate': return drawHallPlate(key.slice('hallplate:'.length));
     case 'houseplate': return drawHousePlate(key.slice('houseplate:'.length));
+    case 'noteplate': return drawHousePlate(key.slice('noteplate:'.length), true);
     default: throw new Error(`no art for ${key}`);
   }
 }

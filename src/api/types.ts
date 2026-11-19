@@ -32,6 +32,8 @@ export interface Workspace {
   compound: Compound | null;
   /** The roof colour (#rrggbb) the owner chose; null picks one from the id. */
   color?: string | null;
+  /** The owner's notepad for this workspace (kept in the app's data only). */
+  notes?: string;
 }
 
 export interface Builder {

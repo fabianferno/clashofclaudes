@@ -27,7 +27,7 @@ function unusedName(builders: Builder[]): string {
 }
 
 /** `builderId`: an idle builder to start with picked (one dropped on the workspace). */
-export default function NewSessionPicker({ workspaceId, builderId }: { workspaceId: string; builderId?: string }) {
+export default function NewSessionPicker({ workspaceId, builderId, task: initialTask }: { workspaceId: string; builderId?: string; task?: string }) {
   const workspaces = useApp((s) => s.workspaces);
   const allBuilders = useApp((s) => s.builders);
   const sessions = useApp((s) => s.sessions);
@@ -47,7 +47,7 @@ export default function NewSessionPicker({ workspaceId, builderId }: { workspace
   const [model, setModel] = useState(DEFAULT);
   const [effort, setEffort] = useState(DEFAULT);
   const [command, setCommand] = useState('');
-  const [task, setTask] = useState('');
+  const [task, setTask] = useState(initialTask ?? '');
   const taskField = useRef<HTMLLabelElement>(null);
   const att = useAttachments(taskField);
   const [error, setError] = useState<string | null>(null);

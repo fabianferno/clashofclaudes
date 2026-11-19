@@ -10,6 +10,9 @@
 .sp-head h2 { margin: 0; font-weight: 400; font-size: 24px; line-height: 1.1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sp-sub { font: 600 12px ui-monospace, 'JetBrains Mono', monospace; color: #e7d5ad; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sp-close { width: 38px; height: 38px; padding: 0; flex: none; }
+/* Panel text size (⌘+ / ⌘- over the panel). The terminal and its pop-out keep their own size. */
+.sp-head, .sp-body:not(.sp-body-session),
+.sp-body-session > .session-panel > :not(.terminal-wrap):not(.popout) { zoom: var(--sp-zoom, 1); }
 .sp-body { padding: 14px; overflow-y: auto; flex: 1; min-height: 0; }
 .sp-body-session { display: flex; flex-direction: column; padding: 10px; }
 .sp-body button:not(.hud-btn):not(.sp-row), .sp-body input, .sp-body select { color: #2b2018; }
@@ -77,6 +80,16 @@
 .sp-browser-form { display: flex; gap: 6px; margin: 8px 0; }
 .sp-browser-form input { flex: 1; min-width: 0; border: 2px solid #c8b083; border-radius: 8px; padding: 5px 8px; background: #fff8e8; font: 600 13px system-ui; color: #2b2018; }
 .sp-browser-row { display: flex; gap: 6px; align-items: center; }
+/* a workspace's notepad (WorkspaceNotes.tsx) */
+.sp-notes textarea {
+  display: block; width: 100%; box-sizing: border-box; resize: vertical; min-height: 64px; max-height: 360px;
+  border: 2px solid #c8b083; border-radius: 8px; padding: 7px 9px; background: #fffaf0;
+  font: 600 13px/1.45 system-ui, sans-serif; color: #2b2018;
+  background-image: repeating-linear-gradient(180deg, transparent 0 18.35px, rgba(200,176,131,.28) 18.35px 19.35px);
+  background-position: 0 6px; background-attachment: local;
+}
+.sp-notes textarea:focus { outline: 3px solid rgba(255, 207, 51, .6); outline-offset: 0; }
+.sp-notes-btns { margin-top: 6px; align-items: center; }
 .sp-browser-row .sp-row { flex: 1; min-width: 0; }
 .sp-history-row, .sp-history-row:hover { cursor: default; transform: none; }
 .picker-list { margin-bottom: 8px; }

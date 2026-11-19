@@ -335,6 +335,7 @@ export const demoIpc = {
   },
   setCompound: async (workspaceId: string, compound: Compound): Promise<Workspace> => ({ ...wsOf(workspaceId), compound }),
   setWorkspaceColor: async (workspaceId: string, color: string | null): Promise<Workspace> => ({ ...wsOf(workspaceId), color }),
+  setWorkspaceNotes: async (workspaceId: string, notes: string): Promise<Workspace> => ({ ...wsOf(workspaceId), notes }),
   setSessionSpot: async (id: string, spot: Tile): Promise<SessionInfo> => {
     const s = sessionOf(id);
     return { ...s, spot, rev: s.rev + 1 };
@@ -397,6 +398,7 @@ const ROUTES: Record<keyof typeof demoIpc, (...a: never[]) => boolean> = {
   reviewSession: (id: string) => isDemoId(id),
   setCompound: (ws: string) => isDemoId(ws),
   setWorkspaceColor: (ws: string) => isDemoId(ws),
+  setWorkspaceNotes: (ws: string) => isDemoId(ws),
   setSessionSpot: (id: string) => isDemoId(id),
   moveCompound: (ws: string) => isDemoId(ws),
   removeWorkspace: (ws: string) => isDemoId(ws),

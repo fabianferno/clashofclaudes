@@ -4,6 +4,7 @@ import type { Review, SessionInfo } from '../api/types';
 import { useApp } from '../state/store';
 import { QUEUE_LABEL, ownerQueue, queueReason, waitedLabel, waitingSince, type QueueReason } from '../state/queue';
 import { isDemoId } from '../onboarding/demo';
+import Markdown from './Markdown';
 import './briefing.css';
 
 const enc = new TextEncoder();
@@ -153,7 +154,7 @@ export default function Briefing({ session: s, canApprove, answering, onAllow, o
       {s.lastMessage && (
         <div className="brief-sec">
           <div className="brief-h">Its last reply</div>
-          <div className="brief-reply">{s.lastMessage}</div>
+          <Markdown className="brief-reply md" text={s.lastMessage} />
         </div>
       )}
 

@@ -11,6 +11,7 @@ pub mod history;
 pub mod hooks;
 pub mod mini;
 pub mod model;
+pub mod board;
 pub mod bugreport;
 pub mod notify;
 pub mod osc;

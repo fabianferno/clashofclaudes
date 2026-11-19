@@ -4,7 +4,7 @@ import { useApp } from './store';
 import { DEFAULT_SOUNDS } from './soundDefaults';
 
 export const DEFAULT_SETTINGS: Settings = {
-  updatesEnabled: true, notifyNeedsYou: true, notifyFinished: true, dockBadge: true, playerName: null, onboarded: false, spotsTidied: false, spotsTidy: 0, shareUsage: false, installId: null,
+  updatesEnabled: true, notifyNeedsYou: true, notifyFinished: true, dockBadge: true, globalShortcut: true, playerName: null, onboarded: false, spotsTidied: false, spotsTidy: 0, shareUsage: false, installId: null,
   hapticHover: 'alignment', hapticDrop: 'levelChange',
   elixirReserve: 10, elixirStandIn: false,
   soundsOn: true, soundVolume: 70, sounds: DEFAULT_SOUNDS,

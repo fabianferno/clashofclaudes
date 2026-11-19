@@ -33,6 +33,7 @@ getrandom = "0.3"
 tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2.8.0"
 tauri-plugin-updater = "2"
+tauri-plugin-global-shortcut = "2"
 
 base64 = "0.22"
 # Codex hook trust hashes (`adapters/codex.rs`); already built for Tauri.

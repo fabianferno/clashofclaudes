@@ -22,6 +22,7 @@ pub mod quota;
 pub mod saved;
 pub mod scrollback;
 pub mod sessions;
+pub mod shortcut;
 pub mod snapshot;
 pub mod sounds;
 pub mod status;
@@ -234,6 +235,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(shortcut::plugin())
         .menu(app_menu)
         .on_menu_event(|app, event| {
             if tray::on_menu_event(app, event.id().as_ref()) {
@@ -417,6 +419,10 @@ pub fn run() {
             spawn_app_scanner(app.handle().clone());
             // the menu bar item: the queue's count and its menu, also while the window is closed
             tray::init(app.handle())?;
+            // ⌃⌥⌘J from any app, unless Settings turned it off
+            app.manage(shortcut::Hotkey::default());
+            let hotkey = app.state::<commands::AppState>().data().settings.global_shortcut;
+            shortcut::apply(app.handle(), hotkey);
             #[cfg(debug_assertions)]
             {
                 app.manage(Arc::new(driver::Driver::default()));
@@ -520,6 +526,7 @@ pub fn run() {
             commands::check_for_update,
             commands::install_update,
             commands::restart_for_update,
+            shortcut::shortcut_status,
             commands::driver_result,
         ])
         .build(tauri::generate_context!())

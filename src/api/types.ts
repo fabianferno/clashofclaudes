@@ -264,6 +264,8 @@ export interface Settings {
   notifyFinished: boolean;
   /** The Dock icon counts the sessions waiting on you (your queue). */
   dockBadge: boolean;
+  /** ⌃⌥⌘J from any app opens the queue. On until turned off. */
+  globalShortcut?: boolean;
   /** What the owner asked to be called (the Town Hall's plate); null until given. */
   playerName?: string | null;
   /** The first-run welcome (and its tour) was completed or skipped. */

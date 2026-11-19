@@ -107,6 +107,8 @@ export const ipc = {
   /** `restart`: relaunch into an installed update instead of exiting. */
   quitNow: (restart = false) => invoke<void>('quit_now', { restart }),
   getSettings: () => invoke<Settings>('get_settings'),
+  /** The global shortcut: on in Settings, and whether another app holds its keys. */
+  shortcutStatus: () => invoke<{ enabled: boolean; taken: boolean }>('shortcut_status'),
   setSettings: (settings: Settings) => invoke<Settings>('set_settings', { settings }),
   /** The folder holding the app's data. */
   dataFolder: () => invoke<string>('data_folder'),

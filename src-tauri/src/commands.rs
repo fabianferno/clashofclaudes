@@ -1042,6 +1042,7 @@ pub fn set_settings(settings: Settings, app: AppHandle, state: State<'_, AppStat
         d.settings.clone()
     };
     crate::refresh_badge(&app); // the Dock badge setting shows at once
+    crate::shortcut::apply(&app, saved.global_shortcut); // and the shortcut's keys are taken or let go
     Ok(saved)
 }
 

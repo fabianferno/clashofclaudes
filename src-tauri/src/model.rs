@@ -141,6 +141,9 @@ pub struct Settings {
     /// The Dock icon counts the sessions waiting on the owner (their queue).
     #[serde(default = "default_true")]
     pub dock_badge: bool,
+    /// ⌃⌥⌘J from any app opens the owner's queue (`shortcut.rs`).
+    #[serde(default = "default_true")]
+    pub global_shortcut: bool,
     /// What the owner asked to be called: the plate over the Town Hall reads "<name>'s Town Hall".
     #[serde(default)]
     pub player_name: Option<String>,
@@ -232,6 +235,15 @@ impl Settings {
 
 #[cfg(test)]
 mod settings_tests {
+    #[test]
+    fn global_shortcut_is_on_for_saves_from_before_it_existed() {
+        let old: Settings = serde_json::from_str("{}").unwrap();
+        assert!(old.global_shortcut);
+        let off: Settings = serde_json::from_str(r#"{"globalShortcut":false}"#).unwrap();
+        assert!(!off.global_shortcut);
+        assert!(Settings::default().global_shortcut);
+    }
+
     use super::*;
 
     #[test]
@@ -280,6 +292,7 @@ impl Default for Settings {
             notify_needs_you: true,
             notify_finished: true,
             dock_badge: true,
+            global_shortcut: true,
             player_name: None,
             onboarded: false,
             spots_tidied: false,

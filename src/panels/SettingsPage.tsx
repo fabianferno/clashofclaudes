@@ -14,6 +14,8 @@ import { open as openFile } from '@tauri-apps/plugin-dialog';
 import { DEFAULT_SOUNDS, SOUND_MOMENTS, previewSound } from '../state/sounds';
 import { DEFAULT_RESERVE } from '../state/elixir';
 
+/** The system-wide shortcut's keys (src-tauri/src/shortcut.rs). */
+const GLOBAL_KEYS = '⌃⌥⌘J';
 const SYSTEM_SOUNDS_DIR = '/System/Library/Sounds/';
 const CHOOSE = '__choose';
 const fileName = (p: string) => p.split('/').pop() ?? p;
@@ -22,6 +24,7 @@ const systemPath = (name: string) => `${SYSTEM_SOUNDS_DIR}${name}.aiff`;
 export { DEFAULT_SETTINGS };
 
 export const SHORTCUTS: Array<[keys: string, what: string]> = [
+  ['⌃ ⌥ ⌘ J', 'Open your queue, from any app'],
   ['⌘ ,', 'Open Settings'],
   ['Help menu', 'Report a bug or request a feature'],
   ['⌘ =', 'Zoom in'],
@@ -141,6 +144,7 @@ export default function SettingsPage() {
   const [folder, setFolder] = useState<string | null>(null);
   const [check, setCheck] = useState<Check>(null);
   const [systemSounds, setSystemSounds] = useState<string[]>([]);
+  const [keysTaken, setKeysTaken] = useState(false);
 
   useEffect(() => (open ? useApp.getState().cover() : undefined), [open]);
   useEffect(() => {
@@ -151,6 +155,7 @@ export default function SettingsPage() {
     getVersion().then((v) => live && setVersion(v)).catch(() => {});
     ipc.dataFolder().then((f) => live && setFolder(f)).catch(() => {});
     ipc.systemSounds().then((n) => live && setSystemSounds(n)).catch(() => {});
+    ipc.shortcutStatus().then((k) => live && setKeysTaken(k.taken)).catch(() => {});
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       e.preventDefault();
@@ -165,6 +170,13 @@ export default function SettingsPage() {
   // the whole struct goes back (the backend replaces it); a failed save puts the toggle back
   const change = (patch: Partial<Settings>) => {
     saveSettings(patch).catch((e) => useApp.getState().setError(String(e)));
+  };
+  // the keys are taken or let go as the setting is saved: ask again whether another app holds them
+  const setShortcut = (on: boolean) => {
+    saveSettings({ globalShortcut: on })
+      .then(() => ipc.shortcutStatus())
+      .then((k) => setKeysTaken(k.taken))
+      .catch((e) => useApp.getState().setError(String(e)));
   };
   const checkNow = () => {
     setCheck('checking');
@@ -278,7 +290,9 @@ export default function SettingsPage() {
               <div className="set-note">Shown only while the app is in the background, once each time.</div>
               <Toggle label="When a builder needs you" hint="A question, a permission to approve, or a sign-in." checked={settings.notifyNeedsYou} onChange={(on) => change({ notifyNeedsYou: on })} />
               <Toggle label="When a builder finishes" checked={settings.notifyFinished} onChange={(on) => change({ notifyFinished: on })} />
-              <Toggle label="Count on the Dock icon" hint="Builders that need you or have finished." checked={settings.dockBadge} onChange={(on) => change({ dockBadge: on })} />
+              <Toggle label="Count on the Dock icon" hint="Builders waiting on you: the same count as the menu bar." checked={settings.dockBadge} onChange={(on) => change({ dockBadge: on })} />
+              <Toggle label={`${GLOBAL_KEYS} opens your queue from any app`} hint="The first builder waiting on you, or the village when none is." checked={settings.globalShortcut !== false} onChange={setShortcut} />
+              {keysTaken && settings.globalShortcut !== false && <div className="set-note">{GLOBAL_KEYS} is taken by another app</div>}
             </div>
           </section>
 

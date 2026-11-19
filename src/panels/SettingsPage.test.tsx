@@ -11,6 +11,7 @@ const ipc = vi.hoisted(() => ({
   systemSounds: vi.fn().mockResolvedValue(['Blow', 'Hero', 'Morse']),
   playSound: vi.fn().mockResolvedValue(undefined),
   importSound: vi.fn(),
+  shortcutStatus: vi.fn().mockResolvedValue({ enabled: true, taken: false }),
 }));
 vi.mock('../api/ipc', () => ({ ipc }));
 vi.mock('@tauri-apps/api/app', () => ({ getVersion: vi.fn().mockResolvedValue('0.1.0') }));
@@ -158,4 +159,25 @@ test('picking a sound saves it for that moment and plays it; ▶ plays it again;
   expect(ipc.playSound).toHaveBeenCalledWith('/System/Library/Sounds/Blow.aiff', 70, true);
   await act(async () => { fireEvent.change(screen.getByLabelText('Hold To Dos at'), { target: { value: '20' } }); });
   expect(ipc.setSettings).toHaveBeenLastCalledWith(expect.objectContaining({ elixirReserve: 20 }));
+});
+
+test('the global shortcut has a toggle, and a note when another app holds its keys', async () => {
+  ipc.getSettings.mockResolvedValue(DEFAULT_SETTINGS);
+  ipc.shortcutStatus.mockResolvedValue({ enabled: true, taken: true });
+  render(<SettingsPage />);
+  await screen.findByText('Version 0.1.0');
+  expect(box('⌃⌥⌘J opens your queue from any app').checked).toBe(true);
+  expect(await screen.findByText('⌃⌥⌘J is taken by another app')).toBeTruthy();
+  ipc.shortcutStatus.mockResolvedValue({ enabled: false, taken: false });
+  await act(async () => { fireEvent.click(box('⌃⌥⌘J opens your queue from any app')); });
+  expect(ipc.setSettings).toHaveBeenCalledWith(expect.objectContaining({ globalShortcut: false }));
+  expect(box('⌃⌥⌘J opens your queue from any app').checked).toBe(false);
+  expect(screen.queryByText('⌃⌥⌘J is taken by another app')).toBeNull();
+});
+
+test('no note about the shortcut when its keys are free', async () => {
+  render(<SettingsPage />);
+  await screen.findByText('Version 0.1.0');
+  expect(box('⌃⌥⌘J opens your queue from any app').checked).toBe(true); // on until turned off, also for saves from before it existed
+  expect(screen.queryByText('⌃⌥⌘J is taken by another app')).toBeNull();
 });

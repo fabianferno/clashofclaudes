@@ -6,6 +6,7 @@ const ipc = vi.hoisted(() => ({
   addTodo: vi.fn(),
   removeTodo: vi.fn().mockResolvedValue(undefined),
   startSession: vi.fn(),
+  closeSession: vi.fn(),
   setSessionSpot: vi.fn(),
   setCompound: vi.fn(),
   approve: vi.fn().mockResolvedValue(undefined),
@@ -124,6 +125,43 @@ test('a task is written down, then handed to an idle builder and becomes a sessi
   expect(ipc.startSession).toHaveBeenCalledWith('w1', 'b3', 'Fix login', [], false);
   expect(ipc.removeTodo).toHaveBeenCalledWith('t1');
   expect(within(column('To Do')).queryByText('Fix login')).toBeNull();
+});
+
+test("with every builder busy, one whose session is only Finished takes the task: Start closes that session first", async () => {
+  act(() => useApp.setState({
+    sessions: {
+      s1: sess('s1', 'b1', { kind: 'working' }),
+      s2: sess('s2', 'b2', { kind: 'finished' }, { title: 'README' }),
+      s3: sess('s3', 'b3', { kind: 'finished' }, { worktree: { path: '/wt', branch: 'coc/x' } }),
+    },
+    todos: [{ id: 't1', workspaceId: 'w1', text: 'Fix login', createdAt: 1 }],
+  }));
+  render(<Kanban />);
+  const picker = screen.getByRole('combobox', { name: 'Builder' });
+  expect(picker.textContent).toContain('Bo');
+  expect(picker.textContent).toContain('Finished: README');
+  fireEvent.click(picker);
+  // Ada is at work; Cy's changes wait in a worktree for review
+  expect(screen.getAllByRole('option').map((o) => o.querySelector('.kb-pick-name')!.firstChild!.textContent!.trim())).toEqual(['Bo']);
+  fireEvent.click(screen.getAllByRole('option')[0]);
+  ipc.closeSession.mockResolvedValue({ earnedXp: false, xpGained: 0, levelBefore: 1, levelAfter: 1, workspaceId: 'w1', unfinished: false, stuck: false, discarded: false });
+  ipc.startSession.mockResolvedValue(sess('s9', 'b2', { kind: 'starting' }, { task: 'Fix login' }));
+  ipc.setCompound.mockImplementation(async (_id, c) => ({ ...ws, compound: c }));
+  ipc.setSessionSpot.mockImplementation(async (id, spot) => ({ ...useApp.getState().sessions[id], spot }));
+  fireEvent.click(screen.getByRole('button', { name: 'Close & start' }));
+  await waitFor(() => expect(ipc.startSession).toHaveBeenCalledWith('w1', 'b2', 'Fix login', [], false));
+  expect(ipc.closeSession).toHaveBeenCalledWith('s2');
+  expect(ipc.closeSession.mock.invocationCallOrder[0]).toBeLessThan(ipc.startSession.mock.invocationCallOrder[0]);
+});
+
+test('with every builder at work, Start stays off and says how to queue the task', () => {
+  act(() => useApp.setState({
+    sessions: { s1: sess('s1', 'b1', { kind: 'working' }), s2: sess('s2', 'b2', { kind: 'needsYou', reason: 'Bash' }), s3: sess('s3', 'b3', { kind: 'starting' }) },
+    todos: [{ id: 't1', workspaceId: 'w1', text: 'Fix login', createdAt: 1 }],
+  }));
+  render(<Kanban />);
+  expect(screen.getByText(/All builders are at work/)).toBeTruthy();
+  expect((screen.getByRole('button', { name: 'Start' }) as HTMLButtonElement).disabled).toBe(true);
 });
 
 test('esc closes an open builder list before the board', () => {

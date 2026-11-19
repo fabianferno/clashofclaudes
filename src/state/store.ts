@@ -511,6 +511,26 @@ export function idleBuilders(state: Pick<AppState, 'builders' | 'sessions'>): Bu
   return state.builders.filter((b) => !busy.has(b.id));
 }
 
+/**
+ * Builders held only by a Finished session (nothing left to do but close it), with that session's id.
+ * A To Do can take one by closing that session first. One with a worktree waits for its review instead.
+ */
+export function finishedBuilders(state: Pick<AppState, 'builders' | 'sessions'>): Map<string, string> {
+  const held = new Map<string, string[]>();
+  for (const s of Object.values(state.sessions)) {
+    if (s.kind.kind !== 'agent' || s.state.kind === 'ended') continue;
+    held.set(s.kind.builderId, [...(held.get(s.kind.builderId) ?? []), s.id]);
+  }
+  const out = new Map<string, string>();
+  for (const b of state.builders) {
+    const ids = held.get(b.id);
+    if (ids?.length !== 1) continue;
+    const s = state.sessions[ids[0]];
+    if (s.state.kind === 'finished' && !s.worktree) out.set(b.id, s.id);
+  }
+  return out;
+}
+
 /** `paused`: the session came back after a relaunch and has not been resumed. */
 export function stateLabel(s: SessionState, paused = false): 'Starting' | 'Working' | 'Needs you' | 'Finished' | 'Stuck' | 'Ended' | 'Paused' {
   if (paused) return 'Paused';

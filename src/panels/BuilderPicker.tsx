@@ -6,13 +6,13 @@ import { CLASS_NAMES, PALETTE, classOf, gearOf, stars } from '../village/look';
 const AV = 30;
 const ROW = 40; // px per option, for placing the list above the button when there is no room below
 
-function Who({ b }: { b: Builder }) {
+function Who({ b, note }: { b: Builder; note?: string }) {
   return (
     <>
       <span className="hud-av kb-pick-av"><BuilderAvatar agent={b.agent} model={b.model} effort={b.effort} size={AV} /></span>
       <span className="kb-pick-text">
         <span className="kb-pick-name">{b.name} <span className="hud-stars">{'★'.repeat(stars(gearOf(b.effort)))}</span></span>
-        <span className="kb-pick-class">{CLASS_NAMES[classOf(b.agent, b.model)]} · {PALETTE[b.agent].label}</span>
+        <span className="kb-pick-class">{note ?? `${CLASS_NAMES[classOf(b.agent, b.model)]} · ${PALETTE[b.agent].label}`}</span>
       </span>
     </>
   );
@@ -21,10 +21,10 @@ function Who({ b }: { b: Builder }) {
 /**
  * A builder dropdown that shows each builder's portrait, like the cards along the bottom. The list
  * floats over the page (a column's scroll would clip it) and closes on a pick, Esc, a click away or
- * a scroll.
+ * a scroll. `notes`: a line to show in place of a builder's class (e.g. why it is offered).
  */
-export default function BuilderPicker({ builders, value, onChange, disabled }: {
-  builders: Builder[]; value: string; onChange: (id: string) => void; disabled?: boolean;
+export default function BuilderPicker({ builders, value, onChange, disabled, notes }: {
+  builders: Builder[]; value: string; onChange: (id: string) => void; disabled?: boolean; notes?: Record<string, string>;
 }) {
   const button = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
@@ -77,7 +77,7 @@ export default function BuilderPicker({ builders, value, onChange, disabled }: {
         onKeyDown={onKey}
         onBlur={() => setOpen(false)}
       >
-        {chosen && <Who b={chosen} />}
+        {chosen && <Who b={chosen} note={notes?.[chosen.id]} />}
         <span className="kb-pick-caret" aria-hidden="true">▾</span>
       </button>
       {open && at && (
@@ -93,7 +93,7 @@ export default function BuilderPicker({ builders, value, onChange, disabled }: {
               onMouseEnter={() => setHot(i)}
               onClick={() => pick(b)}
             >
-              <Who b={b} />
+              <Who b={b} note={notes?.[b.id]} />
             </li>
           ))}
         </ul>

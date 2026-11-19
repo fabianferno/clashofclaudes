@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ipc } from '../api/ipc';
 import type { Builder, SessionInfo, Todo, Workspace } from '../api/types';
-import { KANBAN_ALL, idleBuilders, sessionsByWorkspace, useApp } from '../state/store';
+import { KANBAN_ALL, finishedBuilders, idleBuilders, sessionsByWorkspace, useApp } from '../state/store';
 import { elapsedLabel } from '../village/status';
 import AgentLogo from './AgentLogo';
 import { AttachmentStrip, useAttachments } from './Attachments';
@@ -82,6 +82,7 @@ export default function Kanban() {
   const mine = todos.filter((t) => (all ? !!wsOf(t.workspaceId) : t.workspaceId === wsId));
   const usable = workspaces.filter((w) => !w.missing);
   const idle = idleBuilders({ builders, sessions: sessionMap });
+  const done = finishedBuilders({ builders, sessions: sessionMap });
 
   const card = (s: SessionInfo) => {
     const b = builderOf(s);
@@ -138,7 +139,7 @@ export default function Kanban() {
                 {items.length === 0 && <div className="kb-empty">{all && c.id !== 'todo' ? c.empty.replace(' here', '') : c.empty}</div>}
                 {c.id === 'todo'
                   ? mine.map((t) => (
-                    <TodoCard key={t.id} todo={t} idle={idle} all={builders.filter((b) => isDemoId(b.id) === isDemoId(t.workspaceId))} disabled={!!wsOf(t.workspaceId)?.missing}
+                    <TodoCard key={t.id} todo={t} idle={idle} done={done} all={builders.filter((b) => isDemoId(b.id) === isDemoId(t.workspaceId))} disabled={!!wsOf(t.workspaceId)?.missing}
                       tag={all ? <WorkspaceTag ws={wsOf(t.workspaceId)} /> : null} />
                   ))
                   : (items as SessionInfo[]).map(card)}
@@ -195,18 +196,30 @@ function AddTodo({ workspaces, disabled }: { workspaces: Workspace[]; disabled: 
 /**
  * A planned task: hand it to an idle builder (it becomes a session and moves to Active) or cross it
  * off. Set to start on its own, it waits for its builder (busy or not now) and starts once that
- * builder is free; in its own worktree, its changes wait apart on a new branch.
+ * builder is free; in its own worktree, its changes wait apart on a new branch. A builder held only
+ * by a Finished session (`done`: builder id → that session) is offered too: Start closes that
+ * session first, as its Close button would, so a finished builder never blocks the next task.
  */
-function TodoCard({ todo, idle, all, disabled, tag }: { todo: Todo; idle: Builder[]; all: Builder[]; disabled: boolean; tag?: ReactNode }) {
+function TodoCard({ todo, idle, done, all, disabled, tag }: {
+  todo: Todo; idle: Builder[]; done: Map<string, string>; all: Builder[]; disabled: boolean; tag?: ReactNode;
+}) {
   const [pick, setPick] = useState('');
   const [busy, setBusy] = useState(false);
   const auto = !!todo.auto;
   // its own builder when it has one; else the one picked, else the first idle
   const remembered = todo.builderId && all.some((b) => b.id === todo.builderId) ? todo.builderId : '';
-  const offered = auto ? all : idle;
-  const builderId = remembered && (auto || idle.some((b) => b.id === remembered)) ? remembered
-    : offered.some((b) => b.id === pick) ? pick : idle[0]?.id ?? (auto ? all[0]?.id ?? '' : '');
+  const takeable = (id: string) => idle.some((b) => b.id === id) || done.has(id);
+  const offered = auto ? all : [...idle, ...all.filter((b) => done.has(b.id))];
+  const builderId = remembered && (auto || takeable(remembered)) ? remembered
+    : offered.some((b) => b.id === pick) ? pick : idle[0]?.id ?? (auto ? all[0]?.id : offered[0]?.id) ?? '';
   const free = idle.some((b) => b.id === builderId);
+  // its builder is done with a Finished session: Start closes that one first
+  const wrapUp = free ? undefined : done.get(builderId);
+  const sessions = useApp((s) => s.sessions);
+  const notes = Object.fromEntries([...done].map(([b, sid]) => {
+    const name = sessions[sid] && sessionName(sessions[sid]);
+    return [b, `Finished${name ? `: ${name}` : ''}`];
+  }));
   const quotas = useApp((s) => s.quotas);
   const settings = useApp((s) => s.settings);
   const agentOf = all.find((b) => b.id === builderId)?.agent;
@@ -228,6 +241,7 @@ function TodoCard({ todo, idle, all, disabled, tag }: { todo: Todo; idle: Builde
     const st = useApp.getState();
     setBusy(true);
     try {
+      if (wrapUp) st.onClosed(await ipc.closeSession(wrapUp), wrapUp);
       const s = await ipc.startSession(todo.workspaceId, builderId, todo.text, todo.images ?? [], !!todo.worktree);
       st.upsertSession(s);
       // the session holds the task now; a failure to cross it off only leaves a stale card
@@ -256,9 +270,11 @@ function TodoCard({ todo, idle, all, disabled, tag }: { todo: Todo; idle: Builde
       )}
       <div className="kb-start">
         {offered.length > 0 ? (
-          <BuilderPicker builders={offered} value={builderId} onChange={choose} disabled={busy} />
-        ) : <span className="kb-reason">{all.length ? 'All builders are busy' : 'No builders yet'}</span>}
-        <button className="hud-btn sm" disabled={disabled || busy || !builderId || !free} onClick={() => void start()}>Start</button>
+          <BuilderPicker builders={offered} value={builderId} onChange={choose} disabled={busy} notes={notes} />
+        ) : <span className="kb-reason">{all.length ? 'All builders are at work: tick Start on its own to queue it' : 'No builders yet'}</span>}
+        <button className="hud-btn sm" disabled={disabled || busy || !builderId || (!free && !wrapUp)}
+          title={wrapUp ? `Closes ${all.find((b) => b.id === builderId)?.name ?? 'the builder'}'s finished session, then starts this` : undefined}
+          onClick={() => void start()}>{wrapUp ? 'Close & start' : 'Start'}</button>
         <button className="hud-btn grey sm" aria-label={`Delete ${todo.text || 'image task'}`} disabled={busy} onClick={() => void remove()}>✕</button>
       </div>
       <div className="kb-opts">

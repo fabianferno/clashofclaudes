@@ -1,6 +1,6 @@
 import type { Compound } from '../../api/types';
 import { toGrid } from '../iso';
-import { HALL, wallRect, type Rect } from '../layout';
+import { villageRect, type Rect } from '../layout';
 import { withContext } from './draw';
 import { paintTree } from './scenery';
 
@@ -53,11 +53,12 @@ const EDGE_EASE = 4;
 
 /**
  * How deep in the forest tile point (x, y) is, 0 (open) to 1 (deep forest): by its distance from
- * the nearest open place (the hall, a compound's walls, a clearing), pushed in and out by noise so
+ * the nearest open place (the village's whole extent, hall to outermost walls, and each clearing;
+ * so no gap between compounds or road legs ever thickens into forest mid-village), pushed in and out by noise so
  * the edge wanders, and always full at the edge of the bake `b` (where the backdrop takes over).
  */
 export function forestField(b: Rect, compounds: Compound[], clearings: readonly Rect[], seed: number): (x: number, y: number) => number {
-  const open = [HALL, ...compounds.map(wallRect), ...clearings];
+  const open = [villageRect(compounds), ...clearings];
   return (x, y) => {
     let d = Infinity;
     for (const r of open) d = Math.min(d, rectDist(r, x, y));

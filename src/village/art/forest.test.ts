@@ -21,6 +21,13 @@ describe('forest field', () => {
     expect(field(-24, -24)).toBeGreaterThan(0.9); // far out in the corner
   });
 
+  it('is open everywhere between the hall and the compounds, however far apart they sit', () => {
+    const far: Compound = { x0: 24, y0: -20, w: 7, h: 7, house: { x: 24, y: -20 } };
+    const f = forestField(b, [comp, far], [], 5);
+    // a spot well inside the village's extent, many tiles from the hall and from both walls
+    expect(f(18, 2)).toBe(0);
+  });
+
   it('has a ragged edge: spots the same distance from the hall are not all equally deep', () => {
     const cx = HALL.x0 + HALL.w / 2, cy = HALL.y0 + HALL.h / 2;
     const d = HALL.w / 2 + (FOREST_START + FOREST_FULL) / 2;

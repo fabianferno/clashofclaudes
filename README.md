@@ -103,7 +103,7 @@ If you have a Vercel team, the village can show on its [Board](https://vercel.co
 - Read it from anywhere with `vercel board read v/<you>/w/<workspace> --name village`.
 - A slow, unreachable or signed-out board never holds a session up: writes happen in the background and are tried again later.
 
-This release only publishes. Answering builders from a phone and visiting teammates' villages build on it and come later.
+Visiting teammates' villages and lending builders build on this and come later.
 
 ### Phone remote
 

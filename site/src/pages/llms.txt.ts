@@ -35,7 +35,7 @@ ${faq.map((f) => `### ${f.q}\n\n${f.a}`).join('\n\n')}
 ## Pages
 
 - [Home](${site.url}/): what the app does, a 43-second ad and its features in real footage, the agents it supports, FAQ
-- [Beta guide](${site.url}/beta/): install, first village, sending feedback, updates, known limits
+- [Beta guide](${site.url}/beta/): install, first village, using it with a team, sending feedback, updates, known limits
 - [Privacy](${site.url}/privacy/): what the app touches, sends and never does
 
 Not affiliated with Anthropic, OpenAI, Google, xAI or the OpenCode team.

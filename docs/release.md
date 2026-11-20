@@ -40,7 +40,7 @@ The app sandbox stays OFF (it spawns CLIs in PTYs). Hardened runtime is ON (`bun
 
 ## Auto-update
 
-Agent data never leaves your machine. The app's network calls are this update check, reports the user chooses to send, and opt-in anonymous usage counts (README › Privacy). The updater fetches `latest.json` and, only when you click "Restart to update", the signed `.app.tar.gz` from the configured GitHub host. Signatures are verified against `pubkey`.
+Agent output never leaves your machine. The app's network calls are this update check, reports the user chooses to send, opt-in anonymous usage counts and, only if the user turns it on, Vercel Board (README › Privacy). The updater fetches `latest.json` and, only when you click "Restart to update", the signed `.app.tar.gz` from the configured GitHub host. Signatures are verified against `pubkey`.
 
 It never runs when any of these hold (decided in Rust before any request): a debug build; `pubkey` is still `REPLACE_WITH_UPDATER_PUBLIC_KEY` (or empty); an endpoint still names `OWNER/REPO` (or there is none); the user turned off "Check for updates automatically" (Town Hall panel, persisted as `settings.updatesEnabled`). Otherwise it checks 10 s after start and every 6 h. Failures are logged and invisible in the UI. After installing, the app restarts through the quit guard: with running sessions it asks first, and cancelling leaves the update installed for the next launch.
 

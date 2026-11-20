@@ -2,7 +2,7 @@
 import Base from '../../layouts/Base.astro';
 import Builder from '../../components/Builder.astro';
 ---
-<Base title="Privacy" description="What Clash of Claudes does on your Mac: no agent data leaves your machine, your agent configuration is never edited, and status stays on localhost.">
+<Base title="Privacy" description="What Clash of Claudes does on your Mac: agent output never leaves your machine, nothing else does unless you turn a team board on, your agent configuration is never edited, and status stays on localhost.">
   <script slot="head" type="application/ld+json" set:html={JSON.stringify({
     '@context': 'https://schema.org', '@type': 'BreadcrumbList',
     itemListElement: [
@@ -32,11 +32,13 @@ import Builder from '../../components/Builder.astro';
     <div class="doc__body">
       <section id="network" aria-labelledby="network-h">
         <h2 id="network-h">Network</h2>
-        <p>Agent output, prompts, file names and folders never leave your machine. The app itself makes no network connections except these three:</p>
+        <p>Agent output never leaves your machine. Prompts, file names and folders do not either, unless you turn on the team board below. The app itself makes no network connections except these:</p>
         <ul>
           <li><strong>The update check.</strong> One request to see whether a newer beta exists. Turn it off in Settings.</li>
           <li><strong>Reports you choose to send</strong> from Help › Report a Bug…, Help › Request a Feature… or Settings › Beta feedback. A report holds what you type, the app, macOS and agent versions, counts of workspaces and sessions, and the last error the app showed. Never workspace names or tasks. A screenshot is included only if you tick it, and you see everything before sending.</li>
           <li><strong>Anonymous usage counts, only if you turn them on</strong> in the welcome or Settings › Data &amp; privacy. They are off until you do. Each count is one of a fixed few: the app opened (with how many workspaces and builders you have), a session started (and which agent), a terminal started, a permission prompt allowed or denied, the Kanban opened. Each carries the app, macOS and chip, and a random id made when you turn sharing on and deleted when you turn it off. Never names, paths, tasks, prompts or output. They go to PostHog’s EU cloud with no profile of you. Turn it off and they stop at once.</li>
+          <li><strong>Your Vercel team’s board, only if you turn it on</strong> in Settings › Team. It is off until you do, and it goes through the <code>vercel</code> command and login you already have; the app never sees your Vercel token. For each workspace you choose to share, the board gets the state of its sessions and a map of your village (workspace and builder names, where they stand). With Share details on, which is the default, it also gets tasks, the tool calls builders ask about, their questions, the agent’s last reply and the names of changed files. Vercel stores this in the United States. A new village is closed to everyone you did not invite, where your Vercel team lets you close it; Settings always says who can see it.</li>
+          <li><strong>What builds on the board, each only if you set it up.</strong> Inviting a teammate writes their Vercel email and level to the board’s access rules, and the actions they send you are written there. Lending a builder lets a teammate you paired run a task on your Mac; the app pushes that work to your repository’s <code>origin</code> as one new branch, with your own git credentials. The phone remote is a small web app on your own Vercel team that reads the same board; its notifications pass through Apple’s, Google’s or Mozilla’s push service.</li>
         </ul>
         <p>Your agents still talk to their own services the way they always do, with your own logins. The app does not sit in between.</p>
       </section>
@@ -52,7 +54,7 @@ import Builder from '../../components/Builder.astro';
       </section>
       <section id="notifications" aria-labelledby="notifications-h">
         <h2 id="notifications-h">Notifications</h2>
-        <p>When the app is in the background it can show a macOS notification when a session needs you or finishes. The title is the builder’s name and the body says “needs you” or “finished”. When an agent asks for permission, the notification has an Allow button that answers that one prompt. Notifications never include your task text or terminal output.</p>
+        <p>When the app is in the background it can show a macOS notification when a session needs you or finishes. The title is the builder’s name and the body says “needs you” or “finished”. When an agent asks for permission, the notification has an Allow button that answers that one prompt. Notifications never include terminal output, and never your own task text. One exception, if you lend builders: when a teammate borrows one, the notification shows the first line of the task they wrote.</p>
       </section>
       <section id="site" aria-labelledby="site-h">
         <h2 id="site-h">This website</h2>

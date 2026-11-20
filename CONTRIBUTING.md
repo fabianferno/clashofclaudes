@@ -39,7 +39,7 @@ CI runs the same on every pull request. For visual changes, attach a screenshot.
 These are product promises, not style preferences. PRs that break them can't be merged.
 
 - **Never write to an agent's own configuration**: nothing under `~/.claude`, `~/.codex`, `~/.gemini`, `~/.config/opencode`, `~/.grok`, or a project's `.claude`, `.codex`, `.gemini`, `.opencode`, `.grok`. Per-session settings go in the app's data folder and are deleted when the session closes.
-- **No new network connections.** The only ones are the optional update check, reports the user chooses to send, and opt-in anonymous usage counts (README › Privacy). Agent output, prompts, file names and folders never leave the machine.
+- **No new network connections.** The only ones are the optional update check, reports the user chooses to send, opt-in anonymous usage counts, and, only when the user turns it on, Vercel Board through their own `vercel` CLI (README › Privacy). Agent output never leaves the machine; prompts, file names and folders leave it only through a board the user turned on.
 - **Never automate an agent's sign-in** or handle its credentials.
 - Tests must not touch the real app data: use `COC_DATA_DIR` with a temporary folder.
 

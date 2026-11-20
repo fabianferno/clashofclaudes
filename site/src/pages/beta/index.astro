@@ -8,12 +8,13 @@ const toc = [
   ['install', 'Install'],
   ['before', 'Before you start'],
   ['first-run', 'Your first village'],
+  ['team', 'With a team'],
   ['feedback', 'Sending feedback'],
   ['updates', 'Updates'],
   ['limits', 'Known limits'],
 ];
 ---
-<Base title="Beta guide" description="How to install the Clash of Claudes beta on your Mac, set up your first village, send bugs and ideas from inside the app, and what is still rough.">
+<Base title="Beta guide" description="How to install the Clash of Claudes beta on your Mac, set up your first village, use it with a team, send bugs and ideas from inside the app, and what is still rough.">
   <script slot="head" type="application/ld+json" set:html={JSON.stringify({
     '@context': 'https://schema.org', '@type': 'BreadcrumbList',
     itemListElement: [
@@ -67,6 +68,20 @@ const toc = [
         <p>macOS may ask whether Clash of Claudes can read your Downloads, Desktop or Documents folder. That is an agent or terminal inside the app asking, the same prompt any terminal app shows. Allow it for folders that hold your workspaces.</p>
       </section>
 
+      <section id="team" aria-labelledby="team-h">
+        <h2 id="team-h">With a team</h2>
+        <p>Optional, and off until you turn it on. It needs a Vercel team, a recent <code>vercel</code> command (<code>npm i -g vercel@latest</code>) and <code>vercel login</code>. Everything here is in <strong>Settings › Team</strong>, which says what is missing.</p>
+        <ul>
+          <li><strong>Share a workspace.</strong> Turn on Vercel Board, then <strong>Share on the team board</strong> in a workspace’s panel. Its sessions show on your team’s board: who is working, waiting or done.</li>
+          <li><strong>Invite people.</strong> Under People, invite a teammate by their Vercel email as a Visitor (looks), a Helper (also answers a builder’s questions) or Trusted (also allows and denies its tool calls). Your village is closed to everyone else.</li>
+          <li><strong>Pair their Mac</strong> before a Helper or Trusted person can act: press <strong>Pair their Mac</strong>, send them the code, and confirm that both Macs show the same number.</li>
+          <li><strong>Visit.</strong> Villages you were invited to appear at the top left. Click one to walk in, click a builder to see what it waits for, and press <strong>Home</strong> to come back.</li>
+          <li><strong>Lend and borrow builders.</strong> Under Lent builders, choose who may hand a builder a task. To borrow, visit a teammate’s village, click one of their workspaces, pick a builder and write the task. It runs on their Mac and comes back as a branch on the repository’s <code>origin</code>.</li>
+          <li><strong>Answer from your phone.</strong> Under Phone remote, deploy the remote to your team once, then <strong>Pair a phone</strong> and scan the code. On an iPhone, add the page to the Home Screen first.</li>
+        </ul>
+        <p>A lent builder is a teammate running an agent on your Mac with your logins, so lend only to people you would give that. The <a href={`${site.source}#team-vercel-board`}>README</a> has the full detail and the limits, and <a href="/privacy/">Privacy</a> says what goes to the board.</p>
+      </section>
+
       <section id="feedback" aria-labelledby="feedback-h">
         <h2 id="feedback-h">Sending feedback</h2>
         <p>Everything goes from inside the app, so we get the details that matter without you digging for them.</p>
@@ -86,7 +101,7 @@ const toc = [
 
       <section id="updates" aria-labelledby="updates-h">
         <h2 id="updates-h">Updates</h2>
-        <p>The app checks for new beta builds and updates itself, so you are always on the latest one. Apart from anonymous usage counts you can choose to share, the check is the only network call it makes on its own, and you can turn it off in Settings (the gear at the top right, or <span class="keys"><kbd>⌘</kbd> <kbd>,</kbd></span>).</p>
+        <p>The app checks for new beta builds and updates itself, so you are always on the latest one. Apart from anonymous usage counts and a team board, both off until you turn them on, the check is the only network call it makes on its own, and you can turn it off in Settings (the gear at the top right, or <span class="keys"><kbd>⌘</kbd> <kbd>,</kbd></span>).</p>
       </section>
 
       <section id="limits" aria-labelledby="limits-h">

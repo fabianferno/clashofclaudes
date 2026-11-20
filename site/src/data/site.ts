@@ -155,7 +155,7 @@ export const reel: { clip: string; title: string; text: string }[] = [
 export const privacy = [
   {
     title: 'Nothing leaves your Mac',
-    text: 'Agent output, prompts, file names and folders stay on your machine. The only network calls are the update check (you can turn it off), bug reports you choose to send, and anonymous usage counts if you turn them on.',
+    text: 'Agent output stays on your machine, and so do prompts, file names and folders unless you turn on your team’s board. The only network calls are the update check (you can turn it off), bug reports you choose to send, anonymous usage counts if you turn them on, and your Vercel team’s board if you turn it on.',
   },
   {
     title: 'Your agent config is never touched',
@@ -187,7 +187,7 @@ export const faq = [
   },
   {
     q: 'Does it send my code or prompts anywhere?',
-    a: 'No. Agent output, prompts, file names and folders stay on your Mac. The only network calls are the update check, which you can turn off, bug reports or feature requests you choose to send, and anonymous usage counts, which are off unless you turn them on.',
+    a: 'Not unless you turn on your team’s board. Agent output always stays on your Mac. Prompts, file names and folders stay there too, unless you connect your Vercel team’s board in Settings and share a workspace on it. The other network calls are the update check, which you can turn off, bug reports or feature requests you choose to send, and anonymous usage counts, which are off unless you turn them on.',
   },
   {
     q: 'Will it change my Claude Code, Codex, OpenCode or Grok Build settings?',

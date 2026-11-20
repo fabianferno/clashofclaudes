@@ -25,6 +25,9 @@ export async function sendPrompt(id: string, text: string): Promise<void> {
   await ipc.writeSession(id, bytes('\r'));
 }
 
+/** What the one-click follow-up types: carry on, as planned or as it proposed. */
+export const GO_AHEAD = 'Go ahead.';
+
 const TAG_COLOR: Record<QueueReason, string> = {
   decide: 'var(--hud-needs)', answer: 'var(--hud-needs)', stuck: 'var(--hud-stuck)', review: 'var(--hud-finished)',
 };
@@ -124,10 +127,10 @@ export default function Briefing({ session: s, canApprove, answering, onAllow, o
       setError(String(e));
     }
   };
-  const send = async () => {
-    if (!reply.trim() || sending) return;
+  const send = async (text = reply) => {
+    if (!text.trim() || sending) return;
     setSending(true);
-    await act(async () => { await sendPrompt(s.id, reply); setReply(''); });
+    await act(async () => { await sendPrompt(s.id, text); setReply(''); });
     setSending(false);
   };
   const park = () => act(async () => {
@@ -238,7 +241,11 @@ export default function Briefing({ session: s, canApprove, answering, onAllow, o
             placeholder={doc ? 'Follow up on the plan: approve it or ask for changes…' : reason === 'review' ? 'Follow up: ask for a change…' : 'Answer it…'}
             onChange={(e) => setReply(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }} />
-          <button type="submit" className="hud-btn blue sm" disabled={sending || !reply.trim()}>Send</button>
+          {reply.trim()
+            ? <button type="submit" className="hud-btn blue sm" disabled={sending}>Send</button>
+            // the usual follow-up, one click: it stopped to check in, or to ask whether to go on
+            : <button type="button" className="hud-btn blue sm" disabled={sending} title={`Tell it: "${GO_AHEAD}"`}
+                onClick={() => void send(GO_AHEAD)}>Go ahead</button>}
         </form>
       )}
 

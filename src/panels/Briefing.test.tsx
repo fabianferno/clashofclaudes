@@ -89,6 +89,25 @@ test('a follow-up is pasted into the prompt as one block, then sent', async () =
   }
 });
 
+test('with nothing typed, Go ahead tells it to carry on in one click', async () => {
+  vi.useFakeTimers();
+  try {
+    useApp.getState().upsertSession(sess('a', { kind: 'finished' }));
+    render(<SessionPanel sessionId="a" />);
+    expect(screen.queryByText('Send')).toBeNull();
+    fireEvent.click(screen.getByText('Go ahead'));
+    await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+    const sent = ipcMock.writeSession.mock.calls.map(([, b]) => new TextDecoder().decode(new Uint8Array(b as number[])));
+    expect(sent).toEqual(['\x1b[200~Go ahead.\x1b[201~', '\r']);
+    // typing turns it back into Send
+    fireEvent.change(screen.getByLabelText('Follow up'), { target: { value: 'x' } });
+    expect(screen.getByText('Send')).toBeTruthy();
+    expect(screen.queryByText('Go ahead')).toBeNull();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 test('Park puts it aside with a note; it shows parked with a way back', async () => {
   const s = sess('a', { kind: 'finished' });
   useApp.getState().upsertSession(s);

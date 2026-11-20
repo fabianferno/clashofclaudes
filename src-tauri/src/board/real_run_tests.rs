@@ -172,3 +172,109 @@ fn real_remote_run() {
     std::thread::sleep(Duration::from_secs(6));
     listener.stop();
 }
+
+/// A teammate acting in a village, on the real board, with one login playing both sides: the
+/// owner's Mac (a `Remote` with the invite and the Keychain list in memory) and the visitor's
+/// (a key in memory, posting through the same CLI). Pairs through `v/<owner>/pair`, allows a
+/// prompt as Trusted, then is lowered to Helper and refused.
+/// `COC_BOARD_VERCEL=/path/to/vercel cargo test --lib real_mate_run -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn real_mate_run() {
+    use super::cli::{args_for_msg, BoardCli};
+    use super::mac_key::{MacKey, MemoryKey};
+    use super::pairing::MateFor;
+    use super::remote::{key_id, Do};
+    use super::visitor::{action, action_write, find_ticket, pair_request};
+    use super::visits::{thread_args, visited_builder};
+    use crate::model::Level;
+
+    let program = std::env::var("COC_BOARD_VERCEL").expect("COC_BOARD_VERCEL");
+    let dir = tempfile::tempdir().unwrap();
+    let cli = Arc::new(VercelCli { program: Some(program.into()), cwd: dir.path().to_path_buf(), timeout: Duration::from_secs(60) });
+    let target = Target { team: None, name: "coc-spike".into() };
+    let st = status(cli.as_ref(), &target);
+    assert_eq!(st.state, "ready", "{st:?}");
+    let owner = st.handle.unwrap();
+    let who = cli.run(&["board".to_string(), "whoami".to_string(), "--json".to_string(), "--name".to_string(), "coc-spike".to_string()]).unwrap();
+    let user_id = who["principal"].as_str().unwrap().trim_start_matches("vercel:user:").to_string();
+    let host = format!("materun{}", now() / 1000);
+    let wait_for = |what: &str, f: &dyn Fn() -> bool| {
+        let started = Instant::now();
+        while !f() {
+            assert!(started.elapsed() < Duration::from_secs(90), "timed out waiting for {what}");
+            std::thread::sleep(Duration::from_millis(500));
+        }
+        println!("OK {what} ({:.0?})", started.elapsed());
+    };
+
+    // the owner's Mac
+    let publisher = Publisher::start(cli.clone(), dir.path().join("board.json"), Arc::new(|_| vec![]), Arc::new(now));
+    publisher.configure(Config { enabled: true, target: target.clone(), owner: owner.clone(), host_id: host.clone(), share_details: true });
+    let sim = Arc::new(Sim { publisher: publisher.clone(), channel: format!("v/{owner}/w/real-mate"), id: format!("mate-{}", now() / 1000), step: AtomicUsize::new(0), since: Mutex::new(0) });
+    let remote = Arc::new(Remote::new(publisher.clone(), sim.clone(), Arc::new(MemoryStore::default()), dir.path().join("board-remote.json"), Arc::new(now), Arc::new(|| {})));
+    remote.configure(Some(Village { host: host.clone(), owner: owner.clone(), version: "test".into() }), None);
+    remote.set_phones_on(false); // the phone remote is off: this is about a teammate
+    let hears = remote.clone();
+    let listener = Listener::start(
+        cli.clone(),
+        dir.path().join("board-listen.json"),
+        Box::new(move |e| {
+            println!("MAC heard {} {} in {} by {} ({}) labels {:?}", e.kind, e.id, e.channel, e.principal, e.handle, e.labels.keys().collect::<Vec<_>>());
+            hears.handle(e);
+        }),
+    );
+    listener.configure(Some(Following { target: target.clone(), owner: owner.clone() }));
+    std::thread::sleep(Duration::from_secs(8));
+
+    // pairing: the owner opens it, the visitor answers with the code, the owner confirms
+    let code = remote.pair_start_mate(now() as u64 ^ 0x0bad_cafe, MateFor { email: "mate@example.com".into(), user_id: user_id.clone(), level: Level::Trusted }).unwrap();
+    println!("OWNER opened a pairing for a Trusted teammate");
+    let visitor = MemoryKey::new();
+    let my_key = key_id(&visitor.public().unwrap());
+    let read_pair = || {
+        let mut args = vec!["board".to_string(), "read".to_string(), format!("v/{owner}/pair")];
+        args.extend(thread_args("", &target).into_iter().skip(3));
+        cli.run(&args).ok()
+    };
+    let ticket = std::cell::RefCell::new(None);
+    wait_for("the ticket to be on the board", &|| {
+        *ticket.borrow_mut() = read_pair().and_then(|r| find_ticket(&r, &owner, &code, now()));
+        ticket.borrow().is_some()
+    });
+    let ticket = ticket.into_inner().unwrap();
+    let (request, check) = pair_request(&ticket, &code, &visitor, &owner).unwrap();
+    cli.run(&args_for_msg(&request, &target)).unwrap();
+    println!("VISITOR asked to be paired; shows {check}");
+    wait_for("the owner's Mac to hear the request", &|| remote.status().pairing.state == "asking");
+    assert_eq!(remote.status().pairing.check.as_deref(), Some(check.as_str()), "both sides show the same number");
+    remote.pair_confirm().unwrap();
+    assert_eq!(remote.mates().iter().map(|m| (m.key.clone(), m.level.clone())).collect::<Vec<_>>(), [(my_key.clone(), "trusted".to_string())]);
+    println!("OWNER confirmed; the map names the key as trusted");
+
+    // a builder waits on a decision; the visitor allows it
+    sim.publish();
+    wait_for("the session's wait to be on the board", &|| publisher.open_block(&sim.id).is_some());
+    let root = publisher.root_of(&sim.id).unwrap();
+    let panel = || visited_builder(&cli.run(&thread_args(&root, &target)).unwrap(), &owner, Some(&my_key)).unwrap();
+    let shown = panel();
+    println!("VISITOR sees: {:?} can {:?}", shown.question, shown.can);
+    let allow = action(&visitor, Do::Allow, None, None, shown.prompt.as_deref().unwrap(), &format!("{:032x}", now())).unwrap();
+    cli.run(&args_for_msg(&action_write(&root, &allow), &target)).unwrap();
+    wait_for("the owner's Mac to apply the Allow", &|| sim.step.load(Ordering::SeqCst) == 1);
+    wait_for("the visitor's panel to show the result", &|| panel().sent);
+    println!("OWNER notes: {:?}", remote.acted().map(|a| format!("{} {}", a.who, a.what)));
+
+    // lowered to Helper: the next Allow is refused, and nothing is applied
+    remote.set_mate_level("mate@example.com", Level::Helper).unwrap();
+    wait_for("the next wait to be on the board", &|| publisher.open_block(&sim.id).is_some_and(|(_, since)| since == *sim.since.lock().unwrap()) && panel().prompt != shown.prompt);
+    let again = panel();
+    let allow = action(&visitor, Do::Allow, None, None, again.prompt.as_deref().unwrap(), &format!("{:032x}", now() + 1)).unwrap();
+    cli.run(&args_for_msg(&action_write(&root, &allow), &target)).unwrap();
+    wait_for("the owner's Mac to refuse a Helper's Allow", &|| panel().result.as_deref() == Some("refused"));
+    assert_eq!(sim.step.load(Ordering::SeqCst), 1, "nothing was applied");
+    println!("DONE: paired, allowed as Trusted, refused as Helper");
+    publisher.closed(&sim.id, None);
+    std::thread::sleep(Duration::from_secs(6));
+    listener.stop();
+}

@@ -280,3 +280,34 @@ and its map; opening revoked everything and read back as open.
 **Not verified:** a second person (one login cannot play two); a regular member being refused;
 the Settings block, the people row and the visiting view in the running app (component tests
 only); the map being published by the running app.
+
+## Built: part 2, Act (2026-11-20)
+
+Plan: `docs/superpowers/plans/2026-11-20-team-villages-act.md`. Section 5 is built. Differences:
+
+- **This Mac's key is a login-Keychain key found by its label, not marked non-exportable.** The
+  Keychain's own access list protects it (another app asks the user); an agent the user lets into
+  the Keychain could export it. The design asked for a key that cannot be exported.
+- **The owner learns what a teammate did from a line in Settings › People** (the last action),
+  not from a notification or the builder's briefing. The thread on the board is the record.
+- **The remote logic serves the village whenever Board link is on.** The phone remote's switch
+  and its pause now decide about the owner's phones only (`set_phones_on`).
+- **A visit never makes a key.** This Mac's key is made when it first asks to be paired.
+- **Acting re-reads the thread first** and refuses when the wait is no longer the one the panel
+  showed, before anything is signed.
+- **A teammate has one Mac paired per village**; pairing another replaces it.
+- **The first time a Mac listens to a board it starts at the newest event**, so something posted
+  in the seconds before its listener is up is missed (seen once in the real run: a pairing
+  request). After the first event it resumes from its saved place.
+
+**Verified on the real board** (`real_mate_run`, scratch board, one login playing both sides, the
+owner's phone remote off): the owner opened a pairing in `v/<owner>/pair`; the visitor found the
+ticket by the code, posted its request, and both sides showed the same check number; after
+Confirm the map named the key as trusted; the visitor's Allow for a waiting builder was applied
+and its panel showed the result; lowered to Helper, the next Allow was refused and nothing was
+applied. The Mac key was made, used and removed in the real Keychain (`keychain_key_round_trip`).
+
+**Not verified:** two people on two Macs (the pairing rule "only the invited person's login" was
+exercised with the same login on both sides, so a wrong login being turned away is unit-tested
+only); the screens in the running app; a real agent session answered by a teammate (the run used
+the simulated session behind the same interface).

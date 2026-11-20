@@ -169,7 +169,7 @@ fn can_follows_the_table() {
 }
 
 fn phones() -> Vec<Phone> {
-    vec![Phone { key: KEY_ID.into(), public: public(), name: "iPhone".into(), paired_at: 1, last_used: 0 }]
+    vec![Phone { key: KEY_ID.into(), public: public(), name: "iPhone".into(), paired_at: 1, last_used: 0, record: None }]
 }
 
 fn open() -> Option<Open<'static>> {
@@ -215,7 +215,7 @@ fn signer() -> (Vec<Phone>, impl Fn(&mut Action)) {
     let pair = EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_FIXED_SIGNING, pkcs8.as_ref(), &rng).unwrap();
     let public = pair.public_key().as_ref().to_vec();
     let key = key_id(&public);
-    let phones = vec![Phone { key: key.clone(), public, name: "t".into(), paired_at: 1, last_used: 0 }];
+    let phones = vec![Phone { key: key.clone(), public, name: "t".into(), paired_at: 1, last_used: 0, record: None }];
     let sign = move |a: &mut Action| {
         a.key = key.clone();
         loop {

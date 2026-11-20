@@ -14,6 +14,8 @@ use crate::queue::{queue_reason, QueueReason};
 pub mod app;
 pub mod cli;
 pub mod listen;
+pub mod pairing;
+pub mod phones;
 pub mod publisher;
 pub mod remote;
 pub mod store;

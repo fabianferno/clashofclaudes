@@ -47,6 +47,8 @@ rustls = { version = "0.23", default-features = false, features = ["ring"] }
 
 # App board snapshots: WKWebView's own snapshot of a hidden window (see `snapshot.rs`).
 [target.'cfg(target_os = "macos")'.dependencies]
+# The phone remote's paired phones (`board/phones.rs`): the login Keychain. Already built for Tauri.
+security-framework = "3"
 objc2 = "0.6"
 block2 = "0.6"
 objc2-foundation = { version = "0.3", features = ["NSData", "NSDictionary", "NSError", "NSValue", "NSString", "NSGeometry", "NSArray"] }

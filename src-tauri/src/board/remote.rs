@@ -21,6 +21,9 @@ pub struct Phone {
     pub name: String,
     pub paired_at: i64,
     pub last_used: i64,
+    /// Its record's message id on the board, once posted (edited when the phone is removed).
+    #[serde(default)]
+    pub record: Option<String>,
 }
 
 mod b64_bytes {

@@ -1,0 +1,178 @@
+use super::*;
+use crate::board::cli::MsgWrite;
+use crate::board::listen::Event;
+use crate::board::remote::{b64, check_number, key_id, unb64};
+use std::collections::BTreeMap;
+
+const PUB: &str = "BJFoira10seT_4mQCR9cHCW_d571sQbL3La0PctTmwr5P3GDEX_lc0QORs_pqRotn_e4cNgEMUb1Sdclf3Km8E8";
+const NOW: i64 = 1_000_000;
+
+fn request(id: &str, ticket: &str, public: &str, name: &str) -> Event {
+    Event {
+        cursor: "c".into(),
+        kind: "message.posted".into(),
+        id: id.into(),
+        thread_root: Some(ticket.into()),
+        channel: "v/ada/remote".into(),
+        text: serde_json::json!({ "public": public, "name": name }).to_string(),
+        labels: BTreeMap::from([("coc.kind".to_string(), "pair".to_string())]),
+        principal: "vercel:project:prj_K:production".into(),
+        profile: Some("remote".into()),
+        person: false,
+    }
+}
+
+/// A pairing with its ticket posted as `msg_t_1`.
+fn open() -> Pairing {
+    let mut p = Pairing::default();
+    p.start(NOW, 482_913, "h1", "ada");
+    p.ticket_posted("msg_t_1".into());
+    p
+}
+
+fn json(text: &str) -> serde_json::Value {
+    serde_json::from_str(text).unwrap()
+}
+
+#[test]
+fn the_ticket_carries_the_code_until_and_host() {
+    let mut p = Pairing::default();
+    let MsgWrite::Post { channel, text, labels, key } = p.start(NOW, 1_000_042, "h1", "ada") else { panic!() };
+    assert_eq!(channel, "v/ada/remote");
+    assert_eq!(labels, [("coc.kind".to_string(), "pair-open".to_string()), ("coc.code".to_string(), "000042".to_string()), ("coc.host".to_string(), "h1".to_string())]);
+    assert_eq!(json(&text), serde_json::json!({ "host": "h1", "code": "000042", "until": NOW + 300_000, "state": "open" }));
+    assert_eq!(key, format!("coc-pair-h1-{NOW}"));
+    assert_eq!(p.state(), &PairState::Open { code: "000042".into(), until: NOW + 300_000 });
+}
+
+#[test]
+fn a_request_under_our_ticket_asks_with_the_check_number() {
+    let mut p = open();
+    assert_eq!(p.on_event(&request("msg_t_2", "msg_t_1", PUB, "  Ada's iPhone  "), NOW + 1), None);
+    let PairState::Asking(r) = p.state() else { panic!("{:?}", p.state()) };
+    assert_eq!((r.id.as_str(), r.name.as_str()), ("msg_t_2", "Ada's iPhone"));
+    assert_eq!(r.check, check_number(&unb64(PUB).unwrap(), "msg_t_1"));
+    assert_eq!(r.check, "792 693", "the number the phone shows (scripts/remote-vectors.mjs)");
+}
+
+#[test]
+fn what_is_not_a_request_for_our_ticket_is_ignored() {
+    let mut p = open();
+    p.on_event(&request("msg_x_2", "msg_x_1", PUB, "x"), NOW);
+    let mut unlabelled = request("msg_t_2", "msg_t_1", PUB, "x");
+    unlabelled.labels.clear();
+    p.on_event(&unlabelled, NOW);
+    let mut edited = request("msg_t_2", "msg_t_1", PUB, "x");
+    edited.kind = "message.edited".into();
+    p.on_event(&edited, NOW);
+    p.on_event(&request("msg_t_2", "msg_t_1", "AAAA", "short key"), NOW);
+    p.on_event(&request("msg_t_2", "msg_t_1", &b64(&[5u8; 65]), "not an uncompressed point"), NOW);
+    let mut garbage = request("msg_t_2", "msg_t_1", PUB, "x");
+    garbage.text = "hello".into();
+    p.on_event(&garbage, NOW);
+    assert!(matches!(p.state(), PairState::Open { .. }), "{:?}", p.state());
+    // before the ticket's id is known, and with no pairing at all
+    let mut early = Pairing::default();
+    early.start(NOW, 1, "h1", "ada");
+    early.on_event(&request("msg_t_2", "msg_t_1", PUB, "x"), NOW);
+    assert!(matches!(early.state(), PairState::Open { .. }));
+    let mut idle = Pairing::default();
+    assert_eq!(idle.on_event(&request("msg_t_2", "msg_t_1", PUB, "x"), NOW), None);
+    assert_eq!(idle.state(), &PairState::Idle);
+}
+
+#[test]
+fn a_second_request_cancels() {
+    let mut p = open();
+    p.on_event(&request("msg_t_2", "msg_t_1", PUB, "mine"), NOW);
+    // the same request heard twice (a restarted tail) is one request
+    assert_eq!(p.on_event(&request("msg_t_2", "msg_t_1", PUB, "mine"), NOW), None);
+    assert!(matches!(p.state(), PairState::Asking(_)));
+    let closed = p.on_event(&request("msg_t_3", "msg_t_1", PUB, "someone else"), NOW).expect("the ticket is closed");
+    let MsgWrite::Edit { id, text } = closed else { panic!() };
+    assert_eq!((id.as_str(), json(&text)["state"].as_str()), ("msg_t_1", Some("closed")));
+    assert!(matches!(p.state(), PairState::Cancelled(_)));
+    assert!(p.confirm(NOW).is_none());
+}
+
+#[test]
+fn confirm_gives_the_phone_and_its_record() {
+    let mut p = open();
+    assert!(p.confirm(NOW).is_none(), "nothing to confirm yet");
+    p.on_event(&request("msg_t_2", "msg_t_1", PUB, "iPhone"), NOW);
+    let (phone, writes) = p.confirm(NOW + 9).unwrap();
+    let public = unb64(PUB).unwrap();
+    assert_eq!((phone.key.clone(), phone.public.clone(), phone.name.as_str(), phone.paired_at, phone.record.clone()), (key_id(&public), public, "iPhone", NOW + 9, None));
+    let [MsgWrite::Post { channel, text, labels, .. }, MsgWrite::Edit { id, text: closed }] = writes.as_slice() else { panic!("{writes:?}") };
+    assert_eq!(channel, "v/ada/remote");
+    assert_eq!(labels, &[("coc.kind".to_string(), "phone".to_string()), ("coc.key".to_string(), phone.key.clone()), ("coc.host".to_string(), "h1".to_string())]);
+    assert_eq!(json(text), serde_json::json!({ "key": phone.key, "public": PUB, "name": "iPhone", "state": "paired", "host": "h1" }));
+    assert_eq!((id.as_str(), json(closed)["state"].as_str()), ("msg_t_1", Some("closed")));
+    assert_eq!(p.state(), &PairState::Idle);
+    assert_eq!(json(&phone_record(&phone, "removed", "h1"))["state"], "removed");
+}
+
+#[test]
+fn it_expires_after_five_minutes_and_can_be_cancelled() {
+    let mut p = open();
+    assert_eq!(p.tick(NOW + 299_999), None);
+    let Some(MsgWrite::Edit { id, .. }) = p.tick(NOW + 300_000) else { panic!() };
+    assert_eq!(id, "msg_t_1");
+    assert!(matches!(p.state(), PairState::Cancelled(_)));
+    assert_eq!(p.tick(NOW + 400_000), None, "closed once");
+    // a request that comes late finds nothing open
+    p.on_event(&request("msg_t_2", "msg_t_1", PUB, "late"), NOW + 400_000);
+    assert!(matches!(p.state(), PairState::Cancelled(_)));
+
+    let mut asking = open();
+    asking.on_event(&request("msg_t_2", "msg_t_1", PUB, "iPhone"), NOW);
+    assert!(matches!(asking.cancel(), Some(MsgWrite::Edit { .. })));
+    assert_eq!(asking.state(), &PairState::Idle);
+    assert_eq!(asking.cancel(), None);
+    // starting again replaces whatever was there
+    asking.start(NOW, 7, "h1", "ada");
+    assert_eq!(asking.state(), &PairState::Open { code: "000007".into(), until: NOW + 300_000 });
+}
+
+#[test]
+fn the_village_root_says_when_the_mac_was_last_seen() {
+    assert_eq!(json(&village_text("h1", "0.9.0", 77)), serde_json::json!({ "host": "h1", "version": "0.9.0", "seen": 77 }));
+}
+
+mod phones {
+    use crate::board::phones::*;
+    use crate::board::remote::Phone;
+
+    fn secrets() -> Secrets {
+        Secrets { phones: vec![Phone { key: "k1".into(), public: vec![4, 1, 2], name: "iPhone".into(), paired_at: 1, last_used: 2, record: Some("msg_1".into()) }], setup_secret: Some("s".into()) }
+    }
+
+    #[test]
+    fn secrets_round_trip_in_memory() {
+        let store = MemoryStore::default();
+        assert_eq!(store.load().unwrap(), Secrets::default());
+        store.save(&secrets()).unwrap();
+        assert_eq!(store.load().unwrap(), secrets());
+    }
+
+    #[test]
+    fn secrets_are_one_json_blob() {
+        let bytes = encode(&secrets());
+        assert_eq!(decode(&bytes).unwrap(), secrets());
+        assert!(decode(b"not json").is_err(), "a damaged item is an error, never an empty list");
+    }
+
+    /// The real Keychain, under a service name of its own. Run by hand:
+    /// `cargo test --lib keychain_round_trip -- --ignored`
+    #[test]
+    #[ignore]
+    fn keychain_round_trip() {
+        let k = Keychain { service: format!("dev.clashofclaudes.test.{}", uuid::Uuid::new_v4()) };
+        assert_eq!(k.load().unwrap(), Secrets::default(), "no item yet");
+        k.save(&secrets()).unwrap();
+        assert_eq!(k.load().unwrap(), secrets());
+        k.save(&Secrets::default()).unwrap();
+        assert_eq!(k.load().unwrap(), Secrets::default());
+        k.delete().unwrap();
+    }
+}

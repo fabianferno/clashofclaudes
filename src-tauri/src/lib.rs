@@ -396,7 +396,7 @@ pub fn run() {
                 let visits_changed = Arc::new(move || {
                     let _ = v.emit("visits-changed", board::app::visits(v.clone()));
                 });
-                app.manage(board::app::BoardState::new(&board_dir, files, Arc::downgrade(&manager), changed, visits_changed));
+                app.manage(board::app::BoardState::new(&board_dir, files, Arc::downgrade(&manager), changed, visits_changed, app.handle().clone()));
             }
             {
                 let (m, workspaces, builders) = (manager.clone(), data.workspaces.clone(), data.builders.clone());
@@ -544,6 +544,13 @@ pub fn run() {
             board::app::invite_put,
             board::app::invite_remove,
             board::app::mate_pair_start,
+            board::yard_app::lending,
+            board::yard_app::lend_set,
+            board::yard_app::borrow_requests,
+            board::yard_app::borrow_accept,
+            board::yard_app::borrow_decline,
+            board::yard_app::lent_sessions,
+            board::yard_app::lent_push,
             board::app::mate_key,
             board::app::mate_pair,
             board::app::visit_act,

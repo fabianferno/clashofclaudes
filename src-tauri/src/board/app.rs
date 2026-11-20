@@ -28,7 +28,7 @@ struct Link {
 }
 
 pub struct BoardState {
-    publisher: Arc<Publisher>,
+    pub(crate) publisher: Arc<Publisher>,
     cli: Arc<dyn BoardCli>,
     link: Arc<Mutex<Link>>,
     /// The feature is on and the owner is known: session updates are worth looking at.
@@ -45,10 +45,14 @@ pub struct BoardState {
     access: Arc<Mutex<()>>,
     /// This Mac's key: what signs its owner's actions in the villages they visit.
     mac_key: Arc<dyn super::mac_key::MacKey>,
+    /// The lender's desk: borrow requests, borrowed sessions, their push.
+    pub desk: Arc<super::desk::Desk>,
+    /// The wait (`state_since`) each borrowed session's branch was last pushed for.
+    pushed_for: Mutex<std::collections::HashMap<String, i64>>,
 }
 
 /// The session manager, as the phone remote uses it.
-struct ManagerSessions(std::sync::Weak<crate::sessions::SessionManager>);
+struct ManagerSessions(std::sync::Weak<crate::sessions::SessionManager>, Option<tauri::AppHandle>);
 
 impl ManagerSessions {
     fn with(&self, f: impl FnOnce(&crate::sessions::SessionManager) -> anyhow::Result<()>) -> Result<(), String> {
@@ -73,26 +77,45 @@ impl Sessions for ManagerSessions {
     fn pick_if(&self, id: &str, since: i64, pick: Option<usize>, text: &str) -> Result<(), String> {
         self.with(|m| m.pick_if(id, since, pick, text))
     }
+    /// The borrower said a finished borrowed session is done: it is closed as the lender's own
+    /// Close would close it (accepted), if it is still finished and in that wait.
+    fn close_if(&self, id: &str, since: i64) -> Result<(), String> {
+        let m = self.0.upgrade().ok_or("the app is quitting")?;
+        let s = m.list().into_iter().find(|s| s.id == id).ok_or("no such session")?;
+        if s.state_since != since || !matches!(s.state, crate::model::SessionState::Finished) {
+            return Err("stale: it is no longer finished".into());
+        }
+        let app = self.1.clone().ok_or("this app cannot close a session from a message")?;
+        let st = app.try_state::<AppState>().ok_or("the app is starting")?;
+        tauri::async_runtime::block_on(crate::commands::close_session(id.to_string(), Some(false), app.clone(), st)).map(|_| ())
+    }
 }
 
 impl BoardState {
     /// `data_dir`: where `board.json` lives and where `vercel` runs. `files`: a session's changed files.
     /// `changed`: called when what Settings › Phone remote shows has changed. `visits_changed`:
     /// when the villages to visit, or one of their maps, changed.
-    pub fn new(data_dir: &Path, files: super::publisher::Files, manager: std::sync::Weak<crate::sessions::SessionManager>, changed: Arc<dyn Fn() + Send + Sync>, visits_changed: Arc<dyn Fn() + Send + Sync>) -> BoardState {
+    pub fn new(data_dir: &Path, files: super::publisher::Files, manager: std::sync::Weak<crate::sessions::SessionManager>, changed: Arc<dyn Fn() + Send + Sync>, visits_changed: Arc<dyn Fn() + Send + Sync>, app: tauri::AppHandle) -> BoardState {
         let cli: Arc<dyn BoardCli> = Arc::new(VercelCli { program: None, cwd: data_dir.to_path_buf(), timeout: CLI_TIMEOUT });
         let now: super::publisher::Clock = Arc::new(|| std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0));
         let publisher = Publisher::start(cli.clone(), data_dir.join("board.json"), files, now.clone());
         let remote = Arc::new(Remote::new(
             publisher.clone(),
-            Arc::new(ManagerSessions(manager)),
+            Arc::new(ManagerSessions(manager, Some(app.clone()))),
             Arc::new(super::phones::Keychain::app()),
             data_dir.join("board-remote.json"),
-            now,
+            now.clone(),
             changed,
         ));
+        let borrow_changed = {
+            let h = app.clone();
+            Arc::new(move || {
+                let _ = h.emit("borrow-changed", ());
+            })
+        };
+        let desk = Arc::new(super::desk::Desk::new(remote.clone(), publisher.clone(), Arc::new(super::yard_app::AppYard(app.clone())), data_dir.join("board-borrowed.json"), now, borrow_changed));
         let visits = Arc::new(Mutex::new(super::visits::Visits::load(data_dir.join("board-visits.json"))));
-        let (hears, sees) = (remote.clone(), visits.clone());
+        let (hears, sees, asks) = (remote.clone(), visits.clone(), desk.clone());
         let listener = Listener::start(
             cli.clone(),
             data_dir.join("board-listen.json"),
@@ -101,22 +124,33 @@ impl BoardState {
                 if sees.lock().unwrap_or_else(|p| p.into_inner()).on_event(&e, now_ms()) {
                     visits_changed();
                 }
+                // A teammate asks to borrow a builder: judged and started off this thread (it
+                // fetches origin and makes a worktree), so other events are not held up.
+                if e.labels.get("coc.kind").map(String::as_str) == Some("borrow") {
+                    let (desk, e) = (asks.clone(), e.clone());
+                    std::thread::spawn(move || desk.on_event(&e));
+                    return;
+                }
                 hears.handle(e);
             }),
         );
         // the remote's clock: an expired pairing ends, the village root says the Mac is there
         let ticks = Arc::downgrade(&remote);
+        let desk_ticks = Arc::downgrade(&desk);
         std::thread::Builder::new()
             .name("board-remote-tick".into())
             .spawn(move || {
                 while let Some(r) = ticks.upgrade() {
                     r.tick();
                     drop(r);
+                    if let Some(d) = desk_ticks.upgrade() {
+                        d.tick(); // ask-first requests nobody answered expire
+                    }
                     std::thread::sleep(Duration::from_secs(1));
                 }
             })
             .expect("remote tick thread");
-        BoardState { publisher, cli, link: Arc::default(), active: AtomicBool::new(false), remote, listener, map: Arc::default(), visits, access: Arc::default(), mac_key: Arc::new(super::mac_key::KeychainKey::app()) }
+        BoardState { publisher, cli, link: Arc::default(), active: AtomicBool::new(false), remote, listener, map: Arc::default(), visits, access: Arc::default(), mac_key: Arc::new(super::mac_key::KeychainKey::app()), desk, pushed_for: Mutex::default() }
     }
 
     fn link(&self) -> Link {
@@ -138,12 +172,12 @@ pub fn config(data: &AppData, owner: &str) -> Config {
 /// An agent session as the publisher wants it; None for terminals and for sessions whose
 /// workspace or builder is gone.
 /// `answerable`: the app has the keys for its open permission prompt.
-pub fn session_view(data: &AppData, owner: &str, info: &SessionInfo, answerable: bool) -> Option<SessionView> {
+pub fn session_view(data: &AppData, owner: &str, info: &SessionInfo, answerable: bool, by: Option<String>) -> Option<SessionView> {
     let SessionKind::Agent { builder_id } = &info.kind else { return None };
     let builder = data.builders.iter().find(|b| &b.id == builder_id)?;
     let ws = data.workspaces.iter().find(|w| w.id == info.workspace_id)?;
     let channel = ws.board_shared.then(|| channel(owner, &workspace_slugs(&data.workspaces)[&ws.id]));
-    Some(SessionView { info: info.clone(), builder: builder.name.clone(), agent: builder.agent.clone(), channel, answerable, by: None })
+    Some(SessionView { info: info.clone(), builder: builder.name.clone(), agent: builder.agent.clone(), channel, answerable, by })
 }
 
 /// What a session of `builder` in `ws` gets in its environment, so its own `vercel board` calls
@@ -224,7 +258,7 @@ pub fn apply<R: Runtime>(app: &AppHandle<R>) {
         // asked outside the data lock: it takes the session manager's
         let answerable: Vec<bool> = sessions.iter().map(|i| st.manager.answerable(&i.id)).collect();
         let d = st.data();
-        let views: Vec<SessionView> = sessions.iter().zip(answerable).filter_map(|(i, a)| session_view(&d, owner, i, a)).collect();
+        let views: Vec<SessionView> = sessions.iter().zip(answerable).filter_map(|(i, a)| session_view(&d, owner, i, a, bs.desk.by(&i.id))).collect();
         (config(&d, owner), views, board)
     };
     // The listener follows the board whenever it is connected (the villages this login may read:
@@ -555,6 +589,21 @@ pub fn tick_map<R: Runtime>(app: &AppHandle<R>) {
         let mut snap = super::snapshot::build(&d, &owner, &host, &sessions, &|id| bs.publisher.root_of(id), now);
         // each paired teammate's key and level: their own app reads there what it may offer
         snap.mates = bs.remote.mates();
+        // what is lent, in the map's own names, and who each borrowed session works for
+        let slugs = workspace_slugs(&d.workspaces);
+        snap.lend = bs
+            .remote
+            .lends()
+            .iter()
+            .filter_map(|l| {
+                let b = d.builders.iter().find(|b| b.id == l.builder)?;
+                let workspaces = l.workspaces.as_ref().map(|ids| ids.iter().filter_map(|id| slugs.get(id).cloned()).collect());
+                Some(super::snapshot::MapLend { profile: profile_name(&b.name), name: b.name.clone(), workspaces, keys: l.keys.clone() })
+            })
+            .collect();
+        for s in &mut snap.sessions {
+            s.by = bs.desk.by(&s.id);
+        }
         (snap, format!("{}#{owner}", target(b).key()))
     };
     let write = bs.map.lock().unwrap_or_else(|e| e.into_inner()).tick(&key, &snap, snap.seen);
@@ -579,7 +628,16 @@ pub fn on_update<R: Runtime>(app: &AppHandle<R>, info: &SessionInfo) {
     }
     let (Some(st), Some(owner)) = (app.try_state::<AppState>(), bs.link().owner) else { return };
     let answerable = info.awaiting_decision && st.manager.answerable(&info.id);
-    let view = session_view(&st.data(), &owner, info, answerable);
+    let by = bs.desk.by(&info.id);
+    // A borrowed session finished: its branch is pushed, once for this wait, off this path.
+    if by.is_some() && matches!(info.state, crate::model::SessionState::Finished) {
+        let mut done = bs.pushed_for.lock().unwrap_or_else(|e| e.into_inner());
+        if done.insert(info.id.clone(), info.state_since) != Some(info.state_since) {
+            let (desk, publisher, id) = (bs.desk.clone(), bs.publisher.clone(), info.id.clone());
+            std::thread::spawn(move || desk.on_finished(&id, publisher.root_of(&id).as_deref()));
+        }
+    }
+    let view = session_view(&st.data(), &owner, info, answerable, by);
     if let Some(v) = view {
         bs.publisher.update(v);
     }
@@ -589,6 +647,15 @@ pub fn on_update<R: Runtime>(app: &AppHandle<R>, info: &SessionInfo) {
 pub fn on_closed<R: Runtime>(app: &AppHandle<R>, session_id: &str, accepted: Option<bool>) {
     if let Some(bs) = app.try_state::<BoardState>() {
         bs.publisher.closed(session_id, accepted.map(|a| if a { Outcome::Accepted } else { Outcome::Discarded }));
+        // A borrowed session's worktree goes when that loses nothing; else the lender is told where it is.
+        if bs.desk.by(session_id).is_some() {
+            let (desk, id, h) = (bs.desk.clone(), session_id.to_string(), app.clone());
+            std::thread::spawn(move || {
+                if let Some(path) = desk.on_closed(&id) {
+                    let _ = h.emit("borrow-kept", super::yard_app::kept_note(&path));
+                }
+            });
+        }
     }
 }
 
@@ -927,12 +994,12 @@ mod tests {
     #[test]
     fn session_view_gives_shared_workspaces_a_channel() {
         let d = data();
-        let v = session_view(&d, "ada", &agent("w1", "b1"), false).unwrap();
+        let v = session_view(&d, "ada", &agent("w1", "b1"), false, None).unwrap();
         assert_eq!((v.builder.as_str(), v.agent, v.channel.as_deref()), ("Wizard", AgentKind::Claude, Some("v/ada/w/api-server")));
-        assert_eq!(session_view(&d, "ada", &agent("w2", "b1"), false).unwrap().channel, None);
-        assert!(session_view(&d, "ada", &info("w1", SessionKind::Terminal), false).is_none());
-        assert!(session_view(&d, "ada", &agent("w1", "gone"), false).is_none());
-        assert!(session_view(&d, "ada", &agent("gone", "b1"), false).is_none());
+        assert_eq!(session_view(&d, "ada", &agent("w2", "b1"), false, None).unwrap().channel, None);
+        assert!(session_view(&d, "ada", &info("w1", SessionKind::Terminal), false, None).is_none());
+        assert!(session_view(&d, "ada", &agent("w1", "gone"), false, None).is_none());
+        assert!(session_view(&d, "ada", &agent("gone", "b1"), false, None).is_none());
     }
 
     #[test]
@@ -1004,7 +1071,7 @@ mod tests {
         let p = Publisher::new(Arc::new(SignedOutOnce(AtomicBool::new(true))), dir.path().join("board.json"), Arc::new(|_| vec![]), Arc::new(move || c.load(Ordering::SeqCst)));
         let d = data();
         p.configure(config(&d, "ada"));
-        p.update(session_view(&d, "ada", &agent("w1", "b1"), false).unwrap());
+        p.update(session_view(&d, "ada", &agent("w1", "b1"), false, None).unwrap());
         clock.fetch_add(10_000, Ordering::SeqCst);
         p.step();
         assert!(p.stopped_reason().is_some());

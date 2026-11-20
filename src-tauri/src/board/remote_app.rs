@@ -250,6 +250,11 @@ impl Remote {
         self.save_secrets(&mut g)
     }
 
+    /// The village this Mac serves, while the board is connected.
+    pub fn village(&self) -> Option<Village> {
+        self.lock().village.clone()
+    }
+
     /// What is lent.
     pub fn lends(&self) -> Vec<super::borrow::Lend> {
         self.lock().lends.clone()

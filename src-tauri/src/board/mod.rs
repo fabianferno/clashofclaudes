@@ -17,6 +17,7 @@ pub mod app;
 pub mod borrow;
 pub mod cli;
 pub mod deploy;
+pub mod desk;
 pub mod listen;
 pub mod mac_key;
 pub mod map;
@@ -32,6 +33,7 @@ mod real_run_tests;
 pub mod store;
 pub mod visitor;
 pub mod visits;
+pub mod yard_app;
 
 #[cfg(test)]
 mod tests;

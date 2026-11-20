@@ -241,6 +241,52 @@ pub struct BoardSettings {
     pub host_id: Option<String>,
     /// The phone remote: a web app the team deploys, whose paired phones answer builders.
     pub remote: RemoteSettings,
+    /// Who may see this village on the board: closed to the team or not, and the people invited.
+    pub access: AccessSettings,
+}
+
+/// Settings › Team: Private village and People. What the owner set; the board's grants are what
+/// counts, and Settings shows those.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct AccessSettings {
+    /// The owner wants the village closed to everyone they did not invite.
+    pub private: bool,
+    /// The grants this Mac made to close it (their ids on the board).
+    pub grants: Vec<String>,
+    pub invites: Vec<Invite>,
+    /// The default (private) was applied once; after that the switch is the owner's.
+    pub asked: bool,
+}
+
+/// One invited teammate.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Invite {
+    /// Their Vercel login's email.
+    pub email: String,
+    /// What the owner wants them to be. Acting needs their Mac paired as well; until then they see only.
+    pub level: Level,
+    /// Workspace ids they may see; None is every shared workspace.
+    #[serde(default)]
+    pub workspaces: Option<Vec<String>>,
+    /// Their grant's id on the board.
+    #[serde(default)]
+    pub grant: Option<String>,
+    /// Their Vercel user id, once the board has named it.
+    #[serde(default)]
+    pub user_id: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Level {
+    /// Sees builders and what they wait for.
+    Visitor,
+    /// Also answers questions and sends follow-ups.
+    Helper,
+    /// Also allows and denies tool calls.
+    Trusted,
 }
 
 /// Settings › Team › Phone remote. The paired phones themselves are in the Keychain.
@@ -259,7 +305,7 @@ pub struct RemoteSettings {
 
 impl Default for BoardSettings {
     fn default() -> Self {
-        Self { enabled: false, team: None, name: "village".into(), share_details: true, session_env: true, share_new: false, host_id: None, remote: RemoteSettings::default() }
+        Self { enabled: false, team: None, name: "village".into(), share_details: true, session_env: true, share_new: false, host_id: None, remote: RemoteSettings::default(), access: AccessSettings::default() }
     }
 }
 

@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::model::{AgentKind, SessionInfo, SessionState, Workspace};
 use crate::queue::{queue_reason, QueueReason};
 
+pub mod access;
 pub mod app;
 pub mod cli;
 pub mod deploy;

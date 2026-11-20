@@ -528,7 +528,7 @@ mod tests {
         let mut d = AppData::default();
         d.workspaces = vec![ws("w1", "API Server", true), ws("w2", "site", false)];
         d.builders = vec![Builder { id: "b1".into(), name: "Wizard".into(), agent: AgentKind::Claude, model: None, effort: None, custom_command: None }];
-        d.settings.board = BoardSettings { enabled: true, team: Some("acme".into()), name: "ops".into(), share_details: false, session_env: true, share_new: false, host_id: Some("h1".into()), remote: Default::default() };
+        d.settings.board = BoardSettings { enabled: true, team: Some("acme".into()), name: "ops".into(), share_details: false, session_env: true, share_new: false, host_id: Some("h1".into()), remote: Default::default(), access: Default::default() };
         d
     }
 

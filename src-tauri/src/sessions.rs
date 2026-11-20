@@ -49,6 +49,8 @@ const INITIAL_ROWS: u16 = 32;
 /// At most one `Output` event per session per this interval.
 const FLUSH_EVERY: Duration = Duration::from_millis(16);
 const TICK_EVERY: Duration = Duration::from_secs(1);
+/// Between keystrokes sent for a remote answer: an agent reads keys sent together as one input (the window's `KEY_GAP_MS`).
+const REMOTE_KEY_GAP: Duration = Duration::from_millis(120);
 /// Longest agent reply kept for the briefing, in characters (the end is kept).
 const LAST_MESSAGE_MAX: usize = 4000;
 /// Longest pending tool call kept, in characters.
@@ -102,6 +104,9 @@ struct SessionEntry {
     prompts: Vec<ScreenPrompt>,
     /// The prompt currently on screen; set while it is armed (and until it leaves the window).
     active_prompt: Option<ScreenPrompt>,
+    /// The `state_since` of the wait a remote answer was last taken for (`prompt_if`, `pick_if`):
+    /// a hooked agent's state only moves when its own hook arrives, and one wait takes one answer.
+    remote_taken: Option<i64>,
     /// Needle of the prompt seen in the window last time, so one that stays visible after an
     /// answer (old bytes linger in the window) is not armed again.
     prompt_seen: Option<&'static str>,
@@ -140,6 +145,7 @@ impl SessionEntry {
             checked_cwd: None,
             prompts: adapter.as_ref().map(|a| a.screen_prompts()).unwrap_or_default(),
             active_prompt: None,
+            remote_taken: None,
             prompt_seen: None,
             osc: adapter.as_ref().filter(|a| a.reads_osc_status()).map(|_| Osc7501::default()),
             osc_reply_owed: false,
@@ -992,6 +998,81 @@ impl SessionManager {
         e.info.state_since = e.quiet_since_ms;
         e.info.parked = None;
         self.send_updated(e);
+        Ok(())
+    }
+
+    /// Checks that a remote answer for the wait that began at `since` can still be taken, and
+    /// takes it: a second one for the same wait is stale.
+    fn take_remote(e: &mut SessionEntry, since: i64) -> Result<()> {
+        if e.info.state_since != since || e.remote_taken == Some(since) {
+            bail!("stale: that wait is over or was already answered");
+        }
+        if e.pty.is_none() || e.info.paused {
+            bail!("session is not running");
+        }
+        e.remote_taken = Some(since);
+        Ok(())
+    }
+
+    /// Types `text` into the agent's prompt and submits it, as the window's reply box does
+    /// (pasted as one block, Enter a moment later), but only for the wait that began at `since`
+    /// and only once. For a session that is finished, stuck, or asking with no picker open.
+    /// Blocks for the pause between paste and Enter: not for the hook or output path.
+    pub fn prompt_if(&self, id: &str, since: i64, text: &str) -> Result<()> {
+        let text = text.replace("\r\n", "\n").replace('\r', "\n");
+        let text = text.trim();
+        if text.is_empty() {
+            bail!("nothing to send");
+        }
+        {
+            let mut g = self.lock();
+            let e = g.get_mut(id).ok_or_else(|| anyhow!("unknown session {id}"))?;
+            let free = match e.info.state {
+                SessionState::NeedsYou { .. } => !e.info.awaiting_decision && e.info.questions.is_empty(),
+                SessionState::Stuck { .. } | SessionState::Finished => true,
+                _ => false,
+            };
+            if !free {
+                bail!("session is not waiting for words");
+            }
+            Self::take_remote(e, since)?;
+        }
+        self.write(id, format!("\x1b[200~{text}\x1b[201~").as_bytes())?;
+        std::thread::sleep(REMOTE_KEY_GAP);
+        // It moved on by itself meanwhile (answered in the terminal): the words stay unsent.
+        if self.lock().get(id).is_none_or(|e| e.info.state_since != since) {
+            bail!("stale: the session moved on before the words were sent");
+        }
+        self.write(id, b"\r")
+    }
+
+    /// Answers the open picker (one single-select question) with option `pick`, or with `text`
+    /// in place of an option, for the wait that began at `since` and only once.
+    pub fn pick_if(&self, id: &str, since: i64, pick: Option<usize>, text: &str) -> Result<()> {
+        let keys = {
+            let mut g = self.lock();
+            let e = g.get_mut(id).ok_or_else(|| anyhow!("unknown session {id}"))?;
+            let options = match (&e.info.state, e.info.questions.as_slice()) {
+                (SessionState::NeedsYou { .. }, [q]) if !e.info.awaiting_decision && !q.multi_select && !q.options.is_empty() => q.options.len(),
+                _ => bail!("no picker the app can answer is open"),
+            };
+            if pick.is_some_and(|p| p >= options) {
+                bail!("the picker has no such option");
+            }
+            let agent = e.adapter.as_ref().map(|a| a.kind()).ok_or_else(|| anyhow!("not an agent session"))?;
+            let keys = crate::ask_keys::pick_keys(agent, options, pick, text);
+            if keys.is_empty() {
+                bail!("nothing to answer with");
+            }
+            Self::take_remote(e, since)?;
+            keys
+        };
+        for (i, k) in keys.iter().enumerate() {
+            if i > 0 {
+                std::thread::sleep(REMOTE_KEY_GAP);
+            }
+            self.write(id, k.as_bytes())?;
+        }
         Ok(())
     }
 
@@ -1983,6 +2064,88 @@ mod tests {
         fx.mgr.approve_if(&s.id, second).unwrap();
         assert_eq!(state(&fx, &s.id), SessionState::Working);
         assert!(!fx.mgr.answerable(&s.id));
+    }
+
+    /// A session whose process prints what it is sent, without the terminal's own echo.
+    fn parrot(fx: &Fx) -> LaunchSpec {
+        LaunchSpec { program: "/bin/sh".into(), args: vec!["-c".into(), "stty -echo -icanon min 1; echo ready; cat".into()], env: vec![], cwd: fx.ws.path.clone() }
+    }
+
+    /// Starts a `parrot` session and waits until it listens.
+    fn start_parrot(fx: &Fx, builder: &str) -> SessionInfo {
+        let s = fx.mgr.start_with_spec(&fx.ws, &claude(builder), parrot(fx), Arc::new(ClaudeAdapter)).unwrap();
+        assert!(wait_until(|| scrollback(fx, &s.id).contains("ready")));
+        s
+    }
+
+    fn fruit_picker() -> serde_json::Value {
+        let q = serde_json::json!({"questions": [{"question": "Pick a fruit", "header": "Fruit", "multiSelect": false,
+            "options": [{"label": "Apple"}, {"label": "Banana"}]}]});
+        serde_json::json!({"hook_event_name": "PreToolUse", "cwd": "/x", "tool_name": "AskUserQuestion", "tool_input": q})
+    }
+
+    #[test]
+    fn prompt_if_types_once() {
+        let fx = fixture();
+        let s = start_parrot(&fx, "b1");
+        fx.mgr.on_hook(&s.id, fixture_json("stop.json"));
+        assert_eq!(state(&fx, &s.id), SessionState::Finished);
+        let since = info(&fx, &s.id).state_since;
+        fx.mgr.prompt_if(&s.id, since, " also add\r\ntests ").unwrap();
+        assert!(wait_until(|| scrollback(&fx, &s.id).contains("\x1b[200~also add\r\ntests\x1b[201~")), "{:?}", scrollback(&fx, &s.id));
+        // a second phone, or a second tap, for the same wait
+        let again = fx.mgr.prompt_if(&s.id, since, "also add tests").unwrap_err().to_string();
+        assert!(again.contains("stale"), "{again}");
+        std::thread::sleep(Duration::from_millis(300));
+        assert_eq!(scrollback(&fx, &s.id).matches("also add").count(), 1);
+    }
+
+    #[test]
+    fn prompt_if_refuses_another_since_and_a_session_that_cannot_take_it() {
+        let fx = fixture();
+        let s = start_parrot(&fx, "b1");
+        fx.mgr.on_hook(&s.id, fixture_json("stop.json"));
+        let since = info(&fx, &s.id).state_since;
+        assert!(fx.mgr.prompt_if(&s.id, since - 1, "x").unwrap_err().to_string().contains("stale"));
+        assert!(fx.mgr.prompt_if(&s.id, since, "  ").is_err(), "no words");
+        // a picker is open: words would land in it
+        fx.mgr.on_hook(&s.id, fruit_picker());
+        let since = info(&fx, &s.id).state_since;
+        assert!(fx.mgr.prompt_if(&s.id, since, "x").is_err());
+        // a permission prompt is open: so would they
+        let p = start_parrot(&fx, "b2");
+        fx.mgr.on_hook(&p.id, fixture_json("notification_permission.json"));
+        let since = info(&fx, &p.id).state_since;
+        assert!(fx.mgr.prompt_if(&p.id, since, "x").is_err());
+        std::thread::sleep(Duration::from_millis(200));
+        assert!(!scrollback(&fx, &s.id).contains('x') && !scrollback(&fx, &p.id).contains('x'), "nothing was typed");
+    }
+
+    #[test]
+    fn pick_if_presses_the_option_once() {
+        let fx = fixture();
+        let s = start_parrot(&fx, "b1");
+        let before = info(&fx, &s.id).state_since;
+        assert!(fx.mgr.pick_if(&s.id, before, Some(0), "").is_err(), "no picker is open");
+        fx.mgr.on_hook(&s.id, fruit_picker());
+        let since = info(&fx, &s.id).state_since;
+        assert!(fx.mgr.pick_if(&s.id, since, Some(2), "").is_err(), "no such option");
+        assert!(fx.mgr.pick_if(&s.id, since + 1, Some(1), "").unwrap_err().to_string().contains("stale"));
+        fx.mgr.pick_if(&s.id, since, Some(1), "").unwrap();
+        assert!(wait_until(|| scrollback(&fx, &s.id).contains('2')));
+        assert!(fx.mgr.pick_if(&s.id, since, Some(1), "").unwrap_err().to_string().contains("stale"), "taken once");
+        std::thread::sleep(Duration::from_millis(200));
+        assert_eq!(scrollback(&fx, &s.id).matches('2').count(), 1);
+    }
+
+    #[test]
+    fn pick_if_types_words_in_place_of_an_option() {
+        let fx = fixture();
+        let s = start_parrot(&fx, "b1");
+        fx.mgr.on_hook(&s.id, fruit_picker());
+        let since = info(&fx, &s.id).state_since;
+        fx.mgr.pick_if(&s.id, since, None, "a kiwi").unwrap();
+        assert!(wait_until(|| scrollback(&fx, &s.id).contains("3a kiwi")), "{:?}", scrollback(&fx, &s.id));
     }
 
     #[test]

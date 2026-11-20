@@ -1,6 +1,7 @@
 pub mod account;
 pub mod adapters;
 pub mod apps;
+pub mod ask_keys;
 pub mod attachments;
 pub mod commands;
 #[cfg(debug_assertions)]

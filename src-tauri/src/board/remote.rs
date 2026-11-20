@@ -47,7 +47,7 @@ pub struct Mate {
 pub fn allows(level: Option<Level>, d: Do) -> bool {
     match level {
         None | Some(Level::Trusted) => true,
-        Some(Level::Helper) => matches!(d, Do::Answer | Do::Followup),
+        Some(Level::Helper) => matches!(d, Do::Answer | Do::Followup | Do::Close),
         Some(Level::Visitor) => false,
     }
 }
@@ -70,6 +70,8 @@ pub enum Do {
     Deny,
     Answer,
     Followup,
+    /// The borrower of a finished borrowed session says it is done with it.
+    Close,
 }
 
 impl Do {
@@ -79,6 +81,7 @@ impl Do {
             Do::Deny => "deny",
             Do::Answer => "answer",
             Do::Followup => "followup",
+            Do::Close => "close",
         }
     }
 }
@@ -97,6 +100,11 @@ pub struct PromptBlock {
     pub question: Option<String>,
     #[serde(default)]
     pub options: Option<Vec<String>>,
+    /// For a borrowed session: the key id of the teammate it works for. Only that key (and the
+    /// lender's own phones) may act on it. Left out for the owner's own sessions, whose blocks
+    /// read exactly as before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub by: Option<String>,
 }
 
 /// The one question of an open picker a phone can answer: single-select, with options.
@@ -109,7 +117,8 @@ fn single_picker(info: &SessionInfo) -> Option<&crate::model::AskQuestion> {
 
 /// What the Mac will take from a phone for the session as it is now. `answerable`: the app has the
 /// keys for the open permission prompt (`SessionManager::answerable`).
-pub fn can(info: &SessionInfo, answerable: bool, share_details: bool) -> Vec<Do> {
+/// `borrowed`: the session works for a teammate; a finished one can then be closed by them.
+pub fn can(info: &SessionInfo, answerable: bool, share_details: bool, borrowed: bool) -> Vec<Do> {
     if !matches!(info.kind, SessionKind::Agent { .. }) || info.paused || info.parked.is_some() {
         return vec![];
     }
@@ -130,14 +139,16 @@ pub fn can(info: &SessionInfo, answerable: bool, share_details: bool) -> Vec<Do>
             }
         }
         SessionState::NeedsYou { .. } => vec![Do::Answer],
+        SessionState::Finished if borrowed => vec![Do::Followup, Do::Close],
         SessionState::Stuck { .. } | SessionState::Finished => vec![Do::Followup],
         _ => vec![],
     }
 }
 
 /// The prompt block for the session's current wait.
-pub fn block(info: &SessionInfo, session_id: &str, host: &str, wait: &str, answerable: bool, share_details: bool) -> PromptBlock {
-    let can = can(info, answerable, share_details);
+/// `by`: for a borrowed session, the key id of the teammate it works for.
+pub fn block(info: &SessionInfo, session_id: &str, host: &str, wait: &str, answerable: bool, share_details: bool, by: Option<&str>) -> PromptBlock {
+    let can = can(info, answerable, share_details, by.is_some());
     let (mut question, mut options) = (None, None);
     if share_details {
         if info.awaiting_decision {
@@ -147,7 +158,7 @@ pub fn block(info: &SessionInfo, session_id: &str, host: &str, wait: &str, answe
             options = Some(q.options.iter().map(|o| o.label.clone()).collect());
         }
     }
-    PromptBlock { v: 1, host: host.into(), session: session_id.into(), since: info.state_since, wait: wait.into(), can, question, options }
+    PromptBlock { v: 1, host: host.into(), session: session_id.into(), since: info.state_since, wait: wait.into(), can, question, options, by: by.map(str::to_string) }
 }
 
 /// The block's bytes: what is posted, hashed and signed. Never re-serialized on the way.
@@ -303,9 +314,18 @@ pub fn judge(a: &Action, phones: &[Phone], open: Option<Open<'_>>, seen: &HashSe
     if !block.can.contains(&a.r#do) || !allows(phone.level, a.r#do) {
         return Verdict::Refused;
     }
+    // A borrowed session is its borrower's: other teammates, whatever their level, look only.
+    // (The lender's own phones are not teammates and keep everything but Done.)
+    if phone.level.is_some() && block.by.as_ref().is_some_and(|by| by != &a.key) {
+        return Verdict::Refused;
+    }
+    // Done is the borrower's word on their own borrowed session; the lender closes in their app.
+    if a.r#do == Do::Close && (phone.level.is_none() || block.by.as_ref() != Some(&a.key)) {
+        return Verdict::Refused;
+    }
     let words = a.text.as_deref().is_some_and(|t| !t.trim().is_empty());
     let fits = match (a.r#do, &block.options) {
-        (Do::Allow | Do::Deny, _) => a.pick.is_none(),
+        (Do::Allow | Do::Deny | Do::Close, _) => a.pick.is_none(),
         // a picker: one of its options, or words in place of them
         (Do::Answer, Some(options)) => match a.pick {
             Some(p) => p < options.len(),

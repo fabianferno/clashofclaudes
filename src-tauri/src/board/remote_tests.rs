@@ -101,7 +101,7 @@ fn an_action_is_read_from_its_json() {
 
 #[test]
 fn block_round_trips_through_text() {
-    let b = block(&needs(), "s1", "h1", "answer", false, true);
+    let b = block(&needs(), "s1", "h1", "answer", false, true, None);
     let j = block_json(&b);
     let text = format!("Asking you: which one?{}", fenced(&j));
     assert_eq!(block_in(&text), Some(j.as_str()));
@@ -117,16 +117,16 @@ fn the_block_names_the_prompt() {
     let mut i = needs();
     i.awaiting_decision = true;
     i.asking = Some("Bash: npm test".into());
-    let b = block(&i, "s1", "h1", "decide", true, true);
+    let b = block(&i, "s1", "h1", "decide", true, true, None);
     assert_eq!((b.v, b.host.as_str(), b.session.as_str(), b.since, b.wait.as_str()), (1, "h1", "s1", 42, "decide"));
     assert_eq!(b.can, vec![Do::Allow, Do::Deny]);
     assert_eq!(b.question.as_deref(), Some("Bash: npm test"));
-    let off = block(&i, "s1", "h1", "decide", true, false);
+    let off = block(&i, "s1", "h1", "decide", true, false, None);
     assert_eq!((off.question, off.options, off.can), (None, None, vec![Do::Allow, Do::Deny]));
 
     let mut q = needs();
     q.questions = vec![question(&["sqlite", "postgres"], false)];
-    let b = block(&q, "s1", "h1", "answer", false, true);
+    let b = block(&q, "s1", "h1", "answer", false, true, None);
     assert_eq!(b.question.as_deref(), Some("Which database?"));
     assert_eq!(b.options, Some(vec!["sqlite".to_string(), "postgres".to_string()]));
 }
@@ -135,37 +135,37 @@ fn the_block_names_the_prompt() {
 fn can_follows_the_table() {
     let mut decide = needs();
     decide.awaiting_decision = true;
-    assert_eq!(can(&decide, true, true), vec![Do::Allow, Do::Deny]);
-    assert_eq!(can(&decide, false, true), vec![], "a prompt the app has no keys for");
+    assert_eq!(can(&decide, true, true, false), vec![Do::Allow, Do::Deny]);
+    assert_eq!(can(&decide, false, true, false), vec![], "a prompt the app has no keys for");
 
     let mut picker = needs();
     picker.questions = vec![question(&["a", "b"], false)];
-    assert_eq!(can(&picker, false, true), vec![Do::Answer]);
-    assert_eq!(can(&picker, false, false), vec![], "details off: the options cannot be shown");
+    assert_eq!(can(&picker, false, true, false), vec![Do::Answer]);
+    assert_eq!(can(&picker, false, false, false), vec![], "details off: the options cannot be shown");
     picker.questions = vec![question(&["a", "b"], true)];
-    assert_eq!(can(&picker, false, true), vec![], "multi-select");
+    assert_eq!(can(&picker, false, true, false), vec![], "multi-select");
     picker.questions = vec![question(&["a"], false), question(&["b"], false)];
-    assert_eq!(can(&picker, false, true), vec![], "two questions");
+    assert_eq!(can(&picker, false, true, false), vec![], "two questions");
     picker.questions = vec![question(&[], false)];
-    assert_eq!(can(&picker, false, true), vec![], "a question named only, answered in the terminal");
+    assert_eq!(can(&picker, false, true, false), vec![], "a question named only, answered in the terminal");
 
-    assert_eq!(can(&needs(), false, true), vec![Do::Answer], "asking with no picker");
-    assert_eq!(can(&needs(), false, false), vec![Do::Answer]);
-    assert_eq!(can(&info(SessionState::Stuck { reason: "x".into() }), false, true), vec![Do::Followup]);
-    assert_eq!(can(&info(SessionState::Finished), false, true), vec![Do::Followup]);
+    assert_eq!(can(&needs(), false, true, false), vec![Do::Answer], "asking with no picker");
+    assert_eq!(can(&needs(), false, false, false), vec![Do::Answer]);
+    assert_eq!(can(&info(SessionState::Stuck { reason: "x".into() }), false, true, false), vec![Do::Followup]);
+    assert_eq!(can(&info(SessionState::Finished), false, true, false), vec![Do::Followup]);
 
-    assert_eq!(can(&info(SessionState::Working), false, true), vec![]);
-    assert_eq!(can(&info(SessionState::Starting), false, true), vec![]);
-    assert_eq!(can(&info(SessionState::Ended { exit_code: Some(0) }), false, true), vec![]);
+    assert_eq!(can(&info(SessionState::Working), false, true, false), vec![]);
+    assert_eq!(can(&info(SessionState::Starting), false, true, false), vec![]);
+    assert_eq!(can(&info(SessionState::Ended { exit_code: Some(0) }), false, true, false), vec![]);
     let mut paused = info(SessionState::Finished);
     paused.paused = true;
-    assert_eq!(can(&paused, false, true), vec![]);
+    assert_eq!(can(&paused, false, true, false), vec![]);
     let mut parked = info(SessionState::Finished);
     parked.parked = Some("later".into());
-    assert_eq!(can(&parked, false, true), vec![]);
+    assert_eq!(can(&parked, false, true, false), vec![]);
     let mut term = info(SessionState::Finished);
     term.kind = SessionKind::Terminal;
-    assert_eq!(can(&term, false, true), vec![]);
+    assert_eq!(can(&term, false, true, false), vec![]);
 }
 
 fn phones() -> Vec<Phone> {
@@ -297,4 +297,103 @@ fn phones_off_stops_phones_and_not_teammates() {
     assert_eq!(judged(&allow, &phones, open(), &[], true), Verdict::Refused);
     phones[0].level = Some(Level::Trusted);
     assert_eq!(judged(&allow, &phones, open(), &[], true), Verdict::Apply, "a teammate's action never passes through the remote");
+}
+
+// Borrowed sessions: the block says whose it is (`by`), and only that key may act on it.
+const BORROWED_ASK: &str = r#"{"v":1,"host":"h1","session":"s1","since":42,"wait":"answer","can":["answer"],"by":"KEY"}"#;
+const BORROWED_DECIDE: &str = r#"{"v":1,"host":"h1","session":"s1","since":42,"wait":"decide","can":["allow","deny"],"question":"Bash: npm test","by":"KEY"}"#;
+const BORROWED_DONE: &str = r#"{"v":1,"host":"h1","session":"s1","since":42,"wait":"review","can":["followup","close"],"by":"KEY"}"#;
+
+fn on(block: &str, key: &str) -> (String, Action) {
+    let json = block.replace("KEY", key);
+    let mut a = action(Do::Answer);
+    a.prompt = sha_hex(json.as_bytes());
+    (json, a)
+}
+
+#[test]
+fn a_borrowed_session_takes_answers_only_from_its_borrower() {
+    use crate::model::Level;
+    let (mut phones, sign) = signer();
+    phones[0].level = Some(Level::Helper);
+    let mine = phones[0].key.clone();
+    // the borrower answers
+    let (json, mut a) = on(BORROWED_ASK, &mine);
+    a.text = Some("use sqlite".into());
+    sign(&mut a);
+    let open = |j: &'static str| Some(Open { block_json: j, since: 42, current_since: 42 });
+    let json: &'static str = Box::leak(json.into_boxed_str());
+    assert_eq!(judged(&a, &phones, open(json), &[], false), Verdict::Apply);
+    // another Helper, invited to the same workspace, does not
+    let (theirs, mut b) = on(BORROWED_ASK, "someone-elses-key");
+    b.text = Some("use sqlite".into());
+    sign(&mut b);
+    let theirs: &'static str = Box::leak(theirs.into_boxed_str());
+    assert_eq!(judged(&b, &phones, open(theirs), &[], false), Verdict::Refused);
+    // even a Trusted one cannot allow on someone else's borrow
+    phones[0].level = Some(Level::Trusted);
+    let (theirs, mut c) = on(BORROWED_DECIDE, "someone-elses-key");
+    c.r#do = Do::Allow;
+    sign(&mut c);
+    let theirs: &'static str = Box::leak(theirs.into_boxed_str());
+    assert_eq!(judged(&c, &phones, open(theirs), &[], false), Verdict::Refused);
+    // the lender's own phone still does everything on it
+    phones[0].level = None;
+    assert_eq!(judged(&c, &phones, open(theirs), &[], false), Verdict::Apply);
+}
+
+#[test]
+fn a_borrower_allows_only_when_trusted() {
+    use crate::model::Level;
+    let (mut phones, sign) = signer();
+    let mine = phones[0].key.clone();
+    let (json, mut a) = on(BORROWED_DECIDE, &mine);
+    a.r#do = Do::Allow;
+    sign(&mut a);
+    let json: &'static str = Box::leak(json.into_boxed_str());
+    let open = || Some(Open { block_json: json, since: 42, current_since: 42 });
+    phones[0].level = Some(Level::Helper);
+    assert_eq!(judged(&a, &phones, open(), &[], false), Verdict::Refused);
+    phones[0].level = Some(Level::Trusted);
+    assert_eq!(judged(&a, &phones, open(), &[], false), Verdict::Apply);
+}
+
+#[test]
+fn close_is_for_the_borrower_of_a_finished_borrowed_session_only() {
+    use crate::model::Level;
+    let (mut phones, sign) = signer();
+    phones[0].level = Some(Level::Helper);
+    let mine = phones[0].key.clone();
+    let (json, mut a) = on(BORROWED_DONE, &mine);
+    a.r#do = Do::Close;
+    sign(&mut a);
+    let json: &'static str = Box::leak(json.into_boxed_str());
+    let open = |j: &'static str| Some(Open { block_json: j, since: 42, current_since: 42 });
+    assert_eq!(judged(&a, &phones, open(json), &[], false), Verdict::Apply);
+    // someone else's borrow; a session that is nobody's borrow; one that does not offer it
+    for other in [BORROWED_DONE.replace("KEY", "someone-elses-key"), r#"{"v":1,"host":"h1","session":"s1","since":42,"wait":"review","can":["followup","close"]}"#.to_string(), BORROWED_ASK.replace("KEY", &mine)] {
+        let other: &'static str = Box::leak(other.into_boxed_str());
+        let mut b = a.clone();
+        b.prompt = sha_hex(other.as_bytes());
+        sign(&mut b);
+        assert_eq!(judged(&b, &phones, open(other), &[], false), Verdict::Refused, "{other}");
+    }
+    // not from a phone: the lender closes it in their own app
+    phones[0].level = None;
+    assert_eq!(judged(&a, &phones, open(json), &[], false), Verdict::Refused);
+}
+
+#[test]
+fn a_finished_borrowed_session_offers_done_and_names_its_borrower() {
+    let fin = info(SessionState::Finished);
+    assert_eq!(can(&fin, false, true, false), vec![Do::Followup]);
+    assert_eq!(can(&fin, false, true, true), vec![Do::Followup, Do::Close]);
+    assert_eq!(can(&info(SessionState::Stuck { reason: "x".into() }), false, true, true), vec![Do::Followup], "only a finished one can be closed");
+    let b = block(&fin, "s1", "h1", "review", false, true, Some("k_bob"));
+    assert_eq!((b.by.as_deref(), b.can.clone()), (Some("k_bob"), vec![Do::Followup, Do::Close]));
+    assert!(block_json(&b).ends_with(r#""by":"k_bob"}"#), "{}", block_json(&b));
+    // a session of the owner's own: no `by`, and its block reads exactly as before
+    let own = block(&fin, "s1", "h1", "review", false, true, None);
+    assert!(!block_json(&own).contains("by"), "{}", block_json(&own));
+    assert_eq!(serde_json::from_str::<PromptBlock>(&block_json(&own)).unwrap().by, None);
 }

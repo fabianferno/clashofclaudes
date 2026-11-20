@@ -80,7 +80,7 @@ impl Sim {
             _ => {}
         }
         println!("MAC step {step}: published {:?} since {since}", info.state);
-        self.publisher.update(SessionView { info, builder: "Wizard".into(), agent: AgentKind::Claude, channel: Some(self.channel.clone()), answerable: step < 2 });
+        self.publisher.update(SessionView { info, builder: "Wizard".into(), agent: AgentKind::Claude, channel: Some(self.channel.clone()), answerable: step < 2, by: None });
     }
 
     fn took(&self, what: String, since: i64) -> Result<(), String> {

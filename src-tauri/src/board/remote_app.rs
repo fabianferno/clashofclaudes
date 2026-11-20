@@ -48,6 +48,11 @@ pub trait Sessions: Send + Sync {
     fn deny_if(&self, id: &str, since: i64) -> Result<(), String>;
     fn prompt_if(&self, id: &str, since: i64, text: &str) -> Result<(), String>;
     fn pick_if(&self, id: &str, since: i64, pick: Option<usize>, text: &str) -> Result<(), String>;
+    /// Closes a finished borrowed session as done (its borrower said so), if it is still in the
+    /// wait that began at `since`.
+    fn close_if(&self, _id: &str, _since: i64) -> Result<(), String> {
+        Err("this app cannot close a session from a message".into())
+    }
 }
 
 /// Whose village this Mac is, on the board the app is connected to.
@@ -486,6 +491,7 @@ impl Remote {
                         Do::Deny => "denied",
                         Do::Answer => "answered",
                         Do::Followup => "sent a follow-up",
+                        Do::Close => "marked a borrowed builder's work done",
                     };
                     let what = match (&action.r#do, question) {
                         (Do::Allow | Do::Deny, Some(q)) => format!("{verb} `{q}`"),
@@ -505,6 +511,7 @@ impl Remote {
         match a.r#do {
             Do::Allow => self.sessions.approve_if(session, since),
             Do::Deny => self.sessions.deny_if(session, since),
+            Do::Close => self.sessions.close_if(session, since),
             Do::Answer if picker => self.sessions.pick_if(session, since, a.pick, text),
             Do::Answer | Do::Followup => self.sessions.prompt_if(session, since, text),
         }

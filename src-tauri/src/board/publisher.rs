@@ -51,6 +51,8 @@ pub struct SessionView {
     pub channel: Option<String>,
     /// The app has the keys for its open permission prompt.
     pub answerable: bool,
+    /// For a borrowed session: the key id of the teammate it works for.
+    pub by: Option<String>,
 }
 
 /// Told the new message's id, or None when the write was given up.
@@ -178,7 +180,7 @@ impl Publisher {
     /// Queues a close for `rec`'s thread on `target`.
     fn drain(inner: &mut Inner, id: &str, rec: &Published, target: &Target) {
         let Some(root) = rec.root.clone() else { return };
-        let ctx = Ctx { builder: "", agent: AgentKind::Custom, channel: &rec.channel, board: &rec.board, host_id: "", share_details: false, files: &[], answerable: false };
+        let ctx = Ctx { builder: "", agent: AgentKind::Custom, channel: &rec.channel, board: &rec.board, host_id: "", share_details: false, files: &[], answerable: false, by: None };
         let (writes, _) = plan(id, Some(rec), Now::Closed(None), &ctx);
         inner.drains.extend(writes.into_iter().map(|write| Drain { root: root.clone(), write, target: target.clone(), tries: 0 }));
     }
@@ -594,7 +596,11 @@ impl Publisher {
             Pending::Closed(o) => (Now::Closed(*o), "", AgentKind::Custom, ""),
         };
         let answerable = matches!(entry, Pending::Live(v) if v.answerable);
-        let ctx = Ctx { builder, agent, channel, board: &board, host_id: &cfg.host_id, share_details: cfg.share_details, files: &files, answerable };
+        let by = match entry {
+            Pending::Live(v) => v.by.as_deref(),
+            _ => None,
+        };
+        let ctx = Ctx { builder, agent, channel, board: &board, host_id: &cfg.host_id, share_details: cfg.share_details, files: &files, answerable, by };
         let (writes, planned) = plan(id, prev, now, &ctx);
         let mut root = prev.and_then(|p| p.root.clone());
         for w in &writes {

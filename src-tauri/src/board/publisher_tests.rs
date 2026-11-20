@@ -127,6 +127,7 @@ fn view(id: &str, state: SessionState, since: i64) -> SessionView {
         agent: AgentKind::Claude,
         channel: Some("v/ada/w/api".into()),
         answerable: false,
+        by: None,
     }
 }
 

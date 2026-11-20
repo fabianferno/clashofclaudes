@@ -193,6 +193,8 @@ pub struct Ctx<'a> {
     pub files: &'a [String],
     /// The app has the keys for the open permission prompt (`SessionManager::answerable`).
     pub answerable: bool,
+    /// For a borrowed session: the key id of the teammate it works for.
+    pub by: Option<&'a str>,
 }
 
 /// One call to the board. Replies, labels and edits go to the session's root, which the caller knows.
@@ -330,7 +332,7 @@ fn cut_to(text: &str, max: usize) -> String {
 
 /// The reply for a wait, and the prompt block that ends it. The prose is cut to leave the block whole.
 fn reply(session_id: &str, info: &SessionInfo, why: Wait, ctx: &Ctx<'_>) -> (Write, String) {
-    let block = remote::block_json(&remote::block(info, session_id, ctx.host_id, why.as_str(), ctx.answerable, ctx.share_details));
+    let block = remote::block_json(&remote::block(info, session_id, ctx.host_id, why.as_str(), ctx.answerable, ctx.share_details, ctx.by));
     let tail = remote::fenced(&block);
     let prose = cut_to(&reply_prose(info, why, ctx), MAX_TEXT.saturating_sub(tail.chars().count()));
     let write = Write::Reply {

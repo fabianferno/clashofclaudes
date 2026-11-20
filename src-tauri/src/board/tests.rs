@@ -31,7 +31,7 @@ fn info(state: SessionState) -> SessionInfo {
 }
 
 fn ctx<'a>(files: &'a [String], details: bool) -> Ctx<'a> {
-    Ctx { builder: "Wizard", agent: AgentKind::Claude, channel: "v/ada/w/api", board: "acme/village", host_id: "h1", share_details: details, files, answerable: false }
+    Ctx { builder: "Wizard", agent: AgentKind::Claude, channel: "v/ada/w/api", board: "acme/village", host_id: "h1", share_details: details, files, answerable: false, by: None }
 }
 
 fn needs(reason: &str) -> SessionState {

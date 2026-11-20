@@ -175,7 +175,7 @@ impl Pairing {
     pub fn confirm(&mut self, now: i64) -> Option<(Phone, Vec<MsgWrite>)> {
         let PairState::Asking(r) = &self.state else { return None };
         let ticket = self.ticket.take()?;
-        let phone = Phone { key: key_id(&r.public), public: r.public.clone(), name: r.name.clone(), paired_at: now, last_used: 0, record: None };
+        let phone = Phone { key: key_id(&r.public), public: r.public.clone(), name: r.name.clone(), paired_at: now, last_used: 0, record: None, level: None, who: None };
         let record = MsgWrite::Post {
             channel: channel(&ticket.owner),
             text: phone_record(&phone, "paired", &ticket.host),

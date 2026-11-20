@@ -89,7 +89,7 @@ fn rig(block: &str) -> Rig {
     let public = pair.public_key().as_ref().to_vec();
     let key = key_id(&public);
     let store = Arc::new(MemoryStore::default());
-    store.save(&Secrets { phones: vec![Phone { key: key.clone(), public, name: "iPhone".into(), paired_at: 1, last_used: 0, record: Some("msg_rec".into()) }], setup_secret: None }).unwrap();
+    store.save(&Secrets { phones: vec![Phone { key: key.clone(), public, name: "iPhone".into(), paired_at: 1, last_used: 0, record: Some("msg_rec".into()), level: None, who: None }], setup_secret: None }).unwrap();
     let sign = Box::new(move |a: &mut Action| {
         a.key = key.clone();
         loop {
@@ -376,4 +376,47 @@ fn a_keychain_that_cannot_be_read_pairs_no_one_and_says_so() {
     g.sent();
     r.handle(event("msg_a1", "msg_1", &serde_json::to_string(&g.action(Do::Allow, DECIDE, "n1")).unwrap()));
     assert_eq!(g.result("msg_a1"), "refused");
+}
+
+#[test]
+fn a_teammates_key_acts_by_its_level_even_with_the_phone_remote_off() {
+    use crate::model::Level;
+    let g = rig(DECIDE);
+    let key = g.store.load().unwrap().phones[0].key.clone();
+    // the paired key is a teammate's, and the owner's phone remote is switched off
+    let mut s = g.store.load().unwrap();
+    s.phones[0].level = Some(Level::Helper);
+    s.phones[0].who = Some(crate::board::remote::Mate { email: "bob@acme.com".into(), handle: "bob".into(), user_id: "u_bob".into() });
+    g.store.save(&s).unwrap();
+    g.r.reload();
+    g.r.set_phones_on(false);
+    g.sent();
+    g.hear("msg_a1", "msg_1", &g.action(Do::Allow, DECIDE, "n1"));
+    assert!(g.calls().is_empty());
+    assert_eq!(g.result("msg_a1"), "refused", "a Helper may not allow");
+    // the owner raises them to Trusted
+    g.r.set_mate_level("bob@acme.com", Level::Trusted).unwrap();
+    assert_eq!(g.store.load().unwrap().phones[0].level, Some(Level::Trusted));
+    g.hear("msg_a2", "msg_1", &g.action(Do::Allow, DECIDE, "n2"));
+    assert_eq!(g.calls(), ["approve s1 42"]);
+    assert_eq!(g.result("msg_a2"), "applied");
+    assert_eq!(g.r.acted().map(|a| (a.who, a.what)), Some(("bob".to_string(), "allowed `Bash: npm test`".to_string())));
+    // removed: at once nobody
+    g.r.remove_mate("bob@acme.com").unwrap();
+    assert!(g.store.load().unwrap().phones.iter().all(|p| p.key != key));
+    g.hear("msg_a3", "msg_1", &g.action(Do::Allow, DECIDE, "n3"));
+    assert_eq!(g.result("msg_a3"), "refused");
+    assert!(g.r.set_mate_level("bob@acme.com", Level::Helper).is_ok(), "no key yet: nothing to change");
+}
+
+#[test]
+fn with_the_phone_remote_off_the_owners_phone_is_refused_and_no_heartbeat_is_written() {
+    let g = rig(DECIDE);
+    g.r.set_phones_on(false);
+    g.sent();
+    g.hear("msg_a1", "msg_1", &g.action(Do::Allow, DECIDE, "n1"));
+    assert_eq!(g.result("msg_a1"), "refused");
+    g.r.tick();
+    assert!(g.sent().is_empty());
+    assert!(g.r.pair_start(1).is_err(), "no phone is paired while the phone remote is off");
 }

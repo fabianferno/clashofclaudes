@@ -3,7 +3,7 @@
 //!
 //! The board and the web remote only carry messages. An action counts when a phone the owner
 //! paired signed it, for the prompt this Mac itself last described.
-use crate::model::{SessionInfo, SessionKind, SessionState};
+use crate::model::{Level, SessionInfo, SessionKind, SessionState};
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -24,6 +24,32 @@ pub struct Phone {
     /// Its record's message id on the board, once posted (edited when the phone is removed).
     #[serde(default)]
     pub record: Option<String>,
+    /// None: one of the owner's own phones, which may do everything. Some: a teammate's Mac,
+    /// held to this level. This entry, in the Keychain, is the only authority for it.
+    #[serde(default)]
+    pub level: Option<Level>,
+    /// Whose Mac it is, for a teammate's key.
+    #[serde(default)]
+    pub who: Option<Mate>,
+}
+
+/// The teammate a paired key belongs to.
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Mate {
+    pub email: String,
+    /// Their Vercel username.
+    pub handle: String,
+    pub user_id: String,
+}
+
+/// Whether a key of this level may do `d` (None: the owner's own phone).
+pub fn allows(level: Option<Level>, d: Do) -> bool {
+    match level {
+        None | Some(Level::Trusted) => true,
+        Some(Level::Helper) => matches!(d, Do::Answer | Do::Followup),
+        Some(Level::Visitor) => false,
+    }
 }
 
 mod b64_bytes {
@@ -258,12 +284,13 @@ pub struct Open<'a> {
 }
 
 /// Whether the Mac takes `a`. `seen`: hashes of the signed bytes of actions already applied.
-/// `paused`: the remote is not trusted right now (its deployment changed).
-pub fn judge(a: &Action, phones: &[Phone], open: Option<Open<'_>>, seen: &HashSet<String>, paused: bool) -> Verdict {
-    if paused {
+/// `phones_off`: the phone remote is switched off, or not trusted right now (its deployment
+/// changed). That stops the owner's phones only: a teammate's action never passes through it.
+pub fn judge(a: &Action, phones: &[Phone], open: Option<Open<'_>>, seen: &HashSet<String>, phones_off: bool) -> Verdict {
+    let Some(phone) = phones.iter().find(|p| p.key == a.key) else { return Verdict::Refused };
+    if phone.level.is_none() && phones_off {
         return Verdict::Refused;
     }
-    let Some(phone) = phones.iter().find(|p| p.key == a.key) else { return Verdict::Refused };
     let signed = signed_bytes(a);
     if !verify(&phone.public, &signed, &a.sig) {
         return Verdict::Refused;
@@ -273,7 +300,7 @@ pub fn judge(a: &Action, phones: &[Phone], open: Option<Open<'_>>, seen: &HashSe
         return Verdict::Stale;
     }
     let Ok(block) = serde_json::from_str::<PromptBlock>(open.block_json) else { return Verdict::Stale };
-    if !block.can.contains(&a.r#do) {
+    if !block.can.contains(&a.r#do) || !allows(phone.level, a.r#do) {
         return Verdict::Refused;
     }
     let words = a.text.as_deref().is_some_and(|t| !t.trim().is_empty());

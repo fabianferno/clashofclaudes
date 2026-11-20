@@ -195,7 +195,7 @@ mod phones {
     use crate::board::remote::Phone;
 
     fn secrets() -> Secrets {
-        Secrets { phones: vec![Phone { key: "k1".into(), public: vec![4, 1, 2], name: "iPhone".into(), paired_at: 1, last_used: 2, record: Some("msg_1".into()) }], setup_secret: Some("s".into()) }
+        Secrets { phones: vec![Phone { key: "k1".into(), public: vec![4, 1, 2], name: "iPhone".into(), paired_at: 1, last_used: 2, record: Some("msg_1".into()), level: None, who: None }], setup_secret: Some("s".into()) }
     }
 
     #[test]

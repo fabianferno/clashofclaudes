@@ -107,9 +107,24 @@ struct Saved {
     seen: VecDeque<String>,
 }
 
+/// What a teammate did in this village, for the owner to see.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Acted {
+    /// Their Vercel username.
+    pub who: String,
+    /// "allowed `Bash: npm test`", "answered Wizard", …
+    pub what: String,
+    pub at: i64,
+}
+
 struct Inner {
     village: Option<Village>,
     paused: Option<String>,
+    /// The phone remote's own switch. Off: the owner's phones are refused; teammates still act.
+    phones_on: bool,
+    /// The last thing a teammate did here.
+    acted: Option<Acted>,
     phones: Vec<Phone>,
     setup_secret: Option<String>,
     keychain_error: Option<String>,
@@ -160,6 +175,8 @@ impl Remote {
         let inner = Inner {
             village: None,
             paused: None,
+            phones_on: true,
+            acted: None,
             phones: vec![],
             setup_secret: None,
             keychain_error: None,
@@ -197,6 +214,37 @@ impl Remote {
             self.reload();
         }
         (self.changed)();
+    }
+
+    /// The phone remote's switch: off refuses the owner's phones and stops its heartbeat;
+    /// teammates' paired Macs are not affected.
+    pub fn set_phones_on(&self, on: bool) {
+        self.lock().phones_on = on;
+    }
+
+    /// The last thing a teammate did in this village.
+    pub fn acted(&self) -> Option<Acted> {
+        self.lock().acted.clone()
+    }
+
+    /// The owner changed an invite's level: the teammate's paired key follows at once. Nothing
+    /// to do when their Mac is not paired yet.
+    pub fn set_mate_level(&self, email: &str, level: crate::model::Level) -> Result<(), String> {
+        let mut g = self.lock();
+        let mut changed = false;
+        for p in g.phones.iter_mut().filter(|p| p.who.as_ref().is_some_and(|w| w.email == email)) {
+            p.level = Some(level);
+            changed = true;
+        }
+        if changed { self.save_secrets(&mut g) } else { Ok(()) }
+    }
+
+    /// The owner removed an invite: that teammate's key is gone from this moment.
+    pub fn remove_mate(&self, email: &str) -> Result<(), String> {
+        let mut g = self.lock();
+        let before = g.phones.len();
+        g.phones.retain(|p| p.who.as_ref().is_none_or(|w| w.email != email));
+        if g.phones.len() != before { self.save_secrets(&mut g) } else { Ok(()) }
     }
 
     /// Reads the paired phones again.
@@ -323,7 +371,7 @@ impl Remote {
             };
             let seen: HashSet<String> = g.seen.iter().cloned().collect();
             let hash = sha_hex(&signed_bytes(&action));
-            let verdict = judge(&action, &g.phones, open, &seen, g.paused.is_some());
+            let verdict = judge(&action, &g.phones, open, &seen, g.paused.is_some() || !g.phones_on);
             match verdict {
                 Verdict::Refused => return refuse(&mut g),
                 Verdict::Stale => return verdict.as_str(),
@@ -344,8 +392,27 @@ impl Remote {
             }
         }
         let since = open.map(|(_, s)| s).unwrap_or_default();
-        match self.apply(session, since, &action, open_has_options(self.board.open_block(session))) {
-            Ok(()) => "applied",
+        let block = self.board.open_block(session);
+        let question = block.as_ref().and_then(|(b, _)| serde_json::from_str::<PromptBlock>(b).ok()).and_then(|b| b.question);
+        match self.apply(session, since, &action, open_has_options(block)) {
+            Ok(()) => {
+                // a teammate did this, not the owner: the owner is told who and what
+                let mut g = self.lock();
+                if let Some(who) = g.phones.iter().find(|p| p.key == action.key).and_then(|p| p.who.clone()) {
+                    let verb = match action.r#do {
+                        Do::Allow => "allowed",
+                        Do::Deny => "denied",
+                        Do::Answer => "answered",
+                        Do::Followup => "sent a follow-up",
+                    };
+                    let what = match (&action.r#do, question) {
+                        (Do::Allow | Do::Deny, Some(q)) => format!("{verb} `{q}`"),
+                        _ => verb.to_string(),
+                    };
+                    g.acted = Some(Acted { who: who.handle, what, at: now });
+                }
+                "applied"
+            }
             Err(e) if e.contains("stale") => Verdict::Stale.as_str(),
             Err(_) => "failed",
         }
@@ -365,7 +432,7 @@ impl Remote {
     pub fn pair_start(&self, rng: u64) -> Result<String, String> {
         let (write, code, stale) = {
             let mut g = self.lock();
-            let v = g.village.clone().ok_or("the phone remote is off")?;
+            let v = g.village.clone().filter(|_| g.phones_on).ok_or("the phone remote is off")?;
             if let Some(e) = &g.keychain_error {
                 return Err(e.clone());
             }
@@ -446,9 +513,11 @@ impl Remote {
         let (expired, beat) = {
             let mut g = self.lock();
             let Some(v) = g.village.clone() else { return };
+            let phones_on = g.phones_on;
             let expired = g.pairing.tick(now);
             let cancelled = expired.is_some() || matches!(g.pairing.state(), PairState::Cancelled(_));
-            let due = g.beat_at.is_none_or(|at| now - at >= HEARTBEAT_MS);
+            // the heartbeat in `remote` is for the phone remote's page: none while it is off
+            let due = phones_on && g.beat_at.is_none_or(|at| now - at >= HEARTBEAT_MS);
             let beat = match (g.root.clone(), due) {
                 (Some(id), true) => {
                     g.beat_at = Some(now);

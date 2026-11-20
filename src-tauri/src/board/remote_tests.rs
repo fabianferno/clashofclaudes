@@ -169,7 +169,7 @@ fn can_follows_the_table() {
 }
 
 fn phones() -> Vec<Phone> {
-    vec![Phone { key: KEY_ID.into(), public: public(), name: "iPhone".into(), paired_at: 1, last_used: 0, record: None }]
+    vec![Phone { key: KEY_ID.into(), public: public(), name: "iPhone".into(), paired_at: 1, last_used: 0, record: None, level: None, who: None }]
 }
 
 fn open() -> Option<Open<'static>> {
@@ -215,7 +215,7 @@ fn signer() -> (Vec<Phone>, impl Fn(&mut Action)) {
     let pair = EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_FIXED_SIGNING, pkcs8.as_ref(), &rng).unwrap();
     let public = pair.public_key().as_ref().to_vec();
     let key = key_id(&public);
-    let phones = vec![Phone { key: key.clone(), public, name: "t".into(), paired_at: 1, last_used: 0, record: None }];
+    let phones = vec![Phone { key: key.clone(), public, name: "t".into(), paired_at: 1, last_used: 0, record: None, level: None, who: None }];
     let sign = move |a: &mut Action| {
         a.key = key.clone();
         loop {
@@ -251,4 +251,50 @@ fn judge_refuses_what_the_prompt_does_not_offer() {
     pick.text = Some("neither".into());
     sign(&mut pick);
     assert_eq!(judged(&pick, &phones, open(), &[], false), Verdict::Apply);
+}
+
+#[test]
+fn allows_follows_the_levels() {
+    use crate::model::Level;
+    for d in [Do::Allow, Do::Deny, Do::Answer, Do::Followup] {
+        assert!(allows(None, d), "the owner's own phone");
+        assert!(!allows(Some(Level::Visitor), d));
+        assert!(allows(Some(Level::Trusted), d));
+    }
+    assert!(allows(Some(Level::Helper), Do::Answer) && allows(Some(Level::Helper), Do::Followup));
+    assert!(!allows(Some(Level::Helper), Do::Allow) && !allows(Some(Level::Helper), Do::Deny));
+}
+
+#[test]
+fn judge_holds_a_teammates_key_to_its_level() {
+    use crate::model::Level;
+    let (mut phones, sign) = signer();
+    let mut allow = action(Do::Allow);
+    sign(&mut allow);
+    for (level, verdict) in [(Level::Visitor, Verdict::Refused), (Level::Helper, Verdict::Refused), (Level::Trusted, Verdict::Apply)] {
+        phones[0].level = Some(level);
+        assert_eq!(judged(&allow, &phones, open(), &[], false), verdict, "{level:?}");
+    }
+    let review = r#"{"v":1,"host":"h1","session":"s1","since":42,"wait":"review","can":["followup"]}"#;
+    let mut follow = action(Do::Followup);
+    follow.prompt = sha_hex(review.as_bytes());
+    follow.text = Some("also add tests".into());
+    sign(&mut follow);
+    let open = || Some(Open { block_json: review, since: 42, current_since: 42 });
+    phones[0].level = Some(Level::Helper);
+    assert_eq!(judged(&follow, &phones, open(), &[], false), Verdict::Apply);
+    phones[0].level = Some(Level::Visitor);
+    assert_eq!(judged(&follow, &phones, open(), &[], false), Verdict::Refused);
+}
+
+#[test]
+fn phones_off_stops_phones_and_not_teammates() {
+    use crate::model::Level;
+    let (mut phones, sign) = signer();
+    let mut allow = action(Do::Allow);
+    sign(&mut allow);
+    // the phone remote is switched off, or paused over a redeploy: that is about phones
+    assert_eq!(judged(&allow, &phones, open(), &[], true), Verdict::Refused);
+    phones[0].level = Some(Level::Trusted);
+    assert_eq!(judged(&allow, &phones, open(), &[], true), Verdict::Apply, "a teammate's action never passes through the remote");
 }

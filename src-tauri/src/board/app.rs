@@ -228,7 +228,10 @@ pub fn apply<R: Runtime>(app: &AppHandle<R>) {
     // The listener follows the board whenever it is connected (the villages this login may read:
     // its own, and the ones it was invited to). The phone remote takes what it hears only while
     // its own switch is on.
-    let village = board.remote.enabled.then(|| Village { host: cfg.host_id.clone(), owner: cfg.owner.clone(), version: env!("CARGO_PKG_VERSION").to_string() });
+    // The remote logic serves the village whenever the board is connected: teammates' paired
+    // Macs act through it. The phone remote's own switch only decides about the owner's phones.
+    let village = Some(Village { host: cfg.host_id.clone(), owner: cfg.owner.clone(), version: env!("CARGO_PKG_VERSION").to_string() });
+    bs.remote.set_phones_on(board.remote.enabled);
     bs.listener.configure(Some(Following { target: cfg.target.clone(), owner: cfg.owner.clone() }));
     bs.remote.configure(village, board.remote.paused.clone());
     bs.publisher.configure(cfg);

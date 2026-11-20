@@ -17,6 +17,7 @@ pub mod app;
 pub mod cli;
 pub mod deploy;
 pub mod listen;
+pub mod mac_key;
 pub mod map;
 pub mod pairing;
 pub mod phones;

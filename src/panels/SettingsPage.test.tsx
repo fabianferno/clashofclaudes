@@ -61,14 +61,11 @@ test('usage sharing is off until turned on, and turning it on saves it', async (
   expect(box('Share anonymous usage').checked).toBe(true);
 });
 
-test('day and night is on and ambience off until changed; the ambience volume shows once it is on', async () => {
+test('ambience is off until changed; the ambience volume shows once it is on', async () => {
   render(<SettingsPage />);
   await screen.findByText('Version 0.1.0');
-  expect(box('Day and night').checked).toBe(true);
   expect(box('Village ambience').checked).toBe(false);
   expect(screen.queryByLabelText('Ambience volume')).toBeNull();
-  await act(async () => { fireEvent.click(box('Day and night')); });
-  expect(ipc.setSettings).toHaveBeenLastCalledWith(expect.objectContaining({ dayNight: false }));
   await act(async () => { fireEvent.click(box('Village ambience')); });
   expect(ipc.setSettings).toHaveBeenLastCalledWith(expect.objectContaining({ ambienceOn: true }));
   await act(async () => { fireEvent.change(screen.getByLabelText('Ambience volume'), { target: { value: '30' } }); });

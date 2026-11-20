@@ -203,9 +203,6 @@ export default function SettingsPage() {
             <h3 className="kb-head ol" style={{ background: '#c8860d' }}>Your village</h3>
             <div className="set-body">
               <NameField saved={settings.playerName ?? null} onSave={(playerName) => change({ playerName })} />
-              <Toggle label="Day and night"
-                hint="The village follows your clock: a golden sunrise and sunset, and lit houses and fireflies at night."
-                checked={settings.dayNight !== false} onChange={(on) => change({ dayNight: on })} />
               <div className="set-line">
                 <span className="set-note">New here, or want a refresher? Walk through a sample compound again.</span>
                 <button className="hud-btn green sm" onClick={() => { close(); startTour(); }}>Replay the tour</button>

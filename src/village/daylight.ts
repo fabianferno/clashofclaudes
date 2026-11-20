@@ -1,7 +1,7 @@
 /**
- * The village's time of day, from the owner's clock: night from 9 PM to 5 AM, fading out by
- * 7 AM and back in from 7 PM, with a golden hour around sunrise (6:30) and sunset (6:30 PM).
- * Fixed hours, not the real sun: the app never asks where you are.
+ * The time of day the ambience follows (state/ambience.ts), from the owner's clock: night from
+ * 9 PM to 5 AM, fading out by 7 AM and back in from 7 PM, with sunrise (6:30) and sunset (6:30 PM).
+ * Fixed hours, not the real sun: the app never asks where you are. The village itself is always midday.
  */
 export interface Daylight {
   /** 0 by day .. 1 in the dead of night. */

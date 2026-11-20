@@ -80,10 +80,6 @@ When the app is in the background, it shows a macOS notification when a session 
 
 Over each structure, a builder waiting on you (or stuck) shows for how long ("Waiting for you · 7m"), and **▶ N waiting on you** shows how long the longest-stopped builder has waited.
 
-## Day and night
-
-The village follows your clock. Sunrise around 6:30 AM brings a golden light from the left, and sunset around 6:30 PM brings it from the right. From 7 PM the light fades to night, when houses light up and fireflies come out. Morning returns by 7 AM. The hours are fixed: the app never asks where you are. Turn it off in **Settings › Your village**.
-
 ## Menu bar and mini village
 
 The village does not have to be in front for you to see who waits.

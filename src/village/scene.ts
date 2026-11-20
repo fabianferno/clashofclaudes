@@ -26,8 +26,6 @@ import { DRAG_PX, createDragController } from './drag';
 import { clickPoint, compoundAt, dragTarget, hitTest, selectionOf } from './input';
 import { COLLECTOR_NAME, collectorLook, collectorTiles, shownCollectors, type CollectorAgent } from './quota';
 import { FxRenderer, POP_SECONDS, ORB_SECONDS, Particles, RELOCATE_SECONDS, lifecycleEvents, type Snap } from './effects';
-import { daylightAt, daylightAtHour } from './daylight';
-import { DaylightFx, type Light } from './daylightFx';
 import { MAX_MINIONS, MINION_SCALE, minionSpots, popScale, shownMinions, trailOffset, type MinionSpot } from './minions';
 
 // ---------------------------------------------------------------- pure part
@@ -50,8 +48,6 @@ export interface VillageInput {
   boards?: BoardInput[];
   /** What the owner is called: the hall's plate reads "<name>'s Town Hall" (plain "Town Hall" without one). */
   ownerName?: string | null;
-  /** Day and night from the owner's clock (see daylight.ts); false: always midday. */
-  dayNight?: boolean;
 }
 
 /** A board: a local web app (see src-tauri/src/apps.rs) or a browser the owner opened; `key` as in the store's `boardItems`. */
@@ -497,10 +493,6 @@ export interface SceneDebug {
   screenOf(id: string): { x: number; y: number } | null;
   /** Zoom by `factor` about the village's middle at once, no easing (driving a hidden window, whose ticker is stopped). */
   zoomNow(factor: number): Cam;
-  /** The light it is heading for (see daylight.ts). */
-  daylight: { night: number; golden: number; morning: boolean };
-  /** Show the light of `hour` (0-24) at once, eased in (driving a hidden window, whose ticker is stopped). */
-  daylightNow(hour: number): void;
 }
 
 export interface SceneOptions {
@@ -609,9 +601,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
   const meadow = new TilingSprite({ texture: Texture.from(forestTile()), width: 1, height: 1 });
   const patches = PATCHES.map((p) => new TilingSprite({ texture: Texture.from(patchTile(p.seed)), width: 1, height: 1, alpha: PATCH_ALPHA }));
   const vignette = new Sprite(Texture.from(vignetteTexture()));
-  // the time of day: its tint and low sunlight over the village, lights and fireflies through the night's tint
-  const daylightFx = new DaylightFx();
-  app.stage.addChild(meadow, ...patches, view, daylightFx.tint, daylightFx.sun, daylightFx.glow, vignette);
+  app.stage.addChild(meadow, ...patches, view, vignette);
 
   const ground = new Sprite(Texture.EMPTY);
   groundLayer.addChild(ground);
@@ -650,7 +640,6 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     if (statusClock < 1000) return;
     statusClock = 0;
     const now = Date.now();
-    daylightFx.set(daylightAt(new Date(now)), lastState.dayNight !== false);
     if (statusesDue(entities, lastState.sessions, now, [...collectorEntities(lastState, now), ...boardEntities(lastState)]) !== statusSig) sync(lastState);
   });
   let releaseClock = 0;
@@ -795,9 +784,6 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       sp.tilePosition.set(cam.x + p.shift * cam.zoom, cam.y + p.shift * 0.6 * cam.zoom);
     });
     vignette.width = app.screen.width; vignette.height = app.screen.height;
-    daylightFx.glow.scale.set(cam.zoom);
-    daylightFx.glow.position.set(cam.x, cam.y);
-    daylightFx.resize(app.screen.width, app.screen.height);
   };
   const panelW = () => opts.panelWidth?.() ?? 0;
   const openPanelW = () => opts.openPanelWidth?.() ?? PANEL_W;
@@ -1146,7 +1132,6 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     }
   };
   app.ticker.add((t) => updateBuilders(Math.min(t.deltaMS / 1000, 0.25)));
-  app.ticker.add((t) => { if (daylightFx.busy) daylightFx.update(Math.min(t.deltaMS / 1000, 0.25)); });
   app.ticker.add((t) => updateFx(Math.min(t.deltaMS / 1000, 0.25)));
   // the forges: chimney smoke and sparks while a command runs, now and then a wisp over embers
   let forgeClock = 0;
@@ -1168,28 +1153,6 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     }
   });
 
-  /** The lit houses and where fireflies wander, and the light of the hour. */
-  const syncDaylight = (state: VillageInput) => {
-    const hall = iso(HALL.x0 + HALL.w / 2, HALL.y0 + HALL.h / 2);
-    const lights: Light[] = [{ x: hall.x, y: hall.y - 20, r: 170 }];
-    for (const w of state.workspaces) {
-      const c = w.compound;
-      if (!c) continue;
-      const h = iso(c.house.x + HOUSE / 2, c.house.y + HOUSE / 2);
-      lights.push({ x: h.x, y: h.y - 14, r: 120 });
-    }
-    // a forge's fire lights its yard; embers barely
-    for (const s of state.sessions) {
-      if (s.kind.kind !== 'terminal' || !s.spot || !state.workspaces.some((w) => w.id === s.workspaceId && w.compound)) continue;
-      const heat = forgeHeat(s);
-      if (heat === 'cold') continue;
-      const f = iso(s.spot.x + STRUCT, s.spot.y + STRUCT);
-      lights.push({ x: f.x + FORGE_FX.mouth.x, y: f.y + FORGE_FX.mouth.y, r: heat === 'hot' ? 80 : 40 });
-    }
-    daylightFx.setPlaces(lights, villageTiles ? pxRectOfTiles(villageTiles) : null);
-    daylightFx.set(daylightAt(new Date()), state.dayNight !== false);
-  };
-
   const sync = (state: VillageInput) => {
     if (destroyed) return;
     workspaces = state.workspaces;
@@ -1207,7 +1170,6 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       relocs.set(r.wsId, { ox: -d.x + (cur?.x ?? 0), oy: -d.y + (cur?.y ?? 0), t: 0 });
     }
     if (!relocs.size) syncGround(compounds, state); // while a compound travels the old ground stays; it is re-baked once at the end
-    syncDaylight(state);
     syncBuilders(state);
     entities = buildEntities({ ...state, now: Date.now() });
     gates = entities.filter((e) => e.kind === 'gate').map((e) => {
@@ -1310,11 +1272,6 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       })),
     ],
     groundBakes,
-    daylight: { ...daylightFx.heading },
-    daylightNow: (hour) => {
-      daylightFx.set(daylightAtHour(hour));
-      for (let t = 0; t < 5; t += 1 / 30) daylightFx.update(1 / 30);
-    },
     particles: particles.count,
     minions: [...views].flatMap(([builderId, v]) => [...v.minions].filter(([, m]) => m.gone === null)
       .map(([id, m]) => ({ id, builderId, x: m.x, y: m.y, pose: m.pose }))),
@@ -1846,7 +1803,6 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     sprites.clear();
     unholdTextures();
     fxRender.destroy();
-    daylightFx.destroy();
     const gt = ground.texture;
     app.destroy({ removeView: true }, { children: true, texture: false });
     if (gt !== Texture.EMPTY) gt.destroy(true);

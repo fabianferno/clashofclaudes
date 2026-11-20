@@ -201,9 +201,6 @@ pub struct Settings {
     /// The sound file each moment plays (`sounds::MOMENTS`); "" is silent.
     #[serde(default = "crate::sounds::default_sounds")]
     pub sounds: BTreeMap<String, String>,
-    /// Day and night over the village, from the owner's clock (drawn by the frontend).
-    #[serde(default = "default_true")]
-    pub day_night: bool,
     /// A quiet village ambience under the sounds, while the window is open (played by the frontend).
     #[serde(default)]
     pub ambience_on: bool,
@@ -359,14 +356,13 @@ impl Settings {
 #[cfg(test)]
 mod settings_tests {
     #[test]
-    fn day_night_is_on_and_ambience_off_for_saves_from_before_them() {
+    fn ambience_is_off_for_saves_from_before_it() {
         let old: Settings = serde_json::from_str("{}").unwrap();
-        assert!(old.day_night);
         assert!(!old.ambience_on);
         assert_eq!(old.ambience_volume, 50);
         let set: Settings = serde_json::from_str(r#"{"dayNight":false,"ambienceOn":true,"ambienceVolume":250}"#).unwrap();
+        // a save from when the village had day and night (its `dayNight`) still loads
         let set = set.normalized();
-        assert!(!set.day_night);
         assert!(set.ambience_on);
         assert_eq!(set.ambience_volume, 100);
     }
@@ -443,7 +439,6 @@ impl Default for Settings {
             sounds_on: true,
             sound_volume: default_sound_volume(),
             sounds: crate::sounds::default_sounds(),
-            day_night: true,
             ambience_on: false,
             ambience_volume: default_ambience_volume(),
             board: BoardSettings::default(),

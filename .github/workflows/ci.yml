@@ -35,3 +35,6 @@ jobs:
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib
       - name: Frontend build
         run: pnpm build
+      # Debug-only code is cfg-gated; catch a release-only compile break before `pnpm ship` does.
+      - name: Release compile check
+        run: cargo check --release --manifest-path src-tauri/Cargo.toml --lib

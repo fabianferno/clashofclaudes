@@ -4,8 +4,8 @@ pub mod apps;
 pub mod ask_keys;
 pub mod attachments;
 pub mod commands;
-#[cfg(debug_assertions)]
 pub mod docs;
+#[cfg(debug_assertions)]
 pub mod driver;
 pub mod git;
 pub mod history;

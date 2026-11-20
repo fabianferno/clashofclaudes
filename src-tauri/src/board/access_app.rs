@@ -28,6 +28,10 @@ pub struct InviteView {
     pub workspaces: Option<Vec<String>>,
     /// Their grant is on the board.
     pub on_board: bool,
+    /// Their Mac is paired with this village (filled in by the app; only then can they act).
+    pub paired: bool,
+    /// The board has named their Vercel user: their Mac can be paired.
+    pub pairable: bool,
 }
 
 /// Settings › Team: Private village and People, as the board has it.
@@ -244,7 +248,7 @@ pub fn status(cli: &dyn BoardCli, t: &Target, me: &Me, set: &AccessSettings, _sl
         invites: set
             .invites
             .iter()
-            .map(|i| InviteView { email: i.email.clone(), level: i.level, workspaces: i.workspaces.clone(), on_board: i.grant.as_ref().is_some_and(|id| now.iter().any(|g| &g.id == id)) })
+            .map(|i| InviteView { email: i.email.clone(), level: i.level, workspaces: i.workspaces.clone(), on_board: i.grant.as_ref().is_some_and(|id| now.iter().any(|g| &g.id == id)), paired: false, pairable: i.user_id.is_some() && i.level != Level::Visitor })
             .collect(),
     }
 }

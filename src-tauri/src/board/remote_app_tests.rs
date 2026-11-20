@@ -420,3 +420,47 @@ fn with_the_phone_remote_off_the_owners_phone_is_refused_and_no_heartbeat_is_wri
     assert!(g.sent().is_empty());
     assert!(g.r.pair_start(1).is_err(), "no phone is paired while the phone remote is off");
 }
+
+fn bob_request(id: &str, ticket: &str, rng: u64) -> Event {
+    const PUB: &str = "BJFoira10seT_4mQCR9cHCW_d571sQbL3La0PctTmwr5P3GDEX_lc0QORs_pqRotn_e4cNgEMUb1Sdclf3Km8E8";
+    let mac = crate::board::pairing::proof(&crate::board::pairing::code_of(rng), &crate::board::remote::unb64(PUB).unwrap(), "Bob's Mac");
+    let mut e = event(id, ticket, &serde_json::json!({ "public": PUB, "name": "Bob's Mac", "mac": mac }).to_string());
+    e.labels = BTreeMap::from([("coc.kind".to_string(), "pair".to_string())]);
+    e.channel = "v/ada/pair".into();
+    e.principal = "vercel:user:u_bob".into();
+    e.person = true;
+    e.handle = "bob".into();
+    e
+}
+
+#[test]
+fn pairing_a_teammates_mac_gives_it_the_invites_level() {
+    use crate::board::pairing::MateFor;
+    use crate::model::Level;
+    let g = rig(DECIDE);
+    // it works with the phone remote off: it is not about phones
+    g.r.set_phones_on(false);
+    g.r.pair_start_mate(77, MateFor { email: "bob@acme.com".into(), user_id: "u_bob".into(), level: Level::Trusted }).unwrap();
+    let sent = g.sent();
+    assert!(matches!(sent.as_slice(), [MsgWrite::Post { channel, .. }] if channel == "v/ada/pair"), "{sent:?}");
+    g.r.handle(bob_request("msg_p1", "msg_sent_1", 77));
+    let st = g.r.status();
+    assert_eq!((st.pairing.state.as_str(), st.pairing.for_email.as_deref(), st.pairing.name.as_deref()), ("asking", Some("bob@acme.com"), Some("Bob's Mac")));
+    g.r.pair_confirm().unwrap();
+    let phones = g.store.load().unwrap().phones;
+    let mate = phones.iter().find(|p| p.who.is_some()).unwrap();
+    assert_eq!((mate.level, mate.who.as_ref().map(|w| w.handle.as_str())), (Some(Level::Trusted), Some("bob")));
+    // only the ticket's closing edit: no phone record for a teammate
+    let sent = g.sent();
+    assert!(matches!(sent.as_slice(), [MsgWrite::Edit { .. }]), "{sent:?}");
+    // the owner's phone list in Settings is phones only; the map names the paired teammates
+    assert_eq!(g.r.status().phones.len(), 1);
+    assert_eq!(g.r.mates().iter().map(|m| (m.key.clone(), m.handle.as_str(), m.level.as_str())).collect::<Vec<_>>(), [(mate.key.clone(), "bob", "trusted")]);
+    assert_eq!(g.r.paired_mates(), ["bob@acme.com"]);
+    // pairing their Mac again (a new Mac) replaces the old key
+    g.r.pair_start_mate(78, MateFor { email: "bob@acme.com".into(), user_id: "u_bob".into(), level: Level::Helper }).unwrap();
+    g.sent();
+    g.r.handle(bob_request("msg_p2", "msg_sent_1", 78));
+    g.r.pair_confirm().unwrap();
+    assert_eq!(g.store.load().unwrap().phones.iter().filter(|p| p.who.is_some()).count(), 1);
+}

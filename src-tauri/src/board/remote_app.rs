@@ -80,6 +80,8 @@ pub struct PairView {
     pub check: Option<String>,
     /// Why it was cancelled.
     pub why: Option<String>,
+    /// The teammate whose Mac is being paired; None for a phone.
+    pub for_email: Option<String>,
 }
 
 /// Settings › Team › Phone remote.
@@ -286,11 +288,11 @@ impl Remote {
         let pairing = match g.pairing.state() {
             PairState::Idle => PairView { state: "idle".into(), ..Default::default() },
             PairState::Open { code, until } => PairView { state: "open".into(), code: Some(code.clone()), until: Some(*until), ..Default::default() },
-            PairState::Asking(r) => PairView { state: "asking".into(), name: Some(r.name.clone()), check: Some(r.check.clone()), ..Default::default() },
+            PairState::Asking(r) => PairView { state: "asking".into(), name: Some(r.name.clone()), check: Some(r.check.clone()), for_email: r.for_email.clone(), ..Default::default() },
             PairState::Cancelled(why) => PairView { state: "cancelled".into(), why: Some(why.clone()), ..Default::default() },
         };
         RemoteStatus {
-            phones: g.phones.iter().map(|p| PhoneView { key: p.key.clone(), name: p.name.clone(), paired_at: p.paired_at, last_used: p.last_used }).collect(),
+            phones: g.phones.iter().filter(|p| p.who.is_none()).map(|p| PhoneView { key: p.key.clone(), name: p.name.clone(), paired_at: p.paired_at, last_used: p.last_used }).collect(),
             pairing,
             listening: false,
             paused: g.paused.clone(),
@@ -457,16 +459,78 @@ impl Remote {
         Ok(code)
     }
 
+    /// Opens a pairing for a teammate's Mac; the code to send them. Works with the phone remote
+    /// off: it has nothing to do with phones.
+    pub fn pair_start_mate(&self, rng: u64, mate: super::pairing::MateFor) -> Result<String, String> {
+        let (write, code, stale) = {
+            let mut g = self.lock();
+            let v = g.village.clone().ok_or("Vercel Board is not connected")?;
+            if let Some(e) = &g.keychain_error {
+                return Err(e.clone());
+            }
+            let stale = g.pairing.cancel();
+            let write = g.pairing.start_mate((self.now)(), rng, &v.host, &v.owner, mate);
+            let PairState::Open { code, .. } = g.pairing.state() else { return Err("pairing did not open".into()) };
+            (write, code.clone(), stale)
+        };
+        self.send_all(stale);
+        let inner = self.inner.clone();
+        let changed = self.changed.clone();
+        self.board.send(
+            write,
+            Some(Box::new(move |id| {
+                if let Some(id) = id {
+                    lock(&inner).pairing.ticket_posted(id);
+                }
+                changed();
+            })),
+        );
+        (self.changed)();
+        Ok(code)
+    }
+
+    /// The teammates whose Macs are paired, for the village's map (their own apps read their level there).
+    pub fn mates(&self) -> Vec<super::snapshot::MapMate> {
+        self.lock()
+            .phones
+            .iter()
+            .filter_map(|p| {
+                let (who, level) = (p.who.as_ref()?, p.level?);
+                let level = match level {
+                    crate::model::Level::Visitor => "visitor",
+                    crate::model::Level::Helper => "helper",
+                    crate::model::Level::Trusted => "trusted",
+                };
+                Some(super::snapshot::MapMate { key: p.key.clone(), handle: who.handle.clone(), level: level.to_string() })
+            })
+            .collect()
+    }
+
+    /// The emails of the teammates whose Macs are paired (Settings › People says "Paired").
+    pub fn paired_mates(&self) -> Vec<String> {
+        self.lock().phones.iter().filter_map(|p| p.who.as_ref().map(|w| w.email.clone())).collect()
+    }
+
     /// The owner saw the same number on the phone and pressed Confirm.
     pub fn pair_confirm(&self) -> Result<(), String> {
         let (phone, mut writes) = {
             let mut g = self.lock();
             let (phone, writes) = g.pairing.confirm((self.now)()).ok_or("no phone is waiting to be paired")?;
             g.phones.retain(|p| p.key != phone.key);
+            // a teammate has one Mac paired at a time: a new one takes the old one's place
+            if let Some(w) = &phone.who {
+                g.phones.retain(|p| p.who.as_ref().is_none_or(|x| x.email != w.email));
+            }
             g.phones.push(phone.clone());
             self.save_secrets(&mut g)?;
             (phone, writes)
         };
+        if phone.who.is_some() {
+            // a teammate's key has no record on the board
+            self.send_all(writes);
+            (self.changed)();
+            return Ok(());
+        }
         let record = writes.remove(0);
         let inner = self.inner.clone();
         let secrets = self.secrets.clone();

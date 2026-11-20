@@ -536,6 +536,7 @@ pub fn run() {
             board::app::access_put_back,
             board::app::invite_put,
             board::app::invite_remove,
+            board::app::mate_pair_start,
             board::app::visits,
             board::app::visit,
             board::app::visits_refresh,

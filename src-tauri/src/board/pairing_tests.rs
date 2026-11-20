@@ -227,3 +227,67 @@ mod phones {
         k.delete().unwrap();
     }
 }
+
+// Pairing a teammate's Mac: the same code and proof, in `v/<owner>/pair`, and only from the
+// invited person's own Vercel login.
+fn bob() -> MateFor {
+    MateFor { email: "bob@acme.com".into(), user_id: "u_bob".into(), level: crate::model::Level::Helper }
+}
+
+fn open_for_bob() -> Pairing {
+    let mut p = Pairing::default();
+    let MsgWrite::Post { channel, .. } = p.start_mate(NOW, 482_913, "h1", "ada", bob()) else { panic!() };
+    assert_eq!(channel, "v/ada/pair", "a teammate cannot post in `remote`, where the owner's phones are");
+    p.ticket_posted("msg_t_1".into());
+    p
+}
+
+fn from_bob(mut e: Event) -> Event {
+    e.principal = "vercel:user:u_bob".into();
+    e.person = true;
+    e.handle = "bob/village".into();
+    e.channel = "v/ada/pair".into();
+    e
+}
+
+#[test]
+fn a_mates_request_must_come_from_the_invited_login() {
+    // the right code, posted by someone else: a teammate who was shown it, the remote's project, another person's agent
+    let mut p = open_for_bob();
+    p.on_event(&request("msg_t_2", "msg_t_1", PUB, "x"), NOW);
+    let mut eve = from_bob(request("msg_t_3", "msg_t_1", PUB, "x"));
+    eve.principal = "vercel:user:u_eve".into();
+    p.on_event(&eve, NOW);
+    let mut unverified = from_bob(request("msg_t_4", "msg_t_1", PUB, "x"));
+    unverified.person = false;
+    p.on_event(&unverified, NOW);
+    assert!(matches!(p.state(), PairState::Open { .. }), "{:?}", p.state());
+    // bob's login without the code's proof is not enough either
+    p.on_event(&from_bob(bare_request("msg_t_5", "msg_t_1", PUB, "x")), NOW);
+    assert!(matches!(p.state(), PairState::Open { .. }));
+    // bob, with the code
+    p.on_event(&from_bob(request("msg_t_6", "msg_t_1", PUB, "Bob's Mac")), NOW);
+    let PairState::Asking(r) = p.state() else { panic!("{:?}", p.state()) };
+    assert_eq!((r.name.as_str(), r.for_email.as_deref()), ("Bob's Mac", Some("bob@acme.com")));
+}
+
+#[test]
+fn confirming_a_mate_keeps_the_key_with_its_level_and_posts_no_record() {
+    let mut p = open_for_bob();
+    p.on_event(&from_bob(request("msg_t_2", "msg_t_1", PUB, "Bob's Mac")), NOW);
+    let (phone, writes) = p.confirm(NOW + 5).unwrap();
+    assert_eq!(phone.level, Some(crate::model::Level::Helper));
+    assert_eq!(phone.who, Some(crate::board::remote::Mate { email: "bob@acme.com".into(), handle: "bob".into(), user_id: "u_bob".into() }));
+    // a record would let the key into the phone remote's API: only the ticket is closed
+    assert!(matches!(writes.as_slice(), [MsgWrite::Edit { id, .. }] if id == "msg_t_1"), "{writes:?}");
+}
+
+#[test]
+fn a_phones_ticket_is_still_answered_by_the_remote() {
+    let mut p = open();
+    p.on_event(&request("msg_t_2", "msg_t_1", PUB, "iPhone"), NOW);
+    let PairState::Asking(r) = p.state() else { panic!() };
+    assert_eq!(r.for_email, None);
+    let (phone, writes) = p.confirm(NOW).unwrap();
+    assert_eq!((phone.level, phone.who, writes.len()), (None, None, 2));
+}

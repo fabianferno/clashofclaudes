@@ -10,7 +10,16 @@ use serde_json::json;
 
 use super::cli::MsgWrite;
 use super::listen::Event;
-use super::remote::{b64, check_number, key_id, sha_hex, unb64, Phone};
+use super::remote::{b64, check_number, key_id, sha_hex, unb64, Mate, Phone};
+use crate::model::Level;
+
+/// The teammate a pairing is for: only their own Vercel login may answer it, and their key gets this level.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MateFor {
+    pub email: String,
+    pub user_id: String,
+    pub level: Level,
+}
 use sha2::{Digest, Sha256};
 
 /// Crockford's base32: no I, L, O or U to misread.
@@ -54,6 +63,10 @@ pub struct Request {
     pub public: Vec<u8>,
     /// What the phone shows too (`482 913`).
     pub check: String,
+    /// The teammate whose Mac this is; None for one of the owner's phones.
+    pub for_email: Option<String>,
+    /// The Vercel username the board verified for the request (a teammate's).
+    pub handle: String,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -76,6 +89,8 @@ struct Ticket {
     until: i64,
     /// Its message id, once posted.
     id: Option<String>,
+    /// A teammate's Mac is being paired, not a phone.
+    mate: Option<MateFor>,
 }
 
 impl Ticket {
@@ -114,10 +129,21 @@ impl Pairing {
 
     /// Opens a pairing: the ticket to post. `rng`: 64 random bits, 60 of which become the code.
     pub fn start(&mut self, now: i64, rng: u64, host: &str, owner: &str) -> MsgWrite {
+        self.open(now, rng, host, owner, None)
+    }
+
+    /// Opens a pairing for a teammate's Mac. Its ticket lives in `v/<owner>/pair`: a teammate
+    /// may post there and never in `remote`, where the owner's phones are.
+    pub fn start_mate(&mut self, now: i64, rng: u64, host: &str, owner: &str, mate: MateFor) -> MsgWrite {
+        self.open(now, rng, host, owner, Some(mate))
+    }
+
+    fn open(&mut self, now: i64, rng: u64, host: &str, owner: &str, mate: Option<MateFor>) -> MsgWrite {
         let code = code_of(rng);
-        let t = Ticket { host: host.into(), owner: owner.into(), code: code.clone(), until: now + TICKET_MS, id: None };
+        let place = if mate.is_some() { format!("v/{owner}/pair") } else { channel(owner) };
+        let t = Ticket { host: host.into(), owner: owner.into(), code: code.clone(), until: now + TICKET_MS, id: None, mate };
         let write = MsgWrite::Post {
-            channel: channel(owner),
+            channel: place,
             text: t.text("open"),
             labels: vec![kv("coc.kind", "pair-open"), kv("coc.code", &ticket_id(&code)), kv("coc.host", host)],
             key: format!("coc-pair-{host}-{now}"),
@@ -149,6 +175,13 @@ impl Pairing {
         if public.len() != 65 || public[0] != 4 {
             return None;
         }
+        // A teammate's pairing is answered by that teammate's own login and nobody else's: the
+        // code may have been shown to others, and the board says who wrote the request.
+        if let Some(m) = &ticket.mate
+            && !(e.person && e.principal == format!("vercel:user:{}", m.user_id))
+        {
+            return None;
+        }
         let sent_name = v.get("name").and_then(|n| n.as_str()).unwrap_or("");
         if !proves(&ticket.code, &public, sent_name, v.get("mac").and_then(|m| m.as_str()).unwrap_or("")) {
             return None;
@@ -158,7 +191,9 @@ impl Pairing {
         match &self.state {
             PairState::Open { .. } => {
                 let check = check_number(&public, ticket_id);
-                self.state = PairState::Asking(Request { id: e.id.clone(), name, public, check });
+                let for_email = ticket.mate.as_ref().map(|m| m.email.clone());
+                let handle = e.handle.split('/').next().unwrap_or_default().to_string();
+                self.state = PairState::Asking(Request { id: e.id.clone(), name, public, check, for_email, handle });
                 None
             }
             PairState::Asking(r) if r.id != e.id => {
@@ -175,7 +210,16 @@ impl Pairing {
     pub fn confirm(&mut self, now: i64) -> Option<(Phone, Vec<MsgWrite>)> {
         let PairState::Asking(r) = &self.state else { return None };
         let ticket = self.ticket.take()?;
-        let phone = Phone { key: key_id(&r.public), public: r.public.clone(), name: r.name.clone(), paired_at: now, last_used: 0, record: None, level: None, who: None };
+        let mut phone = Phone { key: key_id(&r.public), public: r.public.clone(), name: r.name.clone(), paired_at: now, last_used: 0, record: None, level: None, who: None };
+        if let Some(m) = &ticket.mate {
+            // A teammate's Mac: its level, and no record on the board (a record is what lets a
+            // key into the phone remote's own API).
+            phone.level = Some(m.level);
+            phone.who = Some(Mate { email: m.email.clone(), handle: r.handle.clone(), user_id: m.user_id.clone() });
+            let writes = ticket.close().into_iter().collect();
+            self.state = PairState::Idle;
+            return Some((phone, writes));
+        }
         let record = MsgWrite::Post {
             channel: channel(&ticket.owner),
             text: phone_record(&phone, "paired", &ticket.host),

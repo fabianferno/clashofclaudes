@@ -295,6 +295,20 @@ async fn access_change(app: AppHandle, f: impl FnOnce(&mut AccessCtx) -> Result<
         }
         result?;
         let mut s = super::access_app::status(c.cli.as_ref(), &c.target, &c.me, &c.access, &c.slugs);
+        if let Some(bs) = app.try_state::<BoardState>() {
+            // The paired keys follow the invites: a changed level at once, a removed invite gone.
+            let paired = bs.remote.paired_mates();
+            for email in paired.iter().filter(|e| !c.access.invites.iter().any(|i| &i.email == *e && i.level != crate::model::Level::Visitor)) {
+                let _ = bs.remote.remove_mate(email);
+            }
+            for i in &c.access.invites {
+                let _ = bs.remote.set_mate_level(&i.email, i.level);
+            }
+            let paired = bs.remote.paired_mates();
+            for i in &mut s.invites {
+                i.paired = paired.contains(&i.email);
+            }
+        }
         if !s.can_close {
             s.command = Some(super::access_app::owner_command(&c.target, &c.me, c.remote));
         }
@@ -353,6 +367,21 @@ pub async fn access_put_back(app: AppHandle) -> Result<super::access_app::Access
 #[tauri::command]
 pub async fn invite_put(email: String, level: crate::model::Level, workspaces: Option<Vec<String>>, app: AppHandle) -> Result<super::access_app::AccessStatus, String> {
     access_change(app, move |c| super::access_app::invite_put(c.cli.as_ref(), &c.target, &c.me, &mut c.access, &c.slugs, &email, level, workspaces)).await
+}
+
+/// Opens a pairing for an invited teammate's Mac; the code to send them (it lasts 5 minutes).
+/// Their invite must be Helper or Trusted, and the board must have named their Vercel user.
+#[tauri::command]
+pub fn mate_pair_start(email: String, app: AppHandle) -> Result<String, String> {
+    let (bs, st) = (app.try_state::<BoardState>().ok_or("the board is not set up")?, app.try_state::<AppState>().ok_or("the app is starting")?);
+    let invite = st.data().settings.board.access.invites.iter().find(|i| i.email == email).cloned().ok_or("No such invite.")?;
+    if invite.level == crate::model::Level::Visitor {
+        return Err("A Visitor only looks. Make them a Helper or Trusted first.".into());
+    }
+    let user_id = invite.user_id.ok_or("The board has not named this person yet. Press Put it back, then try again.")?;
+    let mut buf = [0u8; 8];
+    getrandom::fill(&mut buf).map_err(|e| e.to_string())?;
+    bs.remote.pair_start_mate(u64::from_be_bytes(buf), super::pairing::MateFor { email, user_id, level: invite.level })
 }
 
 #[tauri::command]
@@ -434,7 +463,9 @@ pub fn tick_map<R: Runtime>(app: &AppHandle<R>) {
         let b = &d.settings.board;
         let host = b.host_id.clone().unwrap_or_default();
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|t| t.as_millis() as i64).unwrap_or(0);
-        let snap = super::snapshot::build(&d, &owner, &host, &sessions, &|id| bs.publisher.root_of(id), now);
+        let mut snap = super::snapshot::build(&d, &owner, &host, &sessions, &|id| bs.publisher.root_of(id), now);
+        // each paired teammate's key and level: their own app reads there what it may offer
+        snap.mates = bs.remote.mates();
         (snap, format!("{}#{owner}", target(b).key()))
     };
     let write = bs.map.lock().unwrap_or_else(|e| e.into_inner()).tick(&key, &snap, snap.seen);

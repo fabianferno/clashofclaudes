@@ -439,6 +439,12 @@ pub fn run() {
                 let h = app.handle().clone();
                 std::thread::spawn(move || {
                     board::app::connect_at_launch(&h);
+                    // the village's map for visitors, kept current
+                    let m = h.clone();
+                    std::thread::spawn(move || loop {
+                        board::app::tick_map(&m);
+                        std::thread::sleep(std::time::Duration::from_secs(1));
+                    });
                     // then, for as long as the app runs: who deployed the phone remote
                     loop {
                         board::app::watch_remote(&h);

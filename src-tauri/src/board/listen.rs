@@ -76,14 +76,16 @@ pub struct Following {
 }
 
 impl Following {
+    /// One place per board: the listener follows every village the login may read there.
     fn key(&self) -> String {
-        format!("{}#{}", self.target.key(), self.owner)
+        self.target.key()
     }
 }
 
-/// `vercel board tail` for the owner's village, from `after` on (None: from the newest event).
-pub fn tail_args(owner: &str, after: Option<&str>, t: &Target) -> Vec<String> {
-    let mut a = vec!["board".to_string(), "tail".to_string(), format!("v/{owner}/")];
+/// `vercel board tail` for every village the login may read (its own, and the ones it was
+/// invited to), from `after` on (None: from the newest event).
+pub fn tail_args(after: Option<&str>, t: &Target) -> Vec<String> {
+    let mut a = vec!["board".to_string(), "tail".to_string(), "v/".to_string()];
     if let Some(c) = after {
         a.extend(["--after".to_string(), c.to_string()]);
     }
@@ -136,7 +138,7 @@ pub fn follow_once(cli: &dyn BoardCli, place: &Path, f: &Following, on_event: &d
     let mut heard = false;
     let mut stopped = false;
     let res = cli.stream(
-        &tail_args(&f.owner, after.as_deref(), &f.target),
+        &tail_args(after.as_deref(), &f.target),
         &mut |line| {
             if off() {
                 stopped = true;

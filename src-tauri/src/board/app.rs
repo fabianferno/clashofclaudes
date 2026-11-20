@@ -36,6 +36,8 @@ pub struct BoardState {
     /// The phone remote, and the listener that feeds it.
     pub remote: Arc<Remote>,
     listener: Arc<Listener>,
+    /// The village's map for visitors: when it was last written.
+    map: Arc<Mutex<super::map::MapWriter>>,
 }
 
 /// The session manager, as the phone remote uses it.
@@ -95,7 +97,7 @@ impl BoardState {
                 }
             })
             .expect("remote tick thread");
-        BoardState { publisher, cli, link: Arc::default(), active: AtomicBool::new(false), remote, listener }
+        BoardState { publisher, cli, link: Arc::default(), active: AtomicBool::new(false), remote, listener, map: Arc::default() }
     }
 
     fn link(&self) -> Link {
@@ -206,9 +208,11 @@ pub fn apply<R: Runtime>(app: &AppHandle<R>) {
         let views: Vec<SessionView> = sessions.iter().zip(answerable).filter_map(|(i, a)| session_view(&d, owner, i, a)).collect();
         (config(&d, owner), views, board)
     };
-    // The phone remote listens only while its own switch is on.
+    // The listener follows the board whenever it is connected (the villages this login may read:
+    // its own, and the ones it was invited to). The phone remote takes what it hears only while
+    // its own switch is on.
     let village = board.remote.enabled.then(|| Village { host: cfg.host_id.clone(), owner: cfg.owner.clone(), version: env!("CARGO_PKG_VERSION").to_string() });
-    bs.listener.configure(village.as_ref().map(|v| Following { target: cfg.target.clone(), owner: v.owner.clone() }));
+    bs.listener.configure(Some(Following { target: cfg.target.clone(), owner: cfg.owner.clone() }));
     bs.remote.configure(village, board.remote.paused.clone());
     bs.publisher.configure(cfg);
     bs.active.store(true, Ordering::SeqCst);
@@ -220,6 +224,34 @@ pub fn apply<R: Runtime>(app: &AppHandle<R>) {
         Arc::new(move |ws: &Workspace, b: &Builder| env_for(&board, url.as_deref(), ws, b)) as EnvHook
     });
     st.manager.set_env_hook(hook);
+}
+
+/// Once a second: keeps the village's map on the board current for visitors (a change within ten
+/// seconds, a heartbeat every five minutes). Never calls the board itself.
+pub fn tick_map<R: Runtime>(app: &AppHandle<R>) {
+    let (Some(bs), Some(st)) = (app.try_state::<BoardState>(), app.try_state::<AppState>()) else { return };
+    if !bs.active.load(Ordering::SeqCst) {
+        return;
+    }
+    let Some(owner) = bs.link().owner else { return };
+    let sessions = st.manager.list();
+    let (snap, key) = {
+        let d = st.data();
+        let b = &d.settings.board;
+        let host = b.host_id.clone().unwrap_or_default();
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|t| t.as_millis() as i64).unwrap_or(0);
+        let snap = super::snapshot::build(&d, &owner, &host, &sessions, &|id| bs.publisher.root_of(id), now);
+        (snap, format!("{}#{owner}", target(b).key()))
+    };
+    let write = bs.map.lock().unwrap_or_else(|e| e.into_inner()).tick(&key, &snap, snap.seen);
+    match write {
+        Some(post @ super::cli::MsgWrite::Post { .. }) => {
+            let map = bs.map.clone();
+            bs.publisher.send(post, Some(Box::new(move |id| map.lock().unwrap_or_else(|e| e.into_inner()).posted(id))));
+        }
+        Some(edit) => bs.publisher.send(edit, None),
+        None => {}
+    }
 }
 
 /// A session changed. Cheap while the feature is off; never calls the board.

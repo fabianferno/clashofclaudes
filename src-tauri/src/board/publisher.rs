@@ -368,6 +368,13 @@ impl Publisher {
         rec.block.clone().map(|b| (b, rec.since))
     }
 
+    /// The root of the session's thread on the board the app publishes to, once posted.
+    pub fn root_of(&self, session_id: &str) -> Option<String> {
+        let g = self.lock();
+        let board = g.cfg.as_ref().filter(|c| c.enabled)?.target.key();
+        g.store.sessions.get(session_id).filter(|r| r.board == board && !r.unshared).and_then(|r| r.root.clone())
+    }
+
     /// The session whose thread starts at `root`, on the board the app publishes to.
     pub fn session_for_root(&self, root: &str) -> Option<String> {
         let g = self.lock();

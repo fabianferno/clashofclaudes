@@ -84,11 +84,9 @@ fn run(cli: &FakeTail, dir: &std::path::Path, f: &Following, stop: &AtomicBool) 
 #[test]
 fn tail_args_name_the_village_and_the_place_to_go_on_from() {
     let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
-    assert_eq!(tail_args("ada", None, &target()), s(&["board", "tail", "v/ada/", "--json", "--name", "village", "--scope", "acme"]));
-    assert_eq!(
-        tail_args("ada", Some("c9"), &Target { team: None, name: "village".into() }),
-        s(&["board", "tail", "v/ada/", "--after", "c9", "--json", "--name", "village"])
-    );
+    // every village the login may read, not only its own
+    assert_eq!(tail_args(None, &target()), s(&["board", "tail", "v/", "--json", "--name", "village", "--scope", "acme"]));
+    assert_eq!(tail_args(Some("c9"), &Target { team: None, name: "village".into() }), s(&["board", "tail", "v/", "--after", "c9", "--json", "--name", "village"]));
 }
 
 #[test]
@@ -112,7 +110,7 @@ fn a_cursor_from_another_board_is_dropped() {
     let dir = tempfile::tempdir().unwrap();
     let stop = AtomicBool::new(false);
     run(&FakeTail::new(&[REPLY], Ok(())), dir.path(), &on(), &stop);
-    for other in [Following { target: Target { team: None, name: "village".into() }, owner: "ada".into() }, Following { target: target(), owner: "bob".into() }] {
+    for other in [Following { target: Target { team: None, name: "village".into() }, owner: "ada".into() }, Following { target: Target { team: Some("acme".into()), name: "ops".into() }, owner: "ada".into() }] {
         let cli = FakeTail::new(&[], Ok(()));
         run(&cli, dir.path(), &other, &stop);
         assert!(!cli.calls.lock().unwrap()[0].contains(&"--after".to_string()), "{other:?}");

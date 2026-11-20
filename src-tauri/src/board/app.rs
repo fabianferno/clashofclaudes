@@ -49,6 +49,8 @@ pub struct BoardState {
     pub desk: Arc<super::desk::Desk>,
     /// The wait (`state_since`) each borrowed session's branch was last pushed for.
     pushed_for: Mutex<std::collections::HashMap<String, i64>>,
+    /// The borrow requests this Mac sent to other villages.
+    sent: Mutex<super::visitor::SentRequests>,
 }
 
 /// The session manager, as the phone remote uses it.
@@ -150,7 +152,7 @@ impl BoardState {
                 }
             })
             .expect("remote tick thread");
-        BoardState { publisher, cli, link: Arc::default(), active: AtomicBool::new(false), remote, listener, map: Arc::default(), visits, access: Arc::default(), mac_key: Arc::new(super::mac_key::KeychainKey::app()), desk, pushed_for: Mutex::default() }
+        BoardState { publisher, cli, link: Arc::default(), active: AtomicBool::new(false), remote, listener, map: Arc::default(), visits, access: Arc::default(), mac_key: Arc::new(super::mac_key::KeychainKey::app()), desk, pushed_for: Mutex::default(), sent: Mutex::new(super::visitor::SentRequests::load(data_dir.join("board-borrows.json"))) }
     }
 
     fn link(&self) -> Link {
@@ -570,6 +572,88 @@ pub async fn visit_act(owner: String, root: String, r#do: super::remote::Do, pic
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// A builder lent to this Mac.
+#[derive(serde::Serialize)]
+pub struct LentBuilder {
+    pub profile: String,
+    pub name: String,
+}
+
+/// The builders `owner` lends to this Mac for their workspace `workspace` (its slug).
+#[tauri::command]
+pub async fn borrow_lent(owner: String, workspace: String, app: AppHandle) -> Vec<LentBuilder> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(bs) = app.try_state::<BoardState>() else { return vec![] };
+        let Some(key) = bs.mac_key.public_if_any().map(|p| super::remote::key_id(&p)) else { return vec![] };
+        let visits = bs.visits.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(map) = visits.get(&owner) else { return vec![] };
+        super::visitor::lent_here(map, &key, &workspace).into_iter().map(|l| LentBuilder { profile: l.profile.clone(), name: l.name.clone() }).collect()
+    })
+    .await
+    .unwrap_or_default()
+}
+
+/// Asks `owner` to run `task` with their builder `builder` (its profile) in their workspace
+/// `workspace` (its slug): a request signed by this Mac, posted in that workspace's channel.
+#[tauri::command]
+pub async fn borrow_send(owner: String, workspace: String, builder: String, task: String, app: AppHandle) -> Result<super::visitor::SentRequest, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let (cli, board, _) = board_of(&app)?;
+        let bs = app.try_state::<BoardState>().ok_or("the board is not set up")?;
+        let (host, name) = {
+            let visits = bs.visits.lock().unwrap_or_else(|e| e.into_inner());
+            let map = visits.get(&owner).ok_or("You can no longer see that village.")?;
+            (map.host.clone(), map.lend.iter().find(|l| l.profile == builder).map(|l| l.name.clone()).unwrap_or_else(|| builder.clone()))
+        };
+        let mut nonce = [0u8; 16];
+        getrandom::fill(&mut nonce).map_err(|e| e.to_string())?;
+        let nonce: String = nonce.iter().map(|b| format!("{b:02x}")).collect();
+        let (request, write) = super::visitor::borrow_request(bs.mac_key.as_ref(), &owner, &host, &builder, &workspace, &task, now_ms(), &nonce)?;
+        let posted = cli.run(&super::cli::args_for_msg(&write, &target(&board))).map_err(|e| format!("{e:?}"))?;
+        let id = super::cli::message_id(&posted).ok_or("The board took the request and did not name it.")?;
+        let sent = super::visitor::SentRequest { owner, request: id, builder: name, workspace, task: request.task.lines().next().unwrap_or_default().chars().take(120).collect(), at: request.at, result: None, why: None };
+        bs.sent.lock().unwrap_or_else(|e| e.into_inner()).add(sent.clone());
+        Ok(sent)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// The requests this Mac sent and what came back. Those not answered yet are looked at again
+/// (one `vercel` call each).
+#[tauri::command]
+pub async fn borrow_sent(app: AppHandle) -> Vec<super::visitor::SentRequest> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(bs) = app.try_state::<BoardState>() else { return vec![] };
+        let waiting = bs.sent.lock().unwrap_or_else(|e| e.into_inner()).waiting();
+        if let Ok((cli, board, _)) = board_of(&app) {
+            for r in waiting {
+                if let Ok(thread) = cli.run(&super::visits::thread_args(&r.request, &target(&board)))
+                    && let Some((result, why)) = super::visitor::borrow_result(&thread, &r.owner, &r.request)
+                {
+                    bs.sent.lock().unwrap_or_else(|e| e.into_inner()).set_result(&r.request, &result, why);
+                }
+            }
+        }
+        bs.sent.lock().unwrap_or_else(|e| e.into_inner()).list()
+    })
+    .await
+    .unwrap_or_default()
+}
+
+/// The sessions in other villages that work for this Mac (the guest camp).
+#[tauri::command]
+pub async fn borrowed(app: AppHandle) -> Vec<super::visitor::BorrowedView> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(bs) = app.try_state::<BoardState>() else { return vec![] };
+        let Some(key) = bs.mac_key.public_if_any().map(|p| super::remote::key_id(&p)) else { return vec![] };
+        let maps = bs.visits.lock().unwrap_or_else(|e| e.into_inner()).all();
+        maps.iter().flat_map(|m| super::visitor::borrowed_in(m, &key)).collect()
+    })
+    .await
+    .unwrap_or_default()
 }
 
 /// Once a second: keeps the village's map on the board current for visitors (a change within ten

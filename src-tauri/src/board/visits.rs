@@ -197,6 +197,11 @@ impl Visits {
             .collect()
     }
 
+    /// Every village's map.
+    pub fn all(&self) -> Vec<Snapshot> {
+        self.villages.values().cloned().collect()
+    }
+
     pub fn get(&self, owner: &str) -> Option<&Snapshot> {
         self.villages.get(owner)
     }

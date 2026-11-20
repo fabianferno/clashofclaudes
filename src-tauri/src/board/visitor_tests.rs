@@ -115,3 +115,95 @@ fn a_visited_builder_says_what_can_be_done_and_how_our_action_ended() {
     let none = visited_builder(&thread(vec![owner("msg_2", Some("msg_1"), &wait), act("msg_3", &a)]), "ada", None).unwrap();
     assert!(!none.sent);
 }
+
+// Borrowing a builder from a visit.
+fn lender_map(my_key: &str) -> crate::board::snapshot::Snapshot {
+    use crate::board::snapshot::{MapBuilder, MapLend, MapSession, Snapshot};
+    let session = |id: &str, by: Option<&str>, state: &str, wait: Option<&str>| MapSession { id: id.into(), root: Some(format!("msg_{id}")), workspace: "shop".into(), builder: "wizard".into(), state: state.into(), wait: wait.map(str::to_string), since: 1, started: 1, spot: None, steps: 0, by: by.map(str::to_string) };
+    Snapshot {
+        v: 1,
+        host: "h1".into(),
+        owner: "ada".into(),
+        name: None,
+        seen: NOW,
+        workspaces: vec![],
+        builders: vec![MapBuilder { profile: "wizard".into(), name: "Wizard".into(), agent: "claude".into() }],
+        sessions: vec![session("s1", Some(my_key), "needs_you", Some("answer")), session("s2", Some("someone-else"), "working", None), session("s3", None, "finished", Some("review"))],
+        mates: vec![],
+        lend: vec![
+            MapLend { profile: "wizard".into(), name: "Wizard".into(), workspaces: None, keys: None },
+            MapLend { profile: "archer".into(), name: "Archer".into(), workspaces: Some(vec!["api".into()]), keys: Some(vec![my_key.to_string()]) },
+            MapLend { profile: "giant".into(), name: "Giant".into(), workspaces: None, keys: Some(vec!["someone-else".into()]) },
+        ],
+    }
+}
+
+#[test]
+fn the_builders_lent_to_this_mac_for_a_workspace() {
+    let map = lender_map("k_me");
+    let names = |ws: &str| lent_here(&map, "k_me", ws).iter().map(|l| l.name.clone()).collect::<Vec<_>>();
+    assert_eq!(names("shop"), ["Wizard"]);
+    assert_eq!(names("api"), ["Wizard", "Archer"]);
+    assert!(lent_here(&map, "k_other", "shop").iter().all(|l| l.name == "Wizard"), "lent to every paired Mac");
+}
+
+#[test]
+fn borrowed_sessions_are_the_ones_whose_by_is_this_mac() {
+    let mine = borrowed_in(&lender_map("k_me"), "k_me");
+    assert_eq!(mine.iter().map(|b| (b.owner.as_str(), b.session.as_str(), b.root.as_deref(), b.builder.as_str(), b.workspace.as_str(), b.state.as_str(), b.wait.as_deref())).collect::<Vec<_>>(), [("ada", "s1", Some("msg_s1"), "Wizard", "shop", "needs_you", Some("answer"))]);
+    assert!(borrowed_in(&lender_map("k_me"), "k_nobody").is_empty());
+}
+
+#[test]
+fn a_request_signed_here_is_one_the_lender_takes() {
+    use crate::board::borrow::{parse_request, take, Facts, Lend, Take};
+    let key = MemoryKey::new();
+    let public = key.public().unwrap();
+    let (request, write) = borrow_request(&key, "ada", "h1", "wizard", "shop", "  Add a CSV export  ", NOW, "00112233445566778899aabbccddeeff").unwrap();
+    let MsgWrite::Post { channel, text, labels, key: idem } = &write else { panic!("{write:?}") };
+    assert_eq!((channel.as_str(), idem.as_str()), ("v/ada/w/shop", "coc-borrow-00112233445566778899aabbccddeeff"));
+    assert_eq!(labels, &[("coc.kind".to_string(), "borrow".to_string())]);
+    assert_eq!(parse_request(text), Some(request.clone()));
+    assert_eq!(request.task, "Add a CSV export");
+    let phones = vec![Phone { key: key_id(&public), public, name: "x".into(), paired_at: 1, last_used: 0, record: None, level: Some(Level::Helper), who: None }];
+    let lends = vec![Lend { builder: "b1".into(), keys: None, workspaces: None, floor: 0, ask: false }];
+    let seen = HashSet::new();
+    let facts = Facts { host: "h1", channel, owner: "ada", now: NOW + 500, phones: &phones, lends: &lends, seen: &seen, builder: Some(("b1", false, None)), workspace: Some(("w1", true)) };
+    assert_eq!(take(&request, &facts), Take::Start);
+    assert!(borrow_request(&key, "ada", "h1", "wizard", "shop", "   ", NOW, "00").is_err(), "no task");
+    assert!(borrow_request(&key, "ada", "h1", "wizard", "shop", &"x".repeat(9_000), NOW, "00").is_err(), "too long for the board");
+}
+
+#[test]
+fn the_result_is_read_from_the_owners_reply_only() {
+    let reply = |id: &str, text: &str, principal: &str, handle: &str| msg(id, Some("msg_q"), text, principal, handle, serde_json::json!({}));
+    let thread = |replies: Vec<serde_json::Value>| serde_json::json!({ "message": msg("msg_q", None, "{}", "vercel:user:u_me", "me/village", serde_json::json!({ "coc.kind": "borrow" })), "replies": replies });
+    assert_eq!(borrow_result(&thread(vec![]), "ada", "msg_q"), None);
+    let forged = reply("msg_1", r#"{"re":"msg_q","result":"started"}"#, "vercel:user:u_bob", "bob");
+    assert_eq!(borrow_result(&thread(vec![forged.clone()]), "ada", "msg_q"), None);
+    let real = reply("msg_2", r#"{"re":"msg_q","result":"refused","why":"that builder is not lent"}"#, "vercel:user:u_ada", "ada/village");
+    assert_eq!(borrow_result(&thread(vec![forged, real]), "ada", "msg_q"), Some(("refused".to_string(), Some("that builder is not lent".to_string()))));
+    let other = reply("msg_3", r#"{"re":"msg_other","result":"started"}"#, "vercel:user:u_ada", "ada/village");
+    assert_eq!(borrow_result(&thread(vec![other]), "ada", "msg_q"), None, "a result for another request");
+}
+
+#[test]
+fn sent_requests_and_their_results_survive_a_restart() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("board-borrows.json");
+    let mut s = SentRequests::load(path.clone());
+    s.add(SentRequest { owner: "ada".into(), request: "msg_q".into(), builder: "Wizard".into(), workspace: "shop".into(), task: "Add a CSV export".into(), at: NOW, result: None, why: None });
+    assert_eq!(s.waiting().iter().map(|r| r.request.as_str()).collect::<Vec<_>>(), ["msg_q"]);
+    s.set_result("msg_q", "waiting", None);
+    assert_eq!(s.waiting().len(), 1, "waiting for the lender is not an answer yet");
+    s.set_result("msg_q", "started", None);
+    assert!(s.waiting().is_empty());
+    let again = SentRequests::load(path);
+    assert_eq!(again.list().iter().map(|r| (r.request.as_str(), r.result.as_deref())).collect::<Vec<_>>(), [("msg_q", Some("started"))]);
+    // only the last twenty are kept
+    let mut many = again;
+    for n in 0..30 {
+        many.add(SentRequest { owner: "ada".into(), request: format!("msg_{n}"), builder: "W".into(), workspace: "s".into(), task: "t".into(), at: NOW + n, result: None, why: None });
+    }
+    assert_eq!(many.list().len(), 20);
+}

@@ -113,7 +113,7 @@ export default function WorkspacePanel({ workspaceId }: { workspaceId: string })
         <button className="hud-btn grey sm" disabled={ws.missing} title={why} onClick={() => guard(() => ipc.openInEditor(ws.path))}>Open in editor</button>
         <button className="hud-btn grey sm" disabled={ws.missing} title={why} onClick={() => guard(() => ipc.openInFinder(ws.path))}>Open in Finder</button>
         <button className="hud-btn blue sm" disabled={ws.missing || !ws.compound} title={why} onClick={() => useApp.getState().requestZoom(workspaceId)}>Focus</button>
-        <button className="hud-btn grey sm" disabled={!ws.compound} title="Space out the tents and rune stones that stand too close"
+        <button className="hud-btn grey sm" disabled={!ws.compound} title="Space out the tents and forges that stand too close"
           onClick={() => guard(async () => {
             const n = await st.village.tidy(workspaceId);
             setTidied(n ? `Moved ${n} ${n === 1 ? 'structure' : 'structures'}` : 'Already tidy');

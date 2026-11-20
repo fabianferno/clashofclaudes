@@ -146,7 +146,7 @@ describe('buildEntities', () => {
     expect(buildEntities({ ...input, workspaces: [ws('w1', null)] }).some((e) => e.kind === 'board')).toBe(false);
   });
 
-  it('terminals_stand_as_rune_stones_lit_only_while_a_command_runs', () => {
+  it('terminals_stand_as_forges_hot_while_a_command_runs_warm_at_the_prompt_cold_once_ended', () => {
     const c1 = placeCompound([]);
     const s1 = findSpot(c1, [])!;
     const s2 = findSpot(c1, [s1])!;
@@ -157,13 +157,16 @@ describe('buildEntities', () => {
     };
     const es = buildEntities(input);
     const shop = es.find((e) => e.id === 'struct:t1')!;
-    expect([shop.kind, shop.texKey, shop.x, shop.y]).toEqual(['structure', 'runestone:lit', s2.x + 2, s2.y + 2]);
+    expect([shop.kind, shop.texKey, shop.x, shop.y]).toEqual(['structure', 'forge:hot', s2.x + 2, s2.y + 2]);
     expect(es.filter((e) => e.kind === 'wall')).toHaveLength(enclosure(c1, [s1, s2], 1, seedOf('w1')).walls.length - 1);
     expect(es.some((e) => e.id === 'status:t1')).toBe(false); // no status bar over a terminal
-    // dark while the shell waits at its prompt
-    expect(buildEntities({ ...input, sessions: [sess('t1', 'w1', null, s2)] }).find((e) => e.id === 'struct:t1')?.texKey).toBe('runestone:dark');
+    // embers while the shell waits at its prompt
+    expect(buildEntities({ ...input, sessions: [sess('t1', 'w1', null, s2)] }).find((e) => e.id === 'struct:t1')?.texKey).toBe('forge:warm');
     const ended = buildEntities({ ...input, sessions: [{ ...sess('t1', 'w1', null, s2, { kind: 'ended', exitCode: 0 }), busy: true }] });
-    expect(ended.find((e) => e.id === 'struct:t1')?.texKey).toBe('runestone:dark');
+    expect(ended.find((e) => e.id === 'struct:t1')?.texKey).toBe('forge:cold');
+    // paused (not running since the app last closed): cold too
+    const paused = buildEntities({ ...input, sessions: [{ ...sess('t1', 'w1', null, s2), busy: true, paused: true }] });
+    expect(paused.find((e) => e.id === 'struct:t1')?.texKey).toBe('forge:cold');
   });
 
   it('ended terminals do not count; agents without a spot or compound are skipped', () => {

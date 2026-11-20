@@ -8,7 +8,8 @@ export const ORB_SECONDS = 1.2;
 export const TEXT_SECONDS = 1.4;
 export const TEXT_RISE = 40;
 
-export type ParticleKind = 'dust' | 'smoke' | 'orb' | 'text';
+export type ParticleKind = 'dust' | 'smoke' | 'spark' | 'orb' | 'text';
+type DotKind = Exclude<ParticleKind, 'text'>;
 export interface Pt { x: number; y: number }
 
 export interface Particle {
@@ -28,13 +29,15 @@ export interface Particle {
   to: Pt;
   text?: string;
   color?: string;
+  /** A smoke puff's strongest alpha; set for chimney smoke, which also fades in. */
+  peak?: number;
 }
 
 const rnd = (a: number, b: number) => a + Math.random() * (b - a);
 
 /**
  * A capped pool of short-lived particles. Pure data and timing; `FxRenderer` draws them.
- * At the cap a new dust or smoke puff replaces the oldest puff; anything else is dropped.
+ * At the cap a new dust or smoke puff or spark replaces the oldest of those; anything else is dropped.
  */
 export class Particles {
   list: Particle[] = [];
@@ -49,7 +52,7 @@ export class Particles {
 
   private add(p: Partial<Particle> & { kind: ParticleKind; x: number; y: number; max: number }): Particle | null {
     if (this.list.length >= MAX_PARTICLES) {
-      const i = this.list.findIndex((q) => q.kind === 'dust' || q.kind === 'smoke');
+      const i = this.list.findIndex((q) => q.kind === 'dust' || q.kind === 'smoke' || q.kind === 'spark');
       if (i < 0) return null;
       const [gone] = this.list.splice(i, 1);
       this.onRemove?.(gone);
@@ -75,6 +78,20 @@ export class Particles {
   /** One slow grey puff rising from `at`. */
   smoke(at: Pt): void {
     this.add({ kind: 'smoke', x: at.x + rnd(-5, 5), y: at.y, vx: rnd(-6, 6), vy: -rnd(18, 30), max: rnd(1.0, 1.5), scale: rnd(0.5, 0.8) });
+  }
+
+  /** One puff of chimney smoke from `at`: slower and longer-lived than `smoke`, drifting a little downwind. */
+  chimney(at: Pt, thin = false): void {
+    this.add({
+      kind: 'smoke', x: at.x + rnd(-2, 2), y: at.y, vx: rnd(2, 9), vy: -rnd(12, 20), max: rnd(2.0, 2.8),
+      scale: thin ? rnd(0.3, 0.45) : rnd(0.45, 0.65), peak: thin ? 0.3 : 0.5,
+    });
+  }
+
+  /** `n` sparks thrown up from `at`; they arc and fall back as they fade. */
+  sparks(at: Pt, n: number): void {
+    for (let i = 0; i < n; i++)
+      this.add({ kind: 'spark', x: at.x + rnd(-6, 6), y: at.y + rnd(-2, 2), vx: rnd(-18, 18), vy: -rnd(40, 75), max: rnd(0.5, 0.9), scale: rnd(0.22, 0.36) });
   }
 
   /** `n` gold orbs flying from `from` to `to` on an arc over 1.2 s (staggered a little). */
@@ -121,7 +138,14 @@ export class Particles {
           break;
         case 'smoke':
           p.x += p.vx * dt; p.y += p.vy * dt;
-          p.alpha = 0.55 * (1 - life); p.scale += dt * 0.5;
+          // chimney smoke (a `peak`) fades in from the flue; a burst's puff starts at full strength
+          p.alpha = (p.peak ?? 0.55) * (1 - life) * (p.peak === undefined ? 1 : Math.min(1, life * 6));
+          p.scale += dt * 0.5;
+          break;
+        case 'spark':
+          p.x += p.vx * dt; p.y += p.vy * dt;
+          p.vy += 90 * dt;
+          p.alpha = (1 - life) * (0.75 + 0.25 * Math.sin(p.age * 40));
           break;
         case 'orb': {
           const e = life * life * (3 - 2 * life); // smoothstep
@@ -144,7 +168,7 @@ export class Particles {
 
 const dotCache = new Map<string, Texture>();
 /** One cached soft dot per kind/colour; particles are sprites of these, never redrawn. */
-function dotTexture(kind: 'dust' | 'smoke' | 'orb'): Texture {
+function dotTexture(kind: DotKind): Texture {
   let t = dotCache.get(kind);
   if (t && !t.destroyed) return t;
   const size = 32;
@@ -155,10 +179,12 @@ function dotTexture(kind: 'dust' | 'smoke' | 'orb'): Texture {
   const stops: Record<string, [string, string]> = {
     dust: ['rgba(214,190,150,1)', 'rgba(190,160,115,0)'],
     smoke: ['rgba(150,150,150,1)', 'rgba(110,110,110,0)'],
+    spark: ['rgba(255,250,215,1)', 'rgba(255,110,20,0)'],
     orb: ['rgba(255,244,170,1)', 'rgba(255,190,40,0.0)'],
   };
   grad.addColorStop(0, stops[kind][0]);
   if (kind === 'orb') grad.addColorStop(0.55, 'rgba(255,207,51,0.95)');
+  if (kind === 'spark') grad.addColorStop(0.35, 'rgba(255,170,50,0.95)');
   grad.addColorStop(1, stops[kind][1]);
   g.fillStyle = grad;
   g.fillRect(0, 0, size, size);
@@ -170,7 +196,7 @@ function dotTexture(kind: 'dust' | 'smoke' | 'orb'): Texture {
 /** Draws a `Particles` pool into `layer`: pooled sprites for dots, a `Text` per float text (destroyed when it ends). */
 export class FxRenderer {
   private visuals = new Map<Particle, Sprite | Text>();
-  private spare: Record<'dust' | 'smoke' | 'orb', Sprite[]> = { dust: [], smoke: [], orb: [] };
+  private spare: Record<DotKind, Sprite[]> = { dust: [], smoke: [], spark: [], orb: [] };
   /** Floating text's size (see `labelScale`): it stays readable zoomed out. */
   textScale = 1;
 

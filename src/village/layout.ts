@@ -204,7 +204,7 @@ const standing = (x: number, y: number, half: number, up: number): Box => {
   const f = iso(x, y);
   return { x0: f.x - half, x1: f.x + half, y0: f.y - up, y1: f.y };
 };
-/** A structure's painted body (tent or rune stone), up from its footprint's front corner; measured from the art at half size. */
+/** A structure's painted body (tent or forge), up from its footprint's front corner; measured from the art at half size. */
 const structBox = (t: Tile): Box => standing(t.x + STRUCT, t.y + STRUCT, 75, 120);
 /** Its builder at work, at `standTile`'s first choice (the east side): the figure, feet to hat. */
 const builderBox = (t: Tile): Box => standing(t.x + 2.45, t.y + 1.1, 20, 82);

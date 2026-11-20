@@ -105,7 +105,7 @@ export function copyOf(id: StepId, c: StepContext): StepCopy {
     case 'terminal':
       return {
         title: 'Shells and pages too',
-        body: <><K>+ Terminal</K> opens a plain shell in the workspace and stands a rune stone in the compound. <K>+ Browser</K> puts a live page, like your dev server on localhost, on a board.</>,
+        body: <><K>+ Terminal</K> opens a plain shell in the workspace and builds a forge in the compound. <K>+ Browser</K> puts a live page, like your dev server on localhost, on a board.</>,
       };
     case 'kanban':
       return {

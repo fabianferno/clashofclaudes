@@ -586,92 +586,233 @@ export function paintedCollector(agent: keyof typeof RESOURCE, tenths: number | 
 }
 
 /**
- * A terminal's rune stone in the painted style: a weathered standing stone with carved `>_` runes
- * (glowing green while a command runs) on the collector's cobbled plinth, whose tank it stands in
- * front of and hides. The kit's own rune stones are flat vector art, unlike the rest of it.
+ * How hot a terminal's forge burns: `hot` while a command runs, `warm` while the shell waits at its
+ * prompt (embers), `cold` once the shell has ended.
  */
-export function paintedRuneStone(lit: boolean): Art | null {
+export type Heat = 'hot' | 'warm' | 'cold';
+
+/**
+ * The forge's frame on the collector's plinth (art px): X runs to the lower right, Y to the lower
+ * left, Z up; the hearth spans 0..110 on both, `HZ` high, with the chimney on its back half.
+ */
+const FORGE = { ox: 204, oy: 212, hz: 68, chimney: { x0: 6, x1: 58, z0: 70, z1: 178, taper: 8 } };
+const forgeIso = (x: number, y: number, z = 0) => ({ x: FORGE.ox + (x - y), y: FORGE.oy + (x + y) / 2 - z });
+/** A point of the forge's frame in world px from the footprint's front corner (the art is drawn at 2x). */
+const forgeAt = (x: number, y: number, z: number) => {
+  const p = forgeIso(x, y, z);
+  return { x: (p.x - C_AX) / 2, y: (p.y - C_AY) / 2 };
+};
+/** Where the forge's smoke and sparks start, and its light at night, in world px from its anchor. */
+export const FORGE_FX = {
+  flue: forgeAt(32, 32, FORGE.chimney.z1 + 12),
+  bed: forgeAt(83, 83, FORGE.hz + 14),
+  mouth: forgeAt(57, 110, 22),
+};
+
+/**
+ * A terminal's forge in the painted style, on the collector's cobbled plinth (whose tank the hearth
+ * and chimney hide): a stone hearth with a coal bed and an arched fire mouth, a brick chimney, an
+ * anvil on a stump and a quench bucket. `hot` roars (flames, glowing mouth, a bar on the anvil),
+ * `warm` smoulders, `cold` is ash. The chimney's smoke and sparks are particles (see `FORGE_FX`).
+ */
+export function paintedForge(heat: Heat): Art | null {
   const base = get('structures/collector-base.png');
   if (!base) return null;
+  const hot = heat === 'hot', warm = heat === 'warm';
   return canvasArt(C_W, C_H, C_AX, C_AY, (g) => {
     g.drawImage(base, 0, 0);
-    g.clearRect(250, 140, 70, 92); // the tank's crank, which would show past the stone (only air around it)
+    g.clearRect(250, 140, 70, 92); // the tank's crank, which would show past the chimney (only air around it)
     type P = { x: number; y: number };
-    const lerp = (a: P, b: P, t: number): P => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
-    const H = 190, TAPER = 0.12;
-    const L = { x: 140, y: 290 }, F = { x: 210, y: 325 }, R = { x: 275, y: 292.5 };
-    const C = lerp(L, R, 0.5);
-    const top = (p: P): P => { const q = lerp(p, C, TAPER); return { x: q.x, y: q.y - H }; };
-    const Lt = top(L), Ft = top(F), Rt = top(R), apex = { x: (Lt.x + Rt.x) / 2, y: (Lt.y + Rt.y) / 2 - 20 };
-    const poly = (pts: P[], fill: string | CanvasGradient) => {
+    const OUTL = '#2a1d14';
+    const at = forgeIso;
+    const mid = (a: P, b: P): P => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+    const poly = (pts: P[], fill: string | CanvasGradient, lw = 3) => {
       g.beginPath(); g.moveTo(pts[0].x, pts[0].y); for (const q of pts.slice(1)) g.lineTo(q.x, q.y); g.closePath();
       g.fillStyle = fill; g.fill();
-      g.strokeStyle = '#2a1d14'; g.lineWidth = 3; g.lineJoin = 'round'; g.stroke();
+      if (lw) { g.strokeStyle = OUTL; g.lineWidth = lw; g.lineJoin = 'round'; g.stroke(); }
     };
+    const seg = (a: P, b: P) => { g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke(); };
+    const glow = (c: P, r: number, inner: string, outer: string, k = 1) => {
+      const gr = g.createRadialGradient(c.x, c.y, 2, c.x, c.y, r);
+      gr.addColorStop(0, inner); gr.addColorStop(1, outer);
+      g.fillStyle = gr; g.beginPath(); g.ellipse(c.x, c.y, r, r * k, 0, 0, Math.PI * 2); g.fill();
+    };
+    /** An iso box's two near faces and (optionally) its top. */
+    const box = (x0: number, x1: number, y0: number, y1: number, z0: number, z1: number,
+      top: string | null, left: string | CanvasGradient, right: string | CanvasGradient) => {
+      poly([at(x0, y1, z0), at(x1, y1, z0), at(x1, y1, z1), at(x0, y1, z1)], left);
+      poly([at(x1, y1, z0), at(x1, y0, z0), at(x1, y0, z1), at(x1, y1, z1)], right);
+      if (top) poly([at(x0, y0, z1), at(x1, y0, z1), at(x1, y1, z1), at(x0, y1, z1)], top);
+    };
+    let seed = 11;
+    const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+
     // contact shadow on the cobbles
     g.fillStyle = 'rgba(20,12,6,.35)';
-    g.beginPath(); g.ellipse(F.x + 2, F.y - 18, 78, 30, 0, 0, Math.PI * 2); g.fill();
-    const lg = g.createLinearGradient(L.x, Lt.y, F.x, F.y);
-    lg.addColorStop(0, '#cbc5bb'); lg.addColorStop(0.55, '#a9a399'); lg.addColorStop(1, '#878177');
-    const rg = g.createLinearGradient(F.x, Ft.y, R.x, R.y);
-    rg.addColorStop(0, '#8a847b'); rg.addColorStop(1, '#5f5a54');
-    poly([L, F, Ft, Lt], lg);
-    poly([F, R, Rt, Ft], rg);
-    poly([Lt, Ft, apex], '#d8d2c7');
-    poly([Ft, Rt, apex], '#9e988e');
-    // chisel highlight down the front edge and along the cap
-    g.strokeStyle = 'rgba(255,248,232,.55)'; g.lineWidth = 2;
-    g.beginPath(); g.moveTo(F.x - 3, F.y - 6); g.lineTo(Ft.x - 3, Ft.y + 4); g.lineTo(apex.x - 2, apex.y + 5); g.stroke();
-    // a point on the left face: u from its left edge to the front edge, v from the foot up
-    const at = (u: number, v: number): P => lerp(lerp(L, F, u), lerp(Lt, Ft, u), v);
-    const side = (u: number, v: number): P => lerp(lerp(F, R, u), lerp(Ft, Rt, u), v);
-    // weathering: speckle, a crack on the shaded face, moss at the foot
-    let seed = 7;
-    const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
-    for (let i = 0; i < 70; i++) {
-      const q = i % 3 ? at(0.05 + rnd() * 0.9, 0.04 + rnd() * 0.92) : side(0.05 + rnd() * 0.9, 0.04 + rnd() * 0.92);
-      g.fillStyle = rnd() < 0.5 ? 'rgba(40,30,22,.16)' : 'rgba(255,250,240,.18)';
-      g.beginPath(); g.arc(q.x, q.y, 1 + rnd() * 2, 0, Math.PI * 2); g.fill();
-    }
-    g.strokeStyle = 'rgba(42,29,20,.55)'; g.lineWidth = 2; g.lineCap = 'round';
-    const crack = [side(0.4, 0.82), side(0.62, 0.7), side(0.48, 0.58), side(0.6, 0.5)];
-    g.beginPath(); g.moveTo(crack[0].x, crack[0].y); for (const q of crack.slice(1)) g.lineTo(q.x, q.y); g.stroke();
-    for (const [u, r, f] of [[0.1, 9, at], [0.32, 6, at], [0.86, 7, at], [0.25, 7, side], [0.7, 5, side]] as const) {
-      const q = f(u, 0.03);
-      g.fillStyle = '#5f9a3a'; g.strokeStyle = '#2a3d18'; g.lineWidth = 2;
-      g.beginPath(); g.ellipse(q.x, q.y, r, r * 0.6, 0, 0, Math.PI * 2); g.fill(); g.stroke();
-      g.fillStyle = 'rgba(190,230,120,.6)'; g.beginPath(); g.arc(q.x - r * 0.3, q.y - r * 0.2, r * 0.3, 0, Math.PI * 2); g.fill();
-    }
-    // the runes: the prompt, then lines of output, carved (a dark groove over a pale lip) or glowing
-    const runes: [P, P][] = [];
-    const prompt = [at(0.18, 0.84), at(0.34, 0.78), at(0.18, 0.72)];
-    runes.push([prompt[0], prompt[1]], [prompt[1], prompt[2]], [at(0.44, 0.71), at(0.7, 0.71)]);
-    for (const [v, segs] of [[0.58, [[0.18, 0.5], [0.58, 0.8]]], [0.47, [[0.18, 0.36], [0.44, 0.82]]], [0.36, [[0.18, 0.64]]],
-      [0.25, [[0.18, 0.3], [0.38, 0.58]]]] as [number, [number, number][]][])
-      for (const [u0, u1] of segs) runes.push([at(u0, v), at(u1, v)]);
-    const stroke = (color: string, lw: number, dy = 0) => {
-      g.strokeStyle = color; g.lineWidth = lw; g.lineCap = 'round';
-      g.beginPath();
-      for (const [a, b] of runes) { g.moveTo(a.x, a.y + dy); g.lineTo(b.x, b.y + dy); }
-      g.stroke();
+    g.beginPath(); g.ellipse(208, 314, 100, 44, 0, 0, Math.PI * 2); g.fill();
+
+    // ---- the chimney, tapering up from the hearth's back half
+    const { x0: c0, x1: c1, z0: cz0, z1: cz1, taper: tp } = FORGE.chimney;
+    /** A point on the chimney's front-left (f 'L', u along x) or front-right face (f 'R', u along y) at height z. */
+    const onChimney = (f: 'L' | 'R', u: number, z: number) => {
+      const t = tp * (z - cz0) / (cz1 - cz0), lo = c0 + t, hi = c1 - t;
+      return f === 'L' ? at(lo + (hi - lo) * u, hi, z) : at(hi, hi - (hi - lo) * u, z);
     };
-    if (lit) {
-      const m = at(0.5, 0.55);
-      const glow = g.createRadialGradient(m.x, m.y, 6, m.x, m.y, 110);
-      glow.addColorStop(0, 'rgba(120,255,170,.45)'); glow.addColorStop(1, 'rgba(120,255,170,0)');
-      g.fillStyle = glow; g.beginPath(); g.arc(m.x, m.y, 110, 0, Math.PI * 2); g.fill();
-      stroke('#1f5c3a', 7);
-      g.save(); g.shadowColor = 'rgba(90,255,160,.95)'; g.shadowBlur = 12;
-      stroke('#7dffb3', 4); g.restore();
-      stroke('#e6fff0', 1.5);
-      for (const [u, v, r] of [[0.15, 1.1, 3.5], [0.85, 1.22, 3], [0.45, 1.34, 2.5], [1.05, 0.92, 2.6]] as const) {
-        const q = at(u, v);
-        g.fillStyle = 'rgba(120,255,170,.3)'; g.beginPath(); g.arc(q.x, q.y, r + 4, 0, Math.PI * 2); g.fill();
-        g.fillStyle = '#c8ffdc'; g.beginPath(); g.arc(q.x, q.y, r, 0, Math.PI * 2); g.fill();
+    poly([onChimney('L', 0, cz0), onChimney('L', 1, cz0), onChimney('L', 1, cz1), onChimney('L', 0, cz1)], '#9a7a62');
+    poly([onChimney('R', 0, cz0), onChimney('R', 1, cz0), onChimney('R', 1, cz1), onChimney('R', 0, cz1)], '#6e5444');
+    g.strokeStyle = 'rgba(42,29,20,.45)'; g.lineWidth = 2;
+    const rows = 8, rz = (cz1 - cz0) / rows;
+    for (let r = 0; r < rows; r++) {
+      for (const f of ['L', 'R'] as const) {
+        if (r) seg(onChimney(f, 0.03, cz0 + r * rz), onChimney(f, 0.97, cz0 + r * rz));
+        for (const u of r % 2 ? [0.3, 0.72] : [0.52]) seg(onChimney(f, u, cz0 + r * rz + 2), onChimney(f, u, cz0 + (r + 1) * rz - 2));
       }
-    } else {
-      stroke('rgba(255,250,240,.45)', 5, 2);
-      stroke('#4a443d', 4.5);
+    }
+    // its cap, overhanging, and the flue's mouth (lit from below while hot)
+    box(c0 + tp - 5, c1 - tp + 5, c0 + tp - 5, c1 - tp + 5, cz1, cz1 + 10, '#b39a84', '#8c7360', '#634c3e');
+    const flue = [at(c0 + tp + 2, c0 + tp + 2, cz1 + 10), at(c1 - tp - 2, c0 + tp + 2, cz1 + 10),
+      at(c1 - tp - 2, c1 - tp - 2, cz1 + 10), at(c0 + tp + 2, c1 - tp - 2, cz1 + 10)];
+    poly(flue, hot ? '#5a2410' : '#1e1510', 2);
+    if (hot) glow(mid(flue[0], flue[2]), 26, 'rgba(255,170,60,.55)', 'rgba(255,120,40,0)');
+
+    // ---- the hearth: a stone block, coursed, with a coal bed on top
+    const H = 110, hz = FORGE.hz;
+    const sl = g.createLinearGradient(at(0, H).x, 0, at(H, H).x, 0);
+    sl.addColorStop(0, '#bdb4a6'); sl.addColorStop(1, '#a0978a');
+    const sr = g.createLinearGradient(at(H, H).x, 0, at(H, 0).x, 0);
+    sr.addColorStop(0, '#857c70'); sr.addColorStop(1, '#6a6259');
+    box(0, H, 0, H, 0, hz, null, sl, sr);
+    for (const [f, color] of [['L', 'rgba(42,29,20,.4)'], ['R', 'rgba(30,20,14,.45)']] as const) {
+      const p = (u: number, z: number) => (f === 'L' ? at(u, H, z) : at(H, u, z));
+      g.strokeStyle = color; g.lineWidth = 2; g.lineCap = 'round';
+      const courses = 4, ch = hz / courses;
+      for (let r = 1; r < courses; r++) seg(p(2, r * ch), p(H - 2, r * ch));
+      for (let r = 0; r < courses; r++)
+        for (let u = (r % 2 ? 10 : 18) + rnd() * 6; u < H - 8; u += 20 + rnd() * 14) seg(p(u, r * ch + 2), p(u, (r + 1) * ch - 2));
+    }
+    // the top around the chimney's foot, then the foot itself over it, so it stands on the hearth
+    poly([at(0, c1 + 2, hz), at(c1 + 2, c1 + 2, hz), at(c1 + 2, 0, hz), at(H, 0, hz), at(H, H, hz), at(0, H, hz)], '#c6bcac');
+    const foot = cz0 + 12;
+    poly([at(c0, c1, hz), at(c1, c1, hz), at(c1, c1, foot), at(c0, c1, foot)], '#9a7a62', 0);
+    poly([at(c1, c1, hz), at(c1, c0, hz), at(c1, c0, foot), at(c1, c1, foot)], '#6e5444', 0);
+    g.strokeStyle = OUTL; g.lineWidth = 3; g.lineJoin = 'round';
+    g.beginPath();
+    for (const q of [at(c0, c1, foot), at(c0, c1, hz), at(c1, c1, hz), at(c1, c0, hz), at(c1, c0, foot)]) g.lineTo(q.x, q.y);
+    g.stroke();
+    seg(at(c1, c1, hz), at(c1, c1, foot));
+    // the coal bed, sunk into the front of the top
+    const bed = [at(66, 66, hz), at(100, 66, hz), at(100, 100, hz), at(66, 100, hz)];
+    poly(bed, OUTL, 2.5);
+    for (let i = 0; i < 26; i++) {
+      const q = at(70 + rnd() * 26, 70 + rnd() * 26, hz), r = 3 + rnd() * 3, k = rnd();
+      g.fillStyle = hot ? (k < 0.5 ? '#ffd27a' : '#ff8a2a') : warm ? (k < 0.4 ? '#e0502a' : '#5a2a1c') : (k < 0.5 ? '#4a4440' : '#2e2a28');
+      g.beginPath(); g.ellipse(q.x, q.y, r, r * 0.6, 0, 0, Math.PI * 2); g.fill();
+    }
+    const bc = mid(bed[0], bed[2]);
+    if (hot) glow(bc, 60, 'rgba(255,190,80,.75)', 'rgba(255,120,40,0)');
+    else if (warm) glow(bc, 34, 'rgba(255,90,40,.4)', 'rgba(255,120,40,0)');
+    if (hot) {
+      const flame = (dx: number, h: number, w: number, col: string) => {
+        g.fillStyle = col; g.beginPath();
+        g.moveTo(bc.x + dx - w, bc.y + 2);
+        g.quadraticCurveTo(bc.x + dx - w * 0.9, bc.y - h * 0.5, bc.x + dx + w * 0.2, bc.y - h);
+        g.quadraticCurveTo(bc.x + dx + w * 0.4, bc.y - h * 0.45, bc.x + dx + w, bc.y + 2);
+        g.closePath(); g.fill();
+      };
+      g.save(); g.shadowColor = 'rgba(255,150,40,.9)'; g.shadowBlur = 14;
+      flame(-14, 34, 11, '#ff7a1c'); flame(12, 40, 12, '#ff7a1c'); flame(-1, 54, 15, '#ff8f24');
+      g.restore();
+      flame(-12, 22, 7, '#ffc444'); flame(11, 27, 7, '#ffc444'); flame(0, 38, 9, '#ffd25a'); flame(0, 20, 5, '#fff3c0');
+    }
+    // the top's front lip, chiselled
+    g.strokeStyle = 'rgba(255,248,232,.55)'; g.lineWidth = 2;
+    g.beginPath(); for (const q of [at(3, H, hz - 3), at(H - 2, H, hz - 3), at(H, 3, hz - 3)]) g.lineTo(q.x, q.y); g.stroke();
+
+    // ---- the fire mouth: an arch in the hearth's front-left face
+    {
+      const face = (u: number, z: number) => at(u, H, z);
+      const a0 = 34, a1 = 80, z0 = 8, zs = 34, zr = 50; // jambs up to zs, the crown at zr
+      const arch = (grow: number, i: number, n: number) => {
+        const ang = Math.PI * i / n;
+        return face((a0 + a1) / 2 - Math.cos(ang) * ((a1 - a0) / 2 + grow), zs + Math.sin(ang) * (zr - zs + grow));
+      };
+      g.beginPath();
+      for (const q of [face(a0, z0), face(a0, zs)]) g.lineTo(q.x, q.y);
+      for (let i = 1; i <= 16; i++) { const q = arch(0, i, 16); g.lineTo(q.x, q.y); }
+      const q2 = face(a1, z0); g.lineTo(q2.x, q2.y); g.closePath();
+      const m = face((a0 + a1) / 2, (z0 + zs) / 2);
+      if (hot || warm) {
+        const gr = g.createRadialGradient(m.x, m.y + (hot ? 6 : 10), 2, m.x, m.y, hot ? 40 : 36);
+        if (hot) { gr.addColorStop(0, '#fff1b0'); gr.addColorStop(0.35, '#ffb236'); gr.addColorStop(0.8, '#d9481a'); gr.addColorStop(1, '#5a1a0c'); }
+        else { gr.addColorStop(0, '#c44a22'); gr.addColorStop(0.5, '#6a2414'); gr.addColorStop(1, '#241410'); }
+        g.fillStyle = gr;
+      } else g.fillStyle = '#1b1512';
+      g.fill(); g.strokeStyle = OUTL; g.lineWidth = 3; g.stroke();
+      // the voussoirs around it
+      g.strokeStyle = 'rgba(42,29,20,.55)'; g.lineWidth = 2;
+      for (let i = 1; i < 8; i++) seg(arch(0, i, 8), arch(8, i, 8));
+      g.beginPath(); for (let i = 0; i <= 16; i++) { const q = arch(8, i, 16); g.lineTo(q.x, q.y); } g.stroke();
+      for (let i = 0; i < 9; i++) {
+        const q = face(a0 + 6 + rnd() * (a1 - a0 - 12), z0 + 2 + rnd() * 4), r = 3 + rnd() * 2;
+        g.fillStyle = hot ? (i % 2 ? '#fff0a0' : '#ff9a2e') : warm ? (i % 3 ? '#7a2c18' : '#ff6a30') : (i % 2 ? '#3a3330' : '#4d4641');
+        g.beginPath(); g.ellipse(q.x, q.y, r, r * 0.6, 0, 0, Math.PI * 2); g.fill();
+      }
+      if (hot) {
+        // its light spilling onto the cobbles
+        const f = face((a0 + a1) / 2, 0);
+        g.save(); g.globalCompositeOperation = 'lighter';
+        glow({ x: f.x - 10, y: f.y + 22 }, 80, 'rgba(255,150,50,.45)', 'rgba(255,120,40,0)', 0.5);
+        g.restore();
+      }
+    }
+
+    // ---- the anvil on a stump, front right
+    {
+      const s = { x: 296, y: 330 }, rx = 22, ry = 11, h = 26;
+      g.fillStyle = 'rgba(20,12,6,.35)'; g.beginPath(); g.ellipse(s.x + 4, s.y + 2, rx + 10, ry + 5, 0, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.moveTo(s.x - rx, s.y); g.lineTo(s.x - rx, s.y - h);
+      g.ellipse(s.x, s.y - h, rx, ry, 0, Math.PI, 0, false); g.lineTo(s.x + rx, s.y); g.ellipse(s.x, s.y, rx, ry, 0, 0, Math.PI, false); g.closePath();
+      const wood = g.createLinearGradient(s.x - rx, 0, s.x + rx, 0); wood.addColorStop(0, '#9a6a3e'); wood.addColorStop(1, '#5e3c22');
+      g.fillStyle = wood; g.fill(); g.strokeStyle = OUTL; g.lineWidth = 3; g.stroke();
+      g.strokeStyle = 'rgba(42,29,20,.5)'; g.lineWidth = 2;
+      for (const dx of [-10, 3, 12]) seg({ x: s.x + dx, y: s.y - h + ry - 2 }, { x: s.x + dx + 1, y: s.y + ry - 4 });
+      g.beginPath(); g.ellipse(s.x, s.y - h, rx, ry, 0, 0, Math.PI * 2); g.fillStyle = '#d2a670'; g.fill(); g.strokeStyle = OUTL; g.lineWidth = 3; g.stroke();
+      g.strokeStyle = 'rgba(120,70,30,.6)'; g.lineWidth = 1.5; g.beginPath(); g.ellipse(s.x, s.y - h, rx * 0.55, ry * 0.55, 0, 0, Math.PI * 2); g.stroke();
+      const x = s.x, y = s.y - h - 12; // the anvil's face
+      const iron = (pts: [number, number][], fill: string) => poly(pts.map(([dx, dy]) => ({ x: x + dx, y: y + dy })), fill, 2.5);
+      iron([[-12, 14], [12, 14], [7, 2], [-7, 2]], '#3b3f46'); // waist
+      iron([[-30, 8], [-14, -2], [20, -2], [20, -12], [-14, -12], [-34, 1]], '#4b5059'); // body and horn
+      iron([[-14, -12], [20, -12], [26, -16], [-6, -17], [-34, 1]], '#7d848f'); // top
+      iron([[20, -2], [26, -6], [26, -16], [20, -12]], '#2e3238'); // heel
+      g.strokeStyle = 'rgba(230,236,245,.6)'; g.lineWidth = 1.6;
+      g.beginPath(); for (const [dx, dy] of [[-28, -1], [-8, -13], [20, -13]]) g.lineTo(x + dx, y + dy); g.stroke();
+      // the hammer resting on it
+      g.lineCap = 'round';
+      g.strokeStyle = OUTL; g.lineWidth = 5; seg({ x: x + 2, y: y - 16 }, { x: x + 24, y: y - 30 });
+      g.strokeStyle = '#a8763f'; g.lineWidth = 2.5; seg({ x: x + 2, y: y - 16 }, { x: x + 24, y: y - 30 });
+      iron([[-6, -12], [6, -19], [10, -15], [-2, -8]], '#5a6069');
+      if (hot) {
+        // a bar fresh from the fire
+        g.save(); g.shadowColor = 'rgba(255,140,40,.95)'; g.shadowBlur = 10;
+        g.strokeStyle = '#ff9a2e'; g.lineWidth = 4; seg({ x: x - 22, y: y - 6 }, { x: x - 4, y: y - 15 });
+        g.restore();
+        g.strokeStyle = '#ffe9a0'; g.lineWidth = 1.5; seg({ x: x - 20, y: y - 7 }, { x: x - 6, y: y - 14 });
+      }
+      g.lineCap = 'butt';
+    }
+
+    // ---- the quench bucket, front left
+    {
+      const b = { x: 112, y: 318 }, rx = 15, ry = 7.5, h = 20;
+      g.fillStyle = 'rgba(20,12,6,.3)'; g.beginPath(); g.ellipse(b.x + 3, b.y + 2, rx + 7, ry + 4, 0, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.moveTo(b.x - rx, b.y - h); g.lineTo(b.x - rx + 2, b.y);
+      g.ellipse(b.x, b.y, rx - 2, ry - 1, 0, Math.PI, 0, true); g.lineTo(b.x + rx, b.y - h); g.closePath();
+      const wood = g.createLinearGradient(b.x - rx, 0, b.x + rx, 0); wood.addColorStop(0, '#a87244'); wood.addColorStop(1, '#6a4426');
+      g.fillStyle = wood; g.fill(); g.strokeStyle = OUTL; g.lineWidth = 2.5; g.stroke();
+      g.strokeStyle = '#3b3f46'; g.lineWidth = 3;
+      for (const z of [5, 14]) { g.beginPath(); g.ellipse(b.x, b.y - z, rx - 0.5, ry - 0.5, 0, 0, Math.PI, false); g.stroke(); }
+      g.beginPath(); g.ellipse(b.x, b.y - h, rx, ry, 0, 0, Math.PI * 2); g.fillStyle = '#4b7fa8'; g.fill(); g.strokeStyle = OUTL; g.lineWidth = 2.5; g.stroke();
+      g.fillStyle = 'rgba(220,240,255,.6)'; g.beginPath(); g.ellipse(b.x - 4, b.y - h - 1, 5, 2, 0, 0, Math.PI * 2); g.fill();
     }
   });
 }

@@ -29,6 +29,31 @@ describe('Particles', () => {
     expect(p.count).toBe(0);
   });
 
+  it('a forge_s sparks rise then fall back, and its chimney smoke fades in as it rises', () => {
+    const p = new Particles();
+    p.sparks({ x: 0, y: 0 }, 1);
+    const s = p.list[0];
+    const vy0 = s.vy;
+    p.update(0.1);
+    expect(s.y).toBeLessThan(0);
+    expect(s.vy).toBeGreaterThan(vy0); // gravity pulls it back
+    const q = new Particles();
+    q.chimney({ x: 0, y: 0 });
+    const c0 = q.list[0];
+    q.update(0.02);
+    const early = c0.alpha;
+    q.update(0.3);
+    expect(c0.alpha).toBeGreaterThan(early);
+    expect(c0.alpha).toBeLessThanOrEqual(0.5);
+    expect(c0.y).toBeLessThan(0);
+    // at the cap, sparks give way like dust and smoke
+    const full = new Particles();
+    full.dust({ x: 0, y: 0 }, 400, false);
+    full.sparks({ x: 0, y: 0 }, 5);
+    expect(full.count).toBe(400);
+    expect(full.list.filter((x) => x.kind === 'spark')).toHaveLength(5);
+  });
+
   it('orbs arc to the target and float text rises 40 px over 1.4 s', () => {
     const p = new Particles();
     p.orbs({ x: 0, y: 0 }, { x: 100, y: 0 }, 1);

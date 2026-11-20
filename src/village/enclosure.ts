@@ -3,7 +3,7 @@ import { EDGE_PAD, HOUSE, STRUCT, gateInside, gateSide } from './layout';
 
 /**
  * Ground kept around every structure before the wall: room for the builder standing beside it and for
- * the art (tent poles, rune glow) to read clear of the fence. Matches `EDGE_PAD`, so a structure at the
+ * the art (tent poles, a forge's chimney) to read clear of the fence. Matches `EDGE_PAD`, so a structure at the
  * edge of the compound rect still gets it.
  */
 const STRUCT_GROUND = EDGE_PAD;

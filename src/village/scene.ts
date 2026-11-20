@@ -12,7 +12,7 @@ import { classOf, gearOf, houseColors, houseStage, scaffoldHeight, type ClassTie
 import { blockedBy, dropOf, onGround, plazaPoint, retarget, routeHome, routeToSite, standTile, step, takenBy, walkable, type Blocked, type BuilderDrop, type Walker } from './walkers';
 import {
   GROUND_SCALE, drawPathTile, groundTrees, pathLinks, pathTiles, treesOverPaths, drawGroundTree, drawBuilderShadow, drawBoard, drawBubble, drawBuilder, drawCollector, drawGate, drawGround, drawHall, drawHouse, drawPuff, drawRing, drawStatusBar, drawHallPlate, drawHousePlate, drawStructure,
-  drawWallSeg, drawRuneStone, groundOrigin,
+  drawWallSeg, drawForge, groundOrigin, FORGE_FX, type Heat,
   hammerPose, type Art, type GroundTree, type Pose,
 } from './art/entities';
 import { getTexture, holdTextures, prepareArt, releaseRetired, spriteTextures } from './textures';
@@ -193,6 +193,18 @@ export function collectorEntities(input: Pick<VillageInput, 'quotas' | 'installe
   return out;
 }
 
+/** Seconds between a forge's puffs of smoke (and throws of sparks). */
+const FORGE_PUFF = 0.22;
+
+/**
+ * A terminal's forge burns hot while a command runs, smoulders while the shell waits at its prompt,
+ * and is cold once the shell has ended (or is paused, not running since the app last closed).
+ */
+export function forgeHeat(s: Pick<SessionInfo, 'busy' | 'state' | 'paused'>): Heat {
+  if (s.state.kind === 'ended' || s.paused) return 'cold';
+  return s.busy ? 'hot' : 'warm';
+}
+
 /** Everything the village draws for this state, sorted back to front. Pure. */
 export function buildEntities(input: VillageInput): Entity[] {
   const out: Entity[] = [ent('hall', 'hall', HALL.x0 + HALL.w, HALL.y0 + HALL.h, 'hall')];
@@ -214,8 +226,7 @@ export function buildEntities(input: VillageInput): Entity[] {
   for (const s of input.sessions) {
     if (!s.spot || !compounds.has(s.workspaceId)) continue;
     if (s.kind.kind === 'terminal') {
-      // lit only while a command runs, not while the shell waits at its prompt
-      out.push(ent(`struct:${s.id}`, 'structure', s.spot.x + STRUCT, s.spot.y + STRUCT, `runestone:${s.busy && s.state.kind !== 'ended' ? 'lit' : 'dark'}`));
+      out.push(ent(`struct:${s.id}`, 'structure', s.spot.x + STRUCT, s.spot.y + STRUCT, `forge:${forgeHeat(s)}`));
       continue;
     }
     const { stage, height } = structureLook(s);
@@ -255,7 +266,7 @@ export function artFor(key: string): Art {
     case 'wall': return drawWallSeg(a ?? '');
     case 'gate': return drawGate(a as 'n' | 's' | 'e' | 'w');
     case 'collector': return drawCollector(a as CollectorAgent, b === 'none' ? null : Number(b));
-    case 'runestone': return drawRuneStone(a === 'lit');
+    case 'forge': return drawForge(a as Heat);
     case 'board': return drawBoard(decodeURIComponent(a ?? ''), b || null);
     case 'builder': return drawBuilder(a as AgentKind, Number(b) as ClassTier, Number(c) as Gear, d as Pose, Number(e) as 1 | -1);
     case 'bubble': return drawBubble(a as 'needs' | 'stuck');
@@ -1133,6 +1144,25 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
   app.ticker.add((t) => updateBuilders(Math.min(t.deltaMS / 1000, 0.25)));
   app.ticker.add((t) => { if (daylightFx.busy) daylightFx.update(Math.min(t.deltaMS / 1000, 0.25)); });
   app.ticker.add((t) => updateFx(Math.min(t.deltaMS / 1000, 0.25)));
+  // the forges: chimney smoke and sparks while a command runs, now and then a wisp over embers
+  let forgeClock = 0;
+  app.ticker.add((t) => {
+    forgeClock += Math.min(t.deltaMS / 1000, 0.25);
+    if (forgeClock < FORGE_PUFF) return;
+    forgeClock = 0;
+    for (const rec of sprites.values()) {
+      const heat = rec.key.startsWith('forge:') ? rec.key.slice('forge:'.length) : null;
+      if (heat !== 'hot' && heat !== 'warm') continue;
+      const { x, y } = rec.sprite.position;
+      const at = (p: { x: number; y: number }) => ({ x: x + p.x, y: y + p.y });
+      if (heat === 'warm') {
+        if (Math.random() < 0.12) particles.chimney(at(FORGE_FX.flue), true);
+        continue;
+      }
+      particles.chimney(at(FORGE_FX.flue));
+      if (Math.random() < 0.55) particles.sparks(at(FORGE_FX.bed), 1 + Math.floor(Math.random() * 2));
+    }
+  });
 
   /** The lit houses and where fireflies wander, and the light of the hour. */
   const syncDaylight = (state: VillageInput) => {
@@ -1143,6 +1173,14 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       if (!c) continue;
       const h = iso(c.house.x + HOUSE / 2, c.house.y + HOUSE / 2);
       lights.push({ x: h.x, y: h.y - 14, r: 120 });
+    }
+    // a forge's fire lights its yard; embers barely
+    for (const s of state.sessions) {
+      if (s.kind.kind !== 'terminal' || !s.spot || !state.workspaces.some((w) => w.id === s.workspaceId && w.compound)) continue;
+      const heat = forgeHeat(s);
+      if (heat === 'cold') continue;
+      const f = iso(s.spot.x + STRUCT, s.spot.y + STRUCT);
+      lights.push({ x: f.x + FORGE_FX.mouth.x, y: f.y + FORGE_FX.mouth.y, r: heat === 'hot' ? 80 : 40 });
     }
     daylightFx.setPlaces(lights, villageTiles ? pxRectOfTiles(villageTiles) : null);
     daylightFx.set(daylightAt(new Date()), state.dayNight !== false);

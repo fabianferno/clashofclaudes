@@ -47,10 +47,6 @@ pub struct Stats {
     pub recent_ships: Vec<i64>,
 }
 
-fn one() -> u32 {
-    1
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Workspace {
@@ -62,12 +58,9 @@ pub struct Workspace {
     /// frontend receives it over IPC.
     #[serde(default)]
     pub missing: bool,
-    /// House level, starting at 1.
-    #[serde(default = "one")]
-    pub level: u32,
-    /// XP progress within the current level.
+    /// When its sessions were accepted (ms), the last `activity::KEEP_MS`: the house's look follows them.
     #[serde(default)]
-    pub xp: u32,
+    pub ships: Vec<i64>,
     #[serde(default)]
     pub compound: Option<Compound>,
     /// The house's roof colour (`#rrggbb`) the owner chose; None picks one from the id.
@@ -461,7 +454,7 @@ impl Default for Settings {
 impl Default for AppData {
     fn default() -> Self {
         Self {
-            version: 2,
+            version: 3,
             workspaces: Vec::new(),
             builders: Vec::new(),
             stats: Stats::default(),

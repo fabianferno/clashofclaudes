@@ -17,8 +17,12 @@ pub struct MapWorkspace {
     pub slug: String,
     #[serde(rename = "n")]
     pub name: String,
+    /// For apps before activity houses: a level their `houseStage` draws as `activity`.
     #[serde(rename = "l")]
     pub level: u32,
+    /// The house's stage 0-4 (`activity::stage`); absent from older apps' maps.
+    #[serde(rename = "a", default)]
+    pub activity: u8,
     #[serde(rename = "c", default, skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
     /// `[x0, y0, w, h, house x, house y]`.
@@ -119,7 +123,10 @@ pub fn build(data: &AppData, owner: &str, host: &str, sessions: &[SessionInfo], 
     let shared: Vec<_> = data.workspaces.iter().filter(|w| w.board_shared).collect();
     let workspaces = shared
         .iter()
-        .map(|w| MapWorkspace { slug: slugs[&w.id].clone(), name: w.name.clone(), level: w.level, color: w.color.clone(), compound: w.compound.clone() })
+        .map(|w| {
+            let a = crate::activity::stage(&w.ships, now);
+            MapWorkspace { slug: slugs[&w.id].clone(), name: w.name.clone(), level: crate::activity::legacy_level(a), activity: a, color: w.color.clone(), compound: w.compound.clone() }
+        })
         .collect();
     let mut used = BTreeSet::new();
     let mut out = Vec::new();

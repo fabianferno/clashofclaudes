@@ -63,7 +63,7 @@ fn label<'a>(set: &'a [(String, String)], k: &str) -> Option<&'a str> {
 }
 
 fn ws(id: &str, name: &str) -> Workspace {
-    Workspace { id: id.into(), name: name.into(), path: PathBuf::from("/nope"), created_at: 0, missing: false, level: 1, xp: 0, compound: None, color: None, notes: String::new(), board_shared: true }
+    Workspace { id: id.into(), name: name.into(), path: PathBuf::from("/nope"), created_at: 0, missing: false, ships: vec![], compound: None, color: None, notes: String::new(), board_shared: true }
 }
 
 fn valid_profile(p: &str) -> bool {

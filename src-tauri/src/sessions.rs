@@ -1708,7 +1708,7 @@ mod tests {
         let data_dir = dir.path().join("data");
         let mgr = SessionManager::new(AdapterRegistry::new(), hooks, data_dir.clone(), emit);
         let _ = cell.set(Arc::downgrade(&mgr));
-        let ws = Workspace { id: "w1".into(), name: "ws".into(), path: ws_path, created_at: 0, missing: false, level: 1, xp: 0, compound: None, color: None, notes: String::new(), board_shared: false };
+        let ws = Workspace { id: "w1".into(), name: "ws".into(), path: ws_path, created_at: 0, missing: false, ships: vec![], compound: None, color: None, notes: String::new(), board_shared: false };
         Fx { mgr, events, ws, data_dir, _dir: dir, _rt: rt }
     }
 

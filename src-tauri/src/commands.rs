@@ -7,10 +7,10 @@ use crate::git::{self, Review};
 use crate::history::{self, HistoryEntry};
 use crate::saved::SavedSession;
 use crate::model::{AgentKind, AppData, Builder, Compound, SessionInfo, SessionKind, Settings, Stats, Tile, Todo, Workspace};
+use crate::activity;
 use crate::persist;
 use crate::updater::{self, UpdateStatus};
 use crate::sessions::{ClosedSession, SessionManager, WorkspaceMissing};
-use crate::xp;
 use anyhow::{anyhow, bail, Context};
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
@@ -84,7 +84,7 @@ pub fn workspace_from_path(path: &Path, now: i64) -> anyhow::Result<Workspace> {
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .ok_or_else(|| anyhow!("{} has no folder name", path.display()))?;
-    Ok(Workspace { id: Uuid::new_v4().to_string(), name, path: path.to_path_buf(), created_at: now, missing: false, level: 1, xp: 0, compound: None, color: None, notes: String::new(), board_shared: false })
+    Ok(Workspace { id: Uuid::new_v4().to_string(), name, path: path.to_path_buf(), created_at: now, missing: false, ships: vec![], compound: None, color: None, notes: String::new(), board_shared: false })
 }
 
 /// Trimmed builder name, 1 to 40 characters.
@@ -517,13 +517,13 @@ pub async fn close_session(id: String, discard: Option<bool>, app: AppHandle, st
         let before = d.workspaces.iter().find(|w| w.id == closed.workspace_id).cloned();
         outcome = apply_close(&mut d, &closed, now_ms());
         outcome.discarded = discard;
-        if outcome.earned_xp {
+        if outcome.shipped {
             state.save(&d)?;
         }
         let after = d.workspaces.iter().find(|w| w.id == closed.workspace_id).cloned();
         (if before != after { after } else { None }, d.stats.clone())
     };
-    if outcome.earned_xp {
+    if outcome.shipped {
         if let Some(w) = ws {
             let _ = app.emit("workspace-updated", w);
         }
@@ -685,10 +685,11 @@ pub fn forget_history(id: String, app: AppHandle, state: State<'_, AppState>) ->
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CloseOutcome {
-    pub earned_xp: bool,
-    pub xp_gained: u32,
-    pub level_before: u32,
-    pub level_after: u32,
+    /// It counted as shipped (an agent that finished, closed not stuck and not discarded).
+    pub shipped: bool,
+    /// The house's stage (`activity::stage`) before and after this close.
+    pub stage_before: u8,
+    pub stage_after: u8,
     pub workspace_id: String,
     /// An agent was closed before it ever finished (terminals never count).
     pub unfinished: bool,
@@ -698,15 +699,14 @@ pub struct CloseOutcome {
     pub discarded: bool,
 }
 
-/// Applies the XP rules for a closed session. A finished, not-stuck agent session earns
-/// `XP_PER_SESSION` for its workspace and counts as a ship. XP never depends on the
-/// session's builder settings (spec §4).
+/// A closed session's outcome. A finished, not-stuck agent session counts as a ship: its time goes
+/// on its workspace (which drops ships past `activity::KEEP_MS`) and in the stats. Whether it ships
+/// never depends on the session's builder settings (spec §4).
 pub fn apply_close(d: &mut AppData, closed: &ClosedSession, now_ms: i64) -> CloseOutcome {
     let mut out = CloseOutcome {
-        earned_xp: false,
-        xp_gained: 0,
-        level_before: 1,
-        level_after: 1,
+        shipped: false,
+        stage_before: 0,
+        stage_after: 0,
         workspace_id: closed.workspace_id.clone(),
         unfinished: closed.is_agent && !closed.reached_finished,
         stuck: closed.is_agent && closed.stuck,
@@ -714,17 +714,15 @@ pub fn apply_close(d: &mut AppData, closed: &ClosedSession, now_ms: i64) -> Clos
     };
     let earns = closed.is_agent && closed.reached_finished && !closed.stuck;
     let Some(w) = d.workspaces.iter_mut().find(|w| w.id == closed.workspace_id) else { return out };
-    out.level_before = w.level;
-    out.level_after = w.level;
+    out.stage_before = activity::stage(&w.ships, now_ms);
+    out.stage_after = out.stage_before;
     if !earns {
         return out;
     }
-    let (level, xp_now) = xp::award(w.level, w.xp, xp::XP_PER_SESSION);
-    w.level = level;
-    w.xp = xp_now;
-    out.earned_xp = true;
-    out.xp_gained = xp::XP_PER_SESSION;
-    out.level_after = level;
+    w.ships.push(now_ms);
+    w.ships.retain(|t| now_ms - t < activity::KEEP_MS);
+    out.shipped = true;
+    out.stage_after = activity::stage(&w.ships, now_ms);
     d.stats.shipped_total += 1;
     d.stats.recent_ships.push(now_ms);
     d.stats.recent_ships.retain(|t| now_ms - t <= persist::SHIP_WINDOW_MS);
@@ -1332,7 +1330,7 @@ mod tests {
 
     #[test]
     fn flag_missing_marks_only_that_workspace_once() {
-        let ws = |id: &str| Workspace { id: id.into(), name: id.into(), path: PathBuf::from("/nope"), created_at: 0, missing: false, level: 1, xp: 0, compound: None, color: None, notes: String::new(), board_shared: false };
+        let ws = |id: &str| Workspace { id: id.into(), name: id.into(), path: PathBuf::from("/nope"), created_at: 0, missing: false, ships: vec![], compound: None, color: None, notes: String::new(), board_shared: false };
         let mut d = AppData { workspaces: vec![ws("a"), ws("b")], ..AppData::default() };
         let w = flag_workspace_missing(&mut d, "b").unwrap();
         assert!(w.missing && w.id == "b");
@@ -1356,7 +1354,7 @@ mod tests {
     #[test]
     fn workspace_notes_are_kept_whole_and_capped() {
         let mut d = AppData::default();
-        d.workspaces.push(Workspace { id: "w1".into(), name: "w".into(), path: PathBuf::from("/nope"), created_at: 0, missing: false, level: 1, xp: 0, compound: None, color: None, notes: String::new(), board_shared: false });
+        d.workspaces.push(Workspace { id: "w1".into(), name: "w".into(), path: PathBuf::from("/nope"), created_at: 0, missing: false, ships: vec![], compound: None, color: None, notes: String::new(), board_shared: false });
         let w = apply_workspace_notes(&mut d, "w1", "  add export later\n").unwrap();
         assert_eq!(w.notes, "  add export later\n");
         assert_eq!(d.workspaces[0].notes, "  add export later\n");
@@ -1371,7 +1369,7 @@ mod tests {
     #[test]
     fn house_colour_is_set_checked_and_cleared() {
         let mut d = AppData::default();
-        d.workspaces.push(Workspace { id: "w1".into(), name: "w".into(), path: PathBuf::from("/nope"), created_at: 0, missing: false, level: 1, xp: 0, compound: None, color: None, notes: String::new(), board_shared: false });
+        d.workspaces.push(Workspace { id: "w1".into(), name: "w".into(), path: PathBuf::from("/nope"), created_at: 0, missing: false, ships: vec![], compound: None, color: None, notes: String::new(), board_shared: false });
         assert_eq!(apply_workspace_color(&mut d, "w1", Some("#3FA34D")).unwrap().color.as_deref(), Some("#3fa34d"));
         for bad in ["3fa34d", "#3fa34", "#3fa34g", "red", "#3fa34d0"] {
             assert!(apply_workspace_color(&mut d, "w1", Some(bad)).is_err(), "{bad}");
@@ -1418,7 +1416,7 @@ mod tests {
     }
 
     fn village() -> AppData {
-        let ws = Workspace { id: "w1".into(), name: "w".into(), path: PathBuf::from("/nope"), created_at: 0, missing: false, level: 1, xp: 0, compound: None, color: None, notes: String::new(), board_shared: false };
+        let ws = Workspace { id: "w1".into(), name: "w".into(), path: PathBuf::from("/nope"), created_at: 0, missing: false, ships: vec![], compound: None, color: None, notes: String::new(), board_shared: false };
         AppData { workspaces: vec![ws], ..AppData::default() }
     }
 
@@ -1427,18 +1425,27 @@ mod tests {
     }
 
     #[test]
-    fn close_finished_awards_xp_and_stats() {
+    fn close_finished_records_a_ship() {
         let mut d = village();
         let o = apply_close(&mut d, &closed(true, true, false), 5_000);
         assert_eq!(
             o,
-            CloseOutcome { earned_xp: true, xp_gained: 100, level_before: 1, level_after: 2, workspace_id: "w1".into(), unfinished: false, stuck: false, discarded: false }
+            CloseOutcome { shipped: true, stage_before: 0, stage_after: 1, workspace_id: "w1".into(), unfinished: false, stuck: false, discarded: false }
         );
-        assert_eq!((d.workspaces[0].level, d.workspaces[0].xp), (2, 0));
+        assert_eq!(d.workspaces[0].ships, vec![5_000]);
         assert_eq!((d.stats.shipped_total, d.stats.recent_ships.clone()), (1, vec![5_000]));
         let json = serde_json::to_value(&o).unwrap();
-        assert_eq!(json["earnedXp"], true);
-        assert_eq!(json["levelAfter"], 2);
+        assert_eq!(json["shipped"], true);
+        assert_eq!(json["stageAfter"], 1);
+    }
+
+    #[test]
+    fn close_drops_ships_older_than_14_days() {
+        const D: i64 = 86_400_000;
+        let mut d = village();
+        d.workspaces[0].ships = vec![0, 10 * D];
+        apply_close(&mut d, &closed(true, true, false), 15 * D);
+        assert_eq!(d.workspaces[0].ships, vec![10 * D, 15 * D]);
     }
 
     #[test]
@@ -1446,7 +1453,7 @@ mod tests {
         let mut d = village();
         let before = d.clone();
         let o = apply_close(&mut d, &closed(true, false, false), 5_000);
-        assert_eq!((o.earned_xp, o.xp_gained, o.unfinished), (false, 0, true));
+        assert_eq!((o.shipped, o.unfinished), (false, true));
         assert_eq!(d, before);
     }
 
@@ -1455,7 +1462,7 @@ mod tests {
         let mut d = village();
         let before = d.clone();
         let o = apply_close(&mut d, &closed(false, false, false), 5_000);
-        assert_eq!((o.earned_xp, o.unfinished), (false, false));
+        assert_eq!((o.shipped, o.unfinished), (false, false));
         assert_eq!(d, before);
     }
 
@@ -1463,7 +1470,7 @@ mod tests {
     fn close_stuck_after_finish_earns_nothing() {
         let mut d = village();
         let o = apply_close(&mut d, &closed(true, true, true), 1);
-        assert!(!o.earned_xp);
+        assert!(!o.shipped);
         assert_eq!(d.stats.shipped_total, 0);
     }
 
@@ -1471,11 +1478,11 @@ mod tests {
     fn close_reports_stuck_only_for_stuck_agents() {
         let mut d = village();
         let o = apply_close(&mut d, &closed(true, true, true), 1);
-        assert!(o.stuck && !o.earned_xp);
+        assert!(o.stuck && !o.shipped);
         let o = apply_close(&mut d, &closed(true, false, true), 1);
-        assert!(o.stuck && !o.earned_xp);
+        assert!(o.stuck && !o.shipped);
         let o = apply_close(&mut d, &closed(true, true, false), 1);
-        assert!(!o.stuck && o.earned_xp);
+        assert!(!o.stuck && o.shipped);
         let o = apply_close(&mut d, &closed(false, false, true), 1);
         assert!(!o.stuck, "terminals stay quiet");
     }

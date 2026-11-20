@@ -116,6 +116,11 @@ impl RaidLog {
         }
     }
 
+    /// Every accepted session kept, as (workspace id, ms): seeds the activity houses (`persist::seed_ships`).
+    pub fn ship_times(&self) -> Vec<(String, i64)> {
+        self.file.ships.iter().map(|s| (s.workspace_id.clone(), s.at)).collect()
+    }
+
     /// What happened between `from` and `to` (ms), as of `now`.
     pub fn report(&self, from: i64, to: i64, now: i64) -> RaidReport {
         let overlap = |a: i64, b: i64| (b.min(to) - a.max(from)).max(0);

@@ -8,7 +8,8 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 /// The moments that can play a sound (keys of `Settings::sounds`; see `src/state/sounds.ts`).
-pub const MOMENTS: [&str; 9] = ["decide", "answer", "finished", "stuck", "start", "minion", "working", "xp", "levelUp"];
+/// `xp` is "Work shipped" (the key is kept so saved choices carry over).
+pub const MOMENTS: [&str; 8] = ["decide", "answer", "finished", "stuck", "start", "minion", "working", "xp"];
 
 pub const SYSTEM_DIR: &str = "/System/Library/Sounds";
 
@@ -31,7 +32,6 @@ pub fn default_sounds() -> BTreeMap<String, String> {
         "start" => system("Glass"),
         "minion" => system("Pop"),
         "xp" => system("Bottle"),
-        "levelUp" => system("Submarine"),
         _ => String::new(),
     };
     MOMENTS.iter().map(|m| (m.to_string(), pick(m))).collect()
@@ -146,8 +146,11 @@ mod tests {
         let mut mine = BTreeMap::new();
         mine.insert("finished".to_string(), " /x/ding.mp3 ".to_string());
         mine.insert("bogus".to_string(), "/x/y.mp3".to_string());
+        mine.insert("levelUp".to_string(), "/x/old.mp3".to_string());
         let n = normalized(mine);
         assert_eq!(n["finished"], "/x/ding.mp3");
+        assert!(!n.contains_key("levelUp"), "houses no longer level up");
+        assert_eq!(MOMENTS.len(), 8);
         assert!(!n.contains_key("bogus"));
         assert_eq!(n["answer"], d["answer"], "missing moments get their default");
     }

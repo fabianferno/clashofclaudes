@@ -33,7 +33,6 @@ pub mod sounds;
 pub mod status;
 pub mod updater;
 pub mod usage;
-pub mod xp;
 pub mod activity;
 
 use commands::{AppState, Channels, Removed};
@@ -272,6 +271,13 @@ pub fn run() {
             app.manage(raid::RaidState(Mutex::new(raid::RaidLog::load(&data_dir.join("raid.json")))));
             let mut data = persist::load(&data_path);
             persist::mark_missing(&mut data);
+            // before activity houses: each house starts from the raid log's last 8 days of ships
+            let raid_ships = app.state::<raid::RaidState>().lock().ship_times();
+            if persist::seed_ships(&mut data, &raid_ships, quota::now_ms())
+                && let Err(e) = persist::save(&data_path, &data)
+            {
+                eprintln!("could not save the seeded ships: {e:#}");
+            }
             // images pasted into a task that was never added or started
             attachments::sweep(&data_dir, &data.todos.iter().flat_map(|t| t.images.iter().map(String::as_str)).collect());
 

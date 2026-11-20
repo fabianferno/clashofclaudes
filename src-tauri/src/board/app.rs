@@ -842,7 +842,7 @@ mod tests {
     use std::path::PathBuf;
 
     fn data() -> AppData {
-        let ws = |id: &str, name: &str, shared: bool| Workspace { id: id.into(), name: name.into(), path: PathBuf::from("/nope"), created_at: 0, missing: false, level: 1, xp: 0, compound: None, color: None, notes: String::new(), board_shared: shared };
+        let ws = |id: &str, name: &str, shared: bool| Workspace { id: id.into(), name: name.into(), path: PathBuf::from("/nope"), created_at: 0, missing: false, ships: vec![], compound: None, color: None, notes: String::new(), board_shared: shared };
         let mut d = AppData::default();
         d.workspaces = vec![ws("w1", "API Server", true), ws("w2", "site", false)];
         d.builders = vec![Builder { id: "b1".into(), name: "Wizard".into(), agent: AgentKind::Claude, model: None, effort: None, custom_command: None }];

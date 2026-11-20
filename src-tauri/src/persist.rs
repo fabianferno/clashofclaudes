@@ -53,6 +53,22 @@ pub fn save_at(path: &Path, data: &AppData, now_ms: i64) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Data files before version 3 had XP levels: each workspace's ships are seeded, once, from the
+/// raid report's log (`(workspace id, ms)`, the last 8 days), within `activity::KEEP_MS` of `now`.
+/// Returns whether it changed `data` (to save).
+pub fn seed_ships(data: &mut AppData, raid: &[(String, i64)], now: i64) -> bool {
+    if data.version >= 3 {
+        return false;
+    }
+    for w in &mut data.workspaces {
+        let mut ships: Vec<i64> = raid.iter().filter(|(id, at)| *id == w.id && now - at < crate::activity::KEEP_MS).map(|(_, at)| *at).collect();
+        ships.sort_unstable();
+        w.ships = ships;
+    }
+    data.version = 3;
+    true
+}
+
 /// Recompute `missing` for every workspace from the filesystem.
 pub fn mark_missing(data: &mut AppData) {
     for w in &mut data.workspaces {
@@ -94,8 +110,7 @@ mod tests {
                 path: PathBuf::from("/tmp/my projéct dir"),
                 created_at: 42,
                 missing: false,
-                level: 1,
-                xp: 0,
+                ships: vec![],
                 compound: None,
                 color: Some("#3fa34d".into()),
                 notes: "Add export later\nLook at the flaky test".into(),
@@ -152,7 +167,7 @@ mod tests {
     #[test]
     fn apply_missing_reports_only_changes_both_ways() {
         let mut data = AppData::default();
-        data.workspaces.push(Workspace { id: "w".into(), name: "w".into(), path: "/nope".into(), created_at: 0, missing: false, level: 1, xp: 0, compound: None, color: None, notes: String::new(), board_shared: false });
+        data.workspaces.push(Workspace { id: "w".into(), name: "w".into(), path: "/nope".into(), created_at: 0, missing: false, ships: vec![], compound: None, color: None, notes: String::new(), board_shared: false });
         let gone = apply_missing(&mut data, &[("w".into(), true), ("removed".into(), true)]);
         assert_eq!(gone.len(), 1);
         assert!(gone[0].missing && data.workspaces[0].missing);
@@ -205,7 +220,7 @@ mod tests {
         std::fs::write(&p, r#"{"version":1,"workspaces":[{"id":"w1","name":"a","path":"/tmp","createdAt":1}],"builders":[]}"#).unwrap();
         let d = load(&p);
         let w = &d.workspaces[0];
-        assert_eq!((w.level, w.xp, w.compound.clone()), (1, 0, None));
+        assert_eq!((w.ships.clone(), w.compound.clone()), (vec![], None));
         assert_eq!(d.stats, Stats::default());
         assert!(d.settings.updates_enabled, "old files default to updates on");
         assert_eq!(d.settings, Settings::default(), "and to notifications and the Dock badge on");
@@ -239,5 +254,42 @@ mod tests {
         assert!(text.contains("\"house\""));
         assert!(!text.contains("\"spot\""), "session spots are saved with the sessions (sessions.json)");
         assert_eq!(load(&p), d);
+    }
+
+    fn v2_village() -> AppData {
+        let w = |id: &str| Workspace { id: id.into(), name: id.into(), path: PathBuf::from("/nope"), created_at: 0, missing: false, ships: vec![], compound: None, color: None, notes: String::new(), board_shared: false };
+        AppData { version: 2, workspaces: vec![w("w1"), w("w2")], ..AppData::default() }
+    }
+
+    #[test]
+    fn seed_ships_from_raid() {
+        let mut d = v2_village();
+        let raid = vec![("w1".to_string(), 6), ("w1".to_string(), 5), ("gone".to_string(), 7)];
+        assert!(seed_ships(&mut d, &raid, 10));
+        assert_eq!((d.workspaces[0].ships.clone(), d.workspaces[1].ships.clone(), d.version), (vec![5, 6], vec![], 3));
+    }
+
+    #[test]
+    fn seed_runs_only_below_version_3() {
+        let mut d = v2_village();
+        d.version = 3;
+        d.workspaces[0].ships = vec![5];
+        assert!(!seed_ships(&mut d, &[("w1".to_string(), 6)], 10));
+        assert_eq!(d.workspaces[0].ships, vec![5]);
+    }
+
+    #[test]
+    fn seed_with_no_raid_ships_still_bumps_version() {
+        let mut d = v2_village();
+        assert!(seed_ships(&mut d, &[], 10));
+        assert_eq!((d.version, d.workspaces[0].ships.clone()), (3, vec![]));
+    }
+
+    #[test]
+    fn seed_skips_raid_ships_past_the_keep_window() {
+        let mut d = v2_village();
+        let now = crate::activity::KEEP_MS + 100;
+        assert!(seed_ships(&mut d, &[("w1".to_string(), 50), ("w1".to_string(), 200)], now));
+        assert_eq!(d.workspaces[0].ships, vec![200]);
     }
 }

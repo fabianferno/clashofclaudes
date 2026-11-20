@@ -9,8 +9,7 @@ fn ws(id: &str, name: &str, shared: bool) -> Workspace {
         path: PathBuf::from(format!("/Users/ada/secret/{name}")),
         created_at: 0,
         missing: false,
-        level: 3,
-        xp: 40,
+        ships: vec![5_000],
         compound: Some(Compound { x0: 4, y0: 5, w: 6, h: 7, house: Tile { x: 5, y: 6 } }),
         color: Some("#3d6fd6".into()),
         notes: "remember the password".into(),
@@ -70,7 +69,7 @@ fn only_shared_workspaces_and_their_agent_sessions() {
     assert_eq!((s.v, s.host.as_str(), s.owner.as_str(), s.name.as_deref(), s.seen), (1, "h1", "ada", Some("Ada"), 5_000));
     assert_eq!(s.workspaces.len(), 1);
     let w = &s.workspaces[0];
-    assert_eq!((w.slug.as_str(), w.name.as_str(), w.level, w.color.as_deref()), ("api", "API", 3, Some("#3d6fd6")));
+    assert_eq!((w.slug.as_str(), w.name.as_str(), w.activity, w.level, w.color.as_deref()), ("api", "API", 1, 2, Some("#3d6fd6")));
     assert_eq!(w.compound, Some(Compound { x0: 4, y0: 5, w: 6, h: 7, house: Tile { x: 5, y: 6 } }));
     assert_eq!(s.sessions.iter().map(|x| x.id.as_str()).collect::<Vec<_>>(), ["s1"]);
     // only builders with a session shown
@@ -134,4 +133,10 @@ fn same_but_seen_ignores_only_the_heartbeat() {
     assert!(same_but_seen(&a, &b));
     b.sessions[0].state = "finished".into();
     assert!(!same_but_seen(&a, &b));
+}
+
+#[test]
+fn a_map_without_activity_still_parses() {
+    let w: MapWorkspace = serde_json::from_str(r#"{"s":"api","n":"API","l":6}"#).unwrap();
+    assert_eq!((w.activity, w.level), (0, 6));
 }

@@ -46,6 +46,9 @@
   content: counter(recap); flex: none; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%;
   font: 400 13px 'Lilita One', sans-serif; color: #fff; background: #4fb82a; border: 2px solid var(--hud-out);
 }
+/* the send-off's quieter extras, after the numbered loop */
+.tour-tips { margin: -8px 0 16px; padding: 0 0 0 18px; text-align: left; font-size: 12.5px; font-weight: 650; line-height: 1.6; color: var(--sp-ink-soft, #6d5838); }
+.tour-tips b { color: #2b2018; }
 
 /* ---- coach card */
 .tour-card {

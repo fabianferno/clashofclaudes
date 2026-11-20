@@ -14,7 +14,7 @@ vi.mock('../village/probe', () => probe);
 import { useApp } from '../state/store';
 import { DEFAULT_SETTINGS } from '../state/settings';
 import TourOverlay, { measure, placeCard } from './TourOverlay';
-import { COACH_STEPS, endTour, goTo, startTour, useTour } from './tour';
+import { COACH_STEPS, endTour, goTo, startTour, stepNumber, useTour } from './tour';
 import { DEMO_WS_ID, sandboxInstalled } from './demo';
 
 const st = () => useApp.getState();
@@ -51,16 +51,16 @@ describe('the welcome', () => {
     expect(start.disabled).toBe(false);
   });
 
-  it('starting saves the name and walks to the Town Hall', async () => {
+  it('starting saves the name and goes straight to the sample', async () => {
     act(() => startTour());
     render(<TourOverlay />);
     fireEvent.change(screen.getByLabelText('Your name'), { target: { value: 'Fabian' } });
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Start the tour' })); });
     expect(ipc.setSettings).toHaveBeenCalledWith(expect.objectContaining({ playerName: 'Fabian' }));
     expect(st().settings?.playerName).toBe('Fabian');
-    expect(useTour.getState().step).toBe('hall');
-    expect(screen.getByTestId('tour-card').dataset.step).toBe('hall');
-    expect(screen.getByText(/Fabian's Town Hall/)).toBeTruthy();
+    expect(useTour.getState().step).toBe('workspace');
+    expect(screen.getByTestId('tour-card').dataset.step).toBe('workspace');
+    expect(screen.getByText('Step 1 of 8')).toBeTruthy();
   });
 
   it('skipping keeps a typed name, marks the welcome done and puts ipc back', async () => {
@@ -84,20 +84,9 @@ describe('the welcome', () => {
 });
 
 describe('the coach', () => {
-  it('moves on by itself once the owner does what it asks', async () => {
-    act(() => { startTour(); goTo('hall'); });
-    render(<TourOverlay />);
-    expect(screen.getByText('Click the Town Hall')).toBeTruthy();
-    act(() => st().setSelection({ kind: 'hall' }));
-    await act(async () => { await new Promise((r) => requestAnimationFrame(r)); await new Promise((r) => requestAnimationFrame(r)); });
-    expect(useTour.getState().step).toBe('hall-panel');
-  });
-
-  it('Do it for me does it', async () => {
-    act(() => { startTour(); goTo('hall'); });
-    render(<TourOverlay />);
-    fireEvent.click(screen.getByRole('button', { name: 'Do it for me' }));
-    expect(st().selection).toEqual({ kind: 'hall' });
+  it('is short: the loop, then two tips', () => {
+    expect(COACH_STEPS.map((s) => s.id)).toEqual(['workspace', 'new-session', 'picker', 'working', 'needs', 'review', 'kanban', 'roster']);
+    expect(stepNumber('wait-finish')).toBe(stepNumber('needs')); // the pause keeps the number before it
   });
 
   it('raises the sample compound on request and turns to it', async () => {
@@ -107,25 +96,25 @@ describe('the coach', () => {
     expect(st().workspaces.map((w) => w.id)).toEqual([DEMO_WS_ID]);
     expect(st().zoomRequest?.id).toBe(DEMO_WS_ID);
     await act(async () => { await new Promise((r) => requestAnimationFrame(r)); await new Promise((r) => requestAnimationFrame(r)); });
-    expect(useTour.getState().step).toBe('open-workspace');
+    expect(useTour.getState().step).toBe('new-session');
+    expect(st().selection).toEqual({ kind: 'workspace', id: DEMO_WS_ID }); // its panel opens with it
   });
 
   it('counts its steps and Next moves on', () => {
-    act(() => { startTour(); goTo('resources'); });
+    act(() => { startTour(); goTo('roster'); });
     render(<TourOverlay />);
-    const i = COACH_STEPS.findIndex((s) => s.id === 'resources');
-    expect(screen.getByText(`Step ${i + 1} of ${COACH_STEPS.length}`)).toBeTruthy();
+    expect(screen.getByText(`Step ${COACH_STEPS.length} of ${COACH_STEPS.length}`)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    expect(useTour.getState().step).toBe('roster');
+    expect(useTour.getState().step).toBe('done');
   });
 
   it('offers to raise the sample again when it was removed', () => {
-    act(() => { startTour(); goTo('terminal'); });
+    act(() => { startTour(); goTo('kanban'); });
     render(<TourOverlay />);
     expect(screen.getByText('The sample is gone')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Raise it again' }));
     expect(st().workspaces.some((w) => w.id === DEMO_WS_ID)).toBe(true);
-    expect(useTour.getState().step).toBe('open-workspace');
+    expect(useTour.getState().step).toBe('new-session');
   });
 
   it('Skip tour packs the sample up', async () => {

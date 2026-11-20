@@ -10,8 +10,8 @@ import * as probe from '../village/probe';
 import { DEMO_WS_ID, clearDemo, demoAgentSession, demoWorkspace, installSandbox, raiseDemoWorkspace, uninstallSandbox } from './demo';
 
 export type StepId =
-  | 'welcome' | 'hall' | 'hall-panel' | 'workspace' | 'open-workspace' | 'new-session' | 'picker' | 'working' | 'needs'
-  | 'wait-finish' | 'review' | 'shipped' | 'terminal' | 'kanban' | 'resources' | 'roster' | 'camera' | 'settings' | 'done';
+  | 'welcome' | 'workspace' | 'new-session' | 'picker' | 'working' | 'needs' | 'wait-finish' | 'review' | 'kanban' | 'roster'
+  | 'done';
 
 export type Target = { kind: 'dom'; selector: string } | { kind: 'village'; sel: Selection };
 
@@ -31,6 +31,8 @@ export interface StepSpec {
   next?: boolean;
   /** The step is about the sample compound: without it the card offers to raise it again. */
   needsDemo?: boolean;
+  /** A pause between two steps (the builder carrying on): it shows no step number of its own. */
+  interlude?: boolean;
 }
 
 const app = () => useApp.getState();
@@ -48,33 +50,15 @@ const showSession = () => { const s = live(); if (s && !isSel({ kind: 'session',
 export const STEPS: StepSpec[] = [
   { id: 'welcome', modal: true },
   {
-    id: 'hall',
-    enter: () => { sel(null); probe.fitVillage(); },
-    target: () => ({ kind: 'village', sel: { kind: 'hall' } }),
-    done: () => app().selection?.kind === 'hall',
-    assist: () => sel({ kind: 'hall' }),
-  },
-  {
-    id: 'hall-panel', next: true,
-    enter: () => { if (app().selection?.kind !== 'hall') sel({ kind: 'hall' }); },
-    target: () => dom('[data-testid="side-panel"]'),
-  },
-  {
     id: 'workspace',
-    enter: () => sel(null),
+    enter: () => { sel(null); probe.fitVillage(); },
     target: () => dom('[data-testid="build-buttons"]'),
     done: () => !!demoWorkspace(),
     assist: () => raiseSample(),
   },
   {
-    id: 'open-workspace', needsDemo: true,
-    enter: () => { sel(null); app().requestZoom(DEMO_WS_ID); },
-    target: () => ({ kind: 'village', sel: demoWs() }),
-    done: () => isSel(demoWs()) || !!live(),
-    assist: () => sel(demoWs()),
-  },
-  {
     id: 'new-session', needsDemo: true,
+    enter: () => { showWorkspace(); app().requestZoom(DEMO_WS_ID); },
     target: () => dom('[data-tour="new-session"]'),
     done: () => !!document.querySelector('form.new-session') || !!live(),
     assist: () => { showWorkspace(); requestAnimationFrame(() => click('[data-tour="new-session"]')); },
@@ -99,7 +83,7 @@ export const STEPS: StepSpec[] = [
     assist: () => { showSession(); requestAnimationFrame(() => click('[data-tour="allow"]')); },
   },
   {
-    id: 'wait-finish', needsDemo: true,
+    id: 'wait-finish', needsDemo: true, interlude: true,
     target: () => { const s = live(); return s ? { kind: 'village', sel: { kind: 'session', id: s.id } } : null; },
     done: () => !live() || stateOf() === 'finished' || stateOf() === 'ended',
   },
@@ -111,32 +95,25 @@ export const STEPS: StepSpec[] = [
     assist: () => { showSession(); requestAnimationFrame(() => click('[data-tour="close-session"]')); },
   },
   {
-    id: 'shipped', next: true, needsDemo: true,
-    enter: () => { sel(null); app().requestZoom(DEMO_WS_ID); },
-    target: () => ({ kind: 'village', sel: demoWs() }),
-  },
-  {
-    id: 'terminal', next: true, needsDemo: true,
-    enter: showWorkspace,
-    target: () => dom('[data-tour="terminal"]'),
-  },
-  {
     id: 'kanban', next: true, needsDemo: true,
     enter: () => { app().setKanban(null); showWorkspace(); },
     target: () => dom(app().kanban ? '.kanban' : '[data-tour="kanban"]'),
   },
   {
-    id: 'resources', next: true,
+    id: 'roster', next: true,
     enter: () => { app().setKanban(null); sel(null); },
-    target: () => dom('#resources'),
+    target: () => dom('[data-testid="builders-bar"]'),
   },
-  { id: 'roster', next: true, target: () => dom('[data-testid="builders-bar"]') },
-  { id: 'camera', next: true, enter: () => probe.fitVillage(), target: () => dom('[data-testid="zoom-controls"]') },
-  { id: 'settings', next: true, target: () => dom('[data-testid="settings-button"]') },
   { id: 'done', modal: true, enter: () => { app().setKanban(null); sel(null); } },
 ];
 
-export const COACH_STEPS = STEPS.filter((s) => !s.modal);
+/** The numbered steps of the progress bar: the coach cards, less the interludes. */
+export const COACH_STEPS = STEPS.filter((s) => !s.modal && !s.interlude);
+/** The number a step shows (1-based): an interlude shows the number of the step before it. */
+export function stepNumber(id: StepId): number {
+  const upTo = STEPS.slice(0, STEPS.findIndex((s) => s.id === id) + 1);
+  return Math.max(1, upTo.filter((s) => !s.modal && !s.interlude).length);
+}
 export const specOf = (id: StepId): StepSpec => STEPS.find((s) => s.id === id)!;
 
 interface TourState {
@@ -171,10 +148,10 @@ export function nextStep(): void {
   goTo(STEPS[Math.min(i + 1, STEPS.length - 1)].id);
 }
 
-/** Raises the sample compound and turns the camera to it. */
+/** Raises the sample compound, opens its panel and turns the camera to it. */
 export function raiseSample(): void {
   raiseDemoWorkspace();
-  app().setSelection(null);
+  app().setSelection(demoWs());
   app().requestZoom(DEMO_WS_ID);
 }
 

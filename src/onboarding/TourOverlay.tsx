@@ -5,7 +5,7 @@ import * as wsActions from '../state/workspaceActions';
 import * as probe from '../village/probe';
 import { DEMO_WS_ID, demoAgentSession, isDemoId } from './demo';
 import { copyOf } from './steps';
-import { COACH_STEPS, endTour, goTo, nextStep, raiseSample, specOf, useTour, type StepSpec, type Target } from './tour';
+import { COACH_STEPS, endTour, goTo, nextStep, raiseSample, specOf, stepNumber, useTour, type StepSpec, type Target } from './tour';
 import './onboarding.css';
 
 /** The tour on screen: the welcome, a coach card by what it points at, or the send-off. */
@@ -29,7 +29,7 @@ function Welcome() {
     e.preventDefault();
     if (!name) return;
     void saveName(name); // the store, and so the hall's plate, has it at once
-    goTo('hall');
+    goTo('workspace');
   };
   const skip = () => {
     if (name && name !== saved) void saveName(name);
@@ -58,7 +58,7 @@ function Welcome() {
           <button type="button" className="tour-skip" onClick={skip}>Skip the tour</button>
           <button type="submit" className="hud-btn green" disabled={!name}>Start the tour</button>
         </div>
-        <p className="tour-fine">About two minutes. Everything in it is a sample: no files change and no agents run.</p>
+        <p className="tour-fine">About a minute. Everything in it is a sample: no files change and no agents run.</p>
       </form>
     </div>
   );
@@ -80,6 +80,13 @@ function SendOff() {
           <li><span>A red <b>!</b> means a builder needs you.</span></li>
           <li><span><b>Review</b>, then <b>Accept</b> finished work.</span></li>
         </ol>
+        <p className="tour-lede">Also worth knowing:</p>
+        <ul className="tour-tips">
+          <li><b>⌘J</b> takes the next builder waiting on you.</li>
+          <li><b>+ Terminal</b> and <b>+ Browser</b> put a shell or a live page in a compound.</li>
+          <li>Scroll to zoom, drag to pan, <b>⌘0</b> fits the village.</li>
+          <li>Settings has notifications, your name, and this tour again.</li>
+        </ul>
         <div className="tour-btns">
           {hasOwn
             ? <button className="hud-btn green" autoFocus onClick={() => void endTour()}>Finish</button>
@@ -176,7 +183,7 @@ function Coach({ spec }: { spec: StepSpec }) {
     return () => window.removeEventListener('resize', onResize);
   }, [spot]);
 
-  const index = COACH_STEPS.findIndex((s) => s.id === spec.id);
+  const num = stepNumber(spec.id);
   const copy = copyOf(spec.id, { hall: name ? townHallTitle(name) : 'your Town Hall', name, builder: builder ?? 'Your builder', session, sample });
   const style = pos ? { left: pos.left, top: pos.top } : { left: MARGIN, top: MARGIN, visibility: 'hidden' as const };
 
@@ -187,9 +194,9 @@ function Coach({ spec }: { spec: StepSpec }) {
           style={{ left: spot.x - 6, top: spot.y - 6, width: spot.w + 12, height: spot.h + 12 }} />
       )}
       <div ref={card} className="tour-card" role="dialog" aria-labelledby="tour-card-title" aria-describedby="tour-card-body" style={style} data-testid="tour-card" data-step={spec.id}>
-        <div className="tour-progress" aria-label={`Step ${index + 1} of ${COACH_STEPS.length}`}>
-          <span>Step {index + 1} of {COACH_STEPS.length}</span>
-          <i><b style={{ width: `${((index + 1) / COACH_STEPS.length) * 100}%` }} /></i>
+        <div className="tour-progress" aria-label={`Step ${num} of ${COACH_STEPS.length}`}>
+          <span>Step {num} of {COACH_STEPS.length}</span>
+          <i><b style={{ width: `${(num / COACH_STEPS.length) * 100}%` }} /></i>
         </div>
         {lost ? (
           <>
@@ -197,7 +204,7 @@ function Coach({ spec }: { spec: StepSpec }) {
             <p id="tour-card-body">The sample compound was removed. Raise it again to carry on, or end the tour here.</p>
             <div className="tour-btns">
               <button className="tour-skip" onClick={() => void endTour()}>End tour</button>
-              <button className="hud-btn green sm" onClick={() => { raiseSample(); goTo('open-workspace'); }}>Raise it again</button>
+              <button className="hud-btn green sm" onClick={() => { raiseSample(); goTo('new-session'); }}>Raise it again</button>
             </div>
           </>
         ) : (

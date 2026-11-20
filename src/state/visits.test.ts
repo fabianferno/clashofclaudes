@@ -4,7 +4,7 @@ import { visitInput, waitingIn } from './visits';
 
 const map: VillageMap = {
   v: 1, host: 'h1', owner: 'ada', name: 'Ada', seen: 5,
-  workspaces: [{ s: 'api', n: 'API', l: 3, c: '#3d6fd6', p: [4, 5, 6, 7, 5, 6] }, { s: 'new', n: 'New', l: 1 }],
+  workspaces: [{ s: 'api', n: 'API', l: 4, a: 2, c: '#3d6fd6', p: [4, 5, 6, 7, 5, 6] }, { s: 'new', n: 'New', l: 1 }],
   builders: [{ p: 'wizard', n: 'Wizard', a: 'claude' }],
   sessions: [
     { i: 's1', r: 'msg_1', w: 'api', b: 'wizard', s: 'needs_you', t: 'decide', n: 77, a: 10, p: [7, 8], k: 3 },
@@ -19,9 +19,9 @@ const map: VillageMap = {
 test('a visited village becomes what the canvas draws', () => {
   const input = visitInput(map);
   expect(input.ownerName).toBe('Ada');
-  expect(input.workspaces.map((w) => [w.id, w.name, w.level, w.color, w.compound])).toEqual([
-    ['api', 'API', 3, '#3d6fd6', { x0: 4, y0: 5, w: 6, h: 7, house: { x: 5, y: 6 } }],
-    ['new', 'New', 1, undefined, null],
+  expect(input.workspaces.map((w) => [w.id, w.name, w.stage, w.color, w.compound])).toEqual([
+    ['api', 'API', 2, '#3d6fd6', { x0: 4, y0: 5, w: 6, h: 7, house: { x: 5, y: 6 } }],
+    ['new', 'New', 0, undefined, null],
   ]);
   expect(input.builders).toEqual([{ id: 'wizard', name: 'Wizard', agent: 'claude', model: null, effort: null, customCommand: null }]);
   const s1 = input.sessions.find((s) => s.id === 's1')!;
@@ -39,4 +39,9 @@ test('a visited village becomes what the canvas draws', () => {
 
 test('how many wait there', () => {
   expect(waitingIn(map)).toBe(3);
+});
+
+test('visitInput falls back to l when a is missing (a map from an older app)', () => {
+  const old: VillageMap = { ...map, workspaces: [{ s: 'api', n: 'API', l: 6 }], sessions: [] };
+  expect(visitInput(old).workspaces[0].stage).toBe(3);
 });

@@ -1,5 +1,5 @@
-import { expect, test } from 'vitest';
-import { activityOf, stageFromLevel } from './activity';
+import { expect, test, vi } from 'vitest';
+import { ACTIVITY_TICK_MS, activityOf, stageFromLevel, startActivityTick } from './activity';
 
 // The same table is in src-tauri/src/activity.rs: keep the two in step.
 const D = 86_400_000, now = 100 * D;
@@ -24,4 +24,21 @@ test('names the stage and counts the last 7 days', () => {
 
 test('stageFromLevel matches the old houseStage', () => {
   expect([1, 2, 3, 4, 6, 8, 20].map(stageFromLevel)).toEqual([0, 1, 1, 2, 3, 4, 4]);
+});
+
+test('the scene re-syncs on the activity tick, with no other change', () => {
+  vi.useFakeTimers();
+  try {
+    const sync = vi.fn();
+    const stop = startActivityTick(sync);
+    vi.advanceTimersByTime(ACTIVITY_TICK_MS - 1);
+    expect(sync).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(sync).toHaveBeenCalledTimes(1);
+    stop();
+    vi.advanceTimersByTime(ACTIVITY_TICK_MS * 3);
+    expect(sync).toHaveBeenCalledTimes(1);
+  } finally {
+    vi.useRealTimers();
+  }
 });

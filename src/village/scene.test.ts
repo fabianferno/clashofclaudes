@@ -7,8 +7,8 @@ import { scaffoldHeight } from './look';
 import { HALL_LIFT, buildEntities, hopOf, siteDepth, needsRefit, rendererOptions, structureLook, type VillageInput, gateAwareDepth, footprintAwareDepth, walkerDepth, type FootDepth } from './scene';
 import { statusSignature, statusesDue } from './status';
 
-const ws = (id: string, compound: Compound | null, level = 1): Workspace => ({
-  id, name: id, path: `/p/${id}`, createdAt: 0, missing: false, level, xp: 0, compound,
+const ws = (id: string, compound: Compound | null, ships: number[] = []): Workspace => ({
+  id, name: id, path: `/p/${id}`, createdAt: 0, missing: false, ships, compound,
 });
 const sess = (
   id: string, wsId: string, builderId: string | null, spot: Tile | null,
@@ -25,14 +25,14 @@ describe('buildEntities', () => {
   it('walls_beside_the_house_front_draw_over_it', () => {
     // the house in the interior's back-right corner: walls run along its east face
     const c: Compound = { x0: -4, y0: 10, w: 7, h: 7, house: { x: 0, y: 10 } };
-    const es = buildEntities({ workspaces: [ws('w1', c, 2)], builders: [], sessions: [] });
+    const es = buildEntities({ workspaces: [ws('w1', c, [0])], builders: [], sessions: [] });
     const house = es.find((e) => e.kind === 'house')!;
     const walls = es.filter((e) => e.kind === 'wall' || e.kind === 'gate');
     const at = (x: number, y: number) => walls.find((e) => e.x === x + 1 && e.y === y + 1);
     for (const y of [10, 11, 12]) if (at(3, y)) expect(at(3, y)!.depth).toBeGreaterThan(house.depth);
     expect(at(3, 11)).toBeTruthy();
     for (const x of [0, 1, 2]) if (at(x, 9)) expect(at(x, 9)!.depth).toBeLessThan(house.depth); // behind it
-    const order = buildEntities({ workspaces: [ws('w1', c, 2)], builders: [], sessions: [] }).map((e) => e.id);
+    const order = buildEntities({ workspaces: [ws('w1', c, [0])], builders: [], sessions: [] }).map((e) => e.id);
     expect(order.indexOf(at(3, 10)?.id ?? at(3, 11)!.id)).toBeGreaterThan(order.indexOf(house.id));
   });
 
@@ -60,6 +60,16 @@ describe('buildEntities', () => {
     });
     const bar = bars.find((e) => e.id === 'status:a1')!;
     expect([bar.x, bar.y]).toEqual([spots[0].x + 1, spots[0].y + 1]); // over the structure's centre
+  });
+
+  it('a house looks as busy as its recent ships, or as the stage a visited village sent', () => {
+    const c1 = placeCompound([]);
+    const D = 86_400_000, now = 100 * D;
+    const house = (w: Workspace) => buildEntities({ workspaces: [w], builders: [], sessions: [], now }).find((e) => e.kind === 'house')!.texKey;
+    expect(house(ws('w1', c1))).toMatch(/^house:0:/);
+    expect(house(ws('w1', c1, [now]))).toMatch(/^house:1:/);
+    expect(house(ws('w1', c1, [now, now - D, now - 2 * D]))).toMatch(/^house:2:/);
+    expect(house({ ...ws('w1', c1), stage: 3 })).toMatch(/^house:3:/);
   });
 
   it('each_house_carries_its_workspace_name_over_the_roof', () => {
@@ -117,7 +127,7 @@ describe('buildEntities', () => {
     expect(count('house')).toBe(2);
     expect(count('structure')).toBe(3);
     // the organic wall around each compound's ground, minus the one gate tile per compound
-    const walls = (id: string, c: Compound, spots: Tile[]) => enclosure(c, spots, 1, seedOf(id)).walls.length - 1;
+    const walls = (id: string, c: Compound, spots: Tile[]) => enclosure(c, spots, seedOf(id)).walls.length - 1;
     expect(count('wall')).toBe(walls('w1', c1, [s1, s2]) + walls('w2', c2, [s3]));
     for (const e of es.filter((x) => x.kind === 'wall')) {
       const [, wsId, tx, ty] = e.id.split(':');
@@ -141,7 +151,7 @@ describe('buildEntities', () => {
     expect([shot.kind, shot.x, shot.y, shot.texKey]).toEqual(['board', s1.x + 2, s1.y + 2, `board:${encodeURIComponent('Shop: admin')}:s7`]);
     expect(es.find((e) => e.id === 'board:w1:4000')?.texKey).toBe(`board:${encodeURIComponent('Shop: admin')}:`); // a card until pictured
     expect(es.find((e) => e.id === 'status:board:w1:3000')?.texKey).toBe('status:app:Shop  admin \u00b7 3000');
-    expect(es.filter((e) => e.kind === 'wall')).toHaveLength(enclosure(c1, [s1, s2], 1, seedOf('w1')).walls.length - 1);
+    expect(es.filter((e) => e.kind === 'wall')).toHaveLength(enclosure(c1, [s1, s2], seedOf('w1')).walls.length - 1);
     // no compound, no board
     expect(buildEntities({ ...input, workspaces: [ws('w1', null)] }).some((e) => e.kind === 'board')).toBe(false);
   });
@@ -158,7 +168,7 @@ describe('buildEntities', () => {
     const es = buildEntities(input);
     const shop = es.find((e) => e.id === 'struct:t1')!;
     expect([shop.kind, shop.texKey, shop.x, shop.y]).toEqual(['structure', 'forge:hot', s2.x + 2, s2.y + 2]);
-    expect(es.filter((e) => e.kind === 'wall')).toHaveLength(enclosure(c1, [s1, s2], 1, seedOf('w1')).walls.length - 1);
+    expect(es.filter((e) => e.kind === 'wall')).toHaveLength(enclosure(c1, [s1, s2], seedOf('w1')).walls.length - 1);
     expect(es.some((e) => e.id === 'status:t1')).toBe(false); // no status bar over a terminal
     // embers while the shell waits at its prompt
     expect(buildEntities({ ...input, sessions: [sess('t1', 'w1', null, s2)] }).find((e) => e.id === 'struct:t1')?.texKey).toBe('forge:warm');
@@ -306,7 +316,7 @@ describe('siteDepth', () => {
     // the sprites sort by their entity depth: the front corner plus the kind's rank
     const depth = (id: string) => buildEntities({ ...input, now: 0 }).find((e) => e.id === id)!.depth;
     const input: VillageInput = {
-      workspaces: [{ id: 'w', name: 'w', path: '/w', level: 1, compound: c } as VillageInput['workspaces'][number]],
+      workspaces: [{ id: 'w', name: 'w', path: '/w', compound: c } as VillageInput['workspaces'][number]],
       sessions: [own, neighbour].map((spot, i) => ({
         id: `s${i}`, workspaceId: 'w', kind: { kind: 'agent', builderId: `b${i}` }, task: null, state: { kind: 'working' }, steps: 0,
         startedAt: 0, lastOutputAt: 0, reachedFinished: false, worktree: null, commandPreview: '', awaitingDecision: false, busy: false, rev: 1, spot,

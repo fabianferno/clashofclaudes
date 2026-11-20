@@ -29,3 +29,12 @@ export function stageFromLevel(level: number): Stage {
   if (level >= 2) return 1;
   return 0;
 }
+
+/** How often the village looks again at its houses: they quiet down while the app sits open. */
+export const ACTIVITY_TICK_MS = 10 * 60_000;
+
+/** Calls `sync` every `ACTIVITY_TICK_MS`; returns the stop. */
+export function startActivityTick(sync: () => void): () => void {
+  const t = setInterval(sync, ACTIVITY_TICK_MS);
+  return () => clearInterval(t);
+}

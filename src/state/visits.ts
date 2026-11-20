@@ -1,5 +1,6 @@
 import type { AgentKind, SessionInfo, SessionState, VillageMap } from '../api/types';
 import type { VillageInput } from '../village/scene';
+import { stageFromLevel, type Stage } from '../village/activity';
 
 const WAITING = ['needs_you', 'stuck', 'finished'];
 
@@ -53,8 +54,7 @@ export function visitInput(map: VillageMap): VillageInput {
       path: '',
       createdAt: 0,
       missing: false,
-      level: w.l,
-      xp: 0,
+      stage: w.a !== undefined ? (Math.max(0, Math.min(4, Math.round(w.a))) as Stage) : stageFromLevel(w.l),
       compound: w.p ? { x0: w.p[0], y0: w.p[1], w: w.p[2], h: w.p[3], house: { x: w.p[4], y: w.p[5] } } : null,
       color: w.c ?? undefined,
     })),

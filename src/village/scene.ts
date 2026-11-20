@@ -8,7 +8,8 @@ import { setCursorHint } from '../components/GameCursor';
 import { townHallTitle } from '../state/names';
 import { indexTrees, underTree, type TreeIndex } from './clearance';
 import { FOREST_FLOOR, PATCH_PX, forestTile, patchTile, vignetteTexture } from './art/forest';
-import { classOf, gearOf, houseColors, houseStage, scaffoldHeight, type ClassTier, type Gear } from './look';
+import { classOf, gearOf, houseColors, scaffoldHeight, type ClassTier, type Gear } from './look';
+import { activityOf, type Stage } from './activity';
 import { blockedBy, dropOf, onGround, plazaPoint, retarget, routeHome, routeToSite, standTile, step, takenBy, walkable, type Blocked, type BuilderDrop, type Walker } from './walkers';
 import {
   GROUND_SCALE, drawPathTile, groundTrees, pathLinks, pathTiles, treesOverPaths, drawGroundTree, drawBuilderShadow, drawBoard, drawBubble, drawBuilder, drawCollector, drawGate, drawGround, drawHall, drawHouse, drawPuff, drawRing, drawStatusBar, drawHallPlate, drawHousePlate, drawStructure,
@@ -35,7 +36,7 @@ export interface VillageInput {
   workspaces: Workspace[];
   sessions: SessionInfo[];
   builders: Builder[];
-  /** XP-earning close outcomes by session id; the scene plays orbs for a structure it sees vanish. */
+  /** Shipped close outcomes by session id; the scene plays orbs for a structure it sees vanish. */
   closed?: Record<string, CloseOutcome>;
   /** Wall-clock ms for the status bars over working structures; without it no bars are emitted. */
   now?: number;
@@ -130,11 +131,16 @@ export function structureLook(s: SessionInfo): { stage: StructStage; height: num
   }
 }
 
+/** The house's look: the stage a visited village sent, else from the workspace's recent ships. */
+export function houseStageOf(w: Workspace, now: number): Stage {
+  return w.stage ?? activityOf(w.ships ?? [], now).stage;
+}
+
 /** The compound's organic wall (see `enclosure`) with the gate in its hall-facing tile. */
-function wallEntities(wsId: string, c: Compound, spots: Tile[], level: number): Entity[] {
+function wallEntities(wsId: string, c: Compound, spots: Tile[]): Entity[] {
   const gate = gateTile(c);
   const out: Entity[] = [];
-  for (const t of enclosure(c, spots, level, seedOf(wsId)).walls) {
+  for (const t of enclosure(c, spots, seedOf(wsId)).walls) {
     if (t.x === gate.x && t.y === gate.y) continue;
     out.push(inFrontOfHouse(c, t, ent(`wall:${wsId}:${t.x}:${t.y}`, 'wall', t.x + 1, t.y + 1, `wall:${t.links}`)));
   }
@@ -217,11 +223,11 @@ export function buildEntities(input: VillageInput): Entity[] {
     if (!c) continue;
     compounds.set(w.id, c);
     const { roof, wall } = houseColors(w);
-    const stage = houseStage(w.level);
+    const stage = houseStageOf(w, input.now ?? Date.now());
     out.push(ent(`house:${w.id}`, 'house', c.house.x + HOUSE, c.house.y + HOUSE, `house:${stage}:${roof}:${wall}`));
     // the workspace's name on a plate over the roof (texture keys split on ':', so the name holds none)
     out.push({ ...ent(`status:house:${w.id}`, 'status', c.house.x + HOUSE / 2, c.house.y + HOUSE / 2, `${w.notes?.trim() ? 'noteplate' : 'houseplate'}:${w.name.replace(/:/g, ' ').slice(0, 24)}`), lift: HOUSE_LIFT[stage] });
-    out.push(...wallEntities(w.id, c, spotsIn(input.sessions, w.id, input.boards), w.level));
+    out.push(...wallEntities(w.id, c, spotsIn(input.sessions, w.id, input.boards)));
   }
   for (const s of input.sessions) {
     if (!s.spot || !compounds.has(s.workspaceId)) continue;
@@ -688,9 +694,9 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     const to = { x: h.x, y: h.y - 40 };
     particles.orbs(from, to, 8);
     particles.later(ORB_SECONDS + 0.2, () => {
-      particles.floatText({ x: to.x, y: to.y - 30 * labelK }, `+${o.xpGained} XP`, '#ffffff');
-      particles.dust(h, 5, false);
-      if (o.levelAfter > o.levelBefore) particles.floatText({ x: to.x, y: to.y - 64 * labelK }, 'LEVEL UP!', '#ffe066');
+      particles.floatText({ x: to.x, y: to.y - 30 * labelK }, '+1 shipped', '#ffffff');
+      // a house that livens up a stage changes in a bigger puff
+      particles.dust(h, o.stageAfter > o.stageBefore ? 12 : 5, false);
     });
   };
   const updateFx = (dt: number) => {
@@ -909,8 +915,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
   /** Walkable ground inside a compound (see `walkable`). */
   const walkFor = (state: VillageInput, wsId: string, c: Compound) => {
     const spots = spotsIn(state.sessions, wsId, state.boards);
-    const level = state.workspaces.find((w) => w.id === wsId)?.level ?? 1;
-    return walkable(enclosure(c, spots, level, seedOf(wsId)).inside, c, spots);
+    return walkable(enclosure(c, spots, seedOf(wsId)).inside, c, spots);
   };
 
   /** Ground the builders keep off outside the compounds (see `Blocked`); set by `syncBuilders`. */
@@ -991,9 +996,8 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       syncMinions(v, site && !site.paused ? shownMinions(site.subagents) : []);
       if (site && v.minions.size) {
         const walk = walkOf(site.workspaceId, site.compound);
-        const level = state.workspaces.find((x) => x.id === site.workspaceId)?.level ?? 1;
         const spots = spotsIn(state.sessions, site.workspaceId, state.boards);
-        const inside = enclosure(site.compound, spots, level, seedOf(site.workspaceId)).inside;
+        const inside = enclosure(site.compound, spots, seedOf(site.workspaceId)).inside;
         v.minionSpots = minionSpots(standTile(site.compound, site.spot, site.compound.house, walk), walk, inside, MAX_MINIONS);
       }
     }
@@ -1287,7 +1291,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       const o = state.closed?.[sid];
       if (!o) continue;
       pendingClose.delete(sid);
-      if (o.earnedXp) playOrbs(p.from, p.wsId, o);
+      if (o.shipped) playOrbs(p.from, p.wsId, o);
       opts.onClosedConsumed?.(sid);
     }
     applyRelocs();
@@ -1345,7 +1349,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
       const w = lastState.workspaces.find((x) => x.id === s.id);
       const c = w?.compound;
       if (!c) return null;
-      const height = HOUSE_LIFT[houseStage(w.level)] + PLATE_CLEAR; // over the name plate
+      const height = HOUSE_LIFT[houseStageOf(w, Date.now())] + PLATE_CLEAR; // over the name plate
       if (houseOnly)
         return { target: { kind: 'workspace', id: s.id }, entityId: `house:${s.id}`, w: HOUSE, h: HOUSE, inset: 0, tile: c.house, compound: c, height, chip: '' };
       return {
@@ -1555,7 +1559,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     const w = lastState.workspaces.find((x) => x.id === wsId);
     g = new Set<string>();
     if (w?.compound) {
-      const e = enclosure(w.compound, spotsIn(lastState.sessions, wsId, lastState.boards), w.level, seedOf(wsId));
+      const e = enclosure(w.compound, spotsIn(lastState.sessions, wsId, lastState.boards), seedOf(wsId));
       g = new Set([...e.inside, ...e.walls.map((t) => `${t.x},${t.y}`)]);
     }
     groundCache.set(wsId, g);

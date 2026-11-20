@@ -164,7 +164,7 @@ describe('walkers', () => {
         c = r.compound;
         spots.push(r.spot);
       }
-      const walk = walkable(enclosure(c, spots, 3, seedOf(seed)).inside, c, spots);
+      const walk = walkable(enclosure(c, spots, seedOf(seed)).inside, c, spots);
       for (const spot of spots) {
         const to = routeToSite({ x: 0, y: 5 }, c, spot, walk);
         const out = centre(gateOutside(c));
@@ -195,7 +195,7 @@ describe('walkers', () => {
       c = r.compound;
       spots.push(r.spot);
     }
-    const walk = walkable(enclosure(c, spots, 3, seedOf('alpha')).inside, c, spots);
+    const walk = walkable(enclosure(c, spots, seedOf('alpha')).inside, c, spots);
     const gO = centre(gateOutside(c)), gI = centre(gateInside(c));
     for (const spot of spots) {
       // A: still outside with [gate outside, gate inside, stand] left -> the new route keeps both gate points

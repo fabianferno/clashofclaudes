@@ -11,6 +11,7 @@ import { clearProbeScene, setProbeScene } from './probe';
 import { splashReady } from '../splash';
 import { zoomKey } from './zoomKey';
 import { hapticFor, playHaptic } from '../state/haptics';
+import { startActivityTick } from './activity';
 
 export { zoomKey };
 
@@ -80,6 +81,7 @@ export default function VillageCanvas({ onError, mini = false }: { onError?: (e:
     if (!el) return;
     let made: Scene | null = null;
     let unsub: (() => void) | null = null;
+    let stopTick: (() => void) | null = null;
     let cancelled = false;
     createScene(el, mini ? {
       // a builder or a structure: the main window, on its session; anything else: the main window
@@ -136,12 +138,15 @@ export default function VillageCanvas({ onError, mini = false }: { onError?: (e:
           // the mini village keeps everything in view as compounds come and go
           if (mini && st.workspaces.length !== prev.workspaces.length) s.fitVillage();
         });
+        // houses quiet down as days pass, with nothing else changing
+        stopTick = startActivityTick(() => s.sync(inputOf(useApp.getState(), mini)));
       },
       (e) => { console.error('village scene failed to start', e); splashReady('scene'); },
     );
     return () => {
       cancelled = true;
       unsub?.();
+      stopTick?.();
       if (made) clearProbeScene(made);
       made?.destroy();
       setScene(null);

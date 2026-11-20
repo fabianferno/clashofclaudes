@@ -37,14 +37,17 @@ export function seedOf(id: string): number {
   return h;
 }
 
+/** Random bulges in every compound's wall: the most the levels used to give, the same however busy it is. */
+const BULGES = 6;
+
 /**
  * The compound's walled ground, which grows with use instead of filling its reserved rect: a ring
  * around the house, a lane from the gate to it, two tiles of room around every structure (and a lane
- * to the house), plus `2 + level` (at most 6) random bulges; then notches are filled so the outline stays smooth.
+ * to the house), plus `BULGES` random bulges; then notches are filled so the outline stays smooth.
  * Always inside the compound rect, so the rect still reserves the space (walls sit on its ring at
  * most) and the gate tile from `gateTile` is always a wall tile with ground behind it.
  */
-export function enclosure(c: Compound, spots: Tile[], level: number, seed: number): Enclosure {
+export function enclosure(c: Compound, spots: Tile[], seed: number): Enclosure {
   const inRect = (x: number, y: number) => x >= c.x0 && y >= c.y0 && x < c.x0 + c.w && y < c.y0 + c.h;
   const inside = new Set<string>();
   const add = (x: number, y: number) => { if (inRect(x, y)) inside.add(key(x, y)); };
@@ -71,7 +74,7 @@ export function enclosure(c: Compound, spots: Tile[], level: number, seed: numbe
   }
 
   const rnd = seeded(seed);
-  for (let i = 0; i < 2 + Math.min(Math.max(level, 0), 4); i++) {
+  for (let i = 0; i < BULGES; i++) {
     const tiles = [...inside];
     const [bx, by] = tiles[Math.floor(rnd() * tiles.length)].split(',').map(Number);
     const r = rnd() < 0.75 ? 1 : 2;

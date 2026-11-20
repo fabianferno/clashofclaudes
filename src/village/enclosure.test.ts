@@ -21,7 +21,7 @@ describe('enclosure', () => {
   it('keeps the ground inside the compound rect and the walls on or inside its ring', () => {
     for (const n of [0, 2, 6]) {
       const { c, spots } = grown(n);
-      const e = enclosure(c, spots, 1, seedOf('w'));
+      const e = enclosure(c, spots, seedOf('w'));
       const r = wallRect(c);
       for (const k of e.inside) {
         const [x, y] = k.split(',').map(Number);
@@ -33,7 +33,7 @@ describe('enclosure', () => {
 
   it('encloses the house and every structure with a tile to spare, and the gate opens onto ground', () => {
     const { c, spots } = grown(4);
-    const e = enclosure(c, spots, 2, seedOf('w'));
+    const e = enclosure(c, spots, seedOf('w'));
     const covered = (x0: number, y0: number, s: number) => {
       for (let y = y0; y < y0 + s; y++) for (let x = x0; x < x0 + s; x++) expect(e.inside.has(`${x},${y}`)).toBe(true);
     };
@@ -48,7 +48,7 @@ describe('enclosure', () => {
   it('keeps two tiles of ground between every structure and the wall, so builders and art stay off it', () => {
     for (const n of [1, 4, 9]) {
       const { c, spots } = grown(n);
-      const e = enclosure(c, spots, 0, seedOf('w'));
+      const e = enclosure(c, spots, seedOf('w'));
       for (const s of spots) {
         for (const w of e.walls) {
           const d = Math.max(s.x - w.x, w.x - (s.x + STRUCT - 1), s.y - w.y, w.y - (s.y + STRUCT - 1));
@@ -60,7 +60,7 @@ describe('enclosure', () => {
 
   it('closes the ring: every ground tile is surrounded by ground or wall', () => {
     const { c, spots } = grown(5);
-    const e = enclosure(c, spots, 3, seedOf('x'));
+    const e = enclosure(c, spots, seedOf('x'));
     const walls = new Set(e.walls.map(key));
     for (const k of e.inside) {
       const [x, y] = k.split(',').map(Number);
@@ -73,23 +73,27 @@ describe('enclosure', () => {
 
   it('starts smaller than its reserved rect and grows as sessions are added', () => {
     const empty = grown(0);
-    const small = enclosure(empty.c, [], 1, seedOf('w')).inside.size;
+    const small = enclosure(empty.c, [], seedOf('w')).inside.size;
     expect(small).toBeLessThan(empty.c.w * empty.c.h * 0.6);
     const busy = grown(5);
-    expect(enclosure(busy.c, busy.spots, 1, seedOf('w')).inside.size).toBeGreaterThan(small);
+    expect(enclosure(busy.c, busy.spots, seedOf('w')).inside.size).toBeGreaterThan(small);
   });
 
   it('is deterministic per workspace and differs between workspaces', () => {
     const { c } = grown(0);
-    const shape = (id: string) => [...enclosure(c, [], 1, seedOf(id)).inside].sort().join(' ');
+    const shape = (id: string) => [...enclosure(c, [], seedOf(id)).inside].sort().join(' ');
     expect(shape('alpha')).toBe(shape('alpha'));
     expect(new Set(['alpha', 'beta', 'gamma', 'delta'].map(shape)).size).toBeGreaterThan(1);
+  });
+
+  it('the walls depend only on the compound, its structures and the seed (not on how busy it is)', () => {
+    expect(enclosure.length).toBe(3);
   });
 
   it('links_every_wall_tile_to_its_wall_neighbours_so_the_ring_has_no_gaps', () => {
     for (const lvl of [1, 3, 5]) {
       const { c, spots } = grown(lvl);
-      const { walls } = enclosure(c, spots, lvl, seedOf('w'));
+      const { walls } = enclosure(c, spots, seedOf('w'));
       const at = new Map(walls.map((t) => [`${t.x},${t.y}`, t]));
       const step = { n: [0, -1], e: [1, 0], s: [0, 1], w: [-1, 0] } as const;
       const back = { n: 's', e: 'w', s: 'n', w: 'e' } as const;

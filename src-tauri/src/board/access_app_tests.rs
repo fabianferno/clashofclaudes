@@ -135,10 +135,37 @@ fn opening_revokes_everyone_first() {
     b.calls();
     open(&b, &t(), &mut set).unwrap();
     let calls = b.calls();
-    assert!(calls[0].starts_with("board grants revoke g6"), "everyone-none goes first: {calls:?}");
-    assert_eq!(calls.len(), 3);
+    assert!(calls[0].starts_with("board grants list"), "{calls:?}");
+    assert!(calls[1].starts_with("board grants revoke g6"), "everyone-none goes first: {calls:?}");
+    assert_eq!(calls.len(), 4);
     assert!(b.ids().is_empty());
     assert_eq!((set.private, set.grants.len()), (false, 0));
+}
+
+#[test]
+fn opening_skips_grants_that_are_no_longer_there() {
+    let b = Board::default();
+    let mut set = AccessSettings::default();
+    close(&b, &t(), &me(), false, &mut set).unwrap();
+    // one of ours was revoked by someone else; an id from long ago lingers
+    b.grants.lock().unwrap().retain(|g| g["id"] != "g4");
+    set.grants.insert(0, "g99".into());
+    b.calls();
+    open(&b, &t(), &mut set).unwrap();
+    assert_eq!(b.calls().iter().filter(|c| c.starts_with("board grants revoke")).count(), 1, "only the one that exists");
+    assert!(b.ids().is_empty() && set.grants.is_empty() && !set.private);
+}
+
+#[test]
+fn ids_kept_for_another_board_are_not_this_boards() {
+    let b = Board::default();
+    let mut set = AccessSettings { private: true, grants: vec!["g4".into(), "g5".into()], board: Some("acme/other#ada".into()), invites: vec![Invite { email: "bob@acme.com".into(), level: Level::Visitor, workspaces: None, grant: Some("g7".into()), user_id: None }], ..Default::default() };
+    put_back(&b, &t(), &me(), false, &mut set, &slugs()).unwrap();
+    let st = status(&b, &t(), &me(), &set, &slugs());
+    assert_eq!((st.state.as_str(), st.drift.clone()), ("closed", None));
+    assert_eq!(set.board.as_deref(), Some("/village#ada"));
+    assert_eq!(set.grants.len(), 2);
+    assert!(st.invites[0].on_board, "the invite was made again on this board");
 }
 
 #[test]
@@ -205,7 +232,7 @@ fn put_back_recloses_and_recreates_missing_invites() {
 
 #[test]
 fn the_window_cannot_change_what_the_app_owns() {
-    let old = AccessSettings { private: true, grants: vec!["g4".into()], invites: vec![Invite { email: "bob@acme.com".into(), level: Level::Trusted, workspaces: None, grant: Some("g7".into()), user_id: None }], asked: true, refused: None };
+    let old = AccessSettings { private: true, grants: vec!["g4".into()], invites: vec![Invite { email: "bob@acme.com".into(), level: Level::Trusted, workspaces: None, grant: Some("g7".into()), user_id: None }], asked: true, ..Default::default() };
     let from_window = AccessSettings::default();
     assert_eq!(keep_app_owned(&old, &from_window), old);
 }

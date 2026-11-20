@@ -687,6 +687,18 @@ fn turning_the_board_off_forgets_queued_message_writes() {
 }
 
 #[test]
+fn a_message_write_forgotten_with_its_board_is_told_so() {
+    let r = rig();
+    let got = Arc::new(Mutex::new(Vec::new()));
+    let g = got.clone();
+    r.cli.next(Err(CliError::Retryable("busy".into())));
+    r.p.send(msg(1), Some(Box::new(move |id| g.lock().unwrap().push(id))));
+    r.p.step();
+    r.p.configure(cfg("another-board"));
+    assert_eq!(*got.lock().unwrap(), [None], "its sender is not left waiting for ever");
+}
+
+#[test]
 fn open_block_and_root_lookup() {
     let r = rig();
     r.p.update(SessionView { answerable: true, ..decide("s1", 2) });

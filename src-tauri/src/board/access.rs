@@ -127,6 +127,8 @@ pub struct Grant {
     pub everyone: bool,
     /// Every person on the team (the board's own first grant).
     pub all_users: bool,
+    /// Every project's deployments on the team.
+    pub all_projects: bool,
     /// Permissions by channel pattern; an empty list is "nothing".
     pub can: BTreeMap<String, Vec<String>>,
 }
@@ -146,6 +148,7 @@ pub fn parse_grants(v: &Value) -> Vec<Grant> {
                     "project" => out.project = p["name"].as_str().or(p["projectId"].as_str()).map(str::to_string),
                     "everyone" => out.everyone = true,
                     "all-users" => out.all_users = true,
+                    "all-projects" => out.all_projects = true,
                     _ => {}
                 }
             }
@@ -184,10 +187,20 @@ pub fn village_state(grants: &[Grant], owner: &str) -> Seen {
     }
 }
 
+/// The patterns inside `owner`'s village at which a grant lets its principal read.
+fn reaching(g: &Grant, owner: &str) -> Vec<String> {
+    let v = village(owner);
+    g.can.iter().filter(|(pattern, perms)| pattern.starts_with(&v) && perms.iter().any(|p| p == "read" || p == "all")).map(|(p, _)| p.clone()).collect()
+}
+
 /// Whether a grant lets its principal read something inside `owner`'s village.
 fn reaches(g: &Grant, owner: &str) -> bool {
-    let v = village(owner);
-    g.can.iter().any(|(pattern, perms)| pattern.starts_with(&v) && perms.iter().any(|p| p == "read" || p == "all"))
+    !reaching(g, owner).is_empty()
+}
+
+/// A grant that names a whole group (everyone, every person, every project) rather than one principal.
+fn group(g: &Grant) -> bool {
+    g.everyone || g.all_users || g.all_projects
 }
 
 /// Who can see the village now, in words for Settings. `me`: the owner's Vercel user id.
@@ -195,18 +208,22 @@ pub fn who_can_see(grants: &[Grant], owner: &str, me: &str) -> Vec<String> {
     if village_state(grants, owner) != Seen::Closed {
         return vec!["Everyone on your Vercel team, and every project's deployments".to_string()];
     }
+    // Every grant that reaches the village is named, whoever made it: the list is the board's truth.
     let mut out = vec!["You".to_string()];
-    let mut remote = false;
+    let (mut projects, mut groups) = (Vec::new(), Vec::new());
     for g in grants.iter().filter(|g| reaches(g, owner)) {
-        if g.project.is_some() {
-            remote = true;
+        if group(g) {
+            groups.extend(reaching(g, owner).into_iter().map(|p| format!("Everyone on your Vercel team, in {p}")));
+        } else if let Some(p) = &g.project {
+            let name = if p == REMOTE_PROJECT { "The phone remote".to_string() } else { format!("The project {p}") };
+            projects.push(format!("{name}, and whoever can deploy it"));
         } else if g.user_id.as_deref() != Some(me) {
             out.extend(g.email.clone().or(g.user_id.clone()));
         }
     }
-    if remote {
-        out.push("The phone remote, and whoever can deploy it".to_string());
-    }
+    out.extend(projects);
+    out.extend(groups);
+    out.dedup();
     out
 }
 
@@ -225,11 +242,19 @@ pub fn drift(settings: &AccessSettings, grants: &[Grant], owner: &str) -> Option
             return Some(format!("The invite for {} is gone from the board.", inv.email));
         }
     }
+    if village_state(grants, owner) != Seen::Closed {
+        // open (by the owner's choice): everyone sees it anyway
+        return None;
+    }
     let known = |g: &Grant| settings.grants.contains(&g.id) || settings.invites.iter().any(|i| i.grant.as_ref() == Some(&g.id));
-    grants
-        .iter()
-        .find(|g| !known(g) && g.email.is_some() && reaches(g, owner))
-        .map(|g| format!("{} can see your village, and you did not invite them.", g.email.clone().unwrap_or_default()))
+    let stranger = grants.iter().find(|g| !known(g) && reaches(g, owner))?;
+    Some(if group(stranger) {
+        format!("Everyone on your Vercel team can see {}.", reaching(stranger, owner).join(", "))
+    } else if let Some(p) = &stranger.project {
+        format!("The project {p} can see your village, and you did not let it in.")
+    } else {
+        format!("{} can see your village, and you did not invite them.", stranger.email.clone().or(stranger.user_id.clone()).unwrap_or_default())
+    })
 }
 
 #[cfg(test)]

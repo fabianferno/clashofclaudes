@@ -185,14 +185,15 @@ impl Publisher {
 
     /// Settings or sharing changed.
     pub fn configure(&self, cfg: Config) {
+        let mut forgotten: Vec<Sent> = Vec::new();
         let mut g = self.lock();
         let inner = &mut *g;
         let old = inner.cfg.take();
         let was_on = old.as_ref().is_some_and(|c| c.enabled);
         if old.as_ref().is_none_or(|o| o.enabled != cfg.enabled || o.target != cfg.target || o.owner != cfg.owner) {
             inner.generation += 1;
-            // written for the board the app is leaving
-            inner.msgs.clear();
+            // written for the board the app is leaving: forgotten, and their senders told
+            forgotten = inner.msgs.drain(..).filter_map(|mut m| m.done.take()).collect();
         }
         if let Some(old) = old.as_ref().filter(|_| was_on) {
             let moved = cfg.enabled && (old.target != cfg.target || old.owner != cfg.owner);
@@ -241,6 +242,10 @@ impl Publisher {
         }
         inner.cfg = Some(cfg);
         drop(g);
+        // outside the lock: a sender may queue again
+        for f in forgotten {
+            f(None);
+        }
         self.wake.notify_all();
     }
 

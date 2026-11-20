@@ -259,6 +259,9 @@ pub struct AccessSettings {
     pub asked: bool,
     /// What the board said when it would not let this login close the village (not a team owner).
     pub refused: Option<String>,
+    /// Which board and village the ids above are on ("<team>/<board>#<owner>"): another board's
+    /// ids mean nothing here.
+    pub board: Option<String>,
 }
 
 /// One invited teammate.

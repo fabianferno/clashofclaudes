@@ -3,7 +3,11 @@ import { ipc } from '../api/ipc';
 import type { VisitView } from '../api/types';
 import { useApp } from '../state/store';
 
-const called = (v: VisitView) => v.name?.trim() || v.owner;
+/**
+ * A village is named by its owner's Vercel handle: the board verified it. What an owner calls
+ * themselves in their own village is theirs to choose, so it never stands in for who they are.
+ */
+const called = (v: VisitView) => v.owner;
 
 /**
  * The villages you were invited to, top left: Home, then a chip per village with how many
@@ -51,7 +55,7 @@ export default function PeopleRow() {
     );
   };
   const here = visiting ? visits.find((v) => v.owner === visiting.owner) : undefined;
-  const whose = here ? called(here) : visiting?.map.name ?? visiting?.owner;
+  const whose = visiting?.owner;
 
   return (
     <>

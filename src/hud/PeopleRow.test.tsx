@@ -31,18 +31,26 @@ test('with no village to visit there is no row', async () => {
 test('a chip per village, with how many wait there and whether its Mac is away', async () => {
   ipc.visits.mockResolvedValue([view('ada', { waiting: 2 }), view('bob', { away: true })]);
   await show();
-  expect(screen.getByRole('button', { name: 'Ada, 2 waiting' })).toBeTruthy();
-  expect(screen.getByRole('button', { name: 'Bob, away' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'ada, 2 waiting' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'bob, away' })).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Home' }).getAttribute('aria-pressed')).toBe('true');
+});
+
+test('a village is named by its owner’s Vercel handle, whatever they call themselves', async () => {
+  // anyone can call themselves Ada in their own village; the handle is what the board verified
+  ipc.visits.mockResolvedValue([view('mallory', { name: 'Ada' })]);
+  await show();
+  expect(screen.getByRole('button', { name: 'mallory' })).toBeTruthy();
+  expect(screen.queryByText('Ada')).toBeNull();
 });
 
 test('visiting draws that village, says whose it is, and Home comes back', async () => {
   ipc.visits.mockResolvedValue([view('ada', { waiting: 1 })]);
   await show();
-  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Ada, 1 waiting' })); });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'ada, 1 waiting' })); });
   expect(ipc.visit).toHaveBeenCalledWith('ada');
   expect(useApp.getState().visiting?.owner).toBe('ada');
-  expect(screen.getByText('Visiting Ada’s village · you are a Visitor here')).toBeTruthy();
+  expect(screen.getByText('Visiting ada’s village · you are a Visitor here')).toBeTruthy();
   expect(useApp.getState().selection).toBeNull();
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Home' })); });
   expect(useApp.getState().visiting).toBeNull();
@@ -52,20 +60,20 @@ test('visiting draws that village, says whose it is, and Home comes back', async
 test('a visited village is redrawn when its map changes, and says when its Mac is away', async () => {
   ipc.visits.mockResolvedValue([view('ada')]);
   await show();
-  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Ada' })); });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'ada' })); });
   ipc.visit.mockClear();
   await act(async () => push([view('ada', { waiting: 3, away: true, seen: 2 })]));
   expect(ipc.visit).toHaveBeenCalledWith('ada');
-  expect(screen.getByText('Ada’s Mac may be asleep or offline.')).toBeTruthy();
+  expect(screen.getByText('ada’s Mac may be asleep or offline.')).toBeTruthy();
 });
 
 test('a village you can no longer see sends you Home and says why', async () => {
   ipc.visits.mockResolvedValue([view('ada')]);
   await show();
-  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Ada' })); });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'ada' })); });
   await act(async () => push([]));
   expect(useApp.getState().visiting).toBeNull();
-  expect(useApp.getState().error).toBe('You can no longer see Ada’s village.');
+  expect(useApp.getState().error).toBe('You can no longer see ada’s village.');
 });
 
 test('a visited builder shows what it does and waits for, and nothing to press', async () => {

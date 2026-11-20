@@ -40,8 +40,9 @@ pub struct BoardState {
     map: Arc<Mutex<super::map::MapWriter>>,
     /// The villages this login was invited to.
     visits: Arc<Mutex<super::visits::Visits>>,
-    /// The login's email, once asked of the CLI (a grant names a person by it).
-    email: Mutex<Option<String>>,
+    /// One change to who may see the village at a time: each reads the settings, runs slow
+    /// board calls, and writes them back.
+    access: Arc<Mutex<()>>,
 }
 
 /// The session manager, as the phone remote uses it.
@@ -113,7 +114,7 @@ impl BoardState {
                 }
             })
             .expect("remote tick thread");
-        BoardState { publisher, cli, link: Arc::default(), active: AtomicBool::new(false), remote, listener, map: Arc::default(), visits, email: Mutex::new(None) }
+        BoardState { publisher, cli, link: Arc::default(), active: AtomicBool::new(false), remote, listener, map: Arc::default(), visits, access: Arc::default() }
     }
 
     fn link(&self) -> Link {
@@ -256,17 +257,14 @@ struct AccessCtx {
 fn access_ctx<R: Runtime>(app: &AppHandle<R>) -> Result<AccessCtx, String> {
     let (bs, st) = (app.try_state::<BoardState>().ok_or("the board is not set up")?, app.try_state::<AppState>().ok_or("the app is starting")?);
     let owner = bs.link().owner.ok_or("Vercel Board is not connected yet.")?;
-    let cached = bs.email.lock().unwrap_or_else(|e| e.into_inner()).clone();
-    let email = match cached {
-        Some(e) => e,
-        None => {
-            let out = bs.cli.raw(&["whoami".to_string(), "--json".to_string()]).map_err(|e| format!("{e:?}"))?;
-            let v: serde_json::Value = serde_json::from_str(out.stdout.trim()).map_err(|_| "The Vercel CLI did not say who is signed in.")?;
-            let e = v["email"].as_str().ok_or("The Vercel CLI did not give this login's email.")?.to_string();
-            *bs.email.lock().unwrap_or_else(|p| p.into_inner()) = Some(e.clone());
-            e
-        }
-    };
+    // Asked each time, never remembered: after `vercel login` as someone else, a remembered
+    // email would hand the new owner's village to the old login and shut the owner out.
+    let out = bs.cli.raw(&["whoami".to_string(), "--json".to_string()]).map_err(|e| format!("{e:?}"))?;
+    let who: serde_json::Value = serde_json::from_str(out.stdout.trim()).map_err(|_| "The Vercel CLI did not say who is signed in.")?;
+    let email = who["email"].as_str().ok_or("The Vercel CLI did not give this login's email.")?.to_string();
+    if who["username"].as_str().is_some_and(|u| u != owner) {
+        return Err("The Vercel login changed. Press Check again above, then try again.".into());
+    }
     let d = st.data();
     let board = &d.settings.board;
     let all = workspace_slugs(&d.workspaces);
@@ -278,6 +276,8 @@ fn access_ctx<R: Runtime>(app: &AppHandle<R>) -> Result<AccessCtx, String> {
 /// answers with what the board says now.
 async fn access_change(app: AppHandle, f: impl FnOnce(&mut AccessCtx) -> Result<(), String> + Send + 'static) -> Result<super::access_app::AccessStatus, String> {
     tauri::async_runtime::spawn_blocking(move || {
+        let gate = app.try_state::<BoardState>().ok_or("the board is not set up")?.access.clone();
+        let _one_at_a_time = gate.lock().unwrap_or_else(|e| e.into_inner());
         let mut c = access_ctx(&app)?;
         let result = f(&mut c);
         // what was set is kept even when a later step failed (a refusal is itself recorded)
@@ -311,8 +311,14 @@ pub async fn access_status(app: AppHandle) -> Result<super::access_app::AccessSt
             // a refusal (not a team owner) is recorded in `refused`; the village stays open
             let _ = super::access_app::close(c.cli.as_ref(), &c.target, &c.me, c.remote, &mut c.access);
         } else if c.access.private {
-            // the phone remote may have been set up since: let it in
-            let _ = super::access_app::close(c.cli.as_ref(), &c.target, &c.me, c.remote, &mut c.access);
+            // The phone remote may have been set up since (let it in), or the team or board
+            // changed (its village is closed and its invites made there, as the owner set).
+            let moved = c.access.board.as_deref() != Some(format!("{}#{}", c.target.key(), c.me.owner).as_str());
+            if moved {
+                let _ = super::access_app::put_back(c.cli.as_ref(), &c.target, &c.me, c.remote, &mut c.access, &c.slugs);
+            } else {
+                let _ = super::access_app::close(c.cli.as_ref(), &c.target, &c.me, c.remote, &mut c.access);
+            }
         }
         Ok(())
     })
@@ -434,7 +440,10 @@ pub fn tick_map<R: Runtime>(app: &AppHandle<R>) {
             let map = bs.map.clone();
             bs.publisher.send(post, Some(Box::new(move |id| map.lock().unwrap_or_else(|e| e.into_inner()).posted(id))));
         }
-        Some(edit) => bs.publisher.send(edit, None),
+        Some(edit) => {
+            let map = bs.map.clone();
+            bs.publisher.send(edit, Some(Box::new(move |id| map.lock().unwrap_or_else(|e| e.into_inner()).delivered(id.is_some()))));
+        }
         None => {}
     }
 }

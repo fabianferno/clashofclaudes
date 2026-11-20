@@ -9,9 +9,9 @@ const LEVELS: { value: Level; label: string; can: string }[] = [
   { value: 'trusted', label: 'Trusted', can: 'also allows and denies tool calls' },
 ];
 
-function LevelSelect({ label, value, onChange }: { label: string; value: Level; onChange: (l: Level) => void }) {
+function LevelSelect({ label, value, disabled, onChange }: { label: string; value: Level; disabled?: boolean; onChange: (l: Level) => void }) {
   return (
-    <select aria-label={label} value={value} onChange={(e) => onChange(e.target.value as Level)}>
+    <select aria-label={label} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value as Level)}>
       {LEVELS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
     </select>
   );
@@ -60,8 +60,13 @@ export default function AccessSettings() {
       </label>
       {!status.canClose && (
         <>
-          <div className="set-note">Only an owner of your Vercel team can close a village. Until one does, everyone on the team can see yours. An owner can run this for you:</div>
-          {status.command && (
+          <div className="set-note">
+            {closed
+              ? 'An owner of your Vercel team closed your village for you. Only an owner of your Vercel team can open it again.'
+              : 'Only an owner of your Vercel team can close a village. Until one does, everyone on the team can see yours. An owner can run this for you:'}
+            {status.refused && ` The board said: ${status.refused}`}
+          </div>
+          {status.command && !closed && (
             <div className="set-line">
               <code className="set-cmd">{status.command}</code>
               <button type="button" className="hud-btn grey sm" onClick={() => void navigator.clipboard?.writeText(status.command ?? '')}>Copy</button>
@@ -100,7 +105,7 @@ export default function AccessSettings() {
               {!i.onBoard && '. Not on the board: press Put it back'}
             </span>
           </span>
-          <LevelSelect label={`Level for ${i.email}`} value={i.level} onChange={(l) => run(() => ipc.invitePut(i.email, l, i.workspaces))} />
+          <LevelSelect label={`Level for ${i.email}`} value={i.level} disabled={busy} onChange={(l) => run(() => ipc.invitePut(i.email, l, i.workspaces))} />
           <button type="button" className="hud-btn grey sm" aria-label={`Remove ${i.email}`} disabled={busy} onClick={() => run(() => ipc.inviteRemove(i.email))}>Remove</button>
         </div>
       ))}

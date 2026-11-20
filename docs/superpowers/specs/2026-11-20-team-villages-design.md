@@ -263,6 +263,15 @@ section 5 (Act) is not. Differences from the text above:
   there do nothing when clicked, only builders open a panel.
 - **`mates` is always empty** until part 2; the ribbon always says Visitor.
 
+**Fixed after the whole-change review:** one access change runs at a time (two overlapping
+ones could orphan a grant the app then could not revoke); the login's email is asked each time,
+never remembered (a changed login would have handed the village to the old one); "who can see"
+names every grant that reaches the village, whoever made it, and drift flags the strangers;
+one map write is in flight at a time (a board down for hours no longer returns to a queue of
+stale maps); a village is named by its owner's verified handle, never by the name they chose;
+grant ids are kept with their board, and opening skips ids no longer there. Confirmed on the
+scratch board: `grants update --can` replaces what a grant allows.
+
 **Verified on the real board** (`real_village_closes_and_is_visited`, scratch board, the updated
 CLI): closing the login's village made three grants and read back as closed, visible to "You" and
 the phone remote; the owner could still post the map inside; a visits refresh found the village

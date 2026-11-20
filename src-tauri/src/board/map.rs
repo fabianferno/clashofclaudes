@@ -17,6 +17,9 @@ pub struct MapWriter {
     posting: bool,
     /// What the board has, and when it got it.
     written: Option<(Snapshot, i64)>,
+    /// An edit is in the publisher's queue: nothing more is queued behind it, however long the
+    /// board takes (a board that is down for hours must not come back to hundreds of stale maps).
+    flying: Option<(Snapshot, i64)>,
 }
 
 fn kv(k: &str, v: &str) -> (String, String) {
@@ -42,6 +45,9 @@ impl MapWriter {
                 key: format!("coc-map-{}", snap.host),
             });
         };
+        if self.flying.is_some() {
+            return None;
+        }
         let due = match &self.written {
             // The board gives back the same root for the same key, with whatever text it had: write over it.
             None => true,
@@ -50,8 +56,18 @@ impl MapWriter {
         if !due {
             return None;
         }
-        self.written = Some((snap.clone(), now));
+        self.flying = Some((snap.clone(), now));
         Some(MsgWrite::Edit { id: root, text: text(snap) })
+    }
+
+    /// The edit handed out by `tick` ended: delivered, or given up (then the next tick writes
+    /// what the village is by then).
+    pub fn delivered(&mut self, ok: bool) {
+        if let Some(sent) = self.flying.take()
+            && ok
+        {
+            self.written = Some(sent);
+        }
     }
 
     /// The root's post ended: its id, or None when it was not delivered (the next tick posts again).
@@ -82,6 +98,7 @@ mod tests {
         w.posted(Some("msg_m".into()));
         // a repeated post would not have changed an existing root's text: the first tick after it edits
         assert!(matches!(w.tick("b", &snap("a", 3), 3_000), Some(MsgWrite::Edit { id, .. }) if id == "msg_m"));
+        w.delivered(true);
         assert_eq!(w.tick("b", &snap("a", 4), 4_000), None);
     }
 
@@ -98,6 +115,7 @@ mod tests {
         w.tick("b", &snap("a", 0), 0);
         w.posted(Some("msg_m".into()));
         w.tick("b", &snap("a", 0), 0);
+        w.delivered(true);
         w
     }
 
@@ -107,6 +125,7 @@ mod tests {
         assert_eq!(w.tick("b", &snap("b", 5_000), 5_000), None, "too soon");
         let Some(MsgWrite::Edit { text, .. }) = w.tick("b", &snap("c", 10_000), 10_000) else { panic!() };
         assert!(text.contains(r#""name":"c""#), "the newest state is what is written: {text}");
+        w.delivered(true);
         assert_eq!(w.tick("b", &snap("c", 11_000), 11_000), None, "nothing changed");
     }
 
@@ -116,6 +135,23 @@ mod tests {
         assert_eq!(w.tick("b", &snap("a", 299_999), 299_999), None);
         let Some(MsgWrite::Edit { text, .. }) = w.tick("b", &snap("a", 300_000), 300_000) else { panic!() };
         assert!(text.contains(r#""seen":300000"#), "{text}");
+    }
+
+    #[test]
+    fn one_write_at_a_time_however_long_the_board_takes() {
+        // the board is down: the first edit sits in the queue; nothing more is queued behind it
+        let mut w = settled();
+        assert!(w.tick("b", &snap("b", 10_000), 10_000).is_some());
+        for n in 2..200 {
+            assert_eq!(w.tick("b", &snap(&format!("s{n}"), n * 10_000), n * 10_000), None, "tick {n}");
+        }
+        // it was given up: what the village is now is written, once
+        w.delivered(false);
+        let Some(MsgWrite::Edit { text, .. }) = w.tick("b", &snap("now", 2_000_000), 2_000_000) else { panic!() };
+        assert!(text.contains(r#""name":"now""#));
+        assert_eq!(w.tick("b", &snap("later", 2_010_000), 2_010_000), None);
+        w.delivered(true);
+        assert!(w.tick("b", &snap("later", 2_020_000), 2_020_000).is_some());
     }
 
     #[test]

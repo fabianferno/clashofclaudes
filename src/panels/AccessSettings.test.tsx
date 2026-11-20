@@ -48,9 +48,28 @@ test('not a team owner: the switch is read-only, with the command for an owner',
   expect(box().disabled).toBe(true);
   expect(screen.getByText(/Only an owner of your Vercel team can close a village\. Until one does, everyone on the team can see yours\./)).toBeTruthy();
   expect(screen.getByText('vercel board grants create --everyone')).toBeTruthy();
+  expect(screen.getByText(/The board said: Only a team owner can close a channel to everyone\./)).toBeTruthy();
   ipc.accessSetPrivate.mockResolvedValue(status());
   await press('Check again');
   expect(ipc.accessSetPrivate).toHaveBeenCalledWith(true);
+});
+
+test('once an owner has closed it for you, it says closed and not that everyone can see it', async () => {
+  ipc.accessStatus.mockResolvedValue(status({ state: 'closed', canClose: false, refused: 'x', command: 'cmd' }));
+  await show();
+  expect(box().checked).toBe(true);
+  expect(screen.queryByText(/everyone on the team can see yours/)).toBeNull();
+  expect(screen.getByText(/Only an owner of your Vercel team can open it again/)).toBeTruthy();
+});
+
+test('an invite cannot be changed twice at once', async () => {
+  const one = status({ invites: [{ email: 'bob@acme.com', level: 'visitor', workspaces: null, onBoard: true }] });
+  ipc.accessStatus.mockResolvedValue(one);
+  await show();
+  ipc.invitePut.mockReturnValue(new Promise(() => {}));
+  fireEvent.change(screen.getByLabelText('Level for bob@acme.com'), { target: { value: 'helper' } });
+  await act(async () => {});
+  expect((screen.getByLabelText('Level for bob@acme.com') as HTMLSelectElement).disabled).toBe(true);
 });
 
 test('what is not as you set it is said, with a way to put it back', async () => {

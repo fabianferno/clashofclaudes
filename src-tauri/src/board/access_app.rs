@@ -91,12 +91,13 @@ pub fn owner_command(t: &Target, me: &Me, remote: bool) -> String {
 /// `set.grants` keeps the ids, the everyone-out one last. A step the board refuses takes back
 /// what this call made, so nothing is left half done.
 pub fn close(cli: &dyn BoardCli, t: &Target, me: &Me, remote: bool, set: &mut AccessSettings) -> Result<(), String> {
+    here(t, me, set);
     let specs = closing(&me.owner, &me.email, remote);
-    if set.private && set.grants.len() >= specs.len() {
+    if set.private && !set.grants.is_empty() && set.grants.len() >= specs.len() {
         return Ok(());
     }
     // Closed before the phone remote existed: only its grant is missing, and it goes before the last.
-    if set.private && set.grants.len() == 2 && remote {
+    if set.private && set.grants.len() == 2 && remote && specs.len() == 3 {
         let (id, _) = create(cli, t, &specs[1])?;
         set.grants.insert(1, id);
         return Ok(());
@@ -122,12 +123,34 @@ pub fn close(cli: &dyn BoardCli, t: &Target, me: &Me, remote: bool, set: &mut Ac
     Ok(())
 }
 
+/// The board and village `set`'s ids are on. Ids kept for another board or owner mean nothing
+/// here: they are forgotten, and what the owner wants (private, the invites) is kept to be applied.
+fn here(t: &Target, me: &Me, set: &mut AccessSettings) {
+    let key = format!("{}#{}", t.key(), me.owner);
+    if set.board.as_deref() != Some(key.as_str()) {
+        if set.board.is_some() || !set.grants.is_empty() {
+            let wanted = set.private;
+            set.grants.clear();
+            for i in &mut set.invites {
+                i.grant = None;
+            }
+            // `private` stays what the owner wants; with no ids, `close` makes the grants here
+            set.private = wanted;
+        }
+        set.board = Some(key);
+    }
+}
+
 /// Opens the village to the team again: the everyone-out grant goes first, so nobody is ever
-/// shut out by what is left.
+/// shut out by what is left. Ids no longer on the board are forgotten, not tried.
 pub fn open(cli: &dyn BoardCli, t: &Target, set: &mut AccessSettings) -> Result<(), String> {
-    while let Some(id) = set.grants.last().cloned() {
+    let now = grants(cli, t)?;
+    set.grants.retain(|id| now.iter().any(|g| &g.id == id));
+    let everyone_first = |id: &String| !now.iter().any(|g| &g.id == id && g.everyone);
+    set.grants.sort_by_key(everyone_first);
+    while let Some(id) = set.grants.first().cloned() {
         cli.run(&revoke_args(&id, t)).map_err(why)?;
-        set.grants.pop();
+        set.grants.remove(0);
     }
     set.private = false;
     Ok(())
@@ -180,6 +203,7 @@ pub fn invite_remove(cli: &dyn BoardCli, t: &Target, set: &mut AccessSettings, e
 /// Makes the board what the owner set again: the village closed if they want it closed, and
 /// every invite's grant there.
 pub fn put_back(cli: &dyn BoardCli, t: &Target, me: &Me, remote: bool, set: &mut AccessSettings, slugs: &BTreeMap<String, String>) -> Result<(), String> {
+    here(t, me, set);
     let now = grants(cli, t)?;
     let on_board = |id: &String| now.iter().any(|g| &g.id == id);
     if set.private && village_state(&now, &me.owner) != Seen::Closed {
@@ -192,7 +216,7 @@ pub fn put_back(cli: &dyn BoardCli, t: &Target, me: &Me, remote: bool, set: &mut
         close(cli, t, me, remote, set)?;
     }
     for i in 0..set.invites.len() {
-        if set.invites[i].grant.as_ref().is_some_and(|id| !on_board(id)) {
+        if set.invites[i].grant.as_ref().is_none_or(|id| !on_board(id)) {
             set.invites[i].grant = None;
             let inv = set.invites[i].clone();
             invite_put(cli, t, me, set, slugs, &inv.email, inv.level, inv.workspaces)?;

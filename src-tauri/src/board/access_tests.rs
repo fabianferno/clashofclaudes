@@ -121,9 +121,36 @@ fn who_can_see_names_people_remote_and_team() {
     assert_eq!(who_can_see(&open_grants(), "ada", "u_ada"), ["Everyone on your Vercel team, and every project's deployments"]);
 }
 
+/// Grants nobody of ours made: another project, and everyone let into one workspace.
+fn with_strangers() -> Vec<Grant> {
+    let mut g = grants();
+    g.push(Grant { id: "g8".into(), project: Some("other-app".into()), can: BTreeMap::from([("v/ada/w/".to_string(), s(&["read"]))]), ..Default::default() });
+    g.push(Grant { id: "g9".into(), everyone: true, can: BTreeMap::from([("v/ada/w/api".to_string(), s(&["read", "post"]))]), ..Default::default() });
+    g.push(Grant { id: "g10".into(), all_users: true, can: BTreeMap::from([("v/ada/village".to_string(), s(&["all"]))]), ..Default::default() });
+    // someone else's village: nothing to do with this one
+    g.push(Grant { id: "g11".into(), project: Some("x".into()), can: BTreeMap::from([("v/adam/w/".to_string(), s(&["read"]))]), ..Default::default() });
+    g
+}
+
+#[test]
+fn who_can_see_names_every_grant_that_reaches_the_village() {
+    assert_eq!(
+        who_can_see(&with_strangers(), "ada", "u_ada"),
+        ["You", "bob@acme.com", "The phone remote, and whoever can deploy it", "The project other-app, and whoever can deploy it", "Everyone on your Vercel team, in v/ada/w/api", "Everyone on your Vercel team, in v/ada/village"]
+    );
+}
+
+#[test]
+fn drift_names_anything_let_in_that_the_owner_did_not_set() {
+    let set = AccessSettings { private: true, grants: vec!["g4".into(), "g6".into(), "g5".into()], invites: vec![Invite { grant: Some("g7".into()), ..invite(Level::Visitor, None) }], ..Default::default() };
+    assert_eq!(drift(&set, &with_strangers(), "ada").as_deref(), Some("The project other-app can see your village, and you did not let it in."));
+    let only_everyone: Vec<Grant> = with_strangers().into_iter().filter(|g| g.id != "g8").collect();
+    assert_eq!(drift(&set, &only_everyone, "ada").as_deref(), Some("Everyone on your Vercel team can see v/ada/w/api."));
+}
+
 #[test]
 fn drift_notices_an_opened_village_and_a_missing_invite() {
-    let mut set = AccessSettings { private: true, grants: vec!["g4".into(), "g6".into(), "g5".into()], invites: vec![Invite { grant: Some("g7".into()), ..invite(Level::Visitor, None) }], asked: true, refused: None };
+    let mut set = AccessSettings { private: true, grants: vec!["g4".into(), "g6".into(), "g5".into()], invites: vec![Invite { grant: Some("g7".into()), ..invite(Level::Visitor, None) }], asked: true, ..Default::default() };
     assert_eq!(drift(&set, &grants(), "ada"), None);
     assert_eq!(drift(&set, &open_grants(), "ada").as_deref(), Some("Your village is open to the team again."));
     let without_bob: Vec<Grant> = grants().into_iter().filter(|g| g.id != "g7").collect();

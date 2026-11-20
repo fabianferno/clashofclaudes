@@ -510,7 +510,10 @@ fn a_borrow_nonce_is_remembered_for_a_day() {
     assert!(g.r.take_nonce("n1").unwrap(), "new");
     assert!(!g.r.take_nonce("n1").unwrap(), "seen");
     assert_eq!(g.store.load().unwrap().borrow_nonces.len(), 1, "kept where an agent cannot erase it");
-    g.clock.fetch_add(24 * 3_600_000 + 1, Ordering::SeqCst);
+    // still remembered while a request signed up to 5 minutes ahead could count as fresh
+    g.clock.fetch_add(24 * 3_600_000 + 4 * 60_000, Ordering::SeqCst);
+    assert!(!g.r.take_nonce("n1").unwrap());
+    g.clock.fetch_add(60_000 + 1, Ordering::SeqCst);
     assert!(g.r.take_nonce("n2").unwrap());
     assert_eq!(g.store.load().unwrap().borrow_nonces.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(), ["n2"], "older than a day: forgotten");
 }

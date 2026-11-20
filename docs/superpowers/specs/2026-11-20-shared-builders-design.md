@@ -262,6 +262,19 @@ Plan: `docs/superpowers/plans/2026-11-20-shared-builders.md`. Differences from t
 - **The branch suffix is the first four hex characters of the request's nonce** (random in the
   app; a test that builds its nonce from the clock gets `0000`).
 
+**Fixed after the whole-change review:** the app's push runs from the repository's own folder
+with every hook off (`--no-verify`, `core.hooksPath=/dev/null`), so a hook the borrowed agent
+wrote and pointed git at cannot run outside the Allow/Deny gate; taken nonces are kept for a day
+plus the five minutes a request may be signed ahead, so a request cannot be replayed at the edge
+of its window; who asked is checked before anything on the lender's Mac is looked at; requests
+are judged and started one at a time, and pushes run one at a time; a first push that already
+landed counts as pushed.
+
+**Known and left:** the first prompt block of a borrowed session can lack `by` for the moment
+between the session starting and the desk recording it; two results written within a second of
+each other can lose the second; the visitor's panel offers buttons on someone else's borrowed
+session that the lender's Mac then refuses, and does not show the branch name.
+
 **Verified on the real board** (`real_borrow_run`, scratch board, the updated CLI, one login
 playing both sides, a throwaway repository with a local bare `origin`, a commit standing in for
 the agent's work): the visitor's signed request was heard and taken; the worktree was cut from

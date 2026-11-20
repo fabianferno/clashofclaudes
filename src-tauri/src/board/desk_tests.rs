@@ -192,6 +192,27 @@ fn a_request_heard_twice_starts_once() {
 }
 
 #[test]
+fn a_stranger_s_request_is_refused_before_anything_on_this_mac_is_looked_at() {
+    let g = rig(false);
+    let looked = Arc::new(AtomicI64::new(0));
+    struct Counting(Arc<FakeYard>, Arc<AtomicI64>);
+    impl Yard for Counting {
+        fn builder(&self, p: &str) -> Option<YardBuilder> { self.1.fetch_add(1, Ordering::SeqCst); self.0.builder(p) }
+        fn workspace(&self, s: &str) -> Option<YardWorkspace> { self.1.fetch_add(1, Ordering::SeqCst); self.0.workspace(s) }
+        fn start(&self, a: &str, b: &str, c: &str, d: &str) -> Result<Started, String> { self.0.start(a, b, c, d) }
+        fn push(&self, b: &Borrowed, f: bool) -> Result<(), String> { self.0.push(b, f) }
+        fn remove_if_safe(&self, b: &Borrowed) -> bool { self.0.remove_if_safe(b) }
+        fn notify(&self, t: &str, b: &str) { self.0.notify(t, b) }
+    }
+    let desk = Desk::new(g.remote.clone(), g.board.clone(), Arc::new(Counting(g.yard.clone(), looked.clone())), g.dir.path().join("b2.json"), Arc::new(|| NOW), Arc::new(|| {}));
+    let mut r = g.request("x", "ab12cd3400000000");
+    r.task = "changed after signing".into();
+    desk.on_event(&event("msg_q1", "v/ada/w/shop", &serde_json::to_string(&r).unwrap()));
+    assert_eq!(looked.load(Ordering::SeqCst), 0, "no git ran for a request that is not signed by a paired Mac");
+    assert_eq!(g.results(), [("msg_q1".to_string(), "refused".to_string(), Some("the signature does not match".to_string()))]);
+}
+
+#[test]
 fn a_refused_request_says_why_without_starting() {
     let g = rig(false);
     g.hear("msg_q1", "v/ada/w/api", &g.request("x", "ab12cd3400000000"));

@@ -104,6 +104,21 @@ pub struct Facts<'a> {
     pub workspace: Option<(&'a str, bool)>,
 }
 
+/// Who asked, checked before anything else on this Mac is looked at: a paired Helper's or
+/// Trusted person's key whose signature, for this village, matches. The refusal otherwise.
+pub fn signed_by<'a>(r: &Request, host: &str, phones: &'a [Phone]) -> Result<&'a Phone, &'static str> {
+    let phone = phones.iter().find(|p| p.key == r.key).ok_or("not a paired Mac")?;
+    match phone.level {
+        None => return Err("a phone cannot borrow"),
+        Some(Level::Visitor) => return Err("a Visitor cannot borrow"),
+        Some(Level::Helper | Level::Trusted) => {}
+    }
+    if !verify(&phone.public, &request_bytes(host, r), &r.sig) {
+        return Err("the signature does not match");
+    }
+    Ok(phone)
+}
+
 /// Whether the lender's Mac takes `r`.
 pub fn take(r: &Request, f: &Facts<'_>) -> Take {
     let Some(phone) = f.phones.iter().find(|p| p.key == r.key) else { return Take::Refused("not a paired Mac") };

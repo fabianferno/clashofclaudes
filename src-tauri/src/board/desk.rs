@@ -125,6 +125,9 @@ pub struct Desk {
     now: Clock,
     changed: Arc<dyn Fn() + Send + Sync>,
     inner: Arc<Mutex<Inner>>,
+    /// Held while a request is judged and started, and while a branch is pushed.
+    starting: Mutex<()>,
+    pushing: Mutex<()>,
 }
 
 fn first_line(task: &str) -> String {
@@ -134,7 +137,7 @@ fn first_line(task: &str) -> String {
 impl Desk {
     pub fn new(remote: Arc<Remote>, board: Arc<dyn Outbox>, yard: Arc<dyn Yard>, path: PathBuf, now: Clock, changed: Arc<dyn Fn() + Send + Sync>) -> Desk {
         let saved: Saved = std::fs::read(&path).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
-        Desk { remote, board, yard, path, now, changed, inner: Arc::new(Mutex::new(Inner { borrowed: saved.borrowed, ..Default::default() })) }
+        Desk { remote, board, yard, path, now, changed, inner: Arc::new(Mutex::new(Inner { borrowed: saved.borrowed, ..Default::default() })), starting: Mutex::new(()), pushing: Mutex::new(()) }
     }
 
     fn lock(&self) -> MutexGuard<'_, Inner> {
@@ -191,11 +194,24 @@ impl Desk {
         }
         let Some(r) = parse_request(&e.text) else { return };
         let Some(v) = self.remote.village() else { return };
-        if !self.lock().heard.insert(e.id.clone()) {
+        {
+            let mut g = self.lock();
+            if g.heard.len() > 2_000 {
+                g.heard.clear();
+            }
+            if !g.heard.insert(e.id.clone()) {
+                return;
+            }
+        }
+        let (phones, lends, seen) = (self.remote.paired(), self.remote.lends(), self.remote.seen_nonces());
+        // who asked, before anything on this Mac is looked at (finding a workspace runs git)
+        if let Err(why) = super::borrow::signed_by(&r, &v.host, &phones) {
+            self.result(&e.id, "refused", Some(why));
             return;
         }
+        // one request judged and started at a time: two for one builder must not both pass "not busy"
+        let _one = self.starting.lock().unwrap_or_else(|p| p.into_inner());
         let (builder, workspace) = (self.yard.builder(&r.builder), self.yard.workspace(&r.workspace));
-        let (phones, lends, seen) = (self.remote.paired(), self.remote.lends(), self.remote.seen_nonces());
         let verdict = take(
             &r,
             &Facts {
@@ -262,6 +278,7 @@ impl Desk {
     /// The lender accepted an ask-first request. The builder may have become busy, or elixir low, meanwhile.
     pub fn accept(&self, id: &str) -> Result<(), String> {
         let w = self.take_waiting(id)?;
+        let _one = self.starting.lock().unwrap_or_else(|p| p.into_inner());
         let (builder, workspace) = (self.yard.builder(&w.request.builder), self.yard.workspace(&w.request.workspace));
         let floor = self.remote.lends().iter().find(|l| l.builder == w.builder_id).map(|l| l.floor).unwrap_or(0);
         match (builder, workspace) {
@@ -307,6 +324,8 @@ impl Desk {
     /// A session reached Finished. A borrowed one has its branch pushed, and its thread
     /// (`root`) told. Runs git over the network: call it off the sessions' path.
     pub fn on_finished(&self, session: &str, root: Option<&str>) {
+        // one push at a time: two close Finished waits must not race each other to "already on origin"
+        let _one = self.pushing.lock().unwrap_or_else(|p| p.into_inner());
         let Some(b) = self.lock().borrowed.get(session).cloned() else { return };
         let outcome = self.yard.push(&b, !b.pushed);
         let said = {

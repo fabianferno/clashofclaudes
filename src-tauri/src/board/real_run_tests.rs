@@ -364,7 +364,7 @@ fn real_borrow_run() {
             Ok(Started { session: "s-borrowed".into(), worktree: at, repo: self.repo.clone() })
         }
         fn push(&self, b: &Borrowed, first: bool) -> Result<(), String> {
-            crate::git::push_branch(&b.worktree, &b.branch, first).map_err(|e| e.to_string())
+            crate::git::push_branch_from(&b.repo, &b.branch, first).map_err(|e| e.to_string())
         }
         fn remove_if_safe(&self, b: &Borrowed) -> bool {
             crate::git::safe_to_remove(&b.worktree, &b.branch) && crate::git::remove_worktree_keep_branch(&b.repo, &crate::model::WorktreeInfo { path: b.worktree.clone(), branch: Some(b.branch.clone()) }).is_ok()

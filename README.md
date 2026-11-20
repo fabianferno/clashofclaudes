@@ -130,7 +130,7 @@ A teammate whose Mac you paired can hand one of your builders a task, and you th
 - **Where it runs.** On the lender's Mac, in a worktree of its own, on a new branch cut from what `origin` has (never from the lender's own unpushed work). The borrower answers its questions and sends follow-ups; Allow and Deny go to the lender unless the borrower is Trusted there. Nobody else may act on it.
 - **When it finishes**, the lender's Mac pushes that branch, and only it, to `origin`: never forced, and never over a branch of the same name. The borrower presses **Done**, which closes the session; the worktree is removed only when nothing in it would be lost, and the branch is kept.
 
-**Know this before you lend.** A borrowed task is a teammate running an agent on your Mac, with your logins, your repository and your elixir, and the push uses your git credentials. Lend only to people you would give that. "Ask me first" shows you the first task; it does not make the rest safe.
+**Know this before you lend.** A borrowed task is a teammate running an agent on your Mac, with your logins, your repository and your elixir, and the push uses your git credentials. Lend only to people you would give that. "Ask me first" shows you the first task; it does not make the rest safe. Starting from `origin` keeps your unpushed work out by accident, not by force: the worktree shares your repository, so a task could still reach your local branches and push them with your credentials. The app's own push runs no git hooks, so nothing the borrowed work writes runs at push time. Removing the worktree after Done deletes files git ignores there (a `.env`, a local database).
 
 ### Phone remote
 

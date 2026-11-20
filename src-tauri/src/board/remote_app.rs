@@ -271,7 +271,9 @@ impl Remote {
     pub fn take_nonce(&self, nonce: &str) -> Result<bool, String> {
         let now = (self.now)();
         let mut g = self.lock();
-        g.borrow_nonces.retain(|(_, at)| now - at <= super::borrow::FRESH_MS);
+        // kept as long as a request could still count as fresh: a day after a time signed up to 5 minutes ahead
+        let keep = super::borrow::FRESH_MS + super::borrow::AHEAD_MS;
+        g.borrow_nonces.retain(|(_, at)| now - at <= keep);
         if g.borrow_nonces.iter().any(|(n, _)| n == nonce) {
             return Ok(false);
         }
@@ -283,7 +285,8 @@ impl Remote {
     /// The nonces taken in the last day.
     pub fn seen_nonces(&self) -> HashSet<String> {
         let now = (self.now)();
-        self.lock().borrow_nonces.iter().filter(|(_, at)| now - at <= super::borrow::FRESH_MS).map(|(n, _)| n.clone()).collect()
+        let keep = super::borrow::FRESH_MS + super::borrow::AHEAD_MS;
+        self.lock().borrow_nonces.iter().filter(|(_, at)| now - at <= keep).map(|(n, _)| n.clone()).collect()
     }
 
     /// The last thing a teammate did in this village.

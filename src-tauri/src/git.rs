@@ -253,20 +253,26 @@ pub fn add_worktree_from(dir: &Path, at: &Path, branch: &str, start: &str) -> an
     Ok((WorktreeInfo { path: at.to_path_buf(), branch: Some(branch.to_string()) }, cwd))
 }
 
-/// Pushes `branch`, and only it, to `origin`: an explicit refspec, never forced. `first`: the
-/// name must not exist there yet (checked against a fresh look at `origin`), so a borrowed
-/// session can never write over a branch someone else made. Network; never on a session's path.
-pub fn push_branch(dir: &Path, branch: &str, first: bool) -> anyhow::Result<()> {
+/// Pushes `branch`, and only it, to `origin`: an explicit refspec, never forced, and run from
+/// the repository's own folder (`repo`), never from the borrowed worktree, with every hook off:
+/// a hook is a file the borrowed work could have written, and the push must not run anything it
+/// put there. `first`: the name must not exist on origin yet (a fresh look), unless what is there
+/// is already this branch's own tip (a push that landed before its answer was lost).
+/// Network; never on a session's path.
+pub fn push_branch_from(repo: &Path, branch: &str, first: bool) -> anyhow::Result<()> {
+    let no_hooks = ["-c", "core.hooksPath=/dev/null"];
+    let local = git_line(repo, &["rev-parse", "--verify", "-q", &format!("refs/heads/{branch}^{{commit}}")]).ok_or_else(|| anyhow::anyhow!("there is no branch {branch} here"))?;
     if first {
-        let there = git_run(dir, &["ls-remote", "--heads", "origin", &format!("refs/heads/{branch}")])?;
-        if !there.is_empty() {
+        let there = git_run(repo, &["ls-remote", "--heads", "origin", &format!("refs/heads/{branch}")])?;
+        let tip = there.split_whitespace().next().unwrap_or_default();
+        if !there.is_empty() && tip != local {
             anyhow::bail!("a branch named {branch} is already on origin");
         }
     }
     let spec = format!("refs/heads/{branch}:refs/heads/{branch}");
-    git_run(dir, &["push", "-q", "origin", &spec]).map(|_| ())?;
+    git_run(repo, &[no_hooks[0], no_hooks[1], "push", "-q", "--no-verify", "origin", &spec]).map(|_| ())?;
     // what origin has now, for `safe_to_remove`
-    let _ = git_run(dir, &["fetch", "-q", "origin", &format!("refs/heads/{branch}:refs/remotes/origin/{branch}")]);
+    let _ = git_run(repo, &[no_hooks[0], no_hooks[1], "fetch", "-q", "--no-write-fetch-head", "origin", &format!("refs/heads/{branch}:refs/remotes/origin/{branch}")]);
     Ok(())
 }
 
@@ -393,21 +399,55 @@ mod borrow_tests {
         let at = d.path().join("wt");
         add_worktree_from(&repo, &at, "borrow/bob/x-ab12", "origin/main").unwrap();
         commit(&at, "export.rs", "fn export() {}\n");
-        push_branch(&at, "borrow/bob/x-ab12", true).unwrap();
+        push_branch_from(&repo, "borrow/bob/x-ab12", true).unwrap();
         assert_eq!(origin_heads(&origin), ["borrow/bob/x-ab12", "main"]);
         // more work, pushed again: a fast-forward
         commit(&at, "export.rs", "fn export() { /* more */ }\n");
-        push_branch(&at, "borrow/bob/x-ab12", false).unwrap();
+        push_branch_from(&repo, "borrow/bob/x-ab12", false).unwrap();
         // a first push under a name that is there already is refused, whatever it holds
         let other = d.path().join("wt2");
         add_worktree_from(&repo, &other, "main2", "origin/main").unwrap();
         git(&other, &["branch", "-M", "borrow/bob/taken"]);
+        commit(&other, "mine.txt", "the borrowed work\n");
+        // someone else's branch of that name, holding other work
         git(&origin, &["branch", "borrow/bob/taken", "main"]);
-        let e = push_branch(&other, "borrow/bob/taken", true).unwrap_err().to_string();
+        let e = push_branch_from(&repo, "borrow/bob/taken", true).unwrap_err().to_string();
         assert!(e.contains("already on origin"), "{e}");
         // history rewritten after a push: not forced over
         git(&at, &["commit", "-q", "--amend", "-m", "rewritten"]);
-        assert!(push_branch(&at, "borrow/bob/x-ab12", false).is_err());
+        assert!(push_branch_from(&repo, "borrow/bob/x-ab12", false).is_err());
+    }
+
+    #[test]
+    fn the_push_runs_no_hook_the_borrowed_work_could_have_written() {
+        let d = tempfile::tempdir().unwrap();
+        let (repo, origin) = cloned(d.path());
+        let at = d.path().join("wt");
+        add_worktree_from(&repo, &at, "borrow/bob/x-ab12", "origin/main").unwrap();
+        // the agent writes a tracked hook and points git at it, as husky does
+        let ran = d.path().join("hook-ran");
+        std::fs::create_dir_all(at.join(".husky")).unwrap();
+        let hook = at.join(".husky/pre-push");
+        std::fs::write(&hook, format!("#!/bin/sh\ntouch '{}'\n", ran.display())).unwrap();
+        std::process::Command::new("chmod").arg("+x").arg(&hook).status().unwrap();
+        // an absolute path: it reaches the hook from wherever git runs (the config is the repository's own)
+        git(&at, &["config", "core.hooksPath", &at.join(".husky").to_string_lossy()]);
+        commit(&at, "export.rs", "1\n");
+        push_branch_from(&repo, "borrow/bob/x-ab12", true).unwrap();
+        assert!(!ran.exists(), "a hook from the borrowed work ran on the lender's Mac");
+        assert_eq!(origin_heads(&origin), ["borrow/bob/x-ab12", "main"]);
+    }
+
+    #[test]
+    fn a_first_push_that_already_landed_counts_as_pushed() {
+        let d = tempfile::tempdir().unwrap();
+        let (repo, _) = cloned(d.path());
+        let at = d.path().join("wt");
+        add_worktree_from(&repo, &at, "borrow/bob/x-ab12", "origin/main").unwrap();
+        commit(&at, "export.rs", "1\n");
+        push_branch_from(&repo, "borrow/bob/x-ab12", true).unwrap();
+        // the network dropped after the push landed: trying again as a first push is not a failure
+        push_branch_from(&repo, "borrow/bob/x-ab12", true).unwrap();
     }
 
     #[test]
@@ -418,7 +458,7 @@ mod borrow_tests {
         let (wt, _) = add_worktree_from(&repo, &at, "borrow/bob/x-ab12", "origin/main").unwrap();
         commit(&at, "export.rs", "1\n");
         assert!(!safe_to_remove(&at, "borrow/bob/x-ab12"), "committed, not pushed");
-        push_branch(&at, "borrow/bob/x-ab12", true).unwrap();
+        push_branch_from(&repo, "borrow/bob/x-ab12", true).unwrap();
         assert!(safe_to_remove(&at, "borrow/bob/x-ab12"));
         std::fs::write(at.join("notes.txt"), "untracked").unwrap();
         assert!(!safe_to_remove(&at, "borrow/bob/x-ab12"), "an untracked file");
@@ -426,7 +466,7 @@ mod borrow_tests {
         std::fs::remove_file(at.join("notes.txt")).unwrap();
         commit(&at, "export.rs", "2\n");
         assert!(!safe_to_remove(&at, "borrow/bob/x-ab12"), "a commit since the push");
-        push_branch(&at, "borrow/bob/x-ab12", false).unwrap();
+        push_branch_from(&repo, "borrow/bob/x-ab12", false).unwrap();
         remove_worktree_keep_branch(&repo, &wt).unwrap();
         assert!(!at.exists());
         assert!(git_line(&repo, &["rev-parse", "--verify", "-q", "refs/heads/borrow/bob/x-ab12"]).is_some(), "the branch stays");

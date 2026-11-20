@@ -70,7 +70,7 @@ impl Yard for AppYard {
     }
 
     fn push(&self, b: &Borrowed, first: bool) -> Result<(), String> {
-        crate::git::push_branch(&b.worktree, &b.branch, first).map_err(|e| format!("{e:#}"))
+        crate::git::push_branch_from(&b.repo, &b.branch, first).map_err(|e| format!("{e:#}"))
     }
 
     fn remove_if_safe(&self, b: &Borrowed) -> bool {

@@ -596,11 +596,13 @@ export type Heat = 'hot' | 'warm' | 'cold';
  * left, Z up; the hearth spans 0..110 on both, `HZ` high, with the chimney on its back half.
  */
 const FORGE = { ox: 204, oy: 212, hz: 68, chimney: { x0: 6, x1: 58, z0: 70, z1: 178, taper: 8 } };
+/** The forge is drawn at this size about the middle of its hearth's foot (art px), so it stands no taller than the house. */
+const FORGE_SCALE = { k: 0.85, px: 204, py: 267 };
 const forgeIso = (x: number, y: number, z = 0) => ({ x: FORGE.ox + (x - y), y: FORGE.oy + (x + y) / 2 - z });
 /** A point of the forge's frame in world px from the footprint's front corner (the art is drawn at 2x). */
 const forgeAt = (x: number, y: number, z: number) => {
-  const p = forgeIso(x, y, z);
-  return { x: (p.x - C_AX) / 2, y: (p.y - C_AY) / 2 };
+  const p = forgeIso(x, y, z), { k, px, py } = FORGE_SCALE;
+  return { x: (px + (p.x - px) * k - C_AX) / 2, y: (py + (p.y - py) * k - C_AY) / 2 };
 };
 /** Where the forge's smoke and sparks start, and its light at night, in world px from its anchor. */
 export const FORGE_FX = {
@@ -622,6 +624,7 @@ export function paintedForge(heat: Heat): Art | null {
   return canvasArt(C_W, C_H, C_AX, C_AY, (g) => {
     g.drawImage(base, 0, 0);
     g.clearRect(250, 140, 70, 92); // the tank's crank, which would show past the chimney (only air around it)
+    g.translate(FORGE_SCALE.px, FORGE_SCALE.py); g.scale(FORGE_SCALE.k, FORGE_SCALE.k); g.translate(-FORGE_SCALE.px, -FORGE_SCALE.py);
     type P = { x: number; y: number };
     const OUTL = '#2a1d14';
     const at = forgeIso;

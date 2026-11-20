@@ -42,6 +42,14 @@ pub trait BoardCli: Send + Sync {
     /// Runs `vercel <args>` to its end.
     fn raw(&self, args: &[String]) -> Result<Output, CliError>;
 
+    /// Runs `vercel <args>` for as long as it lasts, handing over each line of its stdout as it
+    /// comes (`Some`), and calling in with `None` at least every `STREAM_TICK`. The child is
+    /// killed when `on_line` returns false (then `Ok`), and when no line arrives for `idle`
+    /// (`Retryable`). `Ok` also when the child ends by itself.
+    fn stream(&self, _args: &[String], _on_line: &mut dyn FnMut(Option<&str>) -> bool, _idle: Duration) -> Result<(), CliError> {
+        Err(CliError::Fatal("this CLI cannot stream".into()))
+    }
+
     /// Runs `vercel <args>` and reads its stdout as the board's JSON answer.
     fn run(&self, args: &[String]) -> Result<Value, CliError> {
         let out = self.raw(args)?;
@@ -60,12 +68,12 @@ pub struct VercelCli {
 }
 
 impl BoardCli for VercelCli {
+    fn stream(&self, args: &[String], on_line: &mut dyn FnMut(Option<&str>) -> bool, idle: Duration) -> Result<(), CliError> {
+        self.stream_child(args, on_line, idle)
+    }
+
     fn raw(&self, args: &[String]) -> Result<Output, CliError> {
-        let program = match &self.program {
-            Some(p) => crate::platform::which(&p.to_string_lossy()),
-            None => crate::platform::which("vercel"),
-        }
-        .ok_or(CliError::Missing)?;
+        let program = self.program()?;
         let mut child = Command::new(program)
             .args(args)
             .current_dir(&self.cwd)
@@ -115,6 +123,68 @@ impl BoardCli for VercelCli {
         }
         let read = |b: &Arc<Mutex<Vec<u8>>>| String::from_utf8_lossy(&b.lock().unwrap_or_else(|e| e.into_inner())).into_owned();
         Ok(Output { ok: status.success(), stdout: read(&out), stderr: read(&err) })
+    }
+}
+
+/// How often a stream calls in when nothing arrives.
+pub const STREAM_TICK: Duration = Duration::from_millis(250);
+
+impl VercelCli {
+    fn program(&self) -> Result<PathBuf, CliError> {
+        match &self.program {
+            Some(p) => crate::platform::which(&p.to_string_lossy()),
+            None => crate::platform::which("vercel"),
+        }
+        .ok_or(CliError::Missing)
+    }
+
+    /// `BoardCli::stream` for the real CLI.
+    fn stream_child(&self, args: &[String], on_line: &mut dyn FnMut(Option<&str>) -> bool, idle: Duration) -> Result<(), CliError> {
+        use std::io::BufRead;
+        let mut child = Command::new(self.program()?)
+            .args(args)
+            .current_dir(&self.cwd)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|e| CliError::Retryable(e.to_string()))?;
+        let (tx, rx) = std::sync::mpsc::channel::<String>();
+        if let Some(out) = child.stdout.take() {
+            // ends when the pipe closes (the child is gone) or nobody listens any more
+            std::thread::spawn(move || {
+                for line in std::io::BufReader::new(out).lines() {
+                    let Ok(line) = line else { break };
+                    if tx.send(line).is_err() {
+                        break;
+                    }
+                }
+            });
+        }
+        let mut last = Instant::now();
+        let result = loop {
+            match rx.recv_timeout(STREAM_TICK) {
+                Ok(line) => {
+                    last = Instant::now();
+                    if !on_line(Some(&line)) {
+                        break Ok(());
+                    }
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                    if !on_line(None) {
+                        break Ok(());
+                    }
+                    if last.elapsed() >= idle {
+                        break Err(CliError::Retryable("nothing heard from the board".into()));
+                    }
+                }
+                // the pipe closed: the child ended (or left the pipe to no one)
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break Ok(()),
+            }
+        };
+        let _ = child.kill();
+        let _ = child.wait();
+        result
     }
 }
 

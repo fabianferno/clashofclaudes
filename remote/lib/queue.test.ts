@@ -99,6 +99,12 @@ test('an action after the block shows as sent, then with the Mac’s result', as
   expect((await buildQueue(await threads(b), 'ada')).cards[0]).toMatchObject({ sent: false, result: null });
   const act = s.reply('{"do":"allow"}', REMOTE, { 'coc.do': 'allow' });
   expect((await buildQueue(await threads(b), 'ada')).cards[0]).toMatchObject({ sent: true, result: null });
+  // a reply a teammate labelled as an action is not one: the buttons stay
+  const b2 = new FakeBoard();
+  const s2 = session(b2, 'shop', 'needs_you', 'decide');
+  s2.reply(`Wants a decision${fence(block(7, 'decide', ['allow', 'deny']))}`);
+  s2.reply('{"do":"allow"}', BOB, { 'coc.do': 'allow' });
+  expect((await buildQueue(await threads(b2), 'ada')).cards[0]).toMatchObject({ sent: false, result: null });
   // a result written by someone else is not the Mac's
   s.reply(JSON.stringify({ re: act, result: 'applied' }), BOB);
   expect((await buildQueue(await threads(b), 'ada')).cards[0]).toMatchObject({ sent: true, result: null });

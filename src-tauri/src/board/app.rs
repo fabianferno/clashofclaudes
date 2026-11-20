@@ -449,9 +449,9 @@ pub fn remote_status(app: AppHandle) -> RemoteStatus {
 #[tauri::command]
 pub fn remote_pair_start(app: AppHandle) -> Result<String, String> {
     let bs = app.try_state::<BoardState>().ok_or("the board is not set up")?;
-    let mut buf = [0u8; 4];
+    let mut buf = [0u8; 8];
     getrandom::fill(&mut buf).map_err(|e| e.to_string())?;
-    bs.remote.pair_start(u32::from_be_bytes(buf))
+    bs.remote.pair_start(u64::from_be_bytes(buf))
 }
 
 #[tauri::command]

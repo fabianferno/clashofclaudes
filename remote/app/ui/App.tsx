@@ -1,5 +1,6 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
+import { pairProof, ticketId, unb64 } from '../../lib/crypto';
 import { forget, load, make, type Phone } from '../../lib/phone';
 import { Pair } from './Pair';
 import { Queue, type QueueData } from './Queue';
@@ -43,7 +44,9 @@ export function App() {
 
   const submit = useCallback(async (code: string, name: string) => {
     const phone = await make(null);
-    const res = await fetch('/api/pair', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code, public: phone.public, name }) });
+    // The code stays on this phone: the remote gets the ticket's name and a proof, both made from it.
+    const body0 = { ticket: await ticketId(code), public: phone.public, name, mac: await pairProof(code, unb64(phone.public), name) };
+    const res = await fetch('/api/pair', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body0) });
     const body = (await res.json().catch(() => null)) as { owner?: string; check?: string; error?: string } | null;
     if (!res.ok || !body?.owner || !body.check) return { error: body?.error ?? `The remote answered ${res.status}` };
     await make(body.owner);
@@ -74,7 +77,7 @@ export function App() {
       </header>
       {stage.at === 'loading' && <p className="note" role="status">Opening…</p>}
       {stage.at === 'unsupported' && <p className="banner">This browser cannot keep a key for this phone. Open the page over https in Safari or Chrome.</p>}
-      {stage.at === 'pair' && <Pair ios={isIos()} standalone={isStandalone()} submit={submit} paired={paired} onPaired={() => void enter()} />}
+      {stage.at === 'pair' && <Pair ios={isIos()} standalone={isStandalone()} code={window.location.hash.slice(1) || undefined} submit={submit} paired={paired} onPaired={() => void enter()} />}
       {stage.at === 'queue' && (
         <>
           {notes === 'off' && (

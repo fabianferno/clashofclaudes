@@ -24,7 +24,7 @@ beforeEach(() => {
   ipc.onRemoteProgress.mockResolvedValue(() => {});
   ipc.onSettingsChanged.mockImplementation(async (cb: (s: Settings) => void) => { settingsChanged = cb; return () => {}; });
   for (const f of [ipc.remoteConnect, ipc.remoteDeploy, ipc.remoteTrust, ipc.remotePairConfirm, ipc.remotePairCancel, ipc.remoteRemovePhone]) f.mockResolvedValue(undefined);
-  ipc.remotePairStart.mockResolvedValue('482913');
+  ipc.remotePairStart.mockResolvedValue('00000000EQK1');
 });
 afterEach(cleanup);
 
@@ -88,9 +88,11 @@ test('pairing shows the code and the address as a QR, then asks about the phone 
   await show();
   await press('Pair a phone');
   expect(ipc.remotePairStart).toHaveBeenCalledTimes(1);
-  await act(async () => push(status({ pairing: { ...IDLE, state: 'open', code: '482913', until: Date.now() + 300_000 } })));
-  expect(screen.getByText('482 913')).toBeTruthy();
-  expect(document.querySelector('svg.set-qr')).toBeTruthy();
+  await act(async () => push(status({ pairing: { ...IDLE, state: 'open', code: '00000000EQK1', until: Date.now() + 300_000 } })));
+  expect(screen.getByText('0000-0000-EQK1')).toBeTruthy();
+  // the QR carries the code after the #, which a browser never sends to a server
+  expect(document.querySelector('svg.set-qr')?.getAttribute('aria-label')).toBe('QR code to pair a phone');
+  expect(document.querySelector('svg.set-qr')?.getAttribute('data-text')).toBe('https://village-remote.vercel.app/#00000000EQK1');
   const asking = status({ pairing: { ...IDLE, state: 'asking', name: 'Ada’s iPhone', check: '792 693' } });
   ipc.remoteStatus.mockResolvedValue(asking);
   await act(async () => push(asking));
@@ -102,9 +104,9 @@ test('pairing shows the code and the address as a QR, then asks about the phone 
 });
 
 test('a pairing that ended says why', async () => {
-  ipc.remoteStatus.mockResolvedValue(status({ pairing: { ...IDLE, state: 'cancelled', why: 'Another device answered this pairing code. Start again.' } }));
+  ipc.remoteStatus.mockResolvedValue(status({ pairing: { ...IDLE, state: 'cancelled', why: 'Two phones answered this pairing code. Start again.' } }));
   await show();
-  expect(screen.getByText('Another device answered this pairing code. Start again.')).toBeTruthy();
+  expect(screen.getByText('Two phones answered this pairing code. Start again.')).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Pair a phone' })).toBeTruthy();
 });
 

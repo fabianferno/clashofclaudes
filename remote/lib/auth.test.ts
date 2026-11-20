@@ -23,7 +23,7 @@ test('a request signed by a paired phone passes', async () => {
 });
 
 test('anything else does not', async () => {
-  const { p, ask } = await setup();
+  const { p, ask, board } = await setup();
   expect(await ask({})).toBeNull();
   expect(await ask(await p.headers('ada', 'GET', '/api/queue', NOW - 180_000))).toBeNull();
   expect(await ask(await p.headers('ada', 'GET', '/api/queue', NOW + 180_000))).toBeNull();
@@ -33,6 +33,10 @@ test('anything else does not', async () => {
   expect(await ask(await p.headers('ada', 'POST', '/api/act', NOW, '{"a":1}'), 'POST', '/api/act', '{"a":2}')).toBeNull();
   // a phone paired with ada asks for bob's village
   expect(await ask(await p.headers('bob', 'GET', '/api/queue', NOW))).toBeNull();
+  // a village that does not exist is never read
+  const reads = board.reads;
+  for (const o of ['nobody1', 'nobody2', 'nobody3']) expect(await ask(await p.headers(o, 'GET', '/api/queue', NOW))).toBeNull();
+  expect(board.reads).toBeLessThanOrEqual(reads + 1);
   // a key nobody paired
   const stranger = await phone();
   expect(await ask(await stranger.headers('ada', 'GET', '/api/queue', NOW))).toBeNull();

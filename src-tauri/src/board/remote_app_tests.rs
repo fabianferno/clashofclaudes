@@ -220,9 +220,11 @@ fn an_unknown_phone_is_refused_and_noted() {
     assert!(g.calls().is_empty());
     assert_eq!(g.result("msg_a1"), "refused");
     assert_eq!(g.r.status().last_refused_at, Some(5_000));
-    // not an action at all
+    // not an action at all: someone's noise gets no reply and raises no alarm
+    let before = g.r.status().last_refused_at;
     g.r.handle(event("msg_a2", "msg_1", "allow please"));
-    assert_eq!(g.result("msg_a2"), "refused");
+    assert!(g.sent().is_empty());
+    assert_eq!(g.r.status().last_refused_at, before);
 }
 
 #[test]
@@ -283,7 +285,9 @@ fn seen_hashes_are_capped_at_500() {
 }
 
 fn pair_request(id: &str, ticket: &str) -> Event {
-    let mut e = event(id, ticket, &serde_json::json!({ "public": "BJFoira10seT_4mQCR9cHCW_d571sQbL3La0PctTmwr5P3GDEX_lc0QORs_pqRotn_e4cNgEMUb1Sdclf3Km8E8", "name": "Pixel" }).to_string());
+    const PUB: &str = "BJFoira10seT_4mQCR9cHCW_d571sQbL3La0PctTmwr5P3GDEX_lc0QORs_pqRotn_e4cNgEMUb1Sdclf3Km8E8";
+    let mac = crate::board::pairing::proof(&crate::board::pairing::code_of(123_456), &crate::board::remote::unb64(PUB).unwrap(), "Pixel");
+    let mut e = event(id, ticket, &serde_json::json!({ "public": PUB, "name": "Pixel", "mac": mac }).to_string());
     e.labels = BTreeMap::from([("coc.kind".to_string(), "pair".to_string())]);
     e.channel = "v/ada/remote".into();
     e
@@ -293,7 +297,7 @@ fn pair_request(id: &str, ticket: &str) -> Event {
 fn pairing_adds_a_phone_and_removing_takes_it_away() {
     let g = rig(DECIDE);
     let code = g.r.pair_start(123_456).unwrap();
-    assert_eq!(code, "123456");
+    assert_eq!(code, crate::board::pairing::code_of(123_456));
     let sent = g.sent();
     assert!(matches!(sent.as_slice(), [MsgWrite::Post { channel, .. }] if channel == "v/ada/remote"), "{sent:?}");
     // the fake board named the ticket msg_sent_1

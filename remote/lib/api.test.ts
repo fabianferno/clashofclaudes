@@ -90,19 +90,21 @@ test('an action that is not the caller’s own, or not for their village, is not
   expect(count()).toBe(before + added);
 });
 
-const ticket = (board: FakeBoard, code = '482913') => board.add({ channel: 'v/ada/remote', text: JSON.stringify({ host: 'h1', code, until: NOW + 60_000, state: 'open' }), labels: { 'coc.kind': 'pair-open', 'coc.code': code } });
+const T1 = '24a36f2920d1e732';
+const ticket = (board: FakeBoard, id = T1) => board.add({ channel: 'v/ada/remote', text: JSON.stringify({ host: 'h1', id, until: NOW + 60_000, state: 'open' }), labels: { 'coc.kind': 'pair-open', 'coc.code': id } });
 
 test('pairing with an open code posts the request and names the check number', async () => {
   const { call, board } = await setup();
   const t = ticket(board);
   const fresh = await phone();
-  const res = await call(api.pair, 'POST', '/api/pair', { code: '482913', public: b64(fresh.pub), name: 'Pixel' }, null);
+  const res = await call(api.pair, 'POST', '/api/pair', { ticket: T1, public: b64(fresh.pub), name: 'Pixel', mac: 'RR7L_HTGwX1UUSt98KbGmmZ7R4UvObE4fJEXNFlC9oU' }, null);
   expect(res.status).toBe(200);
   expect(res.json).toMatchObject({ owner: 'ada', ticket: t.id, key: fresh.key });
   expect(res.json.check).toMatch(/^\d{3} \d{3}$/);
   const posted = board.msgs.at(-1)!;
   expect(posted).toMatchObject({ re: t.id, labels: { 'coc.kind': 'pair' } });
-  expect(JSON.parse(posted.text)).toEqual({ public: b64(fresh.pub), name: 'Pixel' });
+  // the proof made with the code travels on to the Mac, which is the one that can check it
+  expect(JSON.parse(posted.text)).toEqual({ public: b64(fresh.pub), name: 'Pixel', mac: 'RR7L_HTGwX1UUSt98KbGmmZ7R4UvObE4fJEXNFlC9oU' });
 });
 
 test('pairing with a wrong code, a bad key or too often writes nothing', async () => {
@@ -110,16 +112,17 @@ test('pairing with a wrong code, a bad key or too often writes nothing', async (
   ticket(board);
   const fresh = await phone();
   const before = board.msgs.length;
-  expect((await call(api.pair, 'POST', '/api/pair', { code: '000000', public: b64(fresh.pub), name: 'x' }, null)).status).toBe(403);
-  expect((await call(api.pair, 'POST', '/api/pair', { code: '48291', public: b64(fresh.pub), name: 'x' }, null)).status).toBe(400);
-  expect((await call(api.pair, 'POST', '/api/pair', { code: '482913', public: 'AAAA', name: 'x' }, null)).status).toBe(400);
-  expect((await call(api.pair, 'POST', '/api/pair', { code: '482913', public: b64(fresh.pub), name: 'x'.repeat(200) }, null)).status).toBe(400);
+  expect((await call(api.pair, 'POST', '/api/pair', { ticket: '0000000000000000', public: b64(fresh.pub), name: 'x', mac: 'RR7L_HTGwX1UUSt98KbGmmZ7R4UvObE4fJEXNFlC9oU' }, null)).status).toBe(403);
+  expect((await call(api.pair, 'POST', '/api/pair', { ticket: 'short', public: b64(fresh.pub), name: 'x', mac: 'RR7L_HTGwX1UUSt98KbGmmZ7R4UvObE4fJEXNFlC9oU' }, null)).status).toBe(400);
+  expect((await call(api.pair, 'POST', '/api/pair', { ticket: T1, public: 'AAAA', name: 'x', mac: 'RR7L_HTGwX1UUSt98KbGmmZ7R4UvObE4fJEXNFlC9oU' }, null)).status).toBe(400);
+  expect((await call(api.pair, 'POST', '/api/pair', { ticket: T1, public: b64(fresh.pub), name: 'x'.repeat(200), mac: 'RR7L_HTGwX1UUSt98KbGmmZ7R4UvObE4fJEXNFlC9oU' }, null)).status).toBe(400);
+  expect((await call(api.pair, 'POST', '/api/pair', { ticket: T1, public: b64(fresh.pub), name: 'x' }, null)).status).toBe(400);
   expect(board.msgs.length).toBe(before);
   // a stranger trying codes: after the allowance, not even a lookup
   deps.lookups = new api.Limiter(3);
-  for (let i = 0; i < 3; i++) await call(api.pair, 'POST', '/api/pair', { code: `10000${i}`, public: b64(fresh.pub), name: 'x' }, null);
+  for (let i = 0; i < 3; i++) await call(api.pair, 'POST', '/api/pair', { ticket: `100000000000000${i}`, public: b64(fresh.pub), name: 'x', mac: 'RR7L_HTGwX1UUSt98KbGmmZ7R4UvObE4fJEXNFlC9oU' }, null);
   const reads = board.reads;
-  expect((await call(api.pair, 'POST', '/api/pair', { code: '100009', public: b64(fresh.pub), name: 'x' }, null)).status).toBe(429);
+  expect((await call(api.pair, 'POST', '/api/pair', { ticket: '1000000000000009', public: b64(fresh.pub), name: 'x', mac: 'RR7L_HTGwX1UUSt98KbGmmZ7R4UvObE4fJEXNFlC9oU' }, null)).status).toBe(429);
   expect(board.reads).toBe(reads);
   expect(board.msgs.length).toBe(before);
 });

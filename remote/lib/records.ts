@@ -86,9 +86,17 @@ export class Records {
     return names;
   }
 
-  /** The open pairing ticket with this code, on any village of the board. A code is asked about at most every 15 seconds. */
+  /** Whether `owner` has a village on this board. Asked of a list read at most every 15 seconds, so naming owners that do not exist costs nothing. */
+  async hasVillage(owner: string): Promise<boolean> {
+    return (await this.remoteChannels()).includes(remoteChannel(owner));
+  }
+
+  /**
+   * The open pairing ticket named `code` (the name a phone derives from the code it was given), on
+   * any village of the board. A name is asked about at most every 15 seconds.
+   */
   async openTicket(code: string): Promise<{ owner: string; id: string; host: string } | null> {
-    if (!/^\d{6}$/.test(code)) return null;
+    if (!/^[0-9a-f]{16}$/.test(code)) return null;
     const had = this.tickets.get(code);
     if (had && this.now() - had.at < TICKET_MS) return had.ticket;
     let ticket: { owner: string; id: string; host: string } | null = null;
@@ -96,7 +104,7 @@ export class Records {
       const owner = channel.split('/')[1];
       for (const m of await this.board.roots(channel, { 'coc.kind': 'pair-open', 'coc.code': code })) {
         const v = byOwner(m, owner) ? json(m.text) : null;
-        if (v && v.state === 'open' && v.code === code && typeof v.until === 'number' && v.until > this.now()) {
+        if (v && v.state === 'open' && v.id === code && typeof v.until === 'number' && v.until > this.now()) {
           ticket = { owner, id: m.id, host: typeof v.host === 'string' ? v.host : '' };
         }
       }

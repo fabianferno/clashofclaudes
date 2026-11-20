@@ -84,7 +84,7 @@ input, textarea {
 .panel p { margin: 10px 0 0; }
 .panel form { display: grid; gap: 14px; margin-top: 16px; }
 .panel label { display: grid; gap: 6px; font-weight: 700; }
-.code { font: 400 2rem/1 var(--display), system-ui, sans-serif; letter-spacing: .18em; text-align: center; }
+.code { font: 400 1.5rem/1 var(--display), system-ui, sans-serif; letter-spacing: .08em; text-align: center; text-transform: uppercase; }
 .check { margin: 16px 0; padding: 14px; background: var(--out); color: var(--gold); border-radius: 12px; text-align: center; font: 400 2.6rem/1 var(--display), system-ui, sans-serif; letter-spacing: .08em; }
 
 .working { background: rgba(241, 223, 182, .88); }

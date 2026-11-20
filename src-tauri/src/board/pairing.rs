@@ -1,13 +1,45 @@
 //! Pairing a phone with this Mac, with no I/O: the ticket the Mac posts, the request a phone
 //! sends through the remote, and the owner's Confirm.
 //!
-//! Nothing here is a secret. The code only finds the ticket; trust comes from the owner seeing the
-//! same check number on the phone and on the Mac, and from there being exactly one request.
+//! The code the Mac shows is the secret: twelve characters the owner carries to the phone by eye
+//! (or by the QR's address fragment), and that are never written to the board. The board gets a
+//! name for the ticket derived from the code, and a request must carry a proof made with the code.
+//! So someone who can post on the board, even with the owner's own login (their agents can), cannot
+//! answer a pairing with a key of their own. The check number on both screens stays as a last look.
 use serde_json::json;
 
 use super::cli::MsgWrite;
 use super::listen::Event;
-use super::remote::{b64, check_number, key_id, unb64, Phone};
+use super::remote::{b64, check_number, key_id, sha_hex, unb64, Phone};
+use sha2::{Digest, Sha256};
+
+/// Crockford's base32: no I, L, O or U to misread.
+const ALPHABET: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+
+/// A pairing code from 60 random bits: 12 characters.
+pub fn code_of(rng: u64) -> String {
+    (0..12).rev().map(|i| ALPHABET[((rng >> (5 * i)) & 31) as usize] as char).collect()
+}
+
+/// The ticket's name on the board. Finding the code from it means trying 2^60 codes.
+pub fn ticket_id(code: &str) -> String {
+    sha_hex(format!("coc-ticket\n{code}").as_bytes())[..16].to_string()
+}
+
+/// What a phone that was given `code` sends with its key and name (HMAC-SHA256, base64url).
+pub fn proof(code: &str, public: &[u8], name: &str) -> String {
+    let key = ring::hmac::Key::new(ring::hmac::HMAC_SHA256, &Sha256::digest(format!("coc-proof\n{code}").as_bytes()));
+    let mut msg = public.to_vec();
+    msg.extend_from_slice(name.as_bytes());
+    b64(ring::hmac::sign(&key, &msg).as_ref())
+}
+
+fn proves(code: &str, public: &[u8], name: &str, mac: &str) -> bool {
+    let key = ring::hmac::Key::new(ring::hmac::HMAC_SHA256, &Sha256::digest(format!("coc-proof\n{code}").as_bytes()));
+    let mut msg = public.to_vec();
+    msg.extend_from_slice(name.as_bytes());
+    unb64(mac).is_some_and(|tag| ring::hmac::verify(&key, &msg, &tag).is_ok())
+}
 
 /// How long a pairing code stays open.
 pub const TICKET_MS: i64 = 300_000;
@@ -48,7 +80,7 @@ struct Ticket {
 
 impl Ticket {
     fn text(&self, state: &str) -> String {
-        json!({ "host": self.host, "code": self.code, "until": self.until, "state": state }).to_string()
+        json!({ "host": self.host, "id": ticket_id(&self.code), "until": self.until, "state": state }).to_string()
     }
 
     fn close(&self) -> Option<MsgWrite> {
@@ -80,14 +112,14 @@ impl Pairing {
         &self.state
     }
 
-    /// Opens a pairing: the ticket to post. `rng6`: any random number; its last six digits are the code.
-    pub fn start(&mut self, now: i64, rng6: u32, host: &str, owner: &str) -> MsgWrite {
-        let code = format!("{:06}", rng6 % 1_000_000);
+    /// Opens a pairing: the ticket to post. `rng`: 64 random bits, 60 of which become the code.
+    pub fn start(&mut self, now: i64, rng: u64, host: &str, owner: &str) -> MsgWrite {
+        let code = code_of(rng);
         let t = Ticket { host: host.into(), owner: owner.into(), code: code.clone(), until: now + TICKET_MS, id: None };
         let write = MsgWrite::Post {
             channel: channel(owner),
             text: t.text("open"),
-            labels: vec![kv("coc.kind", "pair-open"), kv("coc.code", &code), kv("coc.host", host)],
+            labels: vec![kv("coc.kind", "pair-open"), kv("coc.code", &ticket_id(&code)), kv("coc.host", host)],
             key: format!("coc-pair-{host}-{now}"),
         };
         self.state = PairState::Open { code, until: t.until };
@@ -102,8 +134,9 @@ impl Pairing {
         }
     }
 
-    /// A message from the village's log. A first request under the open ticket asks the owner; a
-    /// second one means someone else answered too, and ends the pairing (the ticket's closing edit).
+    /// A message from the village's log. A request under the open ticket that proves it was made
+    /// with the code asks the owner. A second such request (two phones were given the code) ends
+    /// the pairing: the ticket's closing edit. Requests without the proof are not requests.
     pub fn on_event(&mut self, e: &Event, _now: i64) -> Option<MsgWrite> {
         let ticket = self.ticket.as_ref()?;
         let ticket_id = ticket.id.as_deref()?;
@@ -116,7 +149,11 @@ impl Pairing {
         if public.len() != 65 || public[0] != 4 {
             return None;
         }
-        let name: String = v.get("name").and_then(|n| n.as_str()).unwrap_or("").trim().chars().take(NAME_MAX).collect();
+        let sent_name = v.get("name").and_then(|n| n.as_str()).unwrap_or("");
+        if !proves(&ticket.code, &public, sent_name, v.get("mac").and_then(|m| m.as_str()).unwrap_or("")) {
+            return None;
+        }
+        let name: String = sent_name.trim().chars().take(NAME_MAX).collect();
         let name = if name.is_empty() { "Phone".to_string() } else { name };
         match &self.state {
             PairState::Open { .. } => {
@@ -126,7 +163,7 @@ impl Pairing {
             }
             PairState::Asking(r) if r.id != e.id => {
                 let close = ticket.close();
-                self.state = PairState::Cancelled("Another device answered this pairing code. Start again.".into());
+                self.state = PairState::Cancelled("Two phones answered this pairing code. Start again.".into());
                 self.ticket = None;
                 close
             }

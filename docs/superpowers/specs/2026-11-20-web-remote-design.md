@@ -335,6 +335,18 @@ Built as designed, with these differences and facts. Plan: `docs/superpowers/pla
   production --json` (`project_not_found` when there is none), `inspect <deployment> --json`
   (`aliases`). A project made empty needs `vercel.json` with `"framework": "nextjs"`.
 
+- **Pairing was redesigned after the whole-change review.** As first built (a six-digit code on
+  the board, trust from the check number), anyone who could post with the owner's login, such as
+  the owner's own agents, could plant a second ticket and a ground key and get that key paired.
+  Now the code is twelve characters (60 bits) and is the secret: the board gets a ticket name
+  derived from it (`coc.code`, text `id`), the phone sends an HMAC of its key and name made with
+  it, and the Mac ignores any request without that proof. The QR carries the code in the address
+  fragment; an iPhone's Home Screen app has it typed. Section 3's pairing steps are superseded by
+  this.
+- **A decision card shows only the block's `question`**, never the unsigned words around it.
+- **The remote reads nothing for an owner with no village channel** (a list cached 15 seconds).
+- **A `coc.do` reply that is not a readable action is ignored**, with no result written.
+
 **Verified against the real board and the deployed remote** (`real_remote_run`, board `coc-spike`,
 `https://village-remote.vercel.app`): a headless browser paired as a phone (the same check number
 on both sides), then Deny, Allow, a picked answer and a follow-up were each applied by the Mac

@@ -18,14 +18,15 @@ function Qr({ text }: { text: string }) {
     return { path: d, size: n + 4 };
   }, [text]);
   return (
-    <svg className="set-qr" viewBox={`0 0 ${size} ${size}`} role="img" aria-label={`QR code for ${text}`} shapeRendering="crispEdges">
+    <svg className="set-qr" viewBox={`0 0 ${size} ${size}`} role="img" aria-label="QR code to pair a phone" data-text={text} shapeRendering="crispEdges">
       <rect width={size} height={size} fill="#fff" />
       <path d={path} fill="#1d130b" />
     </svg>
   );
 }
 
-const spaced = (code: string) => `${code.slice(0, 3)} ${code.slice(3)}`;
+/** `0000-0000-EQK1`: the code in groups of four, as the phone shows it back. */
+const grouped = (code: string) => code.replace(/(.{4})(?=.)/g, '$1-');
 const used = (ms: number) => (ms ? `used ${waitedLabel(Date.now() - ms) === 'just now' ? 'just now' : `${waitedLabel(Date.now() - ms)} ago`}` : 'never used');
 
 /**
@@ -148,11 +149,11 @@ export default function RemoteSettings({ enabled, onEnabled }: { enabled: boolea
 
       {p.state === 'open' && p.code && (
         <div className="set-pair">
-          <Qr text={url} />
+          <Qr text={`${url}/#${p.code}`} />
           <div className="set-text">
-            <span className="set-label">Open the remote on your phone and type this code</span>
-            <span className="set-code">{spaced(p.code)}</span>
-            <span className="set-hint">On an iPhone, add the page to the Home Screen first and pair from there. The code lasts 5 minutes.</span>
+            <span className="set-label">Scan this with your phone, or open the remote there and type the code</span>
+            <span className="set-code">{grouped(p.code)}</span>
+            <span className="set-hint">On an iPhone, add the page to the Home Screen first, open it from there and type the code. The code lasts 5 minutes and is never sent anywhere: keep it to yourself.</span>
             <button type="button" className="hud-btn grey sm" onClick={() => void ipc.remotePairCancel()}>Cancel</button>
           </div>
         </div>

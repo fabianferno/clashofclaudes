@@ -29,6 +29,8 @@ export async function signedBy(req: Asked, records: Records, now: () => number =
   const sig = req.headers.get('x-coc-sig');
   if (!isOwner(owner) || !key || !/^[0-9a-f]{16}$/.test(key) || !sig || !Number.isSafeInteger(ts)) return null;
   if (Math.abs(now() - ts) > WINDOW_MS) return null;
+  // an owner with no village on this board is not read about: a stranger's guesses cost nothing
+  if (!(await records.hasVillage(owner))) return null;
   const phone = await records.phone(owner, key);
   if (!phone) return null;
   const ok = await verify(phone.public, await requestBytes(req.method, req.path, ts, req.body), sig);

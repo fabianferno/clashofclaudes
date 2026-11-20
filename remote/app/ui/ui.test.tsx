@@ -76,6 +76,25 @@ test('the Mac’s answer shows on the card', async () => {
   expect(screen.getByText('Sent to your Mac')).toBeTruthy();
 });
 
+test('a decision shows only what its signature covers', async () => {
+  const { phone } = await api();
+  // the words around the block are not signed: someone could have written kinder ones
+  render(<Card card={card({ question: null, prose: 'Wants a decision: `Bash: ls`' })} phone={phone} />);
+  expect(screen.queryByText(/Bash: ls/)).toBeNull();
+  expect(screen.getByText(/does not share what it wants to run/)).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Allow' })).toBeTruthy();
+});
+
+test('after the Mac refused or failed, the buttons come back for another try', async () => {
+  const { phone } = await api();
+  render(<Card card={card({ sent: true, result: 'failed' })} phone={phone} />);
+  expect(screen.getByText('Your Mac could not do it')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Allow' })).toBeTruthy();
+  cleanup();
+  render(<Card card={card({ sent: true, result: 'stale' })} phone={phone} />);
+  expect(screen.queryByRole('button', { name: 'Allow' })).toBeNull();
+});
+
 test('a picker shows its options and a line for your own words', async () => {
   const { phone, posts, pub } = await api();
   const c = card({ wait: 'answer', can: ['answer'], prose: 'Asking you: Which database?', question: 'Which database?', options: ['sqlite', 'postgres'] });
@@ -157,11 +176,13 @@ test('the code is sent with a name, then the check number is shown until the Mac
   render(<Pair ios standalone submit={submit} paired={async () => confirmed} onPaired={onPaired} every={10} />);
   const send = screen.getByRole('button', { name: 'Pair this phone' }) as HTMLButtonElement;
   expect(send.disabled).toBe(true);
-  fireEvent.change(screen.getByRole('textbox', { name: 'Code from your Mac' }), { target: { value: '482 913' } });
+  fireEvent.change(screen.getByRole('textbox', { name: 'Code from your Mac' }), { target: { value: '0000-0000-eqk' } });
+  expect(send.disabled).toBe(true);
+  fireEvent.change(screen.getByRole('textbox', { name: 'Code from your Mac' }), { target: { value: '0000-0000-eqk1' } });
   fireEvent.change(screen.getByRole('textbox', { name: 'Name for this phone' }), { target: { value: 'Ada’s iPhone' } });
   await press('Pair this phone');
   await settle();
-  expect(submit).toHaveBeenCalledWith('482913', 'Ada’s iPhone');
+  expect(submit).toHaveBeenCalledWith('00000000EQK1', 'Ada’s iPhone');
   expect(screen.getByText('482 913')).toBeTruthy();
   expect(screen.getByText(/press Confirm/)).toBeTruthy();
   expect(onPaired).not.toHaveBeenCalled();
@@ -170,9 +191,15 @@ test('the code is sent with a name, then the check number is shown until the Mac
   expect(onPaired).toHaveBeenCalled();
 });
 
+test('a code carried in the address is filled in', () => {
+  render(<Pair ios={false} standalone={false} code="00000000EQK1" submit={vi.fn()} paired={async () => false} onPaired={() => {}} />);
+  expect((screen.getByRole('textbox', { name: 'Code from your Mac' }) as HTMLInputElement).value).toBe('0000-0000-EQK1');
+  expect((screen.getByRole('button', { name: 'Pair this phone' }) as HTMLButtonElement).disabled).toBe(false);
+});
+
 test('a wrong code says so and lets you try again', async () => {
   render(<Pair ios={false} standalone={false} submit={async () => ({ error: 'that code is not open; look at the Mac for the current one' })} paired={async () => false} onPaired={() => {}} />);
-  fireEvent.change(screen.getByRole('textbox', { name: 'Code from your Mac' }), { target: { value: '000000' } });
+  fireEvent.change(screen.getByRole('textbox', { name: 'Code from your Mac' }), { target: { value: '000000000000' } });
   await press('Pair this phone');
   await settle();
   expect(screen.getByText('that code is not open; look at the Mac for the current one')).toBeTruthy();

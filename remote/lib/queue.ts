@@ -75,7 +75,8 @@ async function card(root: Msg, replies: Msg[], owner: string): Promise<Card> {
   const block = parseBlock(json)!;
   const reply = replies[at];
   const after = replies.slice(at + 1);
-  const actions = after.filter((m) => 'coc.do' in m.labels).map((m) => m.id);
+  // an action is a reply the remote posted (a project's identity); anyone can put the label on anything
+  const actions = after.filter((m) => 'coc.do' in m.labels && m.by.principal.startsWith('vercel:project:')).map((m) => m.id);
   const results = after.flatMap((m) => (byOwner(m, owner) ? [result(m.text)] : [])).filter((r) => r !== null && actions.includes(r.re));
   const last = results.at(-1)?.result;
   return {

@@ -1,11 +1,14 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { cleanCode } from '../../lib/crypto';
 
 interface Props {
   /** An iPhone or iPad. */
   ios: boolean;
   /** Opened from the Home Screen (or an installed app window). */
   standalone: boolean;
+  /** A code that came with the address (the QR on the Mac carries it). */
+  code?: string;
   /** Makes this phone's key and asks the Mac that shows `code`. The check number, or why not. */
   submit: (code: string, name: string) => Promise<{ check: string } | { error: string }>;
   /** Whether the Mac has confirmed. */
@@ -16,8 +19,12 @@ interface Props {
 }
 
 /** Pairing: the code from the Mac, then the same number on both screens until the owner confirms there. */
-export function Pair({ ios, standalone, submit, paired, onPaired, every = 2500 }: Props) {
-  const [code, setCode] = useState('');
+const CODE_LEN = 12;
+/** `0000-0000-EQK1`, as the Mac shows it. */
+const grouped = (c: string) => cleanCode(c).slice(0, CODE_LEN).replace(/(.{4})(?=.)/g, '$1-');
+
+export function Pair({ ios, standalone, code: given, submit, paired, onPaired, every = 2500 }: Props) {
+  const [code, setCode] = useState(given ? grouped(given) : '');
   const [name, setName] = useState(ios ? 'iPhone' : 'Phone');
   const [check, setCheck] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -55,7 +62,7 @@ export function Pair({ ios, standalone, submit, paired, onPaired, every = 2500 }
     );
   }
 
-  const digits = code.replace(/\D/g, '');
+  const digits = cleanCode(code);
   const go = async () => {
     setBusy(true);
     setError(null);
@@ -74,16 +81,16 @@ export function Pair({ ios, standalone, submit, paired, onPaired, every = 2500 }
     <section className="panel">
       <h1>Pair this phone with your village</h1>
       <p>On your Mac, open Settings, Team, Phone remote and press Pair a phone. Type the code it shows.</p>
-      <form onSubmit={(e) => { e.preventDefault(); if (digits.length === 6) void go(); }}>
+      <form onSubmit={(e) => { e.preventDefault(); if (digits.length === CODE_LEN) void go(); }}>
         <label>
           Code from your Mac
-          <input type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={7} value={code} onChange={(e) => setCode(e.target.value)} className="code" />
+          <input type="text" autoCapitalize="characters" autoCorrect="off" spellCheck={false} maxLength={20} placeholder="XXXX-XXXX-XXXX" value={code} onChange={(e) => setCode(e.target.value)} className="code" />
         </label>
         <label>
           Name for this phone
           <input type="text" maxLength={40} value={name} onChange={(e) => setName(e.target.value)} />
         </label>
-        <button type="submit" className="btn allow" disabled={busy || digits.length !== 6}>Pair this phone</button>
+        <button type="submit" className="btn allow" disabled={busy || digits.length !== CODE_LEN}>Pair this phone</button>
       </form>
       {error && <p className="card-error" role="alert">{error}</p>}
     </section>

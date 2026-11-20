@@ -49,7 +49,9 @@ export function Card({ card, phone, onSent }: { card: CardData; phone: PhoneApi;
     }
   };
 
-  const done = sent || card.sent;
+  // refused or failed: nothing was done, so the same wait can be answered again
+  const again = card.result === 'refused' || card.result === 'failed';
+  const done = (sent || card.sent) && !again;
   const typed = words.trim();
   const picker = can('answer') && card.options !== null;
   const wordsFor: Do | null = can('followup') ? 'followup' : can('answer') ? 'answer' : null;
@@ -64,8 +66,15 @@ export function Card({ card, phone, onSent }: { card: CardData; phone: PhoneApi;
         </p>
       </header>
       {task && <p className="card-task">{agent ? `${agent}: ${task}` : task}</p>}
-      {card.question && card.wait === 'decide' ? <pre className="card-ask">{card.question}</pre> : card.prose && <p className="card-prose">{picker && card.question ? card.question : card.prose}</p>}
+      {/* A decision shows only the command the signature covers. The words around the block are
+          not signed, so a card never asks for an Allow on their strength. */}
+      {card.wait === 'decide' ? (
+        card.question ? <pre className="card-ask">{card.question}</pre> : <p className="card-prose">This village does not share what it wants to run. Look on your Mac, or turn on Share details there.</p>
+      ) : (
+        card.prose && <p className="card-prose">{picker && card.question ? card.question : card.prose}</p>
+      )}
 
+      {again && <p className={`card-result ${card.result}`} role="status">{RESULT[card.result!]}</p>}
       {done ? (
         <p className={`card-result ${card.result ?? 'sent'}`} role="status">
           {card.result ? RESULT[card.result] : 'Sent to your Mac'}

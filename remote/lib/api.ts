@@ -144,7 +144,11 @@ export async function push(req: Request, d: Deps): Promise<Response> {
   return json({ ok: true });
 }
 
-/** `POST /api/pair` `{ code, public, name }`, unsigned: asks the Mac that shows `code` to pair this phone. */
+/**
+ * `POST /api/pair` `{ ticket, public, name, mac }`, unsigned: asks the Mac whose pairing ticket
+ * is named `ticket` to pair this phone. The name and the proof `mac` are made from the code the
+ * Mac shows; the code itself never reaches the remote or the board, and only the Mac can check `mac`.
+ */
 export async function pair(req: Request, d: Deps): Promise<Response> {
   const { body } = await read(req);
   let data: Record<string, unknown> | null = null;
@@ -153,7 +157,16 @@ export async function pair(req: Request, d: Deps): Promise<Response> {
   } catch {
     // below
   }
-  if (!data || typeof data.code !== 'string' || !/^\d{6}$/.test(data.code) || typeof data.public !== 'string' || typeof data.name !== 'string' || data.name.length > NAME_MAX) {
+  if (
+    !data ||
+    typeof data.ticket !== 'string' ||
+    !/^[0-9a-f]{16}$/.test(data.ticket) ||
+    typeof data.public !== 'string' ||
+    typeof data.name !== 'string' ||
+    data.name.length > NAME_MAX ||
+    typeof data.mac !== 'string' ||
+    !/^[A-Za-z0-9_-]{43}$/.test(data.mac)
+  ) {
     return no(400, 'not a pairing request');
   }
   let pub: Uint8Array;
@@ -164,10 +177,10 @@ export async function pair(req: Request, d: Deps): Promise<Response> {
   }
   if (!isPublicKey(pub)) return no(400, 'not a pairing request');
   if (!d.lookups.take(d.now())) return no(429, 'too many tries; wait a minute');
-  const ticket = await d.records.openTicket(data.code);
+  const ticket = await d.records.openTicket(data.ticket);
   if (!ticket) return no(403, 'that code is not open; look at the Mac for the current one');
   const key = await keyId(pub);
-  await d.board.reply(ticket.id, { text: JSON.stringify({ public: data.public, name: data.name.trim() || 'Phone' }), labels: { 'coc.kind': 'pair' }, id: `coc-pairreq-${key}-${ticket.id}` });
+  await d.board.reply(ticket.id, { text: JSON.stringify({ public: data.public, name: data.name, mac: data.mac }), labels: { 'coc.kind': 'pair' }, id: `coc-pairreq-${key}-${ticket.id}` });
   return json({ owner: ticket.owner, ticket: ticket.id, host: ticket.host, key, check: await checkNumber(pub, ticket.id) });
 }
 

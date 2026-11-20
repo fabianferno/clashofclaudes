@@ -147,7 +147,7 @@ fn real_remote_run() {
     std::thread::sleep(Duration::from_secs(8));
 
     sim.publish();
-    let code = remote.pair_start(482_913).unwrap();
+    let code = remote.pair_start(now() as u64 ^ 0x5eed_c0de_1234_5678).unwrap();
     println!("MAC pairing code {code} (owner {owner}, host {host})");
 
     let started = Instant::now();

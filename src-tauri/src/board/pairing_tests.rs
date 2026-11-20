@@ -7,14 +7,29 @@ use std::collections::BTreeMap;
 const PUB: &str = "BJFoira10seT_4mQCR9cHCW_d571sQbL3La0PctTmwr5P3GDEX_lc0QORs_pqRotn_e4cNgEMUb1Sdclf3Km8E8";
 const NOW: i64 = 1_000_000;
 
+/// The code `open()` shows: 12 characters, typed on the phone, never written to the board.
+const CODE: &str = "00000000EQK1";
+
 fn request(id: &str, ticket: &str, public: &str, name: &str) -> Event {
+    request_with(id, ticket, public, name, CODE)
+}
+
+/// A request as a phone that was given `code` makes it.
+fn request_with(id: &str, ticket: &str, public: &str, name: &str, code: &str) -> Event {
+    let mac = unb64(public).map(|p| proof(code, &p, name)).unwrap_or_default();
+    let mut e = bare_request(id, ticket, public, name);
+    e.text = serde_json::json!({ "public": public, "name": name, "mac": mac }).to_string();
+    e
+}
+
+fn bare_request(id: &str, ticket: &str, public: &str, name: &str) -> Event {
     Event {
         cursor: "c".into(),
         kind: "message.posted".into(),
         id: id.into(),
         thread_root: Some(ticket.into()),
         channel: "v/ada/remote".into(),
-        text: serde_json::json!({ "public": public, "name": name }).to_string(),
+        text: serde_json::json!({ "public": public, "name": name }).to_string(), // no proof
         labels: BTreeMap::from([("coc.kind".to_string(), "pair".to_string())]),
         principal: "vercel:project:prj_K:production".into(),
         profile: Some("remote".into()),
@@ -27,6 +42,7 @@ fn open() -> Pairing {
     let mut p = Pairing::default();
     p.start(NOW, 482_913, "h1", "ada");
     p.ticket_posted("msg_t_1".into());
+    assert_eq!(p.state(), &PairState::Open { code: CODE.into(), until: NOW + 300_000 });
     p
 }
 
@@ -37,12 +53,46 @@ fn json(text: &str) -> serde_json::Value {
 #[test]
 fn the_ticket_carries_the_code_until_and_host() {
     let mut p = Pairing::default();
-    let MsgWrite::Post { channel, text, labels, key } = p.start(NOW, 1_000_042, "h1", "ada") else { panic!() };
+    let MsgWrite::Post { channel, text, labels, key } = p.start(NOW, u64::MAX, "h1", "ada") else { panic!() };
+    let code = "ZZZZZZZZZZZZ";
+    assert_eq!(p.state(), &PairState::Open { code: code.into(), until: NOW + 300_000 });
     assert_eq!(channel, "v/ada/remote");
-    assert_eq!(labels, [("coc.kind".to_string(), "pair-open".to_string()), ("coc.code".to_string(), "000042".to_string()), ("coc.host".to_string(), "h1".to_string())]);
-    assert_eq!(json(&text), serde_json::json!({ "host": "h1", "code": "000042", "until": NOW + 300_000, "state": "open" }));
+    // the board gets a name for the ticket made from the code, never the code
+    let id = ticket_id(code);
+    assert_eq!(id.len(), 16);
+    assert_eq!(labels, [("coc.kind".to_string(), "pair-open".to_string()), ("coc.code".to_string(), id.clone()), ("coc.host".to_string(), "h1".to_string())]);
+    assert_eq!(json(&text), serde_json::json!({ "host": "h1", "id": id, "until": NOW + 300_000, "state": "open" }));
+    assert!(!text.contains(code));
     assert_eq!(key, format!("coc-pair-h1-{NOW}"));
-    assert_eq!(p.state(), &PairState::Open { code: "000042".into(), until: NOW + 300_000 });
+}
+
+#[test]
+fn the_code_and_its_proof_are_the_ones_the_phone_computes() {
+    // remote/lib/crypto.test.ts holds the same values
+    assert_eq!(code_of(482_913), CODE);
+    assert_eq!(ticket_id(CODE), "24a36f2920d1e732");
+    let public = unb64(PUB).unwrap();
+    assert_eq!(proof(CODE, &public, "iPhone"), "RR7L_HTGwX1UUSt98KbGmmZ7R4UvObE4fJEXNFlC9oU");
+    assert_ne!(proof(CODE, &public, "iPhone"), proof("00000000EQK2", &public, "iPhone"));
+    assert_ne!(proof(CODE, &public, "iPhone"), proof(CODE, &public, "iPhonf"));
+}
+
+#[test]
+fn a_request_without_the_codes_proof_is_ignored() {
+    // Someone who can post on the board (a teammate, or an agent with the owner's login) answers
+    // the ticket with a key of their own: they never saw the code, so they cannot prove it.
+    let mut p = open();
+    p.on_event(&bare_request("msg_t_2", "msg_t_1", PUB, "x"), NOW);
+    p.on_event(&request_with("msg_t_2", "msg_t_1", PUB, "x", "00000000EQK2"), NOW);
+    let mut renamed = request("msg_t_2", "msg_t_1", PUB, "mine");
+    renamed.text = renamed.text.replace("mine", "theirs");
+    p.on_event(&renamed, NOW);
+    assert!(matches!(p.state(), PairState::Open { .. }), "{:?}", p.state());
+    // and none of them cancels the real phone's pairing
+    p.on_event(&request("msg_t_3", "msg_t_1", PUB, "mine"), NOW);
+    assert!(matches!(p.state(), PairState::Asking(_)));
+    assert_eq!(p.on_event(&bare_request("msg_t_4", "msg_t_1", PUB, "x"), NOW), None);
+    assert!(matches!(p.state(), PairState::Asking(_)));
 }
 
 #[test]
@@ -131,7 +181,7 @@ fn it_expires_after_five_minutes_and_can_be_cancelled() {
     assert_eq!(asking.cancel(), None);
     // starting again replaces whatever was there
     asking.start(NOW, 7, "h1", "ada");
-    assert_eq!(asking.state(), &PairState::Open { code: "000007".into(), until: NOW + 300_000 });
+    assert_eq!(asking.state(), &PairState::Open { code: "000000000007".into(), until: NOW + 300_000 });
 }
 
 #[test]

@@ -292,6 +292,11 @@ impl Remote {
             return;
         }
         let Some(session) = self.board.session_for_root(root) else { return };
+        // The remote checks an action before it posts it, so a phone never sends one that cannot
+        // be read. Anything else carrying the label is someone's noise: no reply, no alarm.
+        if parse_action(&e.text).is_none() {
+            return;
+        }
         let result = self.act(&session, &e.text);
         self.board.send(
             MsgWrite::ReplyTo { id: e.id.clone(), text: result_text(&e.id, result), labels: vec![kv("coc.kind", "result")], key: format!("coc-res-{}", e.id) },
@@ -356,8 +361,8 @@ impl Remote {
         }
     }
 
-    /// Opens a pairing; the six-digit code to show. `rng`: any random number.
-    pub fn pair_start(&self, rng: u32) -> Result<String, String> {
+    /// Opens a pairing; the code to show (never written to the board). `rng`: 64 random bits.
+    pub fn pair_start(&self, rng: u64) -> Result<String, String> {
         let (write, code, stale) = {
             let mut g = self.lock();
             let v = g.village.clone().ok_or("the phone remote is off")?;

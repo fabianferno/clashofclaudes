@@ -67,43 +67,59 @@ test('records are cached for a minute, and a miss for five seconds', async () =>
   expect(b.reads).toBeGreaterThan(reads);
 });
 
-const ticket = (b: FakeBoard, owner: string, code: string, until: number, state = 'open', by = { principal: `vercel:user:u_${owner}`, handle: `${owner}/village` }) =>
-  b.add({ channel: `v/${owner}/remote`, text: JSON.stringify({ host: 'h1', code, until, state }), labels: { 'coc.kind': 'pair-open', 'coc.code': code } }, by);
+const ticket = (b: FakeBoard, owner: string, id: string, until: number, state = 'open', by = { principal: `vercel:user:u_${owner}`, handle: `${owner}/village` }) =>
+  b.add({ channel: `v/${owner}/remote`, text: JSON.stringify({ host: 'h1', id, until, state }), labels: { 'coc.kind': 'pair-open', 'coc.code': id } }, by);
+const T1 = '24a36f2920d1e732';
+const T0 = '0000000000000000';
 
 test('an open ticket is found by its code, with its village', async () => {
   const b = new FakeBoard();
   b.add({ channel: 'v/bob/remote', text: '{}' }, { principal: 'vercel:user:u_bob', handle: 'bob' });
-  const t = ticket(b, 'ada', '482913', NOW + 60_000);
-  expect(await make(b).records.openTicket('482913')).toEqual({ owner: 'ada', id: t.id, host: 'h1' });
-  expect(await make(b).records.openTicket('000000')).toBeNull();
+  const t = ticket(b, 'ada', T1, NOW + 60_000);
+  expect(await make(b).records.openTicket(T1)).toEqual({ owner: 'ada', id: t.id, host: 'h1' });
+  expect(await make(b).records.openTicket(T0)).toBeNull();
 });
 
 test('a ticket that is expired, closed, forged or only labelled is not open', async () => {
   for (const put of [
-    (b: FakeBoard) => ticket(b, 'ada', '482913', NOW - 1),
-    (b: FakeBoard) => ticket(b, 'ada', '482913', NOW + 60_000, 'closed'),
+    (b: FakeBoard) => ticket(b, 'ada', T1, NOW - 1),
+    (b: FakeBoard) => ticket(b, 'ada', T1, NOW + 60_000, 'closed'),
     // written in ada's village by bob
-    (b: FakeBoard) => ticket(b, 'ada', '482913', NOW + 60_000, 'open', { principal: 'vercel:user:u_bob', handle: 'bob' }),
-    // the text names another code than the label
-    (b: FakeBoard) => (ticket(b, 'ada', '111111', NOW + 60_000).labels['coc.code'] = '482913'),
-    (b: FakeBoard) => b.add({ channel: 'v/ada/remote', text: 'open', labels: { 'coc.kind': 'pair-open', 'coc.code': '482913' } }),
+    (b: FakeBoard) => ticket(b, 'ada', T1, NOW + 60_000, 'open', { principal: 'vercel:user:u_bob', handle: 'bob' }),
+    // the text names another ticket than the label
+    (b: FakeBoard) => (ticket(b, 'ada', '1111111111111111', NOW + 60_000).labels['coc.code'] = T1),
+    (b: FakeBoard) => b.add({ channel: 'v/ada/remote', text: 'open', labels: { 'coc.kind': 'pair-open', 'coc.code': T1 } }),
   ]) {
     const b = new FakeBoard();
     put(b);
-    expect(await make(b).records.openTicket('482913')).toBeNull();
+    expect(await make(b).records.openTicket(T1)).toBeNull();
   }
 });
 
 test('a wrong code asked again does not read the board again', async () => {
   const b = new FakeBoard();
-  ticket(b, 'ada', '482913', NOW + 60_000);
+  ticket(b, 'ada', T1, NOW + 60_000);
   const { records } = make(b);
-  await records.openTicket('000000');
+  await records.openTicket(T0);
   const reads = b.reads;
-  await records.openTicket('000000');
+  await records.openTicket(T0);
   expect(b.reads).toBe(reads);
-  expect(await records.openTicket('not a code')).toBeNull();
+  expect(await records.openTicket('not a ticket')).toBeNull();
   expect(b.reads).toBe(reads);
+});
+
+test('a village is one that has its own channel on the board', async () => {
+  const b = new FakeBoard();
+  b.add({ channel: 'v/ada/remote', text: '{}' });
+  const { records, clock } = make(b);
+  expect(await records.hasVillage('ada')).toBe(true);
+  const reads = b.reads;
+  // a stranger naming owners that do not exist costs no read each
+  for (const o of ['bob', 'carol', 'dave']) expect(await records.hasVillage(o)).toBe(false);
+  expect(b.reads).toBe(reads);
+  b.add({ channel: 'v/bob/remote', text: '{}' }, { principal: 'vercel:user:u_bob', handle: 'bob' });
+  clock.t += 16_000;
+  expect(await records.hasVillage('bob')).toBe(true);
 });
 
 test('the village says when its Mac was last seen', async () => {

@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { b64, checkNumber, keyId, requestBytes, sha256Hex, signedBytes, unb64, verify } from './crypto';
+import { b64, checkNumber, cleanCode, keyId, pairProof, requestBytes, sha256Hex, signedBytes, ticketId, unb64, verify } from './crypto';
 
 // From `node scripts/remote-vectors.mjs`, the same vector the Mac app is tested with
 // (`src-tauri/src/board/remote_tests.rs`): both sides must agree on every byte.
@@ -34,6 +34,19 @@ test('a WebCrypto signature verifies; its high-s twin and a changed byte do not'
 test('the key id and the check number are the ones the Mac shows', async () => {
   expect(await keyId(unb64(PUB))).toBe('e1628ecfdc6cbe3e');
   expect(await checkNumber(unb64(PUB), 'msg_t_1')).toBe('792 693');
+});
+
+test('the pairing code gives the ticket its name and the request its proof, as on the Mac', async () => {
+  // the same values as src-tauri/src/board/pairing_tests.rs
+  expect(await ticketId('00000000EQK1')).toBe('24a36f2920d1e732');
+  expect(await pairProof('00000000EQK1', unb64(PUB), 'iPhone')).toBe('RR7L_HTGwX1UUSt98KbGmmZ7R4UvObE4fJEXNFlC9oU');
+});
+
+test('a typed code is read as it was meant', () => {
+  expect(cleanCode(' 0000-0000-eqk1 ')).toBe('00000000EQK1');
+  // the letters the alphabet leaves out are the digits they look like
+  expect(cleanCode('OOOO IIII LLLL')).toBe('000011111111');
+  expect(cleanCode('abc')).toBe('ABC');
 });
 
 test('base64url round trips without padding', () => {

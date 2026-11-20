@@ -70,6 +70,29 @@ export async function checkNumber(rawPublic: Uint8Array, ticketId: string): Prom
   return `${s.slice(0, 3)} ${s.slice(3)}`;
 }
 
+/**
+ * The pairing code as it was meant: 12 characters of Crockford's base32, whatever the case, the
+ * dashes, or the letters that alphabet leaves out because they look like digits.
+ */
+export function cleanCode(typed: string): string {
+  return typed.toUpperCase().replace(/[^0-9A-Z]/g, '').replace(/O/g, '0').replace(/[IL]/g, '1');
+}
+
+/** The ticket's name on the board, made from the code. The code itself never leaves the phone. */
+export async function ticketId(code: string): Promise<string> {
+  return (await sha256Hex(enc.encode(`coc-ticket\n${code}`))).slice(0, 16);
+}
+
+/** What proves to the Mac that this key comes from a phone that was given the code (HMAC-SHA256, base64url). */
+export async function pairProof(code: string, rawPublic: Uint8Array, name: string): Promise<string> {
+  const key = await crypto.subtle.importKey('raw', own(await sha256(enc.encode(`coc-proof\n${code}`))), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const n = enc.encode(name);
+  const msg = new Uint8Array(rawPublic.length + n.length);
+  msg.set(rawPublic);
+  msg.set(n, rawPublic.length);
+  return b64(new Uint8Array(await crypto.subtle.sign('HMAC', key, msg)));
+}
+
 /** Whether `rawPublic` is a P-256 public key as a phone sends it: 65 bytes, uncompressed. */
 export function isPublicKey(rawPublic: Uint8Array): boolean {
   return rawPublic.length === 65 && rawPublic[0] === 4;

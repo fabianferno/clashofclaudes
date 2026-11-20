@@ -14,21 +14,29 @@ interface Saved {
   owner: string | null;
 }
 
+/**
+ * The database, with its store. Version 2 only so that a database left without the store (a first
+ * open that was interrupted) gets it on the next open.
+ */
 function db(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const open = indexedDB.open(DB, 1);
-    open.onupgradeneeded = () => open.result.createObjectStore(STORE);
-    open.onsuccess = () => resolve(open.result);
-    open.onerror = () => reject(open.error);
+    const req = indexedDB.open(DB, 2);
+    req.onupgradeneeded = () => {
+      if (!req.result.objectStoreNames.contains(STORE)) req.result.createObjectStore(STORE);
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+    req.onblocked = () => reject(new Error('Close the other tabs of this page and try again.'));
   });
 }
 
 async function get(): Promise<Saved | null> {
   const d = await db();
   return new Promise((resolve, reject) => {
-    const r = d.transaction(STORE).objectStore(STORE).get('me');
-    r.onsuccess = () => resolve((r.result as Saved | undefined) ?? null);
-    r.onerror = () => reject(r.error);
+    const tx = d.transaction(STORE);
+    const r = tx.objectStore(STORE).get('me');
+    tx.oncomplete = () => { d.close(); resolve((r.result as Saved | undefined) ?? null); };
+    tx.onerror = tx.onabort = () => { d.close(); reject(tx.error); };
   });
 }
 
@@ -38,8 +46,8 @@ async function put(s: Saved | null): Promise<void> {
     const tx = d.transaction(STORE, 'readwrite');
     if (s) tx.objectStore(STORE).put(s, 'me');
     else tx.objectStore(STORE).delete('me');
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
+    tx.oncomplete = () => { d.close(); resolve(); };
+    tx.onerror = tx.onabort = () => { d.close(); reject(tx.error); };
   });
 }
 

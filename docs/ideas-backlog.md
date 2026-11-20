@@ -10,6 +10,10 @@ sounds for XP and level-ups, a notepad per workspace, and the daily raid report 
 
 - **Pipelines.** "When Claude finishes, Codex reviews it" as a drag-to-chain blueprint; reusable
   task templates (write tests, fix lint, review) as blueprint scrolls.
+- **A forge that shows what runs in it.** A watchtower with a lit beacon while a dev server runs,
+  a training dummy for tests, a scribe for an editor, a messenger for ssh. Needs the foreground
+  command (the group leader's arguments), read in the session code. Skipped on 2026-11-20 to see
+  how the plain forge does first.
 - **Phone approvals** and **shared team villages.** Both big, and both clash with the privacy
   model. Probably skip for now.
 

@@ -17,7 +17,8 @@ Universal (arm64 + x86_64) macOS 13+ DMG. Signed and notarized when credentials 
 4. Verifies `codesign`, `stapler validate` and `spctl`; if anything fails the version bump is undone.
 5. Commits `Release v<version>`, tags `v<version>`, pushes to the private repo.
 6. Creates the GitHub Release `v<version>` on [fabianferno/clashofclaudes](https://github.com/fabianferno/clashofclaudes), with the versioned DMG, `Clash-of-Claudes.dmg`, the `.app.tar.gz` and `latest.json`. Notes are the commit subjects since the last tag, or `--notes <file>`.
-7. Creates the same release on the legacy repo, [fabianferno/clashofclaudes-releases](https://github.com/fabianferno/clashofclaudes-releases), with its `latest.json` pointing at that repo. Builds before the move (up to 0.2.10) only read updates from there. Set `LEGACY_RELEASES_REPO=` to stop this step once no old installs remain.
+
+Builds up to 0.2.10 read updates from the old `fabianferno/clashofclaudes-releases` repo, which was deleted after 0.2.11 shipped: those copies don't update on their own, and testers on them reinstall from the download link.
 
 `pnpm ship <version> --dry-run` shows the plan and the notes without changing anything.
 

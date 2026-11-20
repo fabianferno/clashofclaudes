@@ -291,6 +291,9 @@
 .kb-add + .att-strip { margin: 6px 0 0; }
 .kb-todo .att-strip { margin: 0; }
 .kb-todo .att-thumb { width: 44px; height: 44px; }
+.kb-edit { display: flex; flex-direction: column; gap: 6px; }
+.kb-edit textarea { width: 100%; box-sizing: border-box; resize: vertical; border: 2px solid #c8b083; border-radius: 8px; padding: 6px 8px; background: #fff8e8; font: 700 13px/1.35 system-ui; color: #2b2018; }
+.kb-edit textarea:focus { outline: none; border-color: #a8885a; }
 
 /* ⌘K command palette: above every page, under the quit dialog */
 .cmdk-bg { position: fixed; inset: 0; z-index: 60; background: rgba(20,13,7,.45); display: flex; justify-content: center; align-items: flex-start; padding: 12vh 16px 16px; }

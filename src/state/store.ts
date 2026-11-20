@@ -443,7 +443,8 @@ export const useApp = create<AppState>((set, get) => ({
     let done = false;
     return () => { if (!done) { done = true; set((st) => ({ covers: st.covers - 1 })); } };
   },
-  addTodo: (t) => set((st) => ({ todos: [...st.todos.filter((x) => x.id !== t.id), t] })),
+  // a changed one keeps its place (as in the backend); a new one goes last
+  addTodo: (t) => set((st) => ({ todos: st.todos.some((x) => x.id === t.id) ? st.todos.map((x) => (x.id === t.id ? t : x)) : [...st.todos, t] })),
   removeTodo: (id) => set((st) => ({ todos: st.todos.filter((x) => x.id !== id) })),
   setKanban: (kanban) => {
     set({ kanban });

@@ -15,6 +15,7 @@ const ipc = vi.hoisted(() => ({
   readAttachment: vi.fn().mockResolvedValue(new ArrayBuffer(4)),
   discardAttachments: vi.fn().mockResolvedValue(undefined),
   updateTodo: vi.fn(),
+  editTodo: vi.fn(),
 }));
 vi.mock('../api/ipc', () => ({ ipc }));
 import { KANBAN_ALL, useApp } from '../state/store';
@@ -257,4 +258,42 @@ test('a To Do set to start on its own keeps its builder, even a busy one, and ca
   await act(async () => { fireEvent.click(within(card).getByLabelText(/Own worktree/)); });
   expect(ipc.updateTodo).toHaveBeenLastCalledWith('t1', true, 'b2', true);
   expect(useApp.getState().todos[0]).toMatchObject({ auto: true, builderId: 'b2', worktree: true });
+});
+
+test("a To Do's text and images are edited in place; Esc puts it back as it was", async () => {
+  URL.createObjectURL = vi.fn(() => 'blob:img');
+  const [a, b] = ['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.png', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb.png'];
+  const t = { id: 't1', workspaceId: 'w1', text: 'Fix footer', images: [a], createdAt: 1, worktree: true };
+  const t2 = { id: 't2', workspaceId: 'w1', text: 'Later', createdAt: 2 };
+  ipc.saveAttachment.mockResolvedValue(b);
+  ipc.editTodo.mockImplementation(async (id: string, text: string, images: string[]) => ({ ...t, id, text: text.trim(), images }));
+  act(() => useApp.setState({ todos: [t, t2] }));
+  render(<Kanban />);
+  const card = screen.getByTestId('kb-todo-t1');
+
+  // Esc cancels the edit, not the board
+  fireEvent.click(within(card).getByRole('button', { name: 'Edit Fix footer' }));
+  const field = within(card).getByRole('textbox', { name: 'Edit task' }) as HTMLTextAreaElement;
+  expect(document.activeElement).toBe(field);
+  fireEvent.change(field, { target: { value: 'Nope' } });
+  fireEvent.keyDown(field, { key: 'Escape' });
+  expect(within(card).queryByRole('textbox', { name: 'Edit task' })).toBeNull();
+  expect(within(card).getByText('Fix footer')).toBeTruthy();
+  expect(useApp.getState().kanban).toBe('w1');
+  expect(ipc.editTodo).not.toHaveBeenCalled();
+
+  // new text, the old image off, a new one pasted in; Enter saves
+  fireEvent.click(within(card).getByRole('button', { name: 'Edit Fix footer' }));
+  const f2 = within(card).getByRole('textbox', { name: 'Edit task' });
+  fireEvent.change(f2, { target: { value: 'Fix the footer links ' } });
+  fireEvent.click(within(card).getByRole('button', { name: 'Remove image' }));
+  const file = new File([new Uint8Array([137, 80, 78, 71])], 'shot.png', { type: 'image/png' });
+  fireEvent.paste(f2, { clipboardData: { files: [file], types: ['Files'] } });
+  await waitFor(() => expect(within(card).getAllByTestId('att-thumb')).toHaveLength(1));
+  fireEvent.keyDown(f2, { key: 'Enter' });
+  await waitFor(() => expect(within(card).getByText('Fix the footer links')).toBeTruthy());
+  expect(ipc.editTodo).toHaveBeenCalledWith('t1', 'Fix the footer links ', [b]);
+  expect(ipc.discardAttachments).not.toHaveBeenCalled(); // the backend deletes the dropped one; the new one is kept
+  expect(useApp.getState().todos.map((x) => x.id)).toEqual(['t1', 't2']); // it keeps its place
+  expect(useApp.getState().todos[0]).toMatchObject({ worktree: true, images: [b] });
 });

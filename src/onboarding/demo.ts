@@ -354,6 +354,11 @@ export const demoIpc = {
     if (auto && !builderId) throw new Error('pick a builder for the task to start on its own');
     return { ...t, auto, builderId, worktree };
   },
+  editTodo: async (id: string, text: string, images: string[]): Promise<Todo> => {
+    const t = need(useApp.getState().todos.find((x) => x.id === id), 'task');
+    if (!text.trim() && images.length === 0) throw new Error('a task needs some text or an image');
+    return { ...t, text: text.trim(), images };
+  },
   updateBuilder: async () => {},
   deleteBuilder: async () => {},
   openInEditor: async () => { throw new Error(NOT_ON_DISK); },
@@ -398,6 +403,7 @@ const ROUTES: Record<keyof typeof demoIpc, (...a: never[]) => boolean> = {
   addTodo: (ws: string) => isDemoId(ws),
   removeTodo: (id: string) => isDemoId(id),
   updateTodo: (id: string) => isDemoId(id),
+  editTodo: (id: string) => isDemoId(id),
   updateBuilder: (b: Builder) => isDemoId(b?.id),
   deleteBuilder: (id: string) => isDemoId(id),
   openInEditor: (path: string) => path === DEMO_PATH,

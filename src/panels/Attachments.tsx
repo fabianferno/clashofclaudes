@@ -53,15 +53,16 @@ export function AttachmentStrip({ names, onRemove }: { names: string[]; onRemove
 /**
  * Images being attached to a task that is not added or started yet: pasted into its field, or
  * dropped from Finder on `zone`. Taken off (✕) or left behind when the form goes away, they are
- * discarded; `clear` hands them over (after a start or an add, the backend keeps them).
+ * discarded; `clear` hands them over (after a start or an add, the backend keeps them). `taken`:
+ * images the task already carries, which count toward its most.
  */
-export function useAttachments(zone: RefObject<HTMLElement | null>) {
+export function useAttachments(zone: RefObject<HTMLElement | null>, taken = 0) {
   const [names, setNames] = useState<string[]>([]);
   const [saving, setSaving] = useState(0);
   const held = useRef<string[]>([]);
   held.current = names;
   const room = useRef(MAX_IMAGES);
-  room.current = MAX_IMAGES - names.length - saving;
+  room.current = MAX_IMAGES - taken - names.length - saving;
 
   const addAll = useCallback(async (jobs: Array<() => Promise<string>>) => {
     const take = jobs.slice(0, Math.max(0, room.current));
@@ -103,7 +104,8 @@ export function useAttachments(zone: RefObject<HTMLElement | null>) {
       setNames((prev) => prev.filter((n) => n !== name));
       ipc.discardAttachments([name]).catch(() => {});
     },
-    clear: () => setNames([]),
+    // let go now too: the form may go away (an edit saved) before it renders again
+    clear: () => { held.current = []; setNames([]); },
   };
 }
 

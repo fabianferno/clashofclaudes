@@ -40,6 +40,8 @@ export const ipc = {
   /** How a To Do starts: on its own (`auto`, needs a builder), with which builder, in its own worktree. */
   updateTodo: (id: string, auto: boolean, builderId: string | null, worktree: boolean) =>
     invoke<Todo>('update_todo', { id, auto, builderId, worktree }),
+  /** Rewrites a To Do's text and images; images it no longer carries are deleted. */
+  editTodo: (id: string, text: string, images: string[]) => invoke<Todo>('edit_todo', { id, text, images }),
   /** A small JPEG of a page for its board, as a data: URL (taken in a hidden window; a few seconds). */
   snapshotApp: (url: string) => invoke<string>('snapshot_app', { url }),
   /** Local web apps last found in the workspaces. */

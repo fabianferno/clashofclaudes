@@ -909,6 +909,29 @@ pub fn update_todo(id: String, auto: bool, builder_id: Option<String>, worktree:
     Ok(t)
 }
 
+/// Rewrites a To Do's text and images; returns it with the images it no longer carries (to delete).
+pub fn apply_edit_todo(d: &mut AppData, id: &str, text: &str, images: Vec<String>) -> anyhow::Result<(Todo, Vec<String>)> {
+    let text = text.trim();
+    if text.is_empty() && images.is_empty() {
+        anyhow::bail!("a task needs some text or an image");
+    }
+    attachments::validate(&images)?;
+    let t = d.todos.iter_mut().find(|t| t.id == id).ok_or_else(|| anyhow::anyhow!("this task is gone"))?;
+    let dropped = t.images.iter().filter(|n| !images.contains(n)).cloned().collect();
+    t.text = text.to_string();
+    t.images = images;
+    Ok((t.clone(), dropped))
+}
+
+#[tauri::command]
+pub fn edit_todo(id: String, text: String, images: Vec<String>, state: State<'_, AppState>) -> Result<Todo, String> {
+    let mut d = state.data();
+    let (t, dropped) = apply_edit_todo(&mut d, &id, &text, images).map_err(fmt_err)?;
+    state.save(&d)?;
+    attachments::remove(state.data_dir(), &dropped);
+    Ok(t)
+}
+
 /// Crosses a task off the To Do (deleted, or started as a session). Unknown ids are fine: already gone.
 #[tauri::command]
 pub fn remove_todo(id: String, state: State<'_, AppState>) -> Result<(), String> {
@@ -1392,6 +1415,23 @@ mod tests {
         assert!(u.auto && u.worktree && u.builder_id.as_deref() == Some("b1"));
         assert_eq!(d.todos[0], u);
         assert!(apply_update_todo(&mut d, "gone", false, None, false).is_err());
+    }
+
+    #[test]
+    fn a_todo_is_edited_and_hands_back_the_images_it_dropped() {
+        let mut d = village();
+        let w = d.workspaces[0].id.clone();
+        let (a, b, c) = (format!("{}.png", Uuid::new_v4()), format!("{}.png", Uuid::new_v4()), format!("{}.png", Uuid::new_v4()));
+        let t = apply_add_todo(&mut d, &w, "Fix it", vec![a.clone(), b.clone()], 5).unwrap();
+        apply_update_todo(&mut d, &t.id, false, None, true).unwrap();
+        let (u, dropped) = apply_edit_todo(&mut d, &t.id, "  Fix the login page \n", vec![b.clone(), c.clone()]).unwrap();
+        assert_eq!((u.text.as_str(), u.images.clone(), dropped), ("Fix the login page", vec![b, c], vec![a]));
+        assert!(u.worktree && u.created_at == 5, "how it starts is kept");
+        assert_eq!(d.todos[0], u);
+        assert!(apply_edit_todo(&mut d, &t.id, "  ", vec![]).is_err(), "nothing left");
+        assert!(apply_edit_todo(&mut d, &t.id, "x", vec!["../state.json".into()]).is_err());
+        assert!(apply_edit_todo(&mut d, "gone", "x", vec![]).is_err());
+        assert_eq!(d.todos[0], u, "a refused edit changes nothing");
     }
 
     #[test]

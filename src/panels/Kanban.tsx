@@ -56,9 +56,10 @@ export default function Kanban() {
     const t = setInterval(() => setNow(Date.now()), 30_000); // elapsed times are shown in minutes
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || useApp.getState().settingsOpen) return; // Settings stands over it
+      const a = document.activeElement;
+      if (a instanceof HTMLElement && a.closest('.kb-edit')) return; // a task being edited: its Esc cancels the edit
       e.preventDefault();
       e.stopPropagation();
-      const a = document.activeElement;
       // the builder picker closes when it loses focus
       if (a instanceof HTMLInputElement || a instanceof HTMLSelectElement || (a instanceof HTMLElement && a.closest('.kb-pick'))) a.blur();
       else useApp.getState().setKanban(null);
@@ -205,6 +206,7 @@ function TodoCard({ todo, idle, done, all, disabled, tag }: {
 }) {
   const [pick, setPick] = useState('');
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(false);
   const auto = !!todo.auto;
   // its own builder when it has one; else the one picked, else the first idle
   const remembered = todo.builderId && all.some((b) => b.id === todo.builderId) ? todo.builderId : '';
@@ -259,8 +261,10 @@ function TodoCard({ todo, idle, done, all, disabled, tag }: {
   return (
     <article className="kb-card kb-todo" data-testid={`kb-todo-${todo.id}`}>
       {tag}
-      {todo.text && <div className="kb-title" title={todo.text}>{plainText(todo.text) || todo.text}</div>}
-      <AttachmentStrip names={todo.images ?? []} />
+      {editing ? <TodoEditor todo={todo} onDone={() => setEditing(false)} /> : <>
+        {todo.text && <div className="kb-title" title={todo.text} onDoubleClick={() => { if (!busy) setEditing(true); }}>{plainText(todo.text) || todo.text}</div>}
+        <AttachmentStrip names={todo.images ?? []} />
+      </>}
       {auto && (
         <div className="kb-reason" style={{ color: 'var(--sp-ink-soft)' }}>
           <span className="kb-auto-tag ol">Auto</span>{' '}
@@ -275,6 +279,8 @@ function TodoCard({ todo, idle, done, all, disabled, tag }: {
         <button className="hud-btn sm" disabled={disabled || busy || !builderId || (!free && !wrapUp)}
           title={wrapUp ? `Closes ${all.find((b) => b.id === builderId)?.name ?? 'the builder'}'s finished session, then starts this` : undefined}
           onClick={() => void start()}>{wrapUp ? 'Close & start' : 'Start'}</button>
+        <button className="hud-btn grey sm" aria-label={`Edit ${todo.text || 'image task'}`} title="Edit" disabled={busy || editing}
+          onClick={() => setEditing(true)}>✎</button>
         <button className="hud-btn grey sm" aria-label={`Delete ${todo.text || 'image task'}`} disabled={busy} onClick={() => void remove()}>✕</button>
       </div>
       <div className="kb-opts">
@@ -290,5 +296,57 @@ function TodoCard({ todo, idle, done, all, disabled, tag }: {
         )}
       </div>
     </article>
+  );
+}
+
+/**
+ * A To Do's text and images, rewritten in place. Enter saves (Shift+Enter for a new line), Esc
+ * puts it back as it was. Images taken off are only deleted once it saves; ones pasted or dropped
+ * in and then left behind (cancelled) are discarded.
+ */
+function TodoEditor({ todo, onDone }: { todo: Todo; onDone: () => void }) {
+  const [text, setText] = useState(todo.text);
+  const [kept, setKept] = useState(todo.images ?? []);
+  const [saving, setSaving] = useState(false);
+  const zone = useRef<HTMLDivElement>(null);
+  const att = useAttachments(zone, kept.length);
+  const field = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const f = field.current;
+    if (!f) return;
+    f.focus();
+    f.setSelectionRange(f.value.length, f.value.length);
+  }, []);
+  const empty = !text.trim() && kept.length === 0 && att.names.length === 0;
+  const save = async () => {
+    if (empty || att.saving || saving) return;
+    const images = [...kept, ...att.names];
+    if (text.trim() === todo.text && images.join('\n') === (todo.images ?? []).join('\n')) return onDone();
+    setSaving(true);
+    const st = useApp.getState();
+    try {
+      st.addTodo(await ipc.editTodo(todo.id, text, images));
+      att.clear(); // the To Do keeps them now
+      onDone();
+    } catch (e) {
+      st.setError(String(e));
+      setSaving(false);
+    }
+  };
+  return (
+    <div ref={zone} className="kb-edit">
+      <textarea ref={field} aria-label="Edit task" rows={Math.min(6, Math.max(2, text.split('\n').length))} value={text} disabled={saving}
+        placeholder="The task, or paste an image…" onChange={(e) => setText(e.target.value)} onPaste={att.onPaste}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onDone(); }
+          else if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void save(); }
+        }} />
+      <AttachmentStrip names={[...kept, ...att.names]}
+        onRemove={(n) => (kept.includes(n) ? setKept((k) => k.filter((x) => x !== n)) : att.remove(n))} />
+      <div className="kb-actions">
+        <button type="button" className="hud-btn blue sm" disabled={empty || att.saving || saving} onClick={() => void save()}>Save</button>
+        <button type="button" className="hud-btn grey sm" disabled={saving} onClick={onDone}>Cancel</button>
+      </div>
+    </div>
   );
 }

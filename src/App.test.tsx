@@ -30,6 +30,9 @@ vi.mock('./api/ipc', () => ({
   },
 }));
 vi.mock('./components/TerminalView', () => ({ default: () => null }));
+// team villages have their own tests (hud/PeopleRow.test.tsx)
+vi.mock('./hud/PeopleRow', () => ({ default: () => null }));
+vi.mock('./panels/VisitedBuilder', () => ({ default: () => null }));
 let appRenders = 0; // VillageCanvas is not memoized: it renders exactly when App does
 vi.mock('./village/VillageCanvas', () => ({ default: () => { appRenders++; return null; } }));
 import App from './App';

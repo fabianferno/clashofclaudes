@@ -9,6 +9,8 @@ import { watchElixir } from './state/elixirWatch';
 import { watchAmbience } from './state/ambience';
 import { queueReason } from './state/queue';
 import VillageCanvas from './village/VillageCanvas';
+import PeopleRow from './hud/PeopleRow';
+import VisitedBuilder from './panels/VisitedBuilder';
 import TopBar from './hud/TopBar';
 import BuildersBar from './hud/BuildersBar';
 import BuildButtons from './hud/BuildButtons';
@@ -89,6 +91,8 @@ function App() {
     <>
     <VillageCanvas onError={(e) => useApp.getState().setError(String(e))} />
     <TopBar />
+    <PeopleRow />
+    <VisitedBuilder />
     <BuildersBar />
     <BuildButtons />
     <WelcomeCard />

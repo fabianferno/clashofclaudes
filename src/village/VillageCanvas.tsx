@@ -5,6 +5,7 @@ import { boardItems, moveValid, useApp, type AppState } from '../state/store';
 import ZoomControls from '../hud/ZoomControls';
 import { getPanelWidth, usePanelWidth } from '../state/panelWidth';
 import { createScene, type BoardInput, type Scene, type VillageInput } from './scene';
+import { visitInput } from '../state/visits';
 import { setBoardImage } from './art/entities';
 import { clearProbeScene, setProbeScene } from './probe';
 import { splashReady } from '../splash';
@@ -46,7 +47,11 @@ async function decodeSnapshots(s: AppState): Promise<boolean> {
   return changed;
 }
 
-const inputOf = (s: AppState, mini = false): VillageInput => ({
+/** What the canvas draws: your own village, or (in the main window) the one you are visiting. */
+const inputOf = (s: AppState, mini = false): VillageInput =>
+  s.visiting && !mini ? { ...visitInput(s.visiting.map), dayNight: s.settings?.dayNight !== false } : ownInput(s, mini);
+
+const ownInput = (s: AppState, mini = false): VillageInput => ({
   workspaces: s.workspaces,
   sessions: Object.values(s.sessions),
   builders: s.builders,
@@ -85,11 +90,16 @@ export default function VillageCanvas({ onError, mini = false }: { onError?: (e:
       panelWidth: () => 0,
       openPanelWidth: () => 0,
     } : {
-      onSelect: (sel) => useApp.getState().setSelection(sel),
-      canMove: (t, at) => moveValid(useApp.getState(), t, at),
-      onMove: (t, at) => useApp.getState().village.commitMove(t, at, onError),
+      // In someone else's village a builder can be looked at; nothing can be opened, moved or assigned.
+      onSelect: (sel) => {
+        const st = useApp.getState();
+        if (st.visiting) st.setVisitedSession(sel?.kind === 'session' ? sel.id : null);
+        else st.setSelection(sel);
+      },
+      canMove: (t, at) => !useApp.getState().visiting && moveValid(useApp.getState(), t, at),
+      onMove: (t, at) => (useApp.getState().visiting ? Promise.resolve(false) : useApp.getState().village.commitMove(t, at, onError)),
       onClosedConsumed: (id) => useApp.getState().consumeClosed(id),
-      onBuilderAssign: (builderId, id) => useApp.getState().setSelection({ kind: 'workspace', id, builder: builderId }),
+      onBuilderAssign: (builderId, id) => { if (!useApp.getState().visiting) useApp.getState().setSelection({ kind: 'workspace', id, builder: builderId }); },
       // a tap under the finger as the held builder crosses into a workspace; nothing to tell the owner if it fails
       onBuilderOver: () => playHaptic(hapticFor('drop')),
       // the pointer comes over a workspace's house or the Town Hall (Settings › Haptics picks the feel)
@@ -121,7 +131,7 @@ export default function VillageCanvas({ onError, mini = false }: { onError?: (e:
           if (st.workspaces !== prev.workspaces || st.sessions !== prev.sessions || st.builders !== prev.builders || st.lastClosed !== prev.lastClosed
             || st.quotas !== prev.quotas || st.agents !== prev.agents || st.collectorSpots !== prev.collectorSpots
             || st.apps !== prev.apps || st.browsers !== prev.browsers || st.boardSpots !== prev.boardSpots
-            || st.settings?.playerName !== prev.settings?.playerName || st.settings?.dayNight !== prev.settings?.dayNight)
+            || st.settings?.playerName !== prev.settings?.playerName || st.settings?.dayNight !== prev.settings?.dayNight || st.visiting !== prev.visiting)
             s.sync(inputOf(st, mini));
           // the mini village keeps everything in view as compounds come and go
           if (mini && st.workspaces.length !== prev.workspaces.length) s.fitVillage();

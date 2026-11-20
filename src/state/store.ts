@@ -3,7 +3,7 @@ import { create } from 'zustand';
 /** A newer version the updater found, with its release notes when it has them. */
 export interface FoundUpdate { version: string | null; notes: string | null }
 import { ipc } from '../api/ipc';
-import type { AgentInfo, AgentKind, AgentQuota, AppPreview, Todo, Builder, CloseOutcome, Compound, ListState, SessionInfo, SessionState, Settings, Stats, Tile, Workspace, ReportKind } from '../api/types';
+import type { AgentInfo, AgentKind, AgentQuota, AppPreview, Todo, Builder, CloseOutcome, Compound, ListState, SessionInfo, SessionState, Settings, Stats, Tile, Workspace, ReportKind, VisitView, VillageMap } from '../api/types';
 import { HOUSE, STRUCT, canPlace, centeredHouse, compoundFits, gapBetween, houseClearOfWalls, placeCompound, shiftCompound, spotFor, tidySpots, wallRect } from '../village/layout';
 import { collectorFits, collectorTiles, shownCollectors } from '../village/quota';
 import { recordReading, type QuotaHistory } from './elixir';
@@ -163,6 +163,15 @@ export interface AppState {
   notices: Notice[];
   error: string | null;
   setError: (e: string | null) => void;
+  /** The villages this login was invited to (the people row). */
+  visits: VisitView[];
+  setVisits: (v: VisitView[]) => void;
+  /** The village on screen when it is not your own: whose, and its map as its owner's Mac wrote it. */
+  visiting: { owner: string; map: VillageMap } | null;
+  setVisiting: (v: { owner: string; map: VillageMap } | null) => void;
+  /** The builder looked at in the visited village (its session id there). */
+  visitedSession: string | null;
+  setVisitedSession: (id: string | null) => void;
   /** XP-earning close outcomes by session id, for the village to play the orbs; cleared once consumed. */
   lastClosed: Record<string, CloseOutcome>;
   /** A session was closed: pushes its notice(s) and remembers an earning outcome for the scene. Terminals stay silent. */
@@ -306,6 +315,12 @@ export const useApp = create<AppState>((set, get) => ({
   notices: [],
   error: null,
   setError: (error) => set({ error }),
+  visits: [],
+  setVisits: (visits) => set({ visits }),
+  visiting: null,
+  setVisiting: (visiting) => set((st) => ({ visiting, visitedSession: visiting && st.visiting?.owner === visiting.owner ? st.visitedSession : null })),
+  visitedSession: null,
+  setVisitedSession: (visitedSession) => set({ visitedSession }),
   lastClosed: {},
   notify: (text, kind = 'info') => {
     const id = ++noticeSeq;

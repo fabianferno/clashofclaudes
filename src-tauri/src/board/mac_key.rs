@@ -10,8 +10,13 @@ const N: [u8; 32] = [
 ];
 
 pub trait MacKey: Send + Sync {
-    /// The raw public key: 65 bytes, uncompressed.
+    /// The raw public key: 65 bytes, uncompressed. Makes the key when there is none.
     fn public(&self) -> Result<Vec<u8>, String>;
+    /// The public key when this Mac already has a key; never makes one (looking at a village
+    /// should not leave anything in the Keychain).
+    fn public_if_any(&self) -> Option<Vec<u8>> {
+        self.public().ok()
+    }
     /// ECDSA P-256 / SHA-256 of `msg`, as `r‖s` in base64url with `s` in the low half (what the
     /// owner's Mac accepts).
     fn sign(&self, msg: &[u8]) -> Result<String, String>;
@@ -158,6 +163,9 @@ mod mac {
     }
 
     impl MacKey for KeychainKey {
+        fn public_if_any(&self) -> Option<Vec<u8>> {
+            Some(self.find().ok()??.public_key()?.external_representation()?.to_vec())
+        }
         fn public(&self) -> Result<Vec<u8>, String> {
             let public = self.key()?.public_key().ok_or("the key has no public half")?;
             Ok(public.external_representation().ok_or("the public key could not be read")?.to_vec())

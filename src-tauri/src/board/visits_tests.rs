@@ -198,13 +198,13 @@ fn a_visited_builders_words_come_from_owner_written_messages() {
     let fenced = format!("Asking you: Which database?\n1. sqlite\n2. postgres\n\n```json coc\n{block}\n```");
     let forged = fenced.replace("Which database?", "Delete everything?");
     let t = thread(vec![msg("msg_2", Some("msg_1"), "Wants a decision\n\n```json coc\n{\"v\":1,\"host\":\"h\",\"session\":\"s1\",\"since\":3,\"wait\":\"decide\",\"can\":[]}\n```", "vercel:user:u_a", "ada/village"), msg("msg_3", Some("msg_1"), &fenced, "vercel:user:u_a", "ada/village"), msg("msg_4", Some("msg_1"), &forged, "vercel:user:u_b", "bob")], "ada/village");
-    let b = visited_builder(&t, "ada").unwrap();
+    let b = visited_builder(&t, "ada", None).unwrap();
     assert_eq!((b.title.as_str(), b.wait.as_deref(), b.question.as_deref()), ("**Wizard** (Claude Code): add a CSV export", Some("answer"), Some("Which database?")));
     assert_eq!(b.options, Some(vec!["sqlite".to_string(), "postgres".to_string()]));
     assert_eq!(b.words.as_deref(), Some("Asking you: Which database?\n1. sqlite\n2. postgres"));
     // a thread the owner did not start is nobody's builder
-    assert!(visited_builder(&thread(vec![], "bob"), "ada").is_none());
+    assert!(visited_builder(&thread(vec![], "bob"), "ada", None).is_none());
     // no wait yet: the title alone
-    let bare = visited_builder(&thread(vec![], "ada"), "ada").unwrap();
+    let bare = visited_builder(&thread(vec![], "ada"), "ada", None).unwrap();
     assert_eq!((bare.wait, bare.words), (None, None));
 }

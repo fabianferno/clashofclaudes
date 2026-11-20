@@ -29,6 +29,7 @@ pub mod snapshot;
 #[cfg(test)]
 mod real_run_tests;
 pub mod store;
+pub mod visitor;
 pub mod visits;
 
 #[cfg(test)]

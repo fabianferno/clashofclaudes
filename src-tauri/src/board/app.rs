@@ -43,6 +43,8 @@ pub struct BoardState {
     /// One change to who may see the village at a time: each reads the settings, runs slow
     /// board calls, and writes them back.
     access: Arc<Mutex<()>>,
+    /// This Mac's key: what signs its owner's actions in the villages they visit.
+    mac_key: Arc<dyn super::mac_key::MacKey>,
 }
 
 /// The session manager, as the phone remote uses it.
@@ -114,7 +116,7 @@ impl BoardState {
                 }
             })
             .expect("remote tick thread");
-        BoardState { publisher, cli, link: Arc::default(), active: AtomicBool::new(false), remote, listener, map: Arc::default(), visits, access: Arc::default() }
+        BoardState { publisher, cli, link: Arc::default(), active: AtomicBool::new(false), remote, listener, map: Arc::default(), visits, access: Arc::default(), mac_key: Arc::new(super::mac_key::KeychainKey::app()) }
     }
 
     fn link(&self) -> Link {
@@ -443,7 +445,63 @@ pub async fn visit_builder(owner: String, root: String, app: AppHandle) -> Resul
     tauri::async_runtime::spawn_blocking(move || {
         let (cli, board, _) = board_of(&app)?;
         let thread = cli.run(&super::visits::thread_args(&root, &target(&board))).map_err(|e| format!("{e:?}"))?;
-        Ok(super::visits::visited_builder(&thread, &owner))
+        let mine = app.try_state::<BoardState>().and_then(|bs| bs.mac_key.public_if_any()).map(|p| super::remote::key_id(&p));
+        Ok(super::visits::visited_builder(&thread, &owner, mine.as_deref()))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// This Mac's key id, when it has a key: the map of a village that paired it names it with its level.
+#[tauri::command]
+pub async fn mate_key(app: AppHandle) -> Option<String> {
+    tauri::async_runtime::spawn_blocking(move || app.try_state::<BoardState>().and_then(|bs| bs.mac_key.public_if_any()).map(|p| super::remote::key_id(&p))).await.ok().flatten()
+}
+
+/// Asks `owner` to pair this Mac, with the code they sent. The check number to read back to them.
+#[tauri::command]
+pub async fn mate_pair(owner: String, code: String, app: AppHandle) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let (cli, board, _) = board_of(&app)?;
+        let bs = app.try_state::<BoardState>().ok_or("the board is not set up")?;
+        let me = bs.link().owner.ok_or("Vercel Board is not connected yet.")?;
+        let t = target(&board);
+        let code: String = code.to_uppercase().chars().filter(|c| c.is_ascii_alphanumeric()).map(|c| match c { 'O' => '0', 'I' | 'L' => '1', c => c }).collect();
+        if code.len() != 12 {
+            return Err("The code has twelve characters.".to_string());
+        }
+        let mut read = vec!["board".to_string(), "read".to_string(), format!("v/{owner}/pair")];
+        read.extend(super::visits::thread_args("", &t).into_iter().skip(3));
+        let listed = cli.run(&read).map_err(|_| format!("{owner} has not opened a pairing for you (or the invite is not a Helper's or Trusted's)."))?;
+        let ticket = super::visitor::find_ticket(&listed, &owner, &code, now_ms()).ok_or("That code is not open. Ask for the current one; it lasts 5 minutes.")?;
+        let (write, check) = super::visitor::pair_request(&ticket, &code, bs.mac_key.as_ref(), &me)?;
+        cli.run(&super::cli::args_for_msg(&write, &t)).map_err(|e| format!("{e:?}"))?;
+        Ok(check)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Sends a signed action for a builder in a visited village. `prompt`: the hash of the wait the
+/// panel showed; when the builder has moved on since, nothing is sent.
+#[tauri::command]
+pub async fn visit_act(owner: String, root: String, r#do: super::remote::Do, pick: Option<usize>, text: Option<String>, prompt: String, app: AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let (cli, board, _) = board_of(&app)?;
+        let bs = app.try_state::<BoardState>().ok_or("the board is not set up")?;
+        let t = target(&board);
+        let thread = cli.run(&super::visits::thread_args(&root, &t)).map_err(|e| format!("{e:?}"))?;
+        let now = super::visits::visited_builder(&thread, &owner, None).ok_or("That builder is not this village's.")?;
+        if now.prompt.as_deref() != Some(prompt.as_str()) {
+            return Err("Too late: it had moved on.".to_string());
+        }
+        let mut nonce = [0u8; 16];
+        getrandom::fill(&mut nonce).map_err(|e| e.to_string())?;
+        let nonce: String = nonce.iter().map(|b| format!("{b:02x}")).collect();
+        let text = text.as_deref().map(str::trim).filter(|s| !s.is_empty());
+        let action = super::visitor::action(bs.mac_key.as_ref(), r#do, pick, text, &prompt, &nonce)?;
+        cli.run(&super::cli::args_for_msg(&super::visitor::action_write(&root, &action), &t)).map_err(|e| format!("{e:?}"))?;
+        Ok(())
     })
     .await
     .map_err(|e| e.to_string())?

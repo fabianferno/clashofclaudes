@@ -41,6 +41,14 @@ pub struct VisitedBuilder {
     pub words: Option<String>,
     pub question: Option<String>,
     pub options: Option<Vec<String>>,
+    /// What the owner's Mac will take for this wait (`allow`, `deny`, `answer`, `followup`).
+    pub can: Vec<String>,
+    /// The hash of the wait's prompt block: what an action for it signs.
+    pub prompt: Option<String>,
+    /// This Mac sent an action for this wait.
+    pub sent: bool,
+    /// The owner's Mac's word on it: `applied`, `stale`, `refused`, `failed`.
+    pub result: Option<String>,
 }
 
 pub struct Visits {
@@ -72,7 +80,7 @@ fn tail(mut args: Vec<String>, t: &Target) -> Vec<String> {
 }
 
 /// Whether a message read from the board was written with `owner`'s own login.
-fn written_by(m: &Value, owner: &str) -> bool {
+pub(crate) fn written_by(m: &Value, owner: &str) -> bool {
     let handle = m["author"]["handle"].as_str().unwrap_or_default();
     m["author"]["verified"] == true
         && m["by"]["principal"].as_str().is_some_and(|p| p.starts_with("vercel:user:"))
@@ -199,24 +207,51 @@ pub fn thread_args(root: &str, t: &Target) -> Vec<String> {
     tail(vec!["board".into(), "read".into(), root.to_string()], t)
 }
 
-/// What a visitor is shown of a builder, from its thread: the title the owner's Mac gave it, and
-/// its newest wait in the owner's Mac's own words. None when the owner did not start the thread.
-pub fn visited_builder(thread: &Value, owner: &str) -> Option<VisitedBuilder> {
+/// What a visitor is shown of a builder, from its thread: the title the owner's Mac gave it, its
+/// newest wait in the owner's Mac's own words, and how this Mac's own action for that wait ended
+/// (`my_key`: this Mac's key id, when it has a key). None when the owner did not start the thread.
+pub fn visited_builder(thread: &Value, owner: &str, my_key: Option<&str>) -> Option<VisitedBuilder> {
     let root = &thread["message"];
     if !written_by(root, owner) {
         return None;
     }
     let title = root["text"].as_str().unwrap_or_default().lines().next().unwrap_or_default().chars().take(200).collect();
-    let newest = thread["replies"].as_array().into_iter().flatten().filter(|m| written_by(m, owner)).filter_map(|m| {
+    let replies: Vec<&Value> = thread["replies"].as_array().into_iter().flatten().collect();
+    let newest = replies.iter().enumerate().filter(|(_, m)| written_by(m, owner)).filter_map(|(at, m)| {
         let text = m["text"].as_str()?;
         let json = block_in(text)?;
         let block: PromptBlock = serde_json::from_str(json).ok()?;
         let words = text[..text.len() - json.len()].rsplit_once("\n\n```json coc").map(|(w, _)| w.to_string()).unwrap_or_default();
-        Some((block, words))
+        Some((at, block, words, super::remote::sha_hex(json.as_bytes())))
     });
-    Some(match newest.last() {
-        Some((block, words)) => VisitedBuilder { title, wait: Some(block.wait), words: Some(words), question: block.question, options: block.options },
-        None => VisitedBuilder { title, wait: None, words: None, question: None, options: None },
+    let Some((at, block, words, prompt)) = newest.last() else {
+        return Some(VisitedBuilder { title, wait: None, words: None, question: None, options: None, can: vec![], prompt: None, sent: false, result: None });
+    };
+    // After that wait: the actions this Mac signed, and the owner's Mac's results for them.
+    let after = &replies[at + 1..];
+    let mine: Vec<&str> = after
+        .iter()
+        .filter(|m| m["labels"].get("coc.do").is_some())
+        .filter(|m| my_key.is_some_and(|k| m["text"].as_str().and_then(super::remote::parse_action).is_some_and(|a| a.key == k)))
+        .filter_map(|m| m["id"].as_str())
+        .collect();
+    let result = after
+        .iter()
+        .filter(|m| written_by(m, owner))
+        .filter_map(|m| serde_json::from_str::<Value>(m["text"].as_str()?).ok())
+        .filter(|v| v["re"].as_str().is_some_and(|re| mine.contains(&re)))
+        .filter_map(|v| v["result"].as_str().map(str::to_string))
+        .last();
+    Some(VisitedBuilder {
+        title,
+        wait: Some(block.wait),
+        words: Some(words),
+        question: block.question,
+        options: block.options,
+        can: block.can.iter().map(|d| d.as_str().to_string()).collect(),
+        prompt: Some(prompt),
+        sent: !mine.is_empty(),
+        result,
     })
 }
 

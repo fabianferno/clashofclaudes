@@ -45,7 +45,7 @@ const marquee = [...agents.map((a) => ({ kind: a.key, name: a.name })), { kind: 
       </div>
       <div class="hero__cta" data-reveal="up" data-intro data-delay="0.15">
         <DownloadButton requirements />
-        <p class="hero__more"><a class="ulink" href="/beta/">How the beta works</a></p>
+        <p class="hero__more"><a class="ulink" href="/beta/">How the beta works</a> · <a class="ulink" href={site.source}>Open source on GitHub</a></p>
       </div>
     </div>
   </section>
@@ -133,6 +133,8 @@ const marquee = [...agents.map((a) => ({ kind: a.key, name: a.name })), { kind: 
       </ul>
       <h3>It keeps itself current</h3>
       <p>New beta builds install themselves, so you are always testing the latest one.</p>
+      <h3>Read the code</h3>
+      <p>The whole app is open source under the GPL 3.0. Issues and pull requests are welcome on <a class="ulink" href={site.source}>GitHub</a>.</p>
       <h3>You will need</h3>
       <ul class="needs">
         <li>An Apple Silicon or Intel Mac on macOS 13 or newer.</li>

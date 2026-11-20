@@ -25,6 +25,7 @@ export const nav = [
   { href: '/#faq', label: 'FAQ' },
   { href: '/beta/', label: 'Beta guide' },
   { href: '/privacy/', label: 'Privacy' },
+  { href: site.source, label: 'GitHub' },
 ];
 
 export type AgentKey = 'claude' | 'codex' | 'antigravity' | 'opencode' | 'grok';

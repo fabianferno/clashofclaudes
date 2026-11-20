@@ -78,7 +78,7 @@ function SendOff() {
           <li><span><b>Open</b> or <b>Build</b> a workspace and it becomes a compound.</span></li>
           <li><span><b>+ New session</b> puts a builder to work in it.</span></li>
           <li><span>A red <b>!</b> means a builder needs you.</span></li>
-          <li><span><b>Review</b>, then <b>Close</b> finished work for XP.</span></li>
+          <li><span><b>Review</b>, then <b>Accept</b> finished work.</span></li>
         </ol>
         <div className="tour-btns">
           {hasOwn

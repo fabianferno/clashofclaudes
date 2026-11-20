@@ -10,7 +10,7 @@ import { ipc } from '../api/ipc';
 import type { AgentKind, Builder, CloseOutcome, Compound, Frame, Review, SessionInfo, Tile, Todo, Workspace } from '../api/types';
 import { useApp } from '../state/store';
 import { placeCompound, shiftCompound } from '../village/layout';
-import { xpNeed } from '../village/look';
+import { activityOf } from '../village/activity';
 
 export const DEMO = 'demo-';
 export const isDemoId = (id: unknown): boolean => typeof id === 'string' && id.startsWith(DEMO);
@@ -20,8 +20,6 @@ export const DEMO_WS_NAME = 'sample-app';
 export const DEMO_PATH = 'sample compound (tour only, not on disk)';
 /** The task offered in the picker when none is typed. */
 export const DEMO_TASK = 'Add a dark mode toggle';
-/** XP a closed, finished session earns (src-tauri/src/xp.rs XP_PER_SESSION). */
-export const XP_PER_SESSION = 100;
 
 /** How the sample session paces itself, ms. */
 export const PACE = { boot: 1100, step: 1500 };
@@ -140,7 +138,7 @@ function steps(sim: Sim, lines: Array<(task: string) => string>, then: () => voi
 function finish(sim: Sim): void {
   sim.phase = 'done';
   const what = sim.answered === 'no' ? ' (tests skipped, as you asked)' : '';
-  print(sim, `\n${A.accent}⏺${A.reset} Done: ${sim.task}${what}. Review the changes, then close me to earn XP.\n${PROMPT}`);
+  print(sim, `\n${A.accent}⏺${A.reset} Done: ${sim.task}${what}. Review the changes, then accept them.\n${PROMPT}`);
   patch(sim.id, {
     state: { kind: 'finished' }, reachedFinished: true, awaitingDecision: false, asking: null,
     lastMessage: `Done: ${sim.task}${what}. I added the theme in src/theme.ts and a toggle in src/App.tsx${sim.answered === 'no' ? '' : '; the 24 tests pass'}.`,
@@ -216,7 +214,7 @@ export function raiseDemoWorkspace(): Workspace {
   const had = st.workspaces.find((w) => w.id === DEMO_WS_ID);
   if (had) return had;
   const compound = placeCompound(st.workspaces.flatMap((w) => (w.compound ? [w.compound] : [])));
-  const w: Workspace = { id: DEMO_WS_ID, name: DEMO_WS_NAME, path: DEMO_PATH, createdAt: Date.now(), missing: false, level: 1, xp: 0, compound, color: null };
+  const w: Workspace = { id: DEMO_WS_ID, name: DEMO_WS_NAME, path: DEMO_PATH, createdAt: Date.now(), missing: false, ships: [], compound, color: null };
   st.addWorkspace(w);
   return w;
 }
@@ -249,13 +247,6 @@ const need = <T>(v: T | undefined | null, what: string): T => {
 };
 const wsOf = (id: string) => need(useApp.getState().workspaces.find((w) => w.id === id), 'workspace');
 const sessionOf = (id: string) => need(useApp.getState().sessions[id], 'session');
-
-/** XP after closing, as the backend awards it (src-tauri/src/xp.rs `award`). */
-export function award(level: number, xp: number, gain: number): { level: number; xp: number } {
-  let l = Math.max(1, level), x = xp + gain;
-  while (x >= xpNeed(l)) { x -= xpNeed(l); l += 1; }
-  return { level: l, xp: x };
-}
 
 export const demoIpc = {
   startSession: async (workspaceId: string, builderId: string, task: string, images: string[] = []): Promise<SessionInfo> => {
@@ -302,7 +293,7 @@ export const demoIpc = {
     const discarded = discard && agent;
     const finished = s.reachedFinished && !discarded;
     const out: CloseOutcome = {
-      earnedXp: false, xpGained: 0, levelBefore: 1, levelAfter: 1, workspaceId: s.workspaceId,
+      shipped: false, stageBefore: 0, stageAfter: 0, workspaceId: s.workspaceId,
       unfinished: agent && !finished, stuck: agent && s.state.kind === 'stuck', discarded,
     };
     const sim = sims.get(id);
@@ -310,11 +301,13 @@ export const demoIpc = {
     sims.delete(id);
     const w = useApp.getState().workspaces.find((x) => x.id === s.workspaceId);
     if (w) {
-      out.levelBefore = out.levelAfter = w.level;
+      // as the backend's apply_close: the ship goes on the workspace and the house may liven up
+      const now = Date.now();
+      out.stageBefore = out.stageAfter = activityOf(w.ships ?? [], now).stage;
       if (agent && finished && !out.stuck) {
-        const next = award(w.level, w.xp, XP_PER_SESSION);
-        useApp.getState().updateWorkspace({ ...w, ...next });
-        Object.assign(out, { earnedXp: true, xpGained: XP_PER_SESSION, levelAfter: next.level });
+        const ships = [...(w.ships ?? []), now];
+        useApp.getState().updateWorkspace({ ...w, ships });
+        Object.assign(out, { shipped: true, stageAfter: activityOf(ships, now).stage });
       }
     }
     // as the backend's session-removed event: after the caller has the outcome (the village plays its orbs)

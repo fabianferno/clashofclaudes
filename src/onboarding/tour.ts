@@ -11,7 +11,7 @@ import { DEMO_WS_ID, clearDemo, demoAgentSession, demoWorkspace, installSandbox,
 
 export type StepId =
   | 'welcome' | 'hall' | 'hall-panel' | 'workspace' | 'open-workspace' | 'new-session' | 'picker' | 'working' | 'needs'
-  | 'wait-finish' | 'review' | 'xp' | 'terminal' | 'kanban' | 'resources' | 'roster' | 'camera' | 'settings' | 'done';
+  | 'wait-finish' | 'review' | 'shipped' | 'terminal' | 'kanban' | 'resources' | 'roster' | 'camera' | 'settings' | 'done';
 
 export type Target = { kind: 'dom'; selector: string } | { kind: 'village'; sel: Selection };
 
@@ -111,7 +111,7 @@ export const STEPS: StepSpec[] = [
     assist: () => { showSession(); requestAnimationFrame(() => click('[data-tour="close-session"]')); },
   },
   {
-    id: 'xp', next: true, needsDemo: true,
+    id: 'shipped', next: true, needsDemo: true,
     enter: () => { sel(null); app().requestZoom(DEMO_WS_ID); },
     target: () => ({ kind: 'village', sel: demoWs() }),
   },

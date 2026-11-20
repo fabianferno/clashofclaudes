@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import type { SessionInfo, Workspace } from '../api/types';
 import type { StepId } from './tour';
-import { DEMO_TASK, DEMO_WS_NAME, XP_PER_SESSION } from './demo';
+import { DEMO_TASK, DEMO_WS_NAME } from './demo';
 
 /** What a step's words may depend on. */
 export interface StepContext {
@@ -89,19 +89,17 @@ export function copyOf(id: StepId, c: StepContext): StepCopy {
       return c.session?.reachedFinished
         ? {
           title: 'Ready to review',
-          body: <>A finished tent means <K>ready to review</K>. The briefing shows the agent’s last reply and the files it changed. Happy with it? <K>Accept</K> stands the builder down and earns XP. Or follow up, <K>Park</K> it for later, or <K>Discard</K> it.</>,
+          body: <>A finished tent means <K>ready to review</K>. The briefing shows the agent’s last reply and the files it changed. Happy with it? <K>Accept</K> stands the builder down and counts it as shipped. Or follow up, <K>Park</K> it for later, or <K>Discard</K> it.</>,
           waiting: 'Accept the work',
         }
-        : { title: 'Close it', body: <>This session never finished, so closing it earns no XP. Close it to carry on.</>, waiting: 'Close the session' };
-    case 'xp': {
-      const leveled = (c.sample?.level ?? 1) > 1;
-      return c.sample && (leveled || c.sample.xp > 0)
+        : { title: 'Close it', body: <>This session never finished, so closing it doesn't count as shipped. Close it to carry on.</>, waiting: 'Close the session' };
+    case 'shipped':
+      return c.sample?.ships?.length
         ? {
-          title: leveled ? `+${XP_PER_SESSION} XP: level up!` : `+${XP_PER_SESSION} XP`,
-          body: <>Closing finished work earns XP for its compound, and the house grows grander as it levels up. Your <K>Village level</K> at the top left counts every session you ship.</>,
+          title: 'Shipped',
+          body: <>Accepted work counts as shipped, and a house livens up with the work its project ships. It settles back down when work stops. Your <K>Village level</K> at the top left counts every session you ship.</>,
         }
-        : { title: 'No XP this time', body: <>Only sessions that finish earn XP. Close finished work to level up its house and your village.</> };
-    }
+        : { title: 'Not shipped this time', body: <>Only sessions that finish count as shipped. Accept finished work to liven up its house.</> };
     case 'terminal':
       return {
         title: 'Shells and pages too',

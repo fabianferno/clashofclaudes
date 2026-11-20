@@ -16,7 +16,7 @@ vi.mock('../api/ipc', () => ({ ipc: { ...real } }));
 import { ipc } from '../api/ipc';
 import { useApp } from '../state/store';
 import {
-  DEMO_PATH, DEMO_TASK, DEMO_WS_ID, PACE, award, clearDemo, createDemoBuilder, demoAgentSession, installSandbox, isDemoId,
+  DEMO_PATH, DEMO_TASK, DEMO_WS_ID, PACE, clearDemo, createDemoBuilder, demoAgentSession, installSandbox, isDemoId,
   raiseDemoWorkspace, resetSims, sandboxInstalled, uninstallSandbox,
 } from './demo';
 
@@ -162,14 +162,14 @@ describe('a sample session', () => {
     expect(demoAgentSession()!.state.kind).toBe('ended');
   });
 
-  it('closing finished work earns XP and a level, then the session goes', async () => {
+  it('closing finished work ships it and livens up the sample house, then the session goes', async () => {
     const s = await startSample();
     await tick(PACE.boot + PACE.step * 4);
     await ipc.approve(s.id);
     await tick(PACE.step * 3);
     const o = await ipc.closeSession(s.id);
-    expect(o).toMatchObject({ earnedXp: true, xpGained: 100, levelBefore: 1, levelAfter: 2, unfinished: false, stuck: false, workspaceId: DEMO_WS_ID });
-    expect(st().workspaces.find((w) => w.id === DEMO_WS_ID)).toMatchObject({ level: 2, xp: 0 });
+    expect(o).toMatchObject({ shipped: true, stageBefore: 0, stageAfter: 1, unfinished: false, stuck: false, workspaceId: DEMO_WS_ID });
+    expect(st().workspaces.find((w) => w.id === DEMO_WS_ID)!.ships).toHaveLength(1);
     expect(st().sessions[s.id]).toBeDefined(); // the outcome lands first, so the village can play its orbs
     await tick(0);
     expect(st().sessions[s.id]).toBeUndefined();
@@ -179,8 +179,8 @@ describe('a sample session', () => {
   it('closing unfinished work earns nothing', async () => {
     const s = await startSample();
     const o = await ipc.closeSession(s.id);
-    expect(o).toMatchObject({ earnedXp: false, xpGained: 0, unfinished: true });
-    expect(st().workspaces.find((w) => w.id === DEMO_WS_ID)).toMatchObject({ level: 1, xp: 0 });
+    expect(o).toMatchObject({ shipped: false, stageBefore: 0, stageAfter: 0, unfinished: true });
+    expect(st().workspaces.find((w) => w.id === DEMO_WS_ID)!.ships ?? []).toEqual([]);
   });
 
   it('gets a spot in the compound like a real one', async () => {
@@ -222,13 +222,5 @@ describe('clearDemo', () => {
     expect(st().todos).toEqual([]);
     expect(st().selection).toBeNull();
     expect(st().kanban).toBeNull();
-  });
-});
-
-describe('award', () => {
-  it('carries XP over levels as the backend does', () => {
-    expect(award(1, 0, 100)).toEqual({ level: 2, xp: 0 });
-    expect(award(1, 50, 100)).toEqual({ level: 2, xp: 50 });
-    expect(award(2, 100, 100)).toEqual({ level: 3, xp: 60 }); // need(2) = 140
   });
 });

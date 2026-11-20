@@ -138,3 +138,21 @@ fn a_failed_step_says_which_and_why() {
     let secrets = NewSecrets { setup: "s".into(), vapid_public: "P".into(), vapid_private: "Q".into() };
     assert!(deploy(&Fake::new(steps), None, dir.path(), "village", Some(&secrets), &|_| {}).is_ok());
 }
+
+/// With the real `vercel` on the PATH and its login, on the login's default team:
+/// `cargo test --lib real_cli_finds_the_teams_remote -- --ignored --nocapture`.
+/// Reads only: what Settings › Phone remote asks when it opens.
+#[test]
+#[ignore]
+fn real_cli_finds_the_teams_remote() {
+    use crate::board::cli::{status, Target, VercelCli};
+    let cli = VercelCli { program: None, cwd: std::env::temp_dir(), timeout: std::time::Duration::from_secs(60) };
+    let st = status(&cli, &Target { team: None, name: "village".into() });
+    println!("BOARD {} as {:?} at {:?}", st.state, st.handle, st.board_url);
+    assert_eq!(st.state, "ready", "{st:?}");
+    let found = find(&cli, None).unwrap();
+    println!("FOUND {found:?}");
+    let seen = production_deployments(&cli, None).unwrap().unwrap();
+    println!("DEPLOYMENTS {}", seen.iter().map(|d| format!("{} by {}", d.id, d.by)).collect::<Vec<_>>().join(", "));
+    assert!(matches!(found, Found::Team { .. }));
+}

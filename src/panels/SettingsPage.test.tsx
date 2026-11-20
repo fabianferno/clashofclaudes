@@ -18,6 +18,7 @@ const ipc = vi.hoisted(() => ({
 vi.mock('../api/ipc', () => ({ ipc }));
 // the phone remote's block has its own tests (RemoteSettings.test.tsx)
 vi.mock('./RemoteSettings', () => ({ default: () => null }));
+vi.mock('./AccessSettings', () => ({ default: () => null }));
 vi.mock('@tauri-apps/api/app', () => ({ getVersion: vi.fn().mockResolvedValue('0.1.0') }));
 vi.mock('./AgentsStatus', () => ({ default: () => null }));
 import { useApp } from '../state/store';

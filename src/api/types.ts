@@ -341,6 +341,51 @@ export interface BoardSettings {
   remote?: RemoteSettings;
 }
 
+export type Level = 'visitor' | 'helper' | 'trusted';
+
+/** One invited teammate, as Settings › People shows them. */
+export interface InviteView {
+  email: string;
+  level: Level;
+  /** Workspace ids they may see; null is every shared workspace. */
+  workspaces: string[] | null;
+  /** Their grant is on the board. */
+  onBoard: boolean;
+}
+
+/** Settings › Team: Private village and People, as the board has it now. */
+export interface AccessStatus {
+  state: 'closed' | 'open' | 'unknown';
+  /** False once the board refused to let this login close the village (not a team owner). */
+  canClose: boolean;
+  refused: string | null;
+  /** For a team owner to run, when this login may not. */
+  command: string | null;
+  who: string[];
+  /** What on the board is not as the owner set it. */
+  drift: string | null;
+  invites: InviteView[];
+}
+
+/** A village this login was invited to, in the people row. */
+export interface VisitView { owner: string; name: string | null; waiting: number; away: boolean; seen: number }
+
+/** A visited village's map, as its owner's Mac wrote it (short keys: see src-tauri/src/board/snapshot.rs). */
+export interface VillageMap {
+  v: number;
+  host: string;
+  owner: string;
+  name?: string | null;
+  seen: number;
+  workspaces: { s: string; n: string; l: number; c?: string | null; p?: [number, number, number, number, number, number] | null }[];
+  builders: { p: string; n: string; a: string }[];
+  sessions: { i: string; r?: string | null; w: string; b: string; s: string; t?: string | null; n: number; a: number; p?: [number, number] | null; k: number }[];
+  mates?: { key: string; handle: string; level: Level }[];
+}
+
+/** A builder in a visited village, from its thread. */
+export interface VisitedBuilder { title: string; wait: string | null; words: string | null; question: string | null; options: string[] | null }
+
 /** Settings › Team › Phone remote (the paired phones themselves are in the Keychain). */
 export interface RemoteSettings {
   enabled: boolean;

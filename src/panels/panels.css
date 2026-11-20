@@ -351,3 +351,9 @@ html.coc-panel-resizing :is(.hud-res, .hud-stats, .hud-build, .hud-roster-zone, 
 .set-pair .set-text { display: grid; gap: 6px; justify-items: start; }
 .set-qr { width: 132px; height: 132px; flex: none; border-radius: 8px; border: 3px solid var(--hud-out); }
 .set-code { font: 400 28px/1 'Lilita One', sans-serif; letter-spacing: .08em; }
+
+/* Settings › Team: Private village and People */
+.set-who { margin: 4px 0 0; padding-left: 18px; }
+.set-invite input[type="email"] { flex: 1; min-width: 0; }
+.set-picks { flex-wrap: wrap; gap: 6px 14px; }
+.set-picks label { display: inline-flex; align-items: center; gap: 6px; }

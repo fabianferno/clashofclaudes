@@ -1,6 +1,6 @@
 import { invoke, Channel } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type { HistoryEntry, HapticKind, Todo, AppPreview, AgentAccount, AgentInfo, AgentKind, AgentQuota, Builder, CloseOutcome, Compound, ConfirmQuit, Frame, ListState, Review, SessionInfo, Settings, Stats, Tile, UpdateStatus, Workspace, BugReport, BugReportInfo, ReportKind, RaidReport, BoardStatus, RemoteStatus } from './types';
+import type { HistoryEntry, HapticKind, Todo, AppPreview, AgentAccount, AgentInfo, AgentKind, AgentQuota, Builder, CloseOutcome, Compound, ConfirmQuit, Frame, ListState, Review, SessionInfo, Settings, Stats, Tile, UpdateStatus, Workspace, BugReport, BugReportInfo, ReportKind, RaidReport, BoardStatus, RemoteStatus, AccessStatus, Level, VisitView, VillageMap, VisitedBuilder } from './types';
 
 const SKIP_FLAG = 1n << 63n;
 
@@ -128,6 +128,19 @@ export const ipc = {
   boardCheck: () => invoke<BoardStatus>('board_check'),
   /** Shares a workspace on the team's board, or stops. */
   setWorkspaceShared: (workspaceId: string, shared: boolean) => invoke<Workspace>('set_workspace_shared', { workspaceId, shared }),
+  /** Settings › Team: who can see the village (reads the board; the first time, closes the village). */
+  accessStatus: () => invoke<AccessStatus>('access_status'),
+  accessSetPrivate: (on: boolean) => invoke<AccessStatus>('access_set_private', { on }),
+  /** Makes the board what the owner set again. */
+  accessPutBack: () => invoke<AccessStatus>('access_put_back'),
+  invitePut: (email: string, level: Level, workspaces: string[] | null) => invoke<AccessStatus>('invite_put', { email, level, workspaces }),
+  inviteRemove: (email: string) => invoke<AccessStatus>('invite_remove', { email }),
+  /** The villages this login was invited to. */
+  visits: () => invoke<VisitView[]>('visits'),
+  visit: (owner: string) => invoke<VillageMap | null>('visit', { owner }),
+  visitsRefresh: () => invoke<VisitView[]>('visits_refresh'),
+  visitBuilder: (owner: string, root: string) => invoke<VisitedBuilder | null>('visit_builder', { owner, root }),
+  onVisitsChanged: (cb: (v: VisitView[]) => void): Promise<UnlistenFn> => listen<VisitView[]>('visits-changed', (e) => cb(e.payload)),
   /** Settings › Phone remote: paired phones, pairing, whether the Mac listens. */
   remoteStatus: () => invoke<RemoteStatus>('remote_status'),
   /** Opens a pairing; the six-digit code to type on the phone. */

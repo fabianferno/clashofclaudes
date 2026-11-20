@@ -4,6 +4,7 @@ import type { BoardSettings, BoardStatus } from '../api/types';
 import { useApp } from '../state/store';
 import { waitedLabel } from '../state/queue';
 import RemoteSettings from './RemoteSettings';
+import AccessSettings from './AccessSettings';
 
 const DEFAULT_BOARD = 'village';
 
@@ -136,6 +137,7 @@ export default function TeamSettings({ board, onChange }: { board: BoardSettings
             checked={board.shareNew} onChange={(shareNew) => set({ shareNew })} />
           {status?.lastWriteAt != null && <div className="set-note">Last written {ago(Date.now() - status.lastWriteAt)}</div>}
           {ready && status.lastError && <div className="set-note">Last problem: {status.lastError}</div>}
+          {ready && <AccessSettings />}
           {ready && (
             <RemoteSettings
               enabled={board.remote?.enabled === true}

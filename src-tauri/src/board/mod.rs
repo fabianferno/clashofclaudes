@@ -12,6 +12,7 @@ use crate::model::{AgentKind, SessionInfo, SessionState, Workspace};
 use crate::queue::{queue_reason, QueueReason};
 
 pub mod access;
+pub mod access_app;
 pub mod app;
 pub mod cli;
 pub mod deploy;

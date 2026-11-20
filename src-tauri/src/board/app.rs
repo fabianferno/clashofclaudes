@@ -40,6 +40,8 @@ pub struct BoardState {
     map: Arc<Mutex<super::map::MapWriter>>,
     /// The villages this login was invited to.
     visits: Arc<Mutex<super::visits::Visits>>,
+    /// The login's email, once asked of the CLI (a grant names a person by it).
+    email: Mutex<Option<String>>,
 }
 
 /// The session manager, as the phone remote uses it.
@@ -111,7 +113,7 @@ impl BoardState {
                 }
             })
             .expect("remote tick thread");
-        BoardState { publisher, cli, link: Arc::default(), active: AtomicBool::new(false), remote, listener, map: Arc::default(), visits }
+        BoardState { publisher, cli, link: Arc::default(), active: AtomicBool::new(false), remote, listener, map: Arc::default(), visits, email: Mutex::new(None) }
     }
 
     fn link(&self) -> Link {
@@ -238,6 +240,115 @@ pub fn apply<R: Runtime>(app: &AppHandle<R>) {
         Arc::new(move |ws: &Workspace, b: &Builder| env_for(&board, url.as_deref(), ws, b)) as EnvHook
     });
     st.manager.set_env_hook(hook);
+}
+
+/// What the access commands work with: the CLI, the board, who the owner is, and their village's
+/// shared workspaces. Blocking the first time (it asks the CLI for the login's email).
+struct AccessCtx {
+    cli: Arc<dyn BoardCli>,
+    target: Target,
+    me: super::access_app::Me,
+    remote: bool,
+    slugs: std::collections::BTreeMap<String, String>,
+    access: crate::model::AccessSettings,
+}
+
+fn access_ctx<R: Runtime>(app: &AppHandle<R>) -> Result<AccessCtx, String> {
+    let (bs, st) = (app.try_state::<BoardState>().ok_or("the board is not set up")?, app.try_state::<AppState>().ok_or("the app is starting")?);
+    let owner = bs.link().owner.ok_or("Vercel Board is not connected yet.")?;
+    let cached = bs.email.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let email = match cached {
+        Some(e) => e,
+        None => {
+            let out = bs.cli.raw(&["whoami".to_string(), "--json".to_string()]).map_err(|e| format!("{e:?}"))?;
+            let v: serde_json::Value = serde_json::from_str(out.stdout.trim()).map_err(|_| "The Vercel CLI did not say who is signed in.")?;
+            let e = v["email"].as_str().ok_or("The Vercel CLI did not give this login's email.")?.to_string();
+            *bs.email.lock().unwrap_or_else(|p| p.into_inner()) = Some(e.clone());
+            e
+        }
+    };
+    let d = st.data();
+    let board = &d.settings.board;
+    let all = workspace_slugs(&d.workspaces);
+    let slugs = d.workspaces.iter().filter(|w| w.board_shared).filter_map(|w| Some((w.id.clone(), all.get(&w.id)?.clone()))).collect();
+    Ok(AccessCtx { cli: bs.cli.clone(), target: target(board), me: super::access_app::Me { owner, email }, remote: board.remote.url.is_some(), slugs, access: board.access.clone() })
+}
+
+/// Runs one change to who may see the village on a blocking worker, keeps what it set, and
+/// answers with what the board says now.
+async fn access_change(app: AppHandle, f: impl FnOnce(&mut AccessCtx) -> Result<(), String> + Send + 'static) -> Result<super::access_app::AccessStatus, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut c = access_ctx(&app)?;
+        let result = f(&mut c);
+        // what was set is kept even when a later step failed (a refusal is itself recorded)
+        if let Some(st) = app.try_state::<AppState>() {
+            let saved = {
+                let mut d = st.data();
+                d.settings.board.access = c.access.clone();
+                crate::persist::save(&st.data_path, &d).map_err(|e| format!("{e:#}"))?;
+                d.settings.clone()
+            };
+            let _ = app.emit("settings-changed", saved);
+        }
+        result?;
+        let mut s = super::access_app::status(c.cli.as_ref(), &c.target, &c.me, &c.access, &c.slugs);
+        if !s.can_close {
+            s.command = Some(super::access_app::owner_command(&c.target, &c.me, c.remote));
+        }
+        Ok(s)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Settings › Team: who can see the village. The first time the board is connected, the village
+/// is closed by default (the owner can open it again).
+#[tauri::command]
+pub async fn access_status(app: AppHandle) -> Result<super::access_app::AccessStatus, String> {
+    access_change(app, |c| {
+        if !c.access.asked {
+            c.access.asked = true;
+            // a refusal (not a team owner) is recorded in `refused`; the village stays open
+            let _ = super::access_app::close(c.cli.as_ref(), &c.target, &c.me, c.remote, &mut c.access);
+        } else if c.access.private {
+            // the phone remote may have been set up since: let it in
+            let _ = super::access_app::close(c.cli.as_ref(), &c.target, &c.me, c.remote, &mut c.access);
+        }
+        Ok(())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn access_set_private(on: bool, app: AppHandle) -> Result<super::access_app::AccessStatus, String> {
+    access_change(app, move |c| {
+        c.access.asked = true;
+        if on {
+            c.access.refused = None;
+            // a refusal is shown by the status that follows, with the command for an owner
+            let _ = super::access_app::close(c.cli.as_ref(), &c.target, &c.me, c.remote, &mut c.access);
+            Ok(())
+        } else {
+            super::access_app::open(c.cli.as_ref(), &c.target, &mut c.access)
+        }
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn access_put_back(app: AppHandle) -> Result<super::access_app::AccessStatus, String> {
+    access_change(app, |c| super::access_app::put_back(c.cli.as_ref(), &c.target, &c.me, c.remote, &mut c.access, &c.slugs)).await
+}
+
+/// Invites a teammate by their Vercel email, or changes their invite.
+#[tauri::command]
+pub async fn invite_put(email: String, level: crate::model::Level, workspaces: Option<Vec<String>>, app: AppHandle) -> Result<super::access_app::AccessStatus, String> {
+    access_change(app, move |c| super::access_app::invite_put(c.cli.as_ref(), &c.target, &c.me, &mut c.access, &c.slugs, &email, level, workspaces)).await
+}
+
+#[tauri::command]
+pub async fn invite_remove(email: String, app: AppHandle) -> Result<super::access_app::AccessStatus, String> {
+    access_change(app, move |c| super::access_app::invite_remove(c.cli.as_ref(), &c.target, &mut c.access, &email)).await
 }
 
 fn now_ms() -> i64 {

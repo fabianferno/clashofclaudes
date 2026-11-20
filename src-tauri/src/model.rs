@@ -257,6 +257,8 @@ pub struct AccessSettings {
     pub invites: Vec<Invite>,
     /// The default (private) was applied once; after that the switch is the owner's.
     pub asked: bool,
+    /// What the board said when it would not let this login close the village (not a team owner).
+    pub refused: Option<String>,
 }
 
 /// One invited teammate.

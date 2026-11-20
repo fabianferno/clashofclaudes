@@ -1143,8 +1143,11 @@ pub fn set_settings(settings: Settings, app: AppHandle, state: State<'_, AppStat
         // where the phone remote is and which of its deployments are trusted is the app's own
         // to change (Settings › Phone remote's buttons), never a stale copy from the window
         let remote = d.settings.board.remote.clone();
+        let access = d.settings.board.access.clone();
         d.settings = settings.normalized();
         d.settings.board.remote = crate::model::RemoteSettings { enabled: d.settings.board.remote.enabled, ..remote };
+        // who may see the village is changed by Settings' own buttons, which run the board calls
+        d.settings.board.access = crate::board::access_app::keep_app_owned(&access, &d.settings.board.access);
         crate::board::app::ensure_host_id(&mut d.settings.board);
         state.save(&d)?;
         d.settings.clone()

@@ -123,7 +123,7 @@ fn who_can_see_names_people_remote_and_team() {
 
 #[test]
 fn drift_notices_an_opened_village_and_a_missing_invite() {
-    let mut set = AccessSettings { private: true, grants: vec!["g4".into(), "g6".into(), "g5".into()], invites: vec![Invite { grant: Some("g7".into()), ..invite(Level::Visitor, None) }], asked: true };
+    let mut set = AccessSettings { private: true, grants: vec!["g4".into(), "g6".into(), "g5".into()], invites: vec![Invite { grant: Some("g7".into()), ..invite(Level::Visitor, None) }], asked: true, refused: None };
     assert_eq!(drift(&set, &grants(), "ada"), None);
     assert_eq!(drift(&set, &open_grants(), "ada").as_deref(), Some("Your village is open to the team again."));
     let without_bob: Vec<Grant> = grants().into_iter().filter(|g| g.id != "g7").collect();

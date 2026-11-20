@@ -351,6 +351,10 @@ export interface InviteView {
   workspaces: string[] | null;
   /** Their grant is on the board. */
   onBoard: boolean;
+  /** Their Mac is paired with this village: only then can they act. */
+  paired?: boolean;
+  /** Their Mac can be paired (a Helper or Trusted the board has named). */
+  pairable?: boolean;
 }
 
 /** Settings › Team: Private village and People, as the board has it now. */
@@ -384,7 +388,20 @@ export interface VillageMap {
 }
 
 /** A builder in a visited village, from its thread. */
-export interface VisitedBuilder { title: string; wait: string | null; words: string | null; question: string | null; options: string[] | null }
+export interface VisitedBuilder {
+  title: string;
+  wait: string | null;
+  words: string | null;
+  question: string | null;
+  options: string[] | null;
+  /** What the owner's Mac will take for this wait. */
+  can: ('allow' | 'deny' | 'answer' | 'followup')[];
+  /** The hash of the wait shown: what an action for it signs. */
+  prompt: string | null;
+  /** This Mac sent an action for this wait, and the owner's Mac's word on it. */
+  sent: boolean;
+  result: string | null;
+}
 
 /** Settings › Team › Phone remote (the paired phones themselves are in the Keychain). */
 export interface RemoteSettings {
@@ -407,6 +424,8 @@ export interface RemotePairing {
   name: string | null;
   check: string | null;
   why: string | null;
+  /** The teammate whose Mac is being paired; null or absent for a phone. */
+  forEmail?: string | null;
 }
 
 /** What Settings › Phone remote shows (the `remote-changed` event carries it too). */
@@ -417,6 +436,8 @@ export interface RemoteStatus {
   paused: string | null;
   lastRefusedAt: number | null;
   keychainError: string | null;
+  /** The last thing a teammate did in this village. */
+  acted?: { who: string; what: string; at: number } | null;
   /** Where the team's remote is deployed, once set up. */
   url: string | null;
   /** The version of the remote this app carries. */

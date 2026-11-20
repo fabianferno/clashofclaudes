@@ -135,6 +135,15 @@ export const ipc = {
   accessPutBack: () => invoke<AccessStatus>('access_put_back'),
   invitePut: (email: string, level: Level, workspaces: string[] | null) => invoke<AccessStatus>('invite_put', { email, level, workspaces }),
   inviteRemove: (email: string) => invoke<AccessStatus>('invite_remove', { email }),
+  /** Opens a pairing for an invited teammate's Mac; the code to send them. */
+  matePairStart: (email: string) => invoke<string>('mate_pair_start', { email }),
+  /** This Mac's key id, when it has a key. */
+  mateKey: () => invoke<string | null>('mate_key'),
+  /** Asks a village's owner to pair this Mac, with the code they sent; the check number to read back. */
+  matePair: (owner: string, code: string) => invoke<string>('mate_pair', { owner, code }),
+  /** Sends a signed action for a builder in a visited village. */
+  visitAct: (owner: string, root: string, action: { do: 'allow' | 'deny' | 'answer' | 'followup'; pick?: number; text?: string; prompt: string }) =>
+    invoke<void>('visit_act', { owner, root, do: action.do, pick: action.pick ?? null, text: action.text ?? null, prompt: action.prompt }),
   /** The villages this login was invited to. */
   visits: () => invoke<VisitView[]>('visits'),
   visit: (owner: string) => invoke<VillageMap | null>('visit', { owner }),

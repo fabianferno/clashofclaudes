@@ -150,3 +150,11 @@ img.hud-stat-ico { width: 48px; height: 48px; margin: 0 -4px; filter: none; }
 .visited-words { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 14em; overflow: auto; }
 .visited-options { margin: 8px 0 0; padding-left: 20px; }
 .visited-builder .set-note { color: #5a4632; }
+.visit-pair { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center; }
+.visit-pair input { padding: 5px 8px; border: 2px solid var(--hud-out); border-radius: 8px; font: 700 14px ui-monospace, Menlo, monospace; text-transform: uppercase; width: 15em; }
+.visited-acts { display: grid; gap: 8px; margin-top: 12px; }
+.visited-pair { display: grid; grid-template-columns: 1fr 1.4fr; gap: 8px; }
+.visited-words-form { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.visited-words-form textarea { padding: 8px; border: 2px solid var(--hud-out); border-radius: 8px; font: inherit; resize: vertical; }
+.visited-result { margin: 12px 0 0; padding: 8px; border: 2px dashed var(--hud-out); border-radius: 8px; font-weight: 700; text-align: center; }
+.visited-error { margin: 10px 0 0; font-weight: 700; color: #a11f14; }

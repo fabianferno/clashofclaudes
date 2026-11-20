@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { ipc } from '../api/ipc';
 import type { VisitView } from '../api/types';
 import { useApp } from '../state/store';
+import { LEVEL_WORDS, useMyLevel } from '../state/myLevel';
 
 /**
  * A village is named by its owner's Vercel handle: the board verified it. What an owner calls
@@ -42,7 +43,6 @@ export default function PeopleRow() {
     return () => { live = false; off?.(); };
   }, []);
 
-  if (visits.length === 0 && !visiting) return null;
   const go = (owner: string) => {
     void ipc.visit(owner).then(
       (map) => {
@@ -55,8 +55,23 @@ export default function PeopleRow() {
     );
   };
   const here = visiting ? visits.find((v) => v.owner === visiting.owner) : undefined;
+  const level = useMyLevel(visiting?.map);
+  // asking this village's owner to pair this Mac, with the code they sent
+  const [asking, setAsking] = useState(false);
+  const [code, setCode] = useState('');
+  const [check, setCheck] = useState<string | null>(null);
+  const [pairError, setPairError] = useState<string | null>(null);
+  const owner = visiting?.owner;
+  useEffect(() => { setAsking(false); setCode(''); setCheck(null); setPairError(null); }, [owner]);
+  const pair = () => {
+    if (!owner) return;
+    setPairError(null);
+    ipc.matePair(owner, code).then(setCheck, (e) => setPairError(String(e)));
+  };
   const whose = visiting?.owner;
 
+  // nothing to visit and not visiting: no row (after the hooks above, which must always run)
+  if (visits.length === 0 && !visiting) return null;
   return (
     <>
       {visiting && <div className="visit-tint" aria-hidden="true" />}
@@ -78,8 +93,17 @@ export default function PeopleRow() {
       </nav>
       {visiting && (
         <div className="visit-ribbon" role="status">
-          <span>Visiting {whose}’s village · you are a Visitor here</span>
+          <span>Visiting {whose}’s village · you are {LEVEL_WORDS[level]} here</span>
           {here?.away && <span className="visit-away">{whose}’s Mac may be asleep or offline.</span>}
+          {level === 'visitor' && !asking && <button type="button" className="hud-btn grey sm" onClick={() => setAsking(true)}>Enter pairing code</button>}
+          {level === 'visitor' && asking && (
+            <form className="visit-pair" onSubmit={(e) => { e.preventDefault(); pair(); }}>
+              <input type="text" aria-label={`Pairing code from ${whose}`} placeholder="XXXX-XXXX-XXXX" spellCheck={false} autoCapitalize="characters" value={code} onChange={(e) => setCode(e.target.value)} />
+              <button type="submit" className="hud-btn green sm" disabled={!code.trim()}>Pair this Mac</button>
+              {check && <span className="visit-away">Tell {whose} this number: {check}. They confirm it in their Settings.</span>}
+              {pairError && <span className="visit-away" role="alert">{pairError}</span>}
+            </form>
+          )}
         </div>
       )}
     </>

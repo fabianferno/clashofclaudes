@@ -131,3 +131,49 @@ test('grants that could not be read say so', async () => {
   await show();
   expect(screen.getByText(/could not be read/)).toBeTruthy();
 });
+
+// Pairing a teammate's Mac (part 2: acting).
+const remote = vi.hoisted(() => ({ onRemoteChanged: vi.fn(), remoteStatus: vi.fn(), remotePairConfirm: vi.fn(), remotePairCancel: vi.fn(), matePairStart: vi.fn() }));
+Object.assign(ipc, remote);
+const pairing = (p: object) => ({ phones: [], pairing: { state: 'idle', code: null, until: null, name: null, check: null, why: null, forEmail: null, ...p }, listening: true, paused: null, lastRefusedAt: null, keychainError: null, url: null, bundledVersion: '0.1.0' });
+
+beforeEach(() => {
+  remote.onRemoteChanged.mockResolvedValue(() => {});
+  remote.remoteStatus.mockResolvedValue(pairing({}));
+});
+
+test('a Helper or Trusted invite can have their Mac paired: a code to send, then a number to confirm', async () => {
+  let push: (s: unknown) => void = () => {};
+  remote.onRemoteChanged.mockImplementation(async (cb: (s: unknown) => void) => { push = cb; return () => {}; });
+  remote.remoteStatus.mockResolvedValue(pairing({}));
+  remote.matePairStart.mockResolvedValue('00000000EQK1');
+  remote.remotePairConfirm.mockResolvedValue(undefined);
+  const bob = { email: 'bob@acme.com', level: 'trusted' as const, workspaces: null, onBoard: true, paired: false, pairable: true };
+  ipc.accessStatus.mockResolvedValue(status({ invites: [bob, { email: 'eve@acme.com', level: 'visitor', workspaces: null, onBoard: true, paired: false, pairable: false }] }));
+  await show();
+  expect(screen.queryByRole('button', { name: 'Pair the Mac of eve@acme.com' })).toBeNull();
+  await press('Pair the Mac of bob@acme.com');
+  expect(remote.matePairStart).toHaveBeenCalledWith('bob@acme.com');
+  await act(async () => push(pairing({ state: 'open', code: '00000000EQK1', forEmail: 'bob@acme.com' })));
+  expect(screen.getByText('0000-0000-EQK1')).toBeTruthy();
+  expect(screen.getByText(/Send this code to bob@acme\.com/)).toBeTruthy();
+  await act(async () => push(pairing({ state: 'asking', name: 'bob’s Mac', check: '482 913', forEmail: 'bob@acme.com' })));
+  expect(screen.getByText('bob’s Mac wants to pair, from bob@acme.com. Does it show 482 913?')).toBeTruthy();
+  ipc.accessStatus.mockResolvedValue(status({ invites: [{ ...bob, paired: true }] }));
+  await press('Confirm');
+  expect(remote.remotePairConfirm).toHaveBeenCalledTimes(1);
+  expect(screen.getByText(/Their Mac is paired/)).toBeTruthy();
+});
+
+test('what a teammate last did is said', async () => {
+  remote.remoteStatus.mockResolvedValue({ ...pairing({}), acted: { who: 'bob', what: 'allowed `Bash: npm test`', at: Date.now() - 2 * 60_000 } });
+  await show();
+  expect(screen.getByText(/Last: bob allowed `Bash: npm test`, 2m ago/)).toBeTruthy();
+});
+
+test('a phone being paired is not shown among the people', async () => {
+  remote.onRemoteChanged.mockResolvedValue(() => {});
+  remote.remoteStatus.mockResolvedValue(pairing({ state: 'asking', name: 'iPhone', check: '111 222', forEmail: null }));
+  await show();
+  expect(screen.queryByText(/wants to pair/)).toBeNull();
+});

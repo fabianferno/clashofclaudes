@@ -124,7 +124,8 @@ export default function RemoteSettings({ enabled, onEnabled }: { enabled: boolea
     );
   }
 
-  const p = status.pairing;
+  // a teammate's Mac being paired is shown with the people (AccessSettings), not with the phones
+  const p = status.pairing.forEmail ? { ...status.pairing, state: 'idle' as const } : status.pairing;
   return (
     <>
       <label className="set-row">

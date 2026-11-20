@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { ipc } from '../api/ipc';
-import type { AccessStatus, Level } from '../api/types';
+import type { AccessStatus, Level, RemotePairing } from '../api/types';
 import { useApp } from '../state/store';
+import { waitedLabel } from '../state/queue';
 
 const LEVELS: { value: Level; label: string; can: string }[] = [
   { value: 'visitor', label: 'Visitor', can: 'sees builders and what they wait for' },
@@ -31,10 +32,17 @@ export default function AccessSettings() {
   const [some, setSome] = useState(false);
   const [picked, setPicked] = useState<string[]>([]);
 
+  // a teammate's Mac being paired (the same pairing as a phone's, told apart by whom it is for)
+  const [pairing, setPairing] = useState<RemotePairing | null>(null);
+  const [acted, setActed] = useState<{ who: string; what: string; at: number } | null>(null);
+
   useEffect(() => {
     let live = true;
+    let off: (() => void) | undefined;
     ipc.accessStatus().then((s) => { if (live) setStatus(s); }, (e) => { if (live) setError(String(e)); });
-    return () => { live = false; };
+    ipc.remoteStatus().then((s) => { if (live) { setPairing(s.pairing); setActed(s.acted ?? null); } }, () => {});
+    void ipc.onRemoteChanged((s) => { if (live) { setPairing(s.pairing); setActed(s.acted ?? null); } }).then((u) => (live ? (off = u) : u()));
+    return () => { live = false; off?.(); };
   }, []);
 
   const run = (f: () => Promise<AccessStatus>, then?: () => void) => {
@@ -47,6 +55,16 @@ export default function AccessSettings() {
 
   const closed = status.state === 'closed';
   const nameOf = (id: string) => shared.find((w) => w.id === id)?.name ?? 'a workspace no longer shared';
+  const mate = pairing?.forEmail ? pairing : null;
+  const confirmMate = () => {
+    setBusy(true);
+    setError(null);
+    ipc.remotePairConfirm().then(() => ipc.accessStatus()).then(setStatus, (e) => setError(String(e))).finally(() => setBusy(false));
+  };
+  const pairMate = (who: string) => {
+    setError(null);
+    ipc.matePairStart(who).catch((e) => setError(String(e)));
+  };
   const invite = () => run(() => ipc.invitePut(email.trim(), level, some ? picked : null), () => { setEmail(''); setPicked([]); setSome(false); setLevel('visitor'); });
 
   return (
@@ -95,20 +113,42 @@ export default function AccessSettings() {
       )}
 
       <div className="set-line"><span className="set-label">People</span></div>
+      {acted && <div className="set-note">Last: {acted.who} {acted.what}, {waitedLabel(Date.now() - acted.at) === 'just now' ? 'just now' : `${waitedLabel(Date.now() - acted.at)} ago`}. The builder's thread on the board has the record.</div>}
       {status.invites.map((i) => (
         <div className="set-line" key={i.email}>
           <span className="set-text">
             <span className="set-label">{i.email}</span>
             <span className="set-hint">
               {i.workspaces ? `${i.workspaces.map(nameOf).join(', ')} only` : 'All shared workspaces'}
-              {i.level !== 'visitor' && '. A Visitor until their Mac is paired'}
+              {i.level !== 'visitor' && (i.paired ? '. Their Mac is paired' : '. A Visitor until their Mac is paired')}
               {!i.onBoard && '. Not on the board: press Put it back'}
             </span>
           </span>
+          {i.pairable && (
+            <button type="button" className="hud-btn grey sm" aria-label={`Pair the Mac of ${i.email}`} disabled={busy} onClick={() => pairMate(i.email)}>{i.paired ? 'Pair another Mac' : 'Pair their Mac'}</button>
+          )}
           <LevelSelect label={`Level for ${i.email}`} value={i.level} disabled={busy} onChange={(l) => run(() => ipc.invitePut(i.email, l, i.workspaces))} />
           <button type="button" className="hud-btn grey sm" aria-label={`Remove ${i.email}`} disabled={busy} onClick={() => run(() => ipc.inviteRemove(i.email))}>Remove</button>
         </div>
       ))}
+      {mate?.state === 'open' && mate.code && (
+        <div className="set-line">
+          <span className="set-text">
+            <span className="set-label">Send this code to {mate.forEmail}</span>
+            <span className="set-code">{mate.code.replace(/(.{4})(?=.)/g, '$1-')}</span>
+            <span className="set-hint">They visit your village and press Enter pairing code. It lasts 5 minutes, and only their own Vercel login can use it.</span>
+          </span>
+          <button type="button" className="hud-btn grey sm" onClick={() => void ipc.remotePairCancel()}>Cancel</button>
+        </div>
+      )}
+      {mate?.state === 'asking' && (
+        <div className="set-line">
+          <span className="set-label">{mate.name} wants to pair, from {mate.forEmail}. Does it show {mate.check}?</span>
+          <button type="button" className="hud-btn green sm" disabled={busy} onClick={confirmMate}>Confirm</button>
+          <button type="button" className="hud-btn grey sm" onClick={() => void ipc.remotePairCancel()}>Cancel</button>
+        </div>
+      )}
+      {mate?.state === 'cancelled' && mate.why && <div className="set-note">{mate.why}</div>}
       <div className="set-line set-invite">
         <input type="email" aria-label="Their Vercel email" placeholder="teammate@company.com" spellCheck={false} value={email} onChange={(e) => setEmail(e.target.value)} />
         <LevelSelect label="Level for a new invite" value={level} onChange={setLevel} />

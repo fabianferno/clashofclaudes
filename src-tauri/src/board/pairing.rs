@@ -127,6 +127,11 @@ impl Pairing {
         &self.state
     }
 
+    /// The teammate whose Mac the open pairing is for; None for a phone, and when none is open.
+    pub fn for_email(&self) -> Option<String> {
+        self.ticket.as_ref().and_then(|t| t.mate.as_ref()).map(|m| m.email.clone())
+    }
+
     /// Opens a pairing: the ticket to post. `rng`: 64 random bits, 60 of which become the code.
     pub fn start(&mut self, now: i64, rng: u64, host: &str, owner: &str) -> MsgWrite {
         self.open(now, rng, host, owner, None)

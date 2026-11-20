@@ -443,6 +443,7 @@ fn pairing_a_teammates_mac_gives_it_the_invites_level() {
     g.r.pair_start_mate(77, MateFor { email: "bob@acme.com".into(), user_id: "u_bob".into(), level: Level::Trusted }).unwrap();
     let sent = g.sent();
     assert!(matches!(sent.as_slice(), [MsgWrite::Post { channel, .. }] if channel == "v/ada/pair"), "{sent:?}");
+    assert_eq!((g.r.status().pairing.state.as_str(), g.r.status().pairing.for_email.as_deref()), ("open", Some("bob@acme.com")));
     g.r.handle(bob_request("msg_p1", "msg_sent_1", 77));
     let st = g.r.status();
     assert_eq!((st.pairing.state.as_str(), st.pairing.for_email.as_deref(), st.pairing.name.as_deref()), ("asking", Some("bob@acme.com"), Some("Bob's Mac")));

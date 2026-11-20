@@ -96,6 +96,8 @@ pub struct RemoteStatus {
     /// When something that was not a paired phone last tried to act.
     pub last_refused_at: Option<i64>,
     pub keychain_error: Option<String>,
+    /// The last thing a teammate did in this village.
+    pub acted: Option<Acted>,
     /// Where the team's remote is deployed, once set up.
     pub url: Option<String>,
     /// The version of the remote this app carries.
@@ -110,7 +112,7 @@ struct Saved {
 }
 
 /// What a teammate did in this village, for the owner to see.
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Acted {
     /// Their Vercel username.
@@ -287,7 +289,7 @@ impl Remote {
         let g = self.lock();
         let pairing = match g.pairing.state() {
             PairState::Idle => PairView { state: "idle".into(), ..Default::default() },
-            PairState::Open { code, until } => PairView { state: "open".into(), code: Some(code.clone()), until: Some(*until), ..Default::default() },
+            PairState::Open { code, until } => PairView { state: "open".into(), code: Some(code.clone()), until: Some(*until), for_email: g.pairing.for_email(), ..Default::default() },
             PairState::Asking(r) => PairView { state: "asking".into(), name: Some(r.name.clone()), check: Some(r.check.clone()), for_email: r.for_email.clone(), ..Default::default() },
             PairState::Cancelled(why) => PairView { state: "cancelled".into(), why: Some(why.clone()), ..Default::default() },
         };
@@ -298,6 +300,7 @@ impl Remote {
             paused: g.paused.clone(),
             last_refused_at: g.last_refused_at,
             keychain_error: g.keychain_error.clone(),
+            acted: g.acted.clone(),
             url: None,
             bundled_version: String::new(),
         }

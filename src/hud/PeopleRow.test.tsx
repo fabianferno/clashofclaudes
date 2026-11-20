@@ -78,7 +78,7 @@ test('a village you can no longer see sends you Home and says why', async () => 
 
 test('a visited builder shows what it does and waits for, and nothing to press', async () => {
   useApp.setState({ visiting: { owner: 'ada', map: mapOf('ada') }, visitedSession: 's1' });
-  ipc.visitBuilder.mockResolvedValue({ title: '**Wizard** (Claude Code): add a CSV export', wait: 'answer', words: 'Asking you: Which database?', question: 'Which database?', options: ['sqlite', 'postgres'] });
+  ipc.visitBuilder.mockResolvedValue({ title: '**Wizard** (Claude Code): add a CSV export', wait: 'answer', words: 'Asking you: Which database?', question: 'Which database?', options: ['sqlite', 'postgres'], can: ['answer'], prompt: 'p', sent: false, result: null });
   await act(async () => { render(<VisitedBuilder />); });
   expect(ipc.visitBuilder).toHaveBeenCalledWith('ada', 'msg_1');
   expect(screen.getByText('Wizard')).toBeTruthy();
@@ -95,4 +95,102 @@ test('a visited builder you were not invited to see says so', async () => {
   ipc.visitBuilder.mockRejectedValue('no access');
   await act(async () => { render(<VisitedBuilder />); });
   expect(screen.getByText(/You were not invited to this workspace/)).toBeTruthy();
+});
+
+// Part 2: acting in a village you visit.
+const act2 = vi.hoisted(() => ({ mateKey: vi.fn(), matePair: vi.fn(), visitAct: vi.fn() }));
+Object.assign(ipc, act2);
+beforeEach(() => {
+  act2.mateKey.mockResolvedValue(null);
+  act2.visitAct.mockResolvedValue(undefined);
+});
+
+const withMate = (level: 'helper' | 'trusted'): VillageMap => ({ ...mapOf('ada'), mates: [{ key: 'k_me', handle: 'me', level }] });
+const waiting = (over: object = {}) => ({ title: '**Wizard** (Claude Code): add a CSV export', wait: 'decide', words: 'Wants a decision: `Bash: npm test`', question: 'Bash: npm test', options: null, can: ['allow', 'deny'], prompt: 'ab'.repeat(32), sent: false, result: null, ...over });
+
+test('the ribbon says your level there once the village has paired this Mac', async () => {
+  ipc.visits.mockResolvedValue([view('ada')]);
+  act2.mateKey.mockResolvedValue('k_me');
+  ipc.visit.mockResolvedValue(withMate('trusted'));
+  await show();
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'ada' })); });
+  expect(screen.getByText('Visiting ada’s village · you are Trusted here')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Enter pairing code' })).toBeNull();
+});
+
+test('a village that has not paired this Mac takes a pairing code, and shows the number to read back', async () => {
+  ipc.visits.mockResolvedValue([view('ada')]);
+  await show();
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'ada' })); });
+  expect(screen.getByText('Visiting ada’s village · you are a Visitor here')).toBeTruthy();
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Enter pairing code' })); });
+  fireEvent.change(screen.getByLabelText('Pairing code from ada'), { target: { value: '0000-0000-eqk1' } });
+  act2.matePair.mockResolvedValue('482 913');
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Pair this Mac' })); });
+  expect(act2.matePair).toHaveBeenCalledWith('ada', '0000-0000-eqk1');
+  expect(screen.getByText(/Tell ada this number: 482 913/)).toBeTruthy();
+  // a refusal is said in place
+  act2.matePair.mockRejectedValue('That code is not open.');
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Pair this Mac' })); });
+  expect(screen.getByRole('alert').textContent).toContain('That code is not open.');
+});
+
+test('a Trusted visitor can allow and deny; the click is sent once and its result shown', async () => {
+  act2.mateKey.mockResolvedValue('k_me');
+  useApp.setState({ visiting: { owner: 'ada', map: withMate('trusted') }, visitedSession: 's1' });
+  ipc.visitBuilder.mockResolvedValue(waiting());
+  await act(async () => { render(<VisitedBuilder />); });
+  expect(screen.getByRole('button', { name: 'Deny' })).toBeTruthy();
+  ipc.visitBuilder.mockResolvedValue(waiting({ sent: true }));
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Allow' })); });
+  expect(act2.visitAct).toHaveBeenCalledWith('ada', 'msg_1', { do: 'allow', prompt: 'ab'.repeat(32) });
+  expect(act2.visitAct).toHaveBeenCalledTimes(1);
+  expect(screen.getByText('Sent to ada’s Mac')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Allow' })).toBeNull();
+});
+
+test.each([['applied', 'Done'], ['stale', 'Too late: it had moved on'], ['refused', 'ada’s Mac refused it'], ['failed', 'ada’s Mac could not do it']])('the owner’s answer %s shows', async (result, text) => {
+  act2.mateKey.mockResolvedValue('k_me');
+  useApp.setState({ visiting: { owner: 'ada', map: withMate('trusted') }, visitedSession: 's1' });
+  ipc.visitBuilder.mockResolvedValue(waiting({ sent: true, result }));
+  await act(async () => { render(<VisitedBuilder />); });
+  expect(screen.getByText(text)).toBeTruthy();
+});
+
+test('a Helper answers and follows up, and is not offered Allow', async () => {
+  act2.mateKey.mockResolvedValue('k_me');
+  useApp.setState({ visiting: { owner: 'ada', map: withMate('helper') }, visitedSession: 's1' });
+  ipc.visitBuilder.mockResolvedValue(waiting());
+  const { unmount } = await act(async () => render(<VisitedBuilder />));
+  expect(screen.queryByRole('button', { name: 'Allow' })).toBeNull();
+  expect(screen.getByText(/Only a Trusted person can allow or deny here/)).toBeTruthy();
+  unmount();
+  ipc.visitBuilder.mockResolvedValue(waiting({ wait: 'answer', can: ['answer'], question: 'Which database?', options: ['sqlite', 'postgres'] }));
+  await act(async () => { render(<VisitedBuilder />); });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'postgres' })); });
+  expect(act2.visitAct).toHaveBeenLastCalledWith('ada', 'msg_1', { do: 'answer', pick: 1, prompt: 'ab'.repeat(32) });
+  cleanup();
+  ipc.visitBuilder.mockResolvedValue(waiting({ wait: 'review', can: ['followup'], question: null, words: 'Finished.' }));
+  await act(async () => { render(<VisitedBuilder />); });
+  fireEvent.change(screen.getByLabelText('Follow up'), { target: { value: ' also add tests ' } });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Send' })); });
+  expect(act2.visitAct).toHaveBeenLastCalledWith('ada', 'msg_1', { do: 'followup', text: 'also add tests', prompt: 'ab'.repeat(32) });
+});
+
+test('a Visitor is offered nothing, whatever the builder would take', async () => {
+  useApp.setState({ visiting: { owner: 'ada', map: mapOf('ada') }, visitedSession: 's1' });
+  ipc.visitBuilder.mockResolvedValue(waiting());
+  await act(async () => { render(<VisitedBuilder />); });
+  expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['Close']);
+});
+
+test('a failed send says why and gives the buttons back', async () => {
+  act2.mateKey.mockResolvedValue('k_me');
+  useApp.setState({ visiting: { owner: 'ada', map: withMate('trusted') }, visitedSession: 's1' });
+  ipc.visitBuilder.mockResolvedValue(waiting());
+  act2.visitAct.mockRejectedValue('Too late: it had moved on.');
+  await act(async () => { render(<VisitedBuilder />); });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Deny' })); });
+  expect(screen.getByRole('alert').textContent).toContain('Too late: it had moved on.');
+  expect(screen.getByRole('button', { name: 'Deny' })).toBeTruthy();
 });

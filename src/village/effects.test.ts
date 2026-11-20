@@ -44,7 +44,7 @@ describe('Particles', () => {
     const early = c0.alpha;
     q.update(0.3);
     expect(c0.alpha).toBeGreaterThan(early);
-    expect(c0.alpha).toBeLessThanOrEqual(0.5);
+    expect(c0.alpha).toBeLessThanOrEqual(0.75);
     expect(c0.y).toBeLessThan(0);
     // at the cap, sparks give way like dust and smoke
     const full = new Particles();

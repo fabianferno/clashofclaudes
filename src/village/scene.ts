@@ -1160,7 +1160,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
         continue;
       }
       particles.chimney(at(FORGE_FX.flue));
-      if (Math.random() < 0.55) particles.sparks(at(FORGE_FX.bed), 1 + Math.floor(Math.random() * 2));
+      if (Math.random() < 0.8) particles.sparks(at(FORGE_FX.bed), 1 + Math.floor(Math.random() * 3));
     }
   });
 

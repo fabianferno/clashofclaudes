@@ -744,7 +744,7 @@ export function paintedForge(heat: Heat): Art | null {
       if (hot || warm) {
         const gr = g.createRadialGradient(m.x, m.y + (hot ? 6 : 10), 2, m.x, m.y, hot ? 40 : 36);
         if (hot) { gr.addColorStop(0, '#fff1b0'); gr.addColorStop(0.35, '#ffb236'); gr.addColorStop(0.8, '#d9481a'); gr.addColorStop(1, '#5a1a0c'); }
-        else { gr.addColorStop(0, '#c44a22'); gr.addColorStop(0.5, '#6a2414'); gr.addColorStop(1, '#241410'); }
+        else { gr.addColorStop(0, '#9a3a1c'); gr.addColorStop(0.45, '#4e1c10'); gr.addColorStop(1, '#1e120e'); }
         g.fillStyle = gr;
       } else g.fillStyle = '#1b1512';
       g.fill(); g.strokeStyle = OUTL; g.lineWidth = 3; g.stroke();

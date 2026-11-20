@@ -83,15 +83,15 @@ export class Particles {
   /** One puff of chimney smoke from `at`: slower and longer-lived than `smoke`, drifting a little downwind. */
   chimney(at: Pt, thin = false): void {
     this.add({
-      kind: 'smoke', x: at.x + rnd(-2, 2), y: at.y, vx: rnd(2, 9), vy: -rnd(12, 20), max: rnd(2.0, 2.8),
-      scale: thin ? rnd(0.3, 0.45) : rnd(0.45, 0.65), peak: thin ? 0.3 : 0.5,
+      kind: 'smoke', x: at.x + rnd(-2, 2), y: at.y, vx: rnd(3, 10), vy: -rnd(20, 30), max: rnd(2.4, 3.2),
+      scale: thin ? rnd(0.7, 0.9) : rnd(1.1, 1.5), peak: thin ? 0.4 : 0.75,
     });
   }
 
   /** `n` sparks thrown up from `at`; they arc and fall back as they fade. */
   sparks(at: Pt, n: number): void {
     for (let i = 0; i < n; i++)
-      this.add({ kind: 'spark', x: at.x + rnd(-6, 6), y: at.y + rnd(-2, 2), vx: rnd(-18, 18), vy: -rnd(40, 75), max: rnd(0.5, 0.9), scale: rnd(0.22, 0.36) });
+      this.add({ kind: 'spark', x: at.x + rnd(-6, 6), y: at.y + rnd(-2, 2), vx: rnd(-18, 18), vy: -rnd(45, 85), max: rnd(0.6, 1.0), scale: rnd(0.5, 0.75) });
   }
 
   /** `n` gold orbs flying from `from` to `to` on an arc over 1.2 s (staggered a little). */
@@ -167,6 +167,8 @@ export class Particles {
 // ---------------------------------------------------------------- drawing
 
 const dotCache = new Map<string, Texture>();
+/** Chimney smoke's tint over the grey puff texture: a sooty grey that reads on grass. */
+const CHIMNEY_TINT = 0x6e6862;
 /** One cached soft dot per kind/colour; particles are sprites of these, never redrawn. */
 function dotTexture(kind: DotKind): Texture {
   let t = dotCache.get(kind);
@@ -240,6 +242,8 @@ export class FxRenderer {
       v.position.set(p.x, p.y);
       v.alpha = p.alpha;
       if (p.kind === 'text') { v.scale.set(this.textScale); continue; }
+      // chimney smoke is sooty: the same puff, darker (pooled sprites are reused, so always set)
+      if (p.kind === 'smoke') (v as Sprite).tint = p.peak === undefined ? 0xffffff : CHIMNEY_TINT;
       v.scale.set(p.scale * (p.kind === 'orb' ? 0.55 : 0.6));
     }
   }

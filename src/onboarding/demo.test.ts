@@ -48,7 +48,7 @@ afterEach(() => {
 describe('the sample compound', () => {
   it('stands clear of the owner’s compounds and is raised only once', () => {
     const w = st().workspaces.find((x) => x.id === DEMO_WS_ID)!;
-    expect(w).toMatchObject({ name: 'sample-app', path: DEMO_PATH, level: 1, xp: 0, missing: false });
+    expect(w).toMatchObject({ name: 'sample-app', path: DEMO_PATH, missing: false });
     expect(w.compound).not.toBeNull();
     raiseDemoWorkspace();
     expect(st().workspaces.filter((x) => x.id === DEMO_WS_ID)).toHaveLength(1);
@@ -208,7 +208,7 @@ describe('a sample terminal', () => {
 
 describe('clearDemo', () => {
   it('takes down every sample thing and nothing of the owner’s', async () => {
-    st().addWorkspace({ id: 'w-real', name: 'mine', path: '/p', createdAt: 0, missing: false, level: 3, xp: 0, compound: null });
+    st().addWorkspace({ id: 'w-real', name: 'mine', path: '/p', createdAt: 0, missing: false, compound: null });
     st().addBuilder({ id: 'b-real', name: 'Real', agent: 'claude', model: null, effort: null, customCommand: null });
     const s = await startSample();
     const todo = await ipc.addTodo(DEMO_WS_ID, 'later');

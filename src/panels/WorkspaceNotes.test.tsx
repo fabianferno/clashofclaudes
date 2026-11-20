@@ -7,7 +7,7 @@ vi.mock('../api/ipc', () => ({ ipc: ipcMock }));
 import WorkspaceNotes, { NOTES_SAVE_MS, pickedText } from './WorkspaceNotes';
 import { useApp } from '../state/store';
 
-const ws = (notes = ''): Workspace => ({ id: 'w1', name: 'shop', path: '/w', createdAt: 0, missing: false, level: 1, xp: 0, compound: null, notes });
+const ws = (notes = ''): Workspace => ({ id: 'w1', name: 'shop', path: '/w', createdAt: 0, missing: false, compound: null, notes });
 
 beforeEach(() => {
   ipcMock.setWorkspaceNotes.mockReset().mockImplementation(async (_id: string, notes: string) => ws(notes));

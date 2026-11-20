@@ -32,7 +32,7 @@ import TownHallPanel from './TownHallPanel';
 import BuilderPanel from './BuilderPanel';
 
 const ws = (o: Partial<Workspace> = {}): Workspace => ({
-  id: 'w1', name: 'proj', path: '/p/proj', createdAt: 0, missing: false, level: 2, xp: 70, compound: null, ...o,
+  id: 'w1', name: 'proj', path: '/p/proj', createdAt: 0, missing: false, compound: null, ...o,
 });
 const builder = (o: Partial<Builder> = {}): Builder => ({
   id: 'b1', name: 'Ada', agent: 'claude', model: 'opus', effort: 'max', customCommand: null, ...o,

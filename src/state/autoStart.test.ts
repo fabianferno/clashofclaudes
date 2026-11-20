@@ -19,7 +19,7 @@ beforeEach(() => {
   ipc.removeTodo.mockResolvedValue(undefined);
   useApp.setState({
     loaded: true, notices: [], error: null, sessions: {}, settings: null,
-    workspaces: [{ id: 'w1', name: 'shop', path: '/w', createdAt: 0, missing: false, level: 1, xp: 0, compound: null }],
+    workspaces: [{ id: 'w1', name: 'shop', path: '/w', createdAt: 0, missing: false, compound: null }],
     builders: [{ id: 'b1', name: 'Ada', agent: 'claude', model: null, effort: null, customCommand: null }],
     todos: [],
   });

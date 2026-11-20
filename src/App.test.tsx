@@ -45,7 +45,7 @@ test('town hall panel lists workspaces; workspace-updated event shows the missin
   act(() => useApp.getState().setSelection({ kind: 'hall' }));
   expect(await screen.findByText('proj')).toBeTruthy();
   expect(screen.queryByText('missing')).toBeNull();
-  act(() => onWorkspaceUpdated({ id: 'w1', name: 'proj', path: '/p', createdAt: 0, missing: true, level: 1, xp: 0, compound: null }));
+  act(() => onWorkspaceUpdated({ id: 'w1', name: 'proj', path: '/p', createdAt: 0, missing: true, compound: null }));
   expect(await screen.findByText('missing')).toBeTruthy();
 });
 

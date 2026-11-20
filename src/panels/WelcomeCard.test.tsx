@@ -7,7 +7,7 @@ import { useApp } from '../state/store';
 import WelcomeCard from './WelcomeCard';
 import BuildersBar from '../hud/BuildersBar';
 
-const ws = { id: 'w', name: 'proj', path: '/p', createdAt: 0, missing: false, level: 1, xp: 0, compound: null };
+const ws = { id: 'w', name: 'proj', path: '/p', createdAt: 0, missing: false, compound: null };
 beforeEach(() => { vi.mocked(wsActions.openFolder).mockReset(); act(() => useApp.setState({ loaded: true, workspaces: [], builders: [], sessions: {} })); });
 afterEach(cleanup);
 

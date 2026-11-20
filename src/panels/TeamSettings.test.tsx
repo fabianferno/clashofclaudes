@@ -135,7 +135,7 @@ test('the status is asked again when the board or team changes', async () => {
 });
 
 // The workspace panel's switch.
-const ws = (boardShared = false): Workspace => ({ id: 'w1', name: 'shop', path: '/w', createdAt: 0, missing: false, level: 1, xp: 0, compound: null, boardShared });
+const ws = (boardShared = false): Workspace => ({ id: 'w1', name: 'shop', path: '/w', createdAt: 0, missing: false, compound: null, boardShared });
 
 test('the share switch is hidden while the feature is off', () => {
   useApp.setState({ workspaces: [ws()], settings: { ...DEFAULT_SETTINGS, board: OFF } });

@@ -150,7 +150,7 @@ describe('the send-off', () => {
   });
 
   it('just finishes for an owner who has workspaces', async () => {
-    useApp.setState({ workspaces: [{ id: 'w1', name: 'mine', path: '/p', createdAt: 0, missing: false, level: 1, xp: 0, compound: null }] });
+    useApp.setState({ workspaces: [{ id: 'w1', name: 'mine', path: '/p', createdAt: 0, missing: false, compound: null }] });
     act(() => { startTour(); goTo('done'); });
     render(<TourOverlay />);
     expect(screen.queryByRole('button', { name: 'Open my first workspace' })).toBeNull();

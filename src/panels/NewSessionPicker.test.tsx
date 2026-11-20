@@ -22,7 +22,7 @@ const ensureSpot = vi.fn().mockResolvedValue({ x: 0, y: 0 });
 
 function setup(o: { builders?: Builder[]; sessions?: Record<string, SessionInfo>; agents?: AgentInfo[] } = {}) {
   act(() => useApp.setState({
-    workspaces: [{ id: 'w', name: 'proj', path: '/p', createdAt: 0, missing: false, level: 1, xp: 0, compound: null }],
+    workspaces: [{ id: 'w', name: 'proj', path: '/p', createdAt: 0, missing: false, compound: null }],
     builders: o.builders ?? [], sessions: o.sessions ?? {}, agents: o.agents ?? [claude, custom],
     selection: null, error: null, village: { ...useApp.getState().village, ensureSpot },
   }));

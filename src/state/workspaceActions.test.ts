@@ -7,7 +7,7 @@ vi.mock('../api/ipc', () => ({ ipc: { createWorkspace } }));
 import { createFolder } from './workspaceActions';
 import { useApp } from './store';
 
-const ws = { id: 'w', name: 'app', path: '/x/app', createdAt: 0, missing: false, level: 1, xp: 0, compound: null };
+const ws = { id: 'w', name: 'app', path: '/x/app', createdAt: 0, missing: false, compound: null };
 beforeEach(() => {
   open.mockReset();
   createWorkspace.mockReset().mockResolvedValue(ws);

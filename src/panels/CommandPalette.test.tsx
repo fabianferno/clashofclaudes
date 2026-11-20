@@ -16,7 +16,7 @@ import { KANBAN_ALL, useApp } from '../state/store';
 import CommandPalette from './CommandPalette';
 import { keyLabel, matchCommands, paletteCommands } from './commands';
 
-const ws = (id: string, name: string): Workspace => ({ id, name, path: `/p/${name}`, createdAt: 0, missing: false, level: 1, xp: 0, compound: null });
+const ws = (id: string, name: string): Workspace => ({ id, name, path: `/p/${name}`, createdAt: 0, missing: false, compound: null });
 const bld = (id: string, name: string): Builder => ({ id, name, agent: 'claude', model: null, effort: null, customCommand: null });
 const sess = (id: string, state: SessionState, o: Partial<SessionInfo> = {}): SessionInfo => ({
   id, workspaceId: 'w1', kind: { kind: 'agent', builderId: 'b1' }, task: `Task ${id}`, state, steps: 0, startedAt: 0, lastOutputAt: 0,

@@ -22,7 +22,7 @@ beforeEach(() => {
   ipcMock.saveRaidCard.mockReset().mockResolvedValue('/Users/me/Downloads/Raid report 2026-11-20.png');
   localStorage.clear();
   useApp.setState({ raidOpen: false, raidNudge: true, covers: 0, notices: [],
-    workspaces: [{ id: 'w1', name: 'shop', path: '/w', createdAt: 0, missing: false, level: 1, xp: 0, compound: null }] });
+    workspaces: [{ id: 'w1', name: 'shop', path: '/w', createdAt: 0, missing: false, compound: null }] });
 });
 
 test('opens on today: totals, waits and what shipped; covers the village', async () => {

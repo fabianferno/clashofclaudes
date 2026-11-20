@@ -25,7 +25,7 @@ beforeEach(() => {
   ipcMock.writeSession.mockResolvedValue(undefined);
   useApp.setState({
     error: null, selection: null, panelOpen: false, notices: [], kanban: null, settingsOpen: false,
-    workspaces: [{ id: 'w1', name: 'shop', path: '/w', createdAt: 0, missing: false, level: 1, xp: 0, compound: null }],
+    workspaces: [{ id: 'w1', name: 'shop', path: '/w', createdAt: 0, missing: false, compound: null }],
     sessions: {}, selectedSessionId: null,
     builders: ['a', 'b'].map((x) => ({ id: `b-${x}`, name: x.toUpperCase(), agent: 'claude' as const, model: null, effort: null, customCommand: null })),
     agents: [{ kind: 'claude', label: 'Claude Code', installed: true, version: null, models: [], efforts: [], canApprove: true }],

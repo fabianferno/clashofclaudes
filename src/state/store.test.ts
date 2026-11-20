@@ -56,7 +56,7 @@ test('stateLabel maps needsYou', () => {
 });
 
 test('updateWorkspace replaces the matching workspace', () => {
-  const w = (id: string, missing = false) => ({ id, name: id, path: `/p/${id}`, createdAt: 0, missing, level: 1, xp: 0, compound: null });
+  const w = (id: string, missing = false) => ({ id, name: id, path: `/p/${id}`, createdAt: 0, missing, compound: null });
   useApp.getState().addWorkspace(w('w1'));
   useApp.getState().addWorkspace(w('w2'));
   useApp.getState().updateWorkspace(w('w2', true));
@@ -75,7 +75,7 @@ test('stale_rev_is_ignored', () => {
 // ---- village slice ----
 describe('village', () => {
   const W = (id: string, compound: Compound | null): Workspace =>
-    ({ id, name: id, path: `/p/${id}`, createdAt: 0, missing: false, level: 1, xp: 0, compound });
+    ({ id, name: id, path: `/p/${id}`, createdAt: 0, missing: false, compound });
 
   beforeEach(() => {
     vi.mocked(ipc.setCompound).mockReset().mockImplementation(async (id, c) => ({
@@ -498,7 +498,7 @@ test('selection is cleared (panel closed) when its session disappears', () => {
 });
 
 test('selection is cleared when its workspace disappears', () => {
-  useApp.setState({ workspaces: [{ id: 'w1', name: 'w', path: '/w', createdAt: 0, missing: false, level: 1, xp: 0, compound: null }] });
+  useApp.setState({ workspaces: [{ id: 'w1', name: 'w', path: '/w', createdAt: 0, missing: false, compound: null }] });
   useApp.getState().setSelection({ kind: 'workspace', id: 'w1' });
   useApp.getState().removeWorkspace('w1');
   expect(useApp.getState().selection).toBeNull();
@@ -519,7 +519,7 @@ test('selection is cleared when its builder disappears; hall and other targets s
 });
 
 test('adding a workspace or builder already present by id replaces it, never duplicates', () => {
-  const w: Workspace = { id: 'w', name: 'a', path: '/a', createdAt: 0, missing: false, level: 1, xp: 0, compound: null };
+  const w: Workspace = { id: 'w', name: 'a', path: '/a', createdAt: 0, missing: false, compound: null };
   useApp.getState().addWorkspace(w);
   useApp.getState().addWorkspace({ ...w, name: 'b' });
   expect(useApp.getState().workspaces.map((x) => x.name)).toEqual(['b']);

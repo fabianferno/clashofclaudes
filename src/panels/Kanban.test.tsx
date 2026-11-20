@@ -20,7 +20,7 @@ vi.mock('../api/ipc', () => ({ ipc }));
 import { KANBAN_ALL, useApp } from '../state/store';
 import Kanban, { kanbanColumn } from './Kanban';
 
-const ws: Workspace = { id: 'w1', name: 'shop', path: '/p/shop', createdAt: 0, missing: false, level: 1, xp: 0, compound: null };
+const ws: Workspace = { id: 'w1', name: 'shop', path: '/p/shop', createdAt: 0, missing: false, compound: null };
 const bld = (id: string, name: string): Builder => ({ id, name, agent: 'claude', model: null, effort: null, customCommand: null });
 const agents: AgentInfo[] = [{ kind: 'claude', label: 'Claude Code', installed: true, version: null, models: [], efforts: [], canApprove: true }];
 const sess = (id: string, builderId: string, state: SessionState, o: Partial<SessionInfo> = {}): SessionInfo => ({

@@ -67,15 +67,6 @@ export const GEAR_NAMES = [
   'Enchanted hammer',
 ] as const;
 
-/** 1 plain; 2-3 banner; 4-5 side wing; 6-7 tower; 8+ gold trim. */
-export function houseStage(level: number): 0 | 1 | 2 | 3 | 4 {
-  if (level >= 8) return 4;
-  if (level >= 6) return 3;
-  if (level >= 4) return 2;
-  if (level >= 2) return 1;
-  return 0;
-}
-
 /** Fraction of full height a scaffold shows after `steps` steps; asymptotes below 0.92. */
 export function scaffoldHeight(steps: number): number {
   return 0.92 * (1 - Math.exp(-steps / 12));
@@ -111,9 +102,4 @@ export function houseColors(w: { id: string; color?: string | null }): { roof: s
   let h = 0;
   for (let i = 0; i < w.id.length; i++) h = (h * 31 + w.id.charCodeAt(i)) >>> 0;
   return HOUSE_COLORS[h % HOUSE_COLORS.length];
-}
-
-/** XP to go from `level` to the next: round(100 x 1.4^(level-1)); mirrors the Rust `need`. */
-export function xpNeed(level: number): number {
-  return Math.round(100 * Math.pow(1.4, level - 1));
 }

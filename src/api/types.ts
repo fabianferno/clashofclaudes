@@ -1,3 +1,4 @@
+import type { Stage } from '../village/activity';
 export type AgentKind = 'claude' | 'codex' | 'antigravity' | 'opencode' | 'grok' | 'custom';
 
 export interface Tile {
@@ -45,9 +46,10 @@ export interface Workspace {
   path: string;
   createdAt: number;
   missing: boolean;
-  level: number;
-  /** XP progress within the current level. */
-  xp: number;
+  /** When its sessions were accepted (ms, the last 14 days): the house's look follows them. */
+  ships?: number[];
+  /** Visited villages only: the house's stage the owner's app sent. */
+  stage?: Stage;
   compound: Compound | null;
   /** The roof colour (#rrggbb) the owner chose; null picks one from the id. */
   color?: string | null;
@@ -260,16 +262,17 @@ export interface Review {
 }
 
 export interface CloseOutcome {
-  earnedXp: boolean;
-  xpGained: number;
-  levelBefore: number;
-  levelAfter: number;
+  /** It counted as shipped (an agent that finished, closed not stuck and not discarded). */
+  shipped: boolean;
+  /** The house's stage before and after this close. */
+  stageBefore: number;
+  stageAfter: number;
   workspaceId: string;
   /** An agent was closed before it finished. */
   unfinished: boolean;
   /** An agent was closed while Stuck. */
   stuck: boolean;
-  /** The owner discarded it (no XP). */
+  /** The owner discarded it (not shipped). */
   discarded?: boolean;
 }
 
@@ -381,7 +384,7 @@ export interface VillageMap {
   owner: string;
   name?: string | null;
   seen: number;
-  workspaces: { s: string; n: string; l: number; c?: string | null; p?: [number, number, number, number, number, number] | null }[];
+  workspaces: { s: string; n: string; l: number; a?: number; c?: string | null; p?: [number, number, number, number, number, number] | null }[];
   builders: { p: string; n: string; a: string }[];
   sessions: { i: string; r?: string | null; w: string; b: string; s: string; t?: string | null; n: number; a: number; p?: [number, number] | null; k: number }[];
   mates?: { key: string; handle: string; level: Level }[];
@@ -445,7 +448,7 @@ export interface RemoteStatus {
 }
 
 /** A moment that can play a sound (see src/state/sounds.ts and src-tauri/src/sounds.rs). */
-export type SoundMoment = 'decide' | 'answer' | 'finished' | 'stuck' | 'start' | 'minion' | 'working' | 'xp' | 'levelUp';
+export type SoundMoment = 'decide' | 'answer' | 'finished' | 'stuck' | 'start' | 'minion' | 'working' | 'xp';
 
 /** A trackpad haptic (AppKit's patterns, a double tick, or none); felt only on a Force Touch trackpad. */
 export type HapticKind = 'off' | 'alignment' | 'generic' | 'levelChange' | 'double';

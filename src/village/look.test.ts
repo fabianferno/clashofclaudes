@@ -1,7 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { HOUSE_COLORS, HOUSE_SWATCHES, classOf, gearOf, houseColors, stars, houseStage, scaffoldHeight, xpNeed } from './look';
+import { HOUSE_COLORS, HOUSE_SWATCHES, classOf, gearOf, houseColors, stars, scaffoldHeight } from './look';
 
 describe('look', () => {
   it('a chosen house colour wins; without one the id picks a stable automatic one', () => {
@@ -13,10 +11,6 @@ describe('look', () => {
     expect(houseColors({ id: 'x', color: HOUSE_COLORS[2].roof })).toEqual(HOUSE_COLORS[2]);
     // the automatic colours lead the swatches
     expect(HOUSE_SWATCHES.slice(0, HOUSE_COLORS.length).map((s) => s.roof)).toEqual(HOUSE_COLORS.map((c) => c.roof));
-  });
-
-  it('xp_need_curve', () => {
-    expect([1, 2, 3, 4, 5].map(xpNeed)).toEqual([100, 140, 196, 274, 384]);
   });
 
   it('class_mapping', () => {
@@ -37,10 +31,6 @@ describe('look', () => {
     expect(([0, 1, 2, 3, 4] as const).map(stars)).toEqual([1, 2, 3, 4, 4]);
   });
 
-  it('house_stage_thresholds', () => {
-    expect([1, 2, 3, 4, 6, 8, 20].map(houseStage)).toEqual([0, 1, 1, 2, 3, 4, 4]);
-  });
-
   it('scaffold_never_full', () => {
     expect(scaffoldHeight(0)).toBe(0);
     expect(scaffoldHeight(1e6)).toBeLessThan(0.921);
@@ -50,13 +40,6 @@ describe('look', () => {
       expect(v).toBeGreaterThan(prev);
       prev = v;
     }
-  });
-
-  it('xp_is_independent_of_look', () => {
-    const src = readFileSync(resolve(__dirname, '../../src-tauri/src/xp.rs'), 'utf8');
-    const code = src.replace(/\/\/.*$/gm, '');
-    expect(code).not.toMatch(/model/i);
-    expect(code).not.toMatch(/effort/i);
   });
 });
 

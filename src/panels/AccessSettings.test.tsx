@@ -8,7 +8,7 @@ import AccessSettings from './AccessSettings';
 import { useApp } from '../state/store';
 
 const status = (s: Partial<AccessStatus> = {}): AccessStatus => ({ state: 'closed', canClose: true, refused: null, command: null, who: ['You'], drift: null, invites: [], ...s });
-const ws = (id: string, name: string, boardShared: boolean): Workspace => ({ id, name, path: '/w', createdAt: 0, missing: false, level: 1, xp: 0, compound: null, boardShared });
+const ws = (id: string, name: string, boardShared: boolean): Workspace => ({ id, name, path: '/w', createdAt: 0, missing: false, compound: null, boardShared });
 
 beforeEach(() => {
   for (const f of Object.values(ipc)) f.mockReset();

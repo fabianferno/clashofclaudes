@@ -60,7 +60,7 @@ describe('status refresh', () => {
     const c = placeCompound([]);
     const s = { ...sess({ kind: 'working' }, 3), spot: findSpot(c, [])! };
     const input = {
-      workspaces: [{ id: 'w', name: 'w', path: '/w', createdAt: 0, missing: false, level: 1, xp: 0, compound: c }],
+      workspaces: [{ id: 'w', name: 'w', path: '/w', createdAt: 0, missing: false, compound: c }],
       builders: [{ id: 'b', name: 'b', agent: 'claude' as const, model: null, effort: null, customCommand: null }],
       sessions: [s],
     };

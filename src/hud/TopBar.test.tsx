@@ -77,7 +77,7 @@ test('no_tokens_shown', () => {
 test('the queue shows how long the longest-blocked builder has waited', () => {
   vi.useFakeTimers({ now: 20 * 60_000 });
   const workspaces = useApp.getState().workspaces;
-  act(() => useApp.setState({ workspaces: [{ id: 'w', name: 'w', path: '/w', createdAt: 0, missing: false, level: 1, xp: 0 }] as never }));
+  act(() => useApp.setState({ workspaces: [{ id: 'w', name: 'w', path: '/w', createdAt: 0, missing: false }] as never }));
   put([B('a'), B('b'), B('c')], [
     S('1', 'a', 'needsYou', { awaitingDecision: true, stateSince: 13 * 60_000 }),
     S('2', 'b', 'needsYou', { stateSince: 15 * 60_000 }),

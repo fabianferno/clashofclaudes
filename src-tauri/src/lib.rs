@@ -439,6 +439,11 @@ pub fn run() {
                 let h = app.handle().clone();
                 std::thread::spawn(move || {
                     board::app::connect_at_launch(&h);
+                    // then, for as long as the app runs: who deployed the phone remote
+                    loop {
+                        board::app::watch_remote(&h);
+                        std::thread::sleep(std::time::Duration::from_millis(board::deploy::WATCH_MS as u64));
+                    }
                 });
             }
             app.manage(commands::AppsState::default());
@@ -510,6 +515,11 @@ pub fn run() {
             board::app::remote_pair_confirm,
             board::app::remote_pair_cancel,
             board::app::remote_remove_phone,
+            board::app::remote_find,
+            board::app::remote_connect,
+            board::app::remote_deploy,
+            board::app::remote_deployed_version,
+            board::app::remote_trust,
             commands::detect_agents,
             commands::add_workspace,
             commands::create_workspace,

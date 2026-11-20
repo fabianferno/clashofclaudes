@@ -94,6 +94,10 @@ pub struct RemoteStatus {
     /// When something that was not a paired phone last tried to act.
     pub last_refused_at: Option<i64>,
     pub keychain_error: Option<String>,
+    /// Where the team's remote is deployed, once set up.
+    pub url: Option<String>,
+    /// The version of the remote this app carries.
+    pub bundled_version: String,
 }
 
 /// `board-remote.json`: the actions already applied (hashes of what was signed).
@@ -244,6 +248,8 @@ impl Remote {
             paused: g.paused.clone(),
             last_refused_at: g.last_refused_at,
             keychain_error: g.keychain_error.clone(),
+            url: None,
+            bundled_version: String::new(),
         }
     }
 

@@ -372,6 +372,10 @@ export interface RemoteStatus {
   paused: string | null;
   lastRefusedAt: number | null;
   keychainError: string | null;
+  /** Where the team's remote is deployed, once set up. */
+  url: string | null;
+  /** The version of the remote this app carries. */
+  bundledVersion: string;
 }
 
 /** A moment that can play a sound (see src/state/sounds.ts and src-tauri/src/sounds.rs). */

@@ -135,6 +135,19 @@ export const ipc = {
   remotePairConfirm: () => invoke<void>('remote_pair_confirm'),
   remotePairCancel: () => invoke<void>('remote_pair_cancel'),
   remoteRemovePhone: (key: string) => invoke<void>('remote_remove_phone', { key }),
+  /** The team's remote, if it has one (runs the `vercel` CLI). */
+  remoteFind: () => invoke<string | null>('remote_find'),
+  /** Uses the team's remote (null), or one at an address the owner deployed. */
+  remoteConnect: (url: string | null) => invoke<void>('remote_connect', { url }),
+  /** Deploys or updates the remote this app carries (a minute or two). */
+  remoteDeploy: () => invoke<void>('remote_deploy'),
+  remoteDeployedVersion: () => invoke<string | null>('remote_deployed_version'),
+  /** Trusts the remote as it is deployed now. */
+  remoteTrust: () => invoke<void>('remote_trust'),
+  onRemoteChanged: (cb: (s: RemoteStatus) => void): Promise<UnlistenFn> => listen<RemoteStatus>('remote-changed', (e) => cb(e.payload)),
+  /** The app changed settings itself (the phone remote's address, its switch after a deploy). */
+  onSettingsChanged: (cb: (s: Settings) => void): Promise<UnlistenFn> => listen<Settings>('settings-changed', (e) => cb(e.payload)),
+  onRemoteProgress: (cb: (line: string) => void): Promise<UnlistenFn> => listen<string>('remote-progress', (e) => cb(e.payload)),
   /** The folder holding the app's data. */
   dataFolder: () => invoke<string>('data_folder'),
   bugReportInfo: () => invoke<BugReportInfo>('bug_report_info'),

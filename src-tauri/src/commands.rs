@@ -189,7 +189,7 @@ fn detect_all(adapters: &[Arc<dyn AgentAdapter>], force: bool) -> Vec<AgentInfo>
 #[tauri::command]
 pub fn add_workspace(path: String, state: State<'_, AppState>) -> Result<Workspace, String> {
     let p = std::fs::canonicalize(&path).with_context(|| format!("cannot open {path}")).map_err(fmt_err)?;
-    let ws = workspace_from_path(&p, now_ms()).map_err(fmt_err)?;
+    let mut ws = workspace_from_path(&p, now_ms()).map_err(fmt_err)?;
     let mut d = state.data();
     ws.board_shared = crate::board::app::shares_new(&d.settings.board);
     if d.workspaces.iter().any(|w| w.path == ws.path) {
@@ -245,7 +245,7 @@ pub async fn create_workspace(parent: Option<String>, name: String, app: AppHand
         Some(p) => make_project_dir(Path::new(&p), &name, false)?,
         None => make_project_dir(&projects_dir(&app)?, &name, true)?,
     };
-    let ws = workspace_from_path(&p, now_ms()).map_err(fmt_err)?;
+    let mut ws = workspace_from_path(&p, now_ms()).map_err(fmt_err)?;
     let mut d = state.data();
     ws.board_shared = crate::board::app::shares_new(&d.settings.board);
     d.workspaces.push(ws.clone());
@@ -1140,7 +1140,11 @@ pub fn get_settings(state: State<'_, AppState>) -> Settings {
 pub fn set_settings(settings: Settings, app: AppHandle, state: State<'_, AppState>) -> Result<Settings, String> {
     let saved = {
         let mut d = state.data();
+        // where the phone remote is and which of its deployments are trusted is the app's own
+        // to change (Settings › Phone remote's buttons), never a stale copy from the window
+        let remote = d.settings.board.remote.clone();
         d.settings = settings.normalized();
+        d.settings.board.remote = crate::model::RemoteSettings { enabled: d.settings.board.remote.enabled, ..remote };
         crate::board::app::ensure_host_id(&mut d.settings.board);
         state.save(&d)?;
         d.settings.clone()

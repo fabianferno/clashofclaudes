@@ -4,6 +4,8 @@ import type { BoardSettings, BoardStatus, Workspace } from '../api/types';
 
 const ipc = vi.hoisted(() => ({ boardStatus: vi.fn(), boardCheck: vi.fn(), setWorkspaceShared: vi.fn() }));
 vi.mock('../api/ipc', () => ({ ipc }));
+// the phone remote's block has its own tests (RemoteSettings.test.tsx)
+vi.mock('./RemoteSettings', () => ({ default: () => null }));
 import TeamSettings, { WorkspaceShare } from './TeamSettings';
 import { useApp } from '../state/store';
 import { DEFAULT_SETTINGS } from '../state/settings';

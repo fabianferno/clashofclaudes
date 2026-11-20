@@ -260,7 +260,184 @@ pub fn remote_status_of<R: Runtime>(app: &AppHandle<R>) -> RemoteStatus {
     let Some(bs) = app.try_state::<BoardState>() else { return RemoteStatus::default() };
     let mut s = bs.remote.status();
     s.listening = bs.listener.status().0;
+    s.bundled_version = super::remote_src::version();
+    if let Some(st) = app.try_state::<AppState>() {
+        let d = st.data();
+        s.url = d.settings.board.remote.url.clone();
+        s.paused = d.settings.board.remote.paused.clone();
+    }
     s
+}
+
+/// Changes the phone remote's own settings, saves them, applies them and tells the window.
+fn update_remote<R: Runtime>(app: &AppHandle<R>, f: impl FnOnce(&mut crate::model::RemoteSettings)) -> Result<(), String> {
+    let st = app.try_state::<AppState>().ok_or("the app is starting")?;
+    let saved = {
+        let mut d = st.data();
+        f(&mut d.settings.board.remote);
+        // a long history of deployments is not worth keeping
+        let n = d.settings.board.remote.trusted.len();
+        if n > 100 {
+            d.settings.board.remote.trusted.drain(..n - 100);
+        }
+        crate::persist::save(&st.data_path, &d).map_err(|e| format!("{e:#}"))?;
+        d.settings.clone()
+    };
+    let _ = app.emit("settings-changed", saved);
+    apply(app);
+    let _ = app.emit("remote-changed", remote_status_of(app));
+    Ok(())
+}
+
+fn board_of<R: Runtime>(app: &AppHandle<R>) -> Result<(Arc<dyn BoardCli>, BoardSettings, std::path::PathBuf), String> {
+    let (bs, st) = (app.try_state::<BoardState>().ok_or("the board is not set up")?, app.try_state::<AppState>().ok_or("the app is starting")?);
+    let board = st.data().settings.board.clone();
+    let src = st.data_path.parent().map(|p| p.join("remote-src")).ok_or("no data folder")?;
+    Ok((bs.cli.clone(), board, src))
+}
+
+/// Looks at the remote's production deployments; one this Mac neither made nor trusted pauses the
+/// remote until the owner trusts it. Blocking (it runs `vercel`).
+pub fn watch_remote<R: Runtime>(app: &AppHandle<R>) {
+    let Ok((cli, board, _)) = board_of(app) else { return };
+    if !board.enabled || !board.remote.enabled || board.remote.url.is_none() || board.remote.paused.is_some() {
+        return;
+    }
+    let team = target(&board).team;
+    let Ok(Some(seen)) = super::deploy::production_deployments(cli.as_ref(), team.as_deref()) else { return };
+    if let Some(d) = super::deploy::unknown(&seen, &board.remote.trusted) {
+        let why = super::deploy::pause_reason(d);
+        let _ = update_remote(app, |r| r.paused = Some(why));
+    }
+}
+
+/// Whether the team already has a remote; its address when it does.
+#[tauri::command]
+pub async fn remote_find(app: AppHandle) -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let (cli, board, _) = board_of(&app)?;
+        Ok(match super::deploy::find(cli.as_ref(), target(&board).team.as_deref())? {
+            super::deploy::Found::Team { url, .. } => Some(url),
+            super::deploy::Found::None => None,
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Uses a remote that is already deployed: the team's own (no `url`), or one at an address the
+/// owner deployed themselves. Its deployments as they are now are trusted.
+#[tauri::command]
+pub async fn remote_connect(url: Option<String>, app: AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let (cli, board, _) = board_of(&app)?;
+        let team = target(&board).team;
+        let address = match url.as_deref().map(str::trim).filter(|u| !u.is_empty()) {
+            Some(u) if u.starts_with("https://") => u.trim_end_matches('/').to_string(),
+            Some(_) => return Err("The address must start with https://".to_string()),
+            None => match super::deploy::find(cli.as_ref(), team.as_deref())? {
+                super::deploy::Found::Team { url, .. } => url,
+                super::deploy::Found::None => return Err("This team has no remote yet.".to_string()),
+            },
+        };
+        let now = super::deploy::production_deployments(cli.as_ref(), team.as_deref())?.unwrap_or_default();
+        update_remote(&app, |r| {
+            r.url = Some(address);
+            for d in now {
+                if !r.trusted.contains(&d.id) {
+                    r.trusted.push(d.id);
+                }
+            }
+            r.paused = None;
+            r.enabled = true;
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Deploys the remote the app carries: the first time with fresh push keys and a setup secret,
+/// later as an update that keeps them. Says how far it is with `remote-progress` events.
+#[tauri::command]
+pub async fn remote_deploy(app: AppHandle) -> Result<(), String> {
+    let h = app.clone();
+    let (deployed, setup) = tauri::async_runtime::spawn_blocking(move || {
+        let (cli, board, src) = board_of(&h)?;
+        let bs = h.try_state::<BoardState>().ok_or("the board is not set up")?;
+        let team = target(&board).team;
+        let exists = super::deploy::production_deployments(cli.as_ref(), team.as_deref())?.is_some();
+        // Fresh secrets only for a project that is not there yet: making them again would cut
+        // every phone's notifications off.
+        let fresh = if exists { None } else { Some(super::deploy::new_secrets()?) };
+        if let Some(n) = &fresh {
+            bs.remote.reload();
+            bs.remote.set_setup_secret(n.setup.clone())?;
+        }
+        let said = h.clone();
+        let deployed = super::deploy::deploy(cli.as_ref(), team.as_deref(), &src, &target(&board).name, fresh.as_ref(), &move |m| {
+            let _ = said.emit("remote-progress", m.to_string());
+        })?;
+        let _ = std::fs::remove_dir_all(&src);
+        Ok::<_, String>((deployed, bs.remote.setup_secret()))
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    let url = deployed.url.clone();
+    update_remote(&app, |r| {
+        r.url = Some(deployed.url);
+        if !r.trusted.contains(&deployed.deployment) {
+            r.trusted.push(deployed.deployment);
+        }
+        r.paused = None;
+        r.enabled = true;
+    })?;
+    // The watcher that sends notifications is registered by one call carrying the setup secret.
+    // A Mac that did not make the project has no secret: Vercel registers it on the remote's first use.
+    if let Some(secret) = setup {
+        let _ = app.emit("remote-progress", "Turning on notifications…".to_string());
+        if rustls::crypto::CryptoProvider::get_default().is_none() {
+            let _ = rustls::crypto::ring::default_provider().install_default();
+        }
+        let fail = |e: http_client::Error| format!("The remote is deployed, but its notifications could not be turned on: {}", e.without_url());
+        let client = http_client::Client::builder().timeout(Duration::from_secs(60)).build().map_err(fail)?;
+        let res = client.post(format!("{url}/api/board/watchers")).header("x-coc-setup", secret).send().await.map_err(fail)?;
+        if !res.status().is_success() {
+            return Err(format!("The remote is deployed, but its notifications could not be turned on (it answered {}).", res.status()));
+        }
+    }
+    Ok(())
+}
+
+/// The version of the remote that is deployed, for "Update the remote".
+#[tauri::command]
+pub async fn remote_deployed_version(app: AppHandle) -> Result<Option<String>, String> {
+    let Some(url) = app.try_state::<AppState>().and_then(|st| st.data().settings.board.remote.url.clone()) else { return Ok(None) };
+    if rustls::crypto::CryptoProvider::get_default().is_none() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    }
+    let fail = |e: http_client::Error| format!("The remote could not be reached: {}", e.without_url());
+    let client = http_client::Client::builder().timeout(Duration::from_secs(20)).build().map_err(fail)?;
+    let body = client.get(format!("{url}/api/version")).send().await.map_err(fail)?.text().await.map_err(fail)?;
+    Ok(serde_json::from_str::<serde_json::Value>(&body).ok().and_then(|v| v["version"].as_str().map(str::to_string)))
+}
+
+/// The owner looked at who redeployed the remote and trusts it as it is now.
+#[tauri::command]
+pub async fn remote_trust(app: AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let (cli, board, _) = board_of(&app)?;
+        let now = super::deploy::production_deployments(cli.as_ref(), target(&board).team.as_deref())?.unwrap_or_default();
+        update_remote(&app, |r| {
+            for d in now {
+                if !r.trusted.contains(&d.id) {
+                    r.trusted.push(d.id);
+                }
+            }
+            r.paused = None;
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

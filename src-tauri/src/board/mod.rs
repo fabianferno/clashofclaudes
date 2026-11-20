@@ -13,12 +13,14 @@ use crate::queue::{queue_reason, QueueReason};
 
 pub mod app;
 pub mod cli;
+pub mod deploy;
 pub mod listen;
 pub mod pairing;
 pub mod phones;
 pub mod publisher;
 pub mod remote;
 pub mod remote_app;
+pub mod remote_src;
 pub mod store;
 
 #[cfg(test)]

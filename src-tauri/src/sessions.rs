@@ -32,7 +32,7 @@ pub enum ManagerEvent {
 
 pub type Emit = Arc<dyn Fn(ManagerEvent) + Send + Sync>;
 
-/// The facts about a session at the moment it was closed; the XP rules live in `commands::apply_close`.
+/// The facts about a session at the moment it was closed; whether it shipped is `commands::apply_close`'s call.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ClosedSession {
     pub workspace_id: String,
@@ -1449,7 +1449,7 @@ impl SessionManager {
         prior.rev = 0;
         prior.parked = None;
         prior.state = Some(SessionState::Finished);
-        prior.reached_finished = false; // XP again only for new work
+        prior.reached_finished = false; // ships again only for new work
         prior.started_at = now_ms();
         prior.state_since = prior.started_at;
         let in_worktree = self.in_own_worktree(ws, prior.worktree.as_ref());

@@ -85,7 +85,7 @@ test('accepted work plays its sound as the orbs land, whatever the house does', 
   }
 });
 
-test('the XP sound waits as long as the orbs fly', () => {
+test('the shipped sound waits as long as the orbs fly', () => {
   expect(XP_DELAY_MS).toBe((ORB_SECONDS + 0.2) * 1000);
   expect(closeSound({ shipped: false, stageBefore: 0, stageAfter: 0, workspaceId: 'w', unfinished: true, stuck: false, discarded: false })).toBeNull();
 });

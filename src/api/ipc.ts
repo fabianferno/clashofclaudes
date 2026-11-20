@@ -70,7 +70,7 @@ export const ipc = {
   deny: (id: string) => invoke<void>('deny', { id }),
   stopSession: (id: string) => invoke<void>('stop_session', { id }),
   resumeSession: (id: string) => invoke<SessionInfo>('resume_session', { id }),
-  /** `discard`: the owner didn't want its work: no XP even when finished. */
+  /** `discard`: the owner didn't want its work: not shipped even when finished. */
   closeSession: (id: string, discard = false) => invoke<CloseOutcome>('close_session', { id, discard }),
   /** Closed agent sessions that can be continued, newest first (all workspaces). */
   listHistory: () => invoke<HistoryEntry[]>('list_history'),

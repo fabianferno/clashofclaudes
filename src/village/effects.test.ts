@@ -20,7 +20,7 @@ describe('Particles', () => {
     p.dust({ x: 0, y: 0 }, 10, true);
     p.smoke({ x: 0, y: 0 });
     p.orbs({ x: 0, y: 0 }, { x: 80, y: -40 }, 5);
-    p.floatText({ x: 0, y: 0 }, '+100 XP', '#ffffff');
+    p.floatText({ x: 0, y: 0 }, '+1 shipped', '#ffffff');
     expect(p.count).toBeGreaterThan(0);
     const maxLife = Math.max(...p.list.map((q) => q.max));
     p.update(maxLife / 2);

@@ -261,6 +261,8 @@ function TodoCard({ todo, idle, done, all, disabled, tag }: {
   return (
     <article className="kb-card kb-todo" data-testid={`kb-todo-${todo.id}`}>
       {tag}
+      {!editing && <button type="button" className="kb-edit-btn" aria-label={`Edit ${todo.text || 'image task'}`} title="Edit"
+        disabled={busy} onClick={() => setEditing(true)}>✎</button>}
       {editing ? <TodoEditor todo={todo} onDone={() => setEditing(false)} /> : <>
         {todo.text && <div className="kb-title" title={todo.text} onDoubleClick={() => { if (!busy) setEditing(true); }}>{plainText(todo.text) || todo.text}</div>}
         <AttachmentStrip names={todo.images ?? []} />
@@ -279,8 +281,6 @@ function TodoCard({ todo, idle, done, all, disabled, tag }: {
         <button className="hud-btn sm" disabled={disabled || busy || !builderId || (!free && !wrapUp)}
           title={wrapUp ? `Closes ${all.find((b) => b.id === builderId)?.name ?? 'the builder'}'s finished session, then starts this` : undefined}
           onClick={() => void start()}>{wrapUp ? 'Close & start' : 'Start'}</button>
-        <button className="hud-btn grey sm" aria-label={`Edit ${todo.text || 'image task'}`} title="Edit" disabled={busy || editing}
-          onClick={() => setEditing(true)}>✎</button>
         <button className="hud-btn grey sm" aria-label={`Delete ${todo.text || 'image task'}`} disabled={busy} onClick={() => void remove()}>✕</button>
       </div>
       <div className="kb-opts">

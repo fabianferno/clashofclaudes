@@ -294,6 +294,7 @@
 /* a To Do's ✎, in its top corner so the start row keeps its room */
 .kb-card.kb-todo { position: relative; }
 .kb-todo > .kb-title, .kb-todo > .att-strip { padding-right: 26px; }
+.kb-todo > .kb-ws { max-width: calc(100% - 28px); }
 .kb-edit-btn { position: absolute; top: 6px; right: 6px; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 2px solid #d8c39a; border-radius: 8px; background: #fff8e8; color: #8a7558; font: 900 13px/1 system-ui; cursor: pointer; }
 .kb-edit-btn:hover:not(:disabled), .kb-edit-btn:focus-visible { border-color: #a8885a; color: #2b2018; outline: none; }
 .kb-edit-btn:disabled { opacity: .5; cursor: default; }

@@ -12,3 +12,18 @@ sounds for XP and level-ups, a notepad per workspace, and the daily raid report 
   task templates (write tests, fix lint, review) as blueprint scrolls.
 - **Phone approvals** and **shared team villages.** Both big, and both clash with the privacy
   model. Probably skip for now.
+
+## Publishing: the forge (2026-11-20)
+
+Terminals stand as forges, not rune stones (commits `ce87d49`, `46266d2`, `16e802a`), and night
+lights no longer glow by day (`8506e8c`). None of it is released yet.
+
+- **Release it.** Ship a release with the forge and the night-light fix (`docs/release.md`).
+- **Push the site after the release.** `28e850b` says "Terminals = forges" on the feature card and
+  in the feature list; pushing `main` deploys the site, so push once the release is out.
+- **New footage of a forge.** The reel's `stones` clip (`site/public/reel/`) still shows a rune stone
+  under the "forges" card. Record a forge (hot, embers, cold, smoke and sparks) and cut a new loop.
+- **The ad.** Its footage shows rune stones. Re-record those shots, or leave the ad as it is. Its
+  description (`site/src/pages/index.astro`) and the trailer lede (`Trailer.astro`) list what the
+  footage shows, so they dropped the rune stone; add the forge back to both once the footage has one.
+- **Build the site locally.** Astro needs Node 22.23.4 or newer; this Mac has 22.23.1.

@@ -69,7 +69,7 @@ fn only_shared_workspaces_and_their_agent_sessions() {
     assert_eq!((s.v, s.host.as_str(), s.owner.as_str(), s.name.as_deref(), s.seen), (1, "h1", "ada", Some("Ada"), 5_000));
     assert_eq!(s.workspaces.len(), 1);
     let w = &s.workspaces[0];
-    assert_eq!((w.slug.as_str(), w.name.as_str(), w.activity, w.level, w.color.as_deref()), ("api", "API", 1, 2, Some("#3d6fd6")));
+    assert_eq!((w.slug.as_str(), w.name.as_str(), w.activity, w.level, w.color.as_deref()), ("api", "API", Some(1), 2, Some("#3d6fd6")));
     assert_eq!(w.compound, Some(Compound { x0: 4, y0: 5, w: 6, h: 7, house: Tile { x: 5, y: 6 } }));
     assert_eq!(s.sessions.iter().map(|x| x.id.as_str()).collect::<Vec<_>>(), ["s1"]);
     // only builders with a session shown
@@ -138,5 +138,15 @@ fn same_but_seen_ignores_only_the_heartbeat() {
 #[test]
 fn a_map_without_activity_still_parses() {
     let w: MapWorkspace = serde_json::from_str(r#"{"s":"api","n":"API","l":6}"#).unwrap();
-    assert_eq!((w.activity, w.level), (0, 6));
+    assert_eq!((w.activity, w.level), (None, 6));
+}
+
+#[test]
+fn an_older_apps_map_reaches_the_visitor_without_a_made_up_activity() {
+    // `visit` hands the frontend the parsed map re-serialized: a missing "a" must stay missing,
+    // so the visitor falls back to "l" (an absent stage is not Quiet)
+    let old = r#"{"v":1,"host":"h","owner":"ada","seen":1,"workspaces":[{"s":"api","n":"API","l":6}],"builders":[],"sessions":[]}"#;
+    let v = serde_json::to_value(parse(old).unwrap()).unwrap();
+    assert!(v["workspaces"][0].get("a").is_none(), "got {v}");
+    assert_eq!(v["workspaces"][0]["l"], 6);
 }

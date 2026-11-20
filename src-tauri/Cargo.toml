@@ -38,6 +38,8 @@ tauri-plugin-global-shortcut = "2"
 base64 = "0.22"
 # Codex hook trust hashes (`adapters/codex.rs`); already built for Tauri.
 sha2 = "0.10"
+# The phone remote (`board/remote.rs`): P-256 signature checks; already built for rustls.
+ring = "0.17"
 # Bug reports (`bugreport.rs`): the same reqwest and rustls the updater already builds. Named apart
 # so tests keep their own plain-HTTP reqwest (dev-dependencies).
 http_client = { package = "reqwest", version = "0.13", default-features = false, features = ["multipart", "rustls-no-provider"] }

@@ -15,17 +15,15 @@ export const SOUND_MOMENTS: Array<{ moment: SoundMoment; label: string; hint: st
   { moment: 'start', label: 'Session starts', hint: 'A builder starts on a task' },
   { moment: 'minion', label: 'A minion joins', hint: 'An agent sends out a subagent' },
   { moment: 'working', label: 'Back to work', hint: 'You answered, and the builder picks up again' },
-  { moment: 'xp', label: 'XP earned', hint: 'You accepted finished work, and its house gains XP' },
-  { moment: 'levelUp', label: 'Level up', hint: 'A house reaches its next level (instead of XP earned)' },
+  { moment: 'xp', label: 'Work shipped', hint: 'You accepted finished work' },
 ];
 
-/** The XP sound waits for the orbs to reach the house and its "+100 XP" to rise (ORB_SECONDS + 0.2 in village/effects.ts). */
+/** The shipped sound waits for the orbs to reach the house and its "+1 shipped" to rise (ORB_SECONDS + 0.2 in village/effects.ts). */
 export const XP_DELAY_MS = 1400;
 
-/** The sound a close outcome plays: a level up, else the XP; nothing when it earned none. */
+/** The sound a close outcome plays: work shipped (the `xp` moment); nothing when it didn't ship. */
 export function closeSound(o: CloseOutcome): SoundMoment | null {
-  if (!o.earnedXp) return null;
-  return o.levelAfter > o.levelBefore ? 'levelUp' : 'xp';
+  return o.shipped ? 'xp' : null;
 }
 
 /** What a session waits on the owner for, as a sound moment; null while it does not. */
@@ -91,7 +89,7 @@ export function watchSounds(play: (m: SoundMoment) => void = playMoment): () => 
   const last = new Map<SoundMoment, number>();
   const timers = new Set<ReturnType<typeof setTimeout>>();
   const unsub = useApp.subscribe((st, prev) => {
-    // work accepted: XP (or a level up) as the orbs land
+    // work accepted: its sound as the orbs land
     if (st.lastClosed !== prev.lastClosed) {
       for (const [id, o] of Object.entries(st.lastClosed)) {
         const m = id in prev.lastClosed ? null : closeSound(o);

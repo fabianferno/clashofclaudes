@@ -48,7 +48,7 @@ test('decodeFrame: header bit 63 marks a skip-marker frame', () => {
 });
 
 test('decodes_close_outcome_shape: new fields pass through untouched', async () => {
-  const outcome = { earnedXp: true, xpGained: 100, levelBefore: 1, levelAfter: 2, workspaceId: 'w1', unfinished: false };
+  const outcome = { shipped: true, stageBefore: 0, stageAfter: 0, workspaceId: 'w1', unfinished: false };
   vi.mocked(invoke).mockResolvedValueOnce(outcome);
   await expect(ipc.closeSession('s1')).resolves.toEqual(outcome);
   expect(invoke).toHaveBeenCalledWith('close_session', { id: 's1', discard: false });

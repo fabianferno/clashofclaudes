@@ -144,7 +144,7 @@ test("with every builder busy, one whose session is only Finished takes the task
   // Ada is at work; Cy's changes wait in a worktree for review
   expect(screen.getAllByRole('option').map((o) => o.querySelector('.kb-pick-name')!.firstChild!.textContent!.trim())).toEqual(['Bo']);
   fireEvent.click(screen.getAllByRole('option')[0]);
-  ipc.closeSession.mockResolvedValue({ earnedXp: false, xpGained: 0, levelBefore: 1, levelAfter: 1, workspaceId: 'w1', unfinished: false, stuck: false, discarded: false });
+  ipc.closeSession.mockResolvedValue({ shipped: false, stageBefore: 0, stageAfter: 0, workspaceId: 'w1', unfinished: false, stuck: false, discarded: false });
   ipc.startSession.mockResolvedValue(sess('s9', 'b2', { kind: 'starting' }, { task: 'Fix login' }));
   ipc.setCompound.mockImplementation(async (_id, c) => ({ ...ws, compound: c }));
   ipc.setSessionSpot.mockImplementation(async (id, spot) => ({ ...useApp.getState().sessions[id], spot }));

@@ -12,5 +12,4 @@ export const DEFAULT_SOUNDS: Record<SoundMoment, string> = {
   minion: system('Pop'),
   working: '',
   xp: system('Bottle'),
-  levelUp: system('Submarine'),
 };

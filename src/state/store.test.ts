@@ -444,7 +444,7 @@ describe('compound moves', () => {
 
 describe('close notices', () => {
   const out = (o: Partial<CloseOutcome> = {}): CloseOutcome => ({
-    earnedXp: false, xpGained: 0, levelBefore: 1, levelAfter: 1, workspaceId: 'w1', unfinished: false, stuck: false, ...o,
+    shipped: false, stageBefore: 0, stageAfter: 0, workspaceId: 'w1', unfinished: false, stuck: false, ...o,
   });
   const texts = () => useApp.getState().notices.map((n) => n.text);
   beforeEach(() => { vi.useFakeTimers(); useApp.setState({ notices: [], lastClosed: {} }); });
@@ -452,27 +452,23 @@ describe('close notices', () => {
 
   test('close_unfinished_shows_notice', () => {
     useApp.getState().onClosed(out({ unfinished: true }), 's1');
-    expect(texts()).toEqual(['Closed \u2014 not finished, no XP']);
+    expect(texts()).toEqual(['Closed \u2014 not finished, not shipped']);
   });
   test('stuck beats unfinished', () => {
     useApp.getState().onClosed(out({ unfinished: true, stuck: true }), 's1');
-    expect(texts()).toEqual(['Closed while stuck \u2014 no XP']);
+    expect(texts()).toEqual(['Closed while stuck \u2014 not shipped']);
   });
-  test('earned shows +100 XP and records the outcome for the scene', () => {
-    useApp.getState().onClosed(out({ earnedXp: true, xpGained: 100 }), 's1');
-    expect(texts()).toEqual(['+100 XP']);
-    expect(useApp.getState().lastClosed.s1.earnedXp).toBe(true);
+  test('shipped shows +1 shipped and records the outcome for the scene', () => {
+    useApp.getState().onClosed(out({ shipped: true }), 's1');
+    expect(texts()).toEqual(['+1 shipped']);
+    expect(useApp.getState().notices.map((n) => n.kind)).toEqual(['ship']);
+    expect(useApp.getState().lastClosed.s1.shipped).toBe(true);
     useApp.getState().consumeClosed('s1');
     expect(useApp.getState().lastClosed.s1).toBeUndefined();
   });
-  test('xp notice shows the XP actually gained', () => {
-    useApp.getState().onClosed(out({ earnedXp: true, xpGained: 140 }), 's1');
-    expect(texts()).toEqual(['+140 XP']);
-  });
-  test('level_up_notice', () => {
-    useApp.getState().onClosed(out({ earnedXp: true, xpGained: 100, levelBefore: 1, levelAfter: 2 }), 's1');
-    expect(texts()).toEqual(['+100 XP', 'LEVEL UP! Level 2']);
-    expect(useApp.getState().notices.map((n) => n.kind)).toEqual(['xp', 'level']);
+  test('a house livening up a stage adds no notice: the village shows it', () => {
+    useApp.getState().onClosed(out({ shipped: true, stageBefore: 1, stageAfter: 2 }), 's1');
+    expect(texts()).toEqual(['+1 shipped']);
   });
   test('terminal_close_is_silent', () => {
     useApp.getState().onClosed(out(), 's1');

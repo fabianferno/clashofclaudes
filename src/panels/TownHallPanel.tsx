@@ -4,6 +4,7 @@ import * as wsActions from '../state/workspaceActions';
 import AgentsStatus from './AgentsStatus';
 import FolderHint from './FolderHint';
 import { CLASS_NAMES, PALETTE, classOf, gearOf, houseColors, stars } from '../village/look';
+import { activityOf } from '../village/activity';
 import BuilderAvatar from '../hud/BuilderAvatar';
 import { openRaidReport } from '../state/raid';
 import { BADGE_LABEL, badgeOf, builderTarget, liveSessionOf } from '../hud/hudState';
@@ -25,7 +26,7 @@ export default function TownHallPanel() {
       {workspaces.length === 0 && <div className="sp-note">No workspaces yet. Open one or start a new one.</div>}
       {workspaces.map((w) => (
         <button key={w.id} className="sp-row" data-testid={`hall-ws-${w.id}`} onClick={() => setSelection({ kind: 'workspace', id: w.id })}>
-          <span className="sp-av" style={{ background: houseColors(w).roof }}><span className="ol">{w.level}</span></span>
+          <span className="sp-av" style={{ background: houseColors(w).roof }} title={activityOf(w.ships ?? [], Date.now()).name} />
           <span className="sp-rowtext">
             <span className="sp-t">{w.name}</span>
             <span className="sp-d" title={w.path}>{count(w.id)} {count(w.id) === 1 ? 'session' : 'sessions'} · {w.path}</span>

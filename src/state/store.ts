@@ -153,7 +153,7 @@ export function moveValid(st: MoveState, target: MoveTarget, at: Tile): boolean 
   return houseClearOfWalls(c, at) && canPlace({ ...c, house: { x: -1e6, y: -1e6 } }, mates(null), at, HOUSE);
 }
 
-export interface Notice { id: number; text: string; kind: 'xp' | 'level' | 'info' }
+export interface Notice { id: number; text: string; kind: 'ship' | 'info' }
 
 const NOTICE_MS = 3000;
 const OUTCOME_MS = 10000;
@@ -172,7 +172,7 @@ export interface AppState {
   /** The builder looked at in the visited village (its session id there). */
   visitedSession: string | null;
   setVisitedSession: (id: string | null) => void;
-  /** XP-earning close outcomes by session id, for the village to play the orbs; cleared once consumed. */
+  /** Shipped close outcomes by session id, for the village to play the orbs; cleared once consumed. */
   lastClosed: Record<string, CloseOutcome>;
   /** A session was closed: pushes its notice(s) and remembers an earning outcome for the scene. Terminals stay silent. */
   onClosed: (o: CloseOutcome, sessionId?: string) => void;
@@ -342,12 +342,11 @@ export const useApp = create<AppState>((set, get) => ({
   },
   onClosed: (o, sessionId) => {
     const push = (text: string, kind: Notice['kind']) => get().notify(text, kind);
-    if (o.discarded) push('Discarded \u2014 no XP', 'info');
-    else if (o.stuck) push('Closed while stuck \u2014 no XP', 'info');
-    else if (o.unfinished) push('Closed \u2014 not finished, no XP', 'info');
-    else if (o.earnedXp) {
-      push(`+${o.xpGained} XP`, 'xp');
-      if (o.levelAfter > o.levelBefore) push(`LEVEL UP! Level ${o.levelAfter}`, 'level');
+    if (o.discarded) push('Discarded \u2014 not shipped', 'info');
+    else if (o.stuck) push('Closed while stuck \u2014 not shipped', 'info');
+    else if (o.unfinished) push('Closed \u2014 not finished, not shipped', 'info');
+    else if (o.shipped) {
+      push('+1 shipped', 'ship');
       if (sessionId) {
         set((st) => ({ lastClosed: { ...st.lastClosed, [sessionId]: o } }));
         setTimeout(() => get().consumeClosed(sessionId), OUTCOME_MS); // never leak if no structure was on screen

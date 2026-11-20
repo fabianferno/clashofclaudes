@@ -36,4 +36,3 @@ button { cursor: pointer; }
 .modal-bg { position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,.5); display: grid; place-items: center; }
 .modal { background: var(--panel); border-radius: 8px; padding: 20px; }
 .notice-info { color: var(--c-stuck, #c9c2b6); }
-.notice-level { color: #ffe066; font-weight: 700; }

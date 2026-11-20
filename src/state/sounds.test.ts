@@ -1,5 +1,5 @@
 import type { SessionInfo, SessionState, SoundMoment } from '../api/types';
-import { closeSound, soundsFor, watchSounds, REPEAT_MS, XP_DELAY_MS } from './sounds';
+import { closeSound, soundsFor, watchSounds, REPEAT_MS, SOUND_MOMENTS, XP_DELAY_MS } from './sounds';
 import { ORB_SECONDS } from '../village/effects';
 import { useApp } from './store';
 
@@ -63,22 +63,22 @@ test('the watcher plays nothing for the first state, and one sound for builders 
   vi.useRealTimers();
 });
 
-test('accepted work plays XP as the orbs land, or a level up instead', () => {
+test('accepted work plays its sound as the orbs land, whatever the house does', () => {
   vi.useFakeTimers();
   try {
     const played: string[] = [];
     const stop = watchSounds((m) => played.push(m));
-    const o = { earnedXp: true, xpGained: 100, levelBefore: 1, levelAfter: 1, workspaceId: 'w1', unfinished: false, stuck: false, discarded: false };
+    const o = { shipped: true, stageBefore: 0, stageAfter: 0, workspaceId: 'w1', unfinished: false, stuck: false, discarded: false };
     useApp.getState().onClosed(o, 'a');
     expect(played).toEqual([]);
     vi.advanceTimersByTime(XP_DELAY_MS);
     expect(played).toEqual(['xp']);
-    useApp.getState().onClosed({ ...o, levelAfter: 2 }, 'b');
+    useApp.getState().onClosed({ ...o, stageAfter: 1 }, 'b');
     vi.advanceTimersByTime(XP_DELAY_MS);
-    expect(played).toEqual(['xp', 'levelUp']);
-    useApp.getState().onClosed({ ...o, earnedXp: false, discarded: true }, 'c');
+    expect(played).toEqual(['xp', 'xp']);
+    useApp.getState().onClosed({ ...o, shipped: false, discarded: true }, 'c');
     vi.advanceTimersByTime(XP_DELAY_MS);
-    expect(played).toEqual(['xp', 'levelUp']);
+    expect(played).toEqual(['xp', 'xp']);
     stop();
   } finally {
     vi.useRealTimers();
@@ -87,5 +87,10 @@ test('accepted work plays XP as the orbs land, or a level up instead', () => {
 
 test('the XP sound waits as long as the orbs fly', () => {
   expect(XP_DELAY_MS).toBe((ORB_SECONDS + 0.2) * 1000);
-  expect(closeSound({ earnedXp: false, xpGained: 0, levelBefore: 1, levelAfter: 1, workspaceId: 'w', unfinished: true, stuck: false, discarded: false })).toBeNull();
+  expect(closeSound({ shipped: false, stageBefore: 0, stageAfter: 0, workspaceId: 'w', unfinished: true, stuck: false, discarded: false })).toBeNull();
+});
+
+test('Settings lists Work shipped and no level up', () => {
+  expect(SOUND_MOMENTS.map((m) => m.moment)).not.toContain('levelUp');
+  expect(SOUND_MOMENTS.find((m) => m.moment === 'xp')).toMatchObject({ label: 'Work shipped', hint: 'You accepted finished work' });
 });

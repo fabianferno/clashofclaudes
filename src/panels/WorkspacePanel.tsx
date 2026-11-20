@@ -6,7 +6,8 @@ import HistoryList from './HistoryList';
 import WorkspaceNotes from './WorkspaceNotes';
 import { WorkspaceShare } from './TeamSettings';
 import { boardItems, browserUrl, sessionsByWorkspace, useApp } from '../state/store';
-import { HOUSE_SWATCHES, houseColors, xpNeed } from '../village/look';
+import { HOUSE_SWATCHES, houseColors } from '../village/look';
+import { activityOf } from '../village/activity';
 import { StateTag } from './tags';
 import { sessionName, taskTooltip } from './sessionName';
 
@@ -41,8 +42,7 @@ export default function WorkspacePanel({ workspaceId }: { workspaceId: string })
   const agentSessions = all.filter((s) => s.kind.kind === 'agent');
   const terminals = all.filter((s) => s.kind.kind === 'terminal');
   const boards = boardItems({ apps, browsers, hiddenApps }).filter((b) => b.workspaceId === workspaceId);
-  const need = xpNeed(ws.level);
-  const pct = Math.max(0, Math.min(100, Math.round((ws.xp / need) * 100)));
+  const activity = activityOf(ws.ships ?? [], Date.now());
   const why = ws.missing ? `Folder not found: ${ws.path}` : undefined;
   const st = useApp.getState();
   const guard = async (f: () => Promise<void>) => {
@@ -91,9 +91,8 @@ export default function WorkspacePanel({ workspaceId }: { workspaceId: string })
   return (
     <>
       <div className="sp-box">
-        <b>Level {ws.level}</b> · <span>{ws.xp} / {need} XP</span>
-        <div className="sp-xp"><i data-testid="xp-fill" style={{ width: `${pct}%` }} /></div>
-        <div className="sp-d sp-gap">Closing a finished session adds XP here. Higher levels make this house grander.</div>
+        <b>{activity.name}</b> · <span>{activity.shippedThisWeek} shipped this week</span>
+        <div className="sp-d sp-gap">This house shows the last couple of weeks of accepted work. It quiets down when work stops.</div>
       </div>
       {ws.missing && (
         <div className="panel-warn">Folder not found: {ws.path}. Restore it (or move it back) to start work here, or remove this workspace from the village.</div>

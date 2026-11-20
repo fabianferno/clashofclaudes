@@ -147,11 +147,20 @@ test('plus_browser_opens_a_browser_board_and_pops_it_out', () => {
   expect(screen.queryByText('Browsers (1)')).toBeNull();
 });
 
-test('workspace_xp_bar_uses_need_curve', () => {
+test('the workspace panel says how busy the house is and what shipped this week', () => {
+  const now = Date.now();
+  act(() => useApp.setState({ workspaces: [ws({ ships: [0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => now - i * 12 * 3600_000) })] }));
   render(<WorkspacePanel workspaceId="w1" />);
-  expect(screen.getByText('Level 2')).toBeTruthy();
-  expect(screen.getByText('70 / 140 XP')).toBeTruthy();
-  expect(screen.getByTestId('xp-fill').style.width).toBe('50%');
+  expect(screen.getByText('Busy')).toBeTruthy();
+  expect(screen.getByText('9 shipped this week')).toBeTruthy();
+  expect(screen.queryByTestId('xp-fill')).toBeNull();
+});
+
+test('a quiet workspace says so', () => {
+  act(() => useApp.setState({ workspaces: [ws({ ships: [] })] }));
+  render(<WorkspacePanel workspaceId="w1" />);
+  expect(screen.getByText('Quiet')).toBeTruthy();
+  expect(screen.getByText('0 shipped this week')).toBeTruthy();
 });
 
 test('terminals_listed_not_as_structures', () => {
@@ -374,4 +383,12 @@ test('cmd +/- over the side panel sizes its text, not the village', () => {
   fireEvent.keyDown(window, { key: '0', metaKey: true });
   expect(usePanelZoom.getState().zoom).toBe(1);
   window.removeEventListener('keydown', village);
+});
+
+test('the Town Hall names how busy each house is, with no level number', () => {
+  act(() => useApp.setState({ workspaces: [ws({ ships: [Date.now()] })] }));
+  render(<TownHallPanel />);
+  const av = screen.getByTestId('hall-ws-w1').querySelector('.sp-av')!;
+  expect(av.getAttribute('title')).toBe('Stirring');
+  expect(av.textContent).toBe('');
 });

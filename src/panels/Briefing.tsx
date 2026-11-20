@@ -50,7 +50,7 @@ interface Props {
   answering: boolean;
   onAllow: () => void;
   onDeny: () => void;
-  /** Accept (`discard` false: closes it, XP when finished) or Discard (closes it, no XP). */
+  /** Accept (`discard` false: closes it, shipped when finished) or Discard (closes it, not shipped). */
   onClose: (discard: boolean) => void;
   /** The owner dealt with it (answered, followed up, parked): the queue may move on. */
   onDealt: () => void;
@@ -276,12 +276,12 @@ export default function Briefing({ session: s, canApprove, answering, onAllow, o
           </>
         )}
         {reason === 'review' && (
-          <button className="hud-btn sm" data-testid="accept" data-tour="close-session" title="Close it: the work is done (earns XP)" onClick={() => onClose(false)}>Accept +XP</button>
+          <button className="hud-btn sm" data-testid="accept" data-tour="close-session" title="Close it: the work is done" onClick={() => onClose(false)}>Accept</button>
         )}
         {!parked && parking === null && (
           <button className="hud-btn grey sm" title="Put it aside, out of your queue, until it changes" onClick={() => setParking('')}>Park</button>
         )}
-        <button className="hud-btn grey sm" title={reason === 'review' ? "Close it without taking the work (no XP); its changes stay on disk" : 'Close it (no XP)'}
+        <button className="hud-btn grey sm" title={reason === 'review' ? "Close it without taking the work; its changes stay on disk" : 'Close it (not shipped)'}
           onClick={() => onClose(true)}>{reason === 'review' ? 'Discard' : 'Close'}</button>
       </div>
       {parking !== null && (

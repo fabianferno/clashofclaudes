@@ -21,7 +21,7 @@ const sess = (id: string, state: SessionState, extra: Partial<SessionInfo> = {})
 beforeEach(() => {
   for (const f of Object.values(ipcMock)) f.mockReset();
   ipcMock.reviewSession.mockResolvedValue({ isGit: true, branch: 'main', files: [{ path: 'src/theme.ts', added: 42, removed: 3 }], untracked: ['src/Toggle.tsx'], otherSessionsActive: false });
-  ipcMock.closeSession.mockResolvedValue({ earnedXp: true, xpGained: 100, levelBefore: 1, levelAfter: 1, workspaceId: 'w1', unfinished: false, stuck: false });
+  ipcMock.closeSession.mockResolvedValue({ shipped: true, stageBefore: 0, stageAfter: 0, workspaceId: 'w1', unfinished: false, stuck: false });
   ipcMock.writeSession.mockResolvedValue(undefined);
   useApp.setState({
     error: null, selection: null, panelOpen: false, notices: [], kanban: null, settingsOpen: false,
@@ -52,25 +52,25 @@ test('a permission names the call it waits on', () => {
   expect(screen.queryByLabelText('Follow up')).toBeNull(); // Allow or Deny, not typing into the menu
 });
 
-test('Accept closes it for XP and, taken from the queue, the next one comes up', async () => {
+test('Accept closes it as shipped and, taken from the queue, the next one comes up', async () => {
   useApp.setState({ sessions: { a: sess('a', { kind: 'finished' }, { stateSince: 1 }), b: sess('b', { kind: 'finished' }, { stateSince: 2 }) } });
   useApp.getState().setSelection({ kind: 'session', id: 'a', queue: true });
   render(<SessionPanel sessionId="a" />);
   expect(screen.getByText('1 of 2')).toBeTruthy();
-  await act(async () => { fireEvent.click(screen.getByText('Accept +XP')); });
+  await act(async () => { fireEvent.click(screen.getByText('Accept')); });
   expect(ipcMock.closeSession).toHaveBeenCalledWith('a', false);
   expect(useApp.getState().selection).toEqual({ kind: 'session', id: 'b', queue: true });
 });
 
-test('Discard closes it without XP; the last one leaves the queue clear', async () => {
-  ipcMock.closeSession.mockResolvedValue({ earnedXp: false, xpGained: 0, levelBefore: 1, levelAfter: 1, workspaceId: 'w1', unfinished: true, stuck: false, discarded: true });
+test('Discard closes it unshipped; the last one leaves the queue clear', async () => {
+  ipcMock.closeSession.mockResolvedValue({ shipped: false, stageBefore: 0, stageAfter: 0, workspaceId: 'w1', unfinished: true, stuck: false, discarded: true });
   useApp.setState({ sessions: { a: sess('a', { kind: 'finished' }) } });
   useApp.getState().setSelection({ kind: 'session', id: 'a', queue: true });
   render(<SessionPanel sessionId="a" onClosed={(o, id) => useApp.getState().onClosed(o, id)} />);
   await act(async () => { fireEvent.click(screen.getByText('Discard')); });
   expect(ipcMock.closeSession).toHaveBeenCalledWith('a', true);
   const notes = useApp.getState().notices.map((n) => n.text);
-  expect(notes).toContain('Discarded — no XP');
+  expect(notes).toContain('Discarded — not shipped');
   expect(notes).toContain('Queue clear — nothing waits on you');
 });
 
@@ -249,7 +249,7 @@ test('a plan named in its last reply opens here, rendered, and Back returns to t
   expect(screen.queryByText('Its last reply')).toBeNull();
   // follow up on it from the same card
   expect(screen.getByLabelText('Follow up')).toBeTruthy();
-  expect(screen.getByText('Accept +XP')).toBeTruthy();
+  expect(screen.getByText('Accept')).toBeTruthy();
 
   // a link inside the doc is relative to the doc's folder
   fireEvent.click(screen.getByText('the spec'));

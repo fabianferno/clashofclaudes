@@ -14,6 +14,7 @@ use crate::queue::{queue_reason, QueueReason};
 pub mod access;
 pub mod access_app;
 pub mod app;
+pub mod borrow;
 pub mod cli;
 pub mod deploy;
 pub mod listen;

@@ -301,7 +301,7 @@ for the page to follow it, keeping "Bring the agents you already use".
   controls, pauses when scrolled away. Nothing downloads until it is played.
 - **Feature reel** (new signature, `Reel.astro`, `src/motion/reel.ts`): the ad's beats as a scroll
   story. Nine beats on the left (every session is a builder, needs you, outfits, ranks and hammers,
-  elixir, minions, rune stones and boards, levelling up, the Kanban), a sticky frame on the right
+  elixir, minions, forges and boards, levelling up, the Kanban), a sticky frame on the right
   playing each beat's loop of real app footage (`public/reel/*.mp4`, cut from the ad's raw shots,
   about 5 MB in all, each loaded only when its beat comes up). The Kanban beat pans the real
   screenshot. The active beat is read from live positions on every scroll. Phones pin the frame to

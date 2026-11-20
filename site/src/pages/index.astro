@@ -21,7 +21,7 @@ const marquee = [...agents.map((a) => ({ kind: a.key, name: a.name })), { kind: 
   <script slot="head" type="application/ld+json" set:html={JSON.stringify({
     '@context': 'https://schema.org', '@type': 'VideoObject',
     name: 'Clash of Claudes: the village in 43 seconds',
-    description: 'The ad for Clash of Claudes, recorded frame by frame from the real app: builders for every coding agent session, the red "!" when one needs you, elixir for token limits, subagent minions, rune stones, levelling up and the Kanban.',
+    description: 'The ad for Clash of Claudes, recorded frame by frame from the real app: builders for every coding agent session, the red "!" when one needs you, elixir for token limits, subagent minions, levelling up and the Kanban.',
     thumbnailUrl: new URL('/video/clash-of-claudes-ad.jpg', site.url).href,
     contentUrl: new URL('/video/clash-of-claudes-ad.mp4', site.url).href,
     embedUrl: new URL('/#ad', site.url).href,

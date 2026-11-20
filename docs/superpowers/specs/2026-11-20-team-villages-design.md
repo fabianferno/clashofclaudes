@@ -300,6 +300,20 @@ Plan: `docs/superpowers/plans/2026-11-20-team-villages-act.md`. Section 5 is bui
   in the seconds before its listener is up is missed (seen once in the real run: a pairing
   request). After the first event it resumes from its saved place.
 
+**Fixed after the whole-change review:** taking away comes first and does not wait for the
+board (removing an invite removes the key before the revoke is tried; lowering a level lowers
+the key at once); the invites in settings can only lower or remove a key, never raise it (a
+level rises only when the owner raises it in People or pairs a Mac); whose login may answer a
+pairing is read from the board's grant when the ticket opens, not from settings; the visitor's
+panel treats "sent" as belonging to one wait, so a builder that asks again can be answered, and
+it stops polling after two minutes.
+
+**Known and left:** a visitor's panel can be shown "Sent" by someone posting a look-alike action
+with that Mac's public key id (never "Done": results must be the owner's); an invited teammate
+can ask to pair a key that is already another person's; the level on Confirm is the one from
+when the ticket opened; another process of the same user could plant a key under this Mac's
+label before first use.
+
 **Verified on the real board** (`real_mate_run`, scratch board, one login playing both sides, the
 owner's phone remote off): the owner opened a pairing in `v/<owner>/pair`; the visitor found the
 ticket by the code, posted its request, and both sides showed the same check number; after

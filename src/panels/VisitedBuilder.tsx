@@ -26,7 +26,9 @@ export default function VisitedBuilder() {
   const [data, setData] = useState<Visited | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'closed' | 'none'>('loading');
   const [busy, setBusy] = useState(false);
-  const [sent, setSent] = useState(false);
+  // the wait an action was sent for: a newer wait is not "sent"
+  const [sentFor, setSentFor] = useState<string | null>(null);
+  const [polls, setPolls] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [words, setWords] = useState('');
   const session = visiting?.map.sessions.find((s) => s.i === id);
@@ -44,7 +46,8 @@ export default function VisitedBuilder() {
   useEffect(() => {
     if (!owner || !id) return;
     setData(null);
-    setSent(false);
+    setSentFor(null);
+    setPolls(0);
     setError(null);
     setWords('');
     if (!root) { setState('none'); return; }
@@ -55,10 +58,12 @@ export default function VisitedBuilder() {
   }, [owner, id, root, read]);
 
   // once something was sent, look again until the owner's Mac has answered
-  const waitingForAnswer = (sent || data?.sent === true) && !data?.result;
+  const sent = sentFor !== null && sentFor === data?.prompt;
+  // for two minutes; after that the panel shows what it last read (the owner's Mac may be asleep)
+  const waitingForAnswer = (sent || data?.sent === true) && !data?.result && polls < 40;
   useEffect(() => {
     if (!waitingForAnswer) return;
-    const t = setInterval(() => { void read().catch(() => {}); }, 3000);
+    const t = setInterval(() => { setPolls((n) => n + 1); void read().catch(() => {}); }, 3000);
     return () => clearInterval(t);
   }, [waitingForAnswer, read]);
 
@@ -75,7 +80,7 @@ export default function VisitedBuilder() {
     setBusy(true);
     setError(null);
     ipc.visitAct(owner, root, { do: d, ...extra, prompt: data.prompt })
-      .then(() => { setSent(true); return read().catch(() => {}); }, (e) => setError(String(e)))
+      .then(() => { setSentFor(data.prompt); setPolls(0); return read().catch(() => {}); }, (e) => setError(String(e)))
       .finally(() => setBusy(false));
   };
   const wordsFor: Do | null = can('followup') ? 'followup' : can('answer') ? 'answer' : null;

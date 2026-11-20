@@ -194,3 +194,16 @@ test('a failed send says why and gives the buttons back', async () => {
   expect(screen.getByRole('alert').textContent).toContain('Too late: it had moved on.');
   expect(screen.getByRole('button', { name: 'Deny' })).toBeTruthy();
 });
+
+test('after an answer was applied and the builder asks again, the new wait can be answered', async () => {
+  act2.mateKey.mockResolvedValue('k_me');
+  useApp.setState({ visiting: { owner: 'ada', map: withMate('trusted') }, visitedSession: 's1' });
+  ipc.visitBuilder.mockResolvedValue(waiting());
+  await act(async () => { render(<VisitedBuilder />); });
+  // by the time the panel reads again, the Allow was applied and a new prompt is open
+  ipc.visitBuilder.mockResolvedValue(waiting({ prompt: 'cd'.repeat(32), question: 'Bash: npm run build' }));
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Allow' })); });
+  expect(screen.getByText('Bash: npm run build')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Allow' })).toBeTruthy();
+  expect(screen.queryByText(/Sent to/)).toBeNull();
+});

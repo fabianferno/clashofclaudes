@@ -465,3 +465,23 @@ fn pairing_a_teammates_mac_gives_it_the_invites_level() {
     g.r.pair_confirm().unwrap();
     assert_eq!(g.store.load().unwrap().phones.iter().filter(|p| p.who.is_some()).count(), 1);
 }
+
+#[test]
+fn lowering_never_raises_and_a_visitor_has_no_key() {
+    use crate::model::Level;
+    let g = rig(DECIDE);
+    let mut s = g.store.load().unwrap();
+    s.phones[0].level = Some(Level::Helper);
+    s.phones[0].who = Some(crate::board::remote::Mate { email: "bob@acme.com".into(), handle: "bob".into(), user_id: "u_bob".into() });
+    g.store.save(&s).unwrap();
+    g.r.reload();
+    // what the settings file says is never a reason to give more
+    g.r.lower_mate("bob@acme.com", Level::Trusted).unwrap();
+    assert_eq!(g.store.load().unwrap().phones[0].level, Some(Level::Helper));
+    g.r.lower_mate("bob@acme.com", Level::Helper).unwrap();
+    assert_eq!(g.store.load().unwrap().phones.len(), 1);
+    // made a Visitor: nothing left to act with
+    g.r.lower_mate("bob@acme.com", Level::Visitor).unwrap();
+    assert!(g.store.load().unwrap().phones.is_empty());
+    assert!(g.r.lower_mate("nobody@acme.com", Level::Visitor).is_ok());
+}

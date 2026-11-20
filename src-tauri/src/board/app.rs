@@ -298,13 +298,15 @@ async fn access_change(app: AppHandle, f: impl FnOnce(&mut AccessCtx) -> Result<
         result?;
         let mut s = super::access_app::status(c.cli.as_ref(), &c.target, &c.me, &c.access, &c.slugs);
         if let Some(bs) = app.try_state::<BoardState>() {
-            // The paired keys follow the invites: a changed level at once, a removed invite gone.
+            // The paired keys follow the invites downwards only: a key whose invite is gone is
+            // removed, one whose invite asks for less is lowered. The invites live in a settings
+            // file, so they are never a reason to give a key more.
             let paired = bs.remote.paired_mates();
-            for email in paired.iter().filter(|e| !c.access.invites.iter().any(|i| &i.email == *e && i.level != crate::model::Level::Visitor)) {
+            for email in paired.iter().filter(|e| !c.access.invites.iter().any(|i| &i.email == *e)) {
                 let _ = bs.remote.remove_mate(email);
             }
             for i in &c.access.invites {
-                let _ = bs.remote.set_mate_level(&i.email, i.level);
+                let _ = bs.remote.lower_mate(&i.email, i.level);
             }
             let paired = bs.remote.paired_mates();
             for i in &mut s.invites {
@@ -368,26 +370,55 @@ pub async fn access_put_back(app: AppHandle) -> Result<super::access_app::Access
 /// Invites a teammate by their Vercel email, or changes their invite.
 #[tauri::command]
 pub async fn invite_put(email: String, level: crate::model::Level, workspaces: Option<Vec<String>>, app: AppHandle) -> Result<super::access_app::AccessStatus, String> {
-    access_change(app, move |c| super::access_app::invite_put(c.cli.as_ref(), &c.target, &c.me, &mut c.access, &c.slugs, &email, level, workspaces)).await
+    let who = email.trim().to_lowercase();
+    // Taking away happens first and does not wait for the board: from this moment their Mac
+    // may do no more than the new level, whatever becomes of the board call.
+    if let Some(bs) = app.try_state::<BoardState>() {
+        bs.remote.lower_mate(&who, level)?;
+    }
+    let (h, key) = (app.clone(), who.clone());
+    let status = access_change(app, move |c| super::access_app::invite_put(c.cli.as_ref(), &c.target, &c.me, &mut c.access, &c.slugs, &email, level, workspaces)).await?;
+    // Giving more happens here and only here: the owner chose this level just now.
+    if let Some(bs) = h.try_state::<BoardState>() {
+        bs.remote.set_mate_level(&key, level)?;
+    }
+    Ok(status)
 }
 
 /// Opens a pairing for an invited teammate's Mac; the code to send them (it lasts 5 minutes).
 /// Their invite must be Helper or Trusted, and the board must have named their Vercel user.
 #[tauri::command]
-pub fn mate_pair_start(email: String, app: AppHandle) -> Result<String, String> {
-    let (bs, st) = (app.try_state::<BoardState>().ok_or("the board is not set up")?, app.try_state::<AppState>().ok_or("the app is starting")?);
-    let invite = st.data().settings.board.access.invites.iter().find(|i| i.email == email).cloned().ok_or("No such invite.")?;
-    if invite.level == crate::model::Level::Visitor {
-        return Err("A Visitor only looks. Make them a Helper or Trusted first.".into());
-    }
-    let user_id = invite.user_id.ok_or("The board has not named this person yet. Press Put it back, then try again.")?;
-    let mut buf = [0u8; 8];
-    getrandom::fill(&mut buf).map_err(|e| e.to_string())?;
-    bs.remote.pair_start_mate(u64::from_be_bytes(buf), super::pairing::MateFor { email, user_id, level: invite.level })
+pub async fn mate_pair_start(email: String, app: AppHandle) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let (bs, st) = (app.try_state::<BoardState>().ok_or("the board is not set up")?, app.try_state::<AppState>().ok_or("the app is starting")?);
+        let invite = st.data().settings.board.access.invites.iter().find(|i| i.email == email).cloned().ok_or("No such invite.")?;
+        if invite.level == crate::model::Level::Visitor {
+            return Err("A Visitor only looks. Make them a Helper or Trusted first.".to_string());
+        }
+        // Whose login may answer comes from the board's own grant for this person, read now:
+        // the settings file could have been edited to name someone else.
+        let (cli, board, _) = board_of(&app)?;
+        let grants = cli.run(&super::access::list_args(&target(&board))).map(|v| super::access::parse_grants(&v)).map_err(|e| format!("{e:?}"))?;
+        let user_id = grants
+            .iter()
+            .find(|g| invite.grant.as_ref() == Some(&g.id) && g.email.as_deref().is_some_and(|e| e.eq_ignore_ascii_case(&email)))
+            .and_then(|g| g.user_id.clone())
+            .ok_or("Their invite is not on the board. Press Put it back, then try again.")?;
+        let mut buf = [0u8; 8];
+        getrandom::fill(&mut buf).map_err(|e| e.to_string())?;
+        bs.remote.pair_start_mate(u64::from_be_bytes(buf), super::pairing::MateFor { email, user_id, level: invite.level })
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
 pub async fn invite_remove(email: String, app: AppHandle) -> Result<super::access_app::AccessStatus, String> {
+    // Their Mac's key goes first, and goes whatever the board answers: a revoke that fails
+    // must not leave someone acting.
+    if let Some(bs) = app.try_state::<BoardState>() {
+        bs.remote.remove_mate(&email)?;
+    }
     access_change(app, move |c| super::access_app::invite_remove(c.cli.as_ref(), &c.target, &mut c.access, &email)).await
 }
 

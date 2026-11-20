@@ -144,6 +144,7 @@ export default function AccessSettings() {
       {mate?.state === 'asking' && (
         <div className="set-line">
           <span className="set-label">{mate.name} wants to pair, from {mate.forEmail}. Does it show {mate.check}?</span>
+          <span className="set-hint">Ask them to read you the number from their own screen. Confirm only if it is this one.</span>
           <button type="button" className="hud-btn green sm" disabled={busy} onClick={confirmMate}>Confirm</button>
           <button type="button" className="hud-btn grey sm" onClick={() => void ipc.remotePairCancel()}>Cancel</button>
         </div>

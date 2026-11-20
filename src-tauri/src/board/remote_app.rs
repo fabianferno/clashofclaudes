@@ -243,6 +243,30 @@ impl Remote {
         if changed { self.save_secrets(&mut g) } else { Ok(()) }
     }
 
+    /// Holds a teammate's key to at most `level`: lowered when it had more, removed for a
+    /// Visitor (who only looks), never raised. This is what following the invites means: the
+    /// invites are in a settings file anyone on this Mac can edit, so they can take away and
+    /// never give. Giving happens only when the owner pairs a Mac or raises a level in People.
+    pub fn lower_mate(&self, email: &str, level: crate::model::Level) -> Result<(), String> {
+        use crate::model::Level;
+        let rank = |l: Level| match l {
+            Level::Visitor => 0,
+            Level::Helper => 1,
+            Level::Trusted => 2,
+        };
+        let mut g = self.lock();
+        let before = g.phones.clone();
+        if level == Level::Visitor {
+            g.phones.retain(|p| p.who.as_ref().is_none_or(|w| w.email != email));
+        }
+        for p in g.phones.iter_mut().filter(|p| p.who.as_ref().is_some_and(|w| w.email == email)) {
+            if p.level.is_some_and(|had| rank(had) > rank(level)) {
+                p.level = Some(level);
+            }
+        }
+        if g.phones != before { self.save_secrets(&mut g) } else { Ok(()) }
+    }
+
     /// The owner removed an invite: that teammate's key is gone from this moment.
     pub fn remove_mate(&self, email: &str) -> Result<(), String> {
         let mut g = self.lock();

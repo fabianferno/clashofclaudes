@@ -240,3 +240,34 @@ Two parts that ship one after the other: **See** (sections 1 to 4) and **Act** (
 - Ground colour and ribbon art for a visited village, within the mockup's look.
 - Whether the visits listener is the existing listener with a wider subtree or a second one.
 - The wording of every line above.
+
+## Built: part 1, See (2026-11-20)
+
+Plan: `docs/superpowers/plans/2026-11-20-team-villages-see.md`. Sections 1 to 4 are built;
+section 5 (Act) is not. Differences from the text above:
+
+- **The map is smaller than promised.** One board message holds 10,000 characters. With short
+  keys it is tested whole at 20 workspaces and 30 sessions (real-length ids); a bigger village
+  loses its finished sessions first, then its oldest. The design said 40 and 60.
+- **The default is applied when Settings first asks for the access status**, not silently at
+  connect: the owner sees the village close. Until Settings is opened once, a village is open.
+- **The grants are re-read when Settings › Team opens**, not every 5 minutes in the background,
+  so drift shows there and nowhere else yet.
+- **Three separate grant calls in a safe order** (owner, remote, everyone out), not one `--file`
+  write. A refused step takes back what the call made.
+- **Any refusal of the "everyone out" grant is treated as "not a team owner".** The real refusal
+  was never observed (the spike and the run were done as an owner).
+- **The level chosen in People is kept in settings as what the owner wants.** Nothing acts on it
+  yet; part 2 puts the authority on the paired key in the Keychain, as designed.
+- **A visited village's ground is tinted by an overlay**, not by the scene; houses and the hall
+  there do nothing when clicked, only builders open a panel.
+- **`mates` is always empty** until part 2; the ribbon always says Visitor.
+
+**Verified on the real board** (`real_village_closes_and_is_visited`, scratch board, the updated
+CLI): closing the login's village made three grants and read back as closed, visible to "You" and
+the phone remote; the owner could still post the map inside; a visits refresh found the village
+and its map; opening revoked everything and read back as open.
+
+**Not verified:** a second person (one login cannot play two); a regular member being refused;
+the Settings block, the people row and the visiting view in the running app (component tests
+only); the map being published by the running app.

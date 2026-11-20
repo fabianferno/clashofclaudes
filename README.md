@@ -105,6 +105,20 @@ If you have a Vercel team, the village can show on its [Board](https://vercel.co
 
 Visiting teammates' villages and lending builders build on this and come later.
 
+### Team villages
+
+Each person on a Vercel team has their own village. You decide who sees yours, and you can walk into the ones you were invited to.
+
+- **Private village** (Settings › Team) closes your village on the board to everyone you did not invite. It is turned on the first time Settings sees the board connected. Under the switch, Settings always says who can see your village right now, read from the board itself.
+- **Only an owner of the Vercel team can close a village.** If you are a member, the switch is read-only and Settings gives you the command for an owner to run. Until one does, everyone on the team can see your village.
+- **People.** Invite a teammate by their Vercel email, as a Visitor, Helper or Trusted, for all your shared workspaces or some. In this version every invited person can look, and nobody can act yet: answering and approving from a teammate's Mac comes next.
+- **Visiting.** The villages you were invited to appear as a row at the top left, each with the number of builders waiting there. Click one to see it as its owner laid it out, under a ribbon that says whose it is, and press **Home** to come back. Your own sessions keep running, and your queue and notifications stay yours. Click a builder there to read what it works on and what it waits for.
+
+Two things to know:
+
+- **Your own agents can reopen your village**, because they run with your Vercel login and so can change the board's access rules. They cannot act in anyone's village. Settings checks the rules when it opens and offers **Put it back** when they are not what you set.
+- **With the phone remote set up, whoever can deploy the `village-remote` project can read every private village that lets the remote in.** Settings names this in "who can see this village".
+
 ### Phone remote
 
 Answer your builders from your phone. A small web app, the remote, runs on your team's own Vercel account; your Mac listens to the board and applies what a paired phone sends, as if you had clicked in the window. It is off until you set it up, and separate from the switch above.
@@ -129,6 +143,7 @@ The app plays a sound when a builder wants a decision, asks you something, finis
   - **The update check**, which you can turn off in Settings (the gear at the top right, or ⌘,). Development builds (`pnpm app`) never check.
   - **Reports you choose to send** (Help › Report a Bug…, Help › Request a Feature…, Settings › Beta feedback). A report holds what you type, app and system details (app, macOS and agent versions, counts of workspaces and sessions, and the last error the app showed, if any; never workspace names or tasks) and, only if you tick it, a screenshot. You see all of it before sending. It goes to the project's Discord.
   - **Vercel Board, only if you turn it on** (Settings › Team): for each workspace you share, the state of its agent sessions and, with Share details on, their tasks, tool calls, the agent's last reply and changed file names go to your Vercel team's board through your own `vercel` CLI. Board stores them in the United States, and your Vercel team can read them.
+  - **Your village's map, with Vercel Board on**: where your shared workspaces stand, their names and levels, your builders' names, and each session's state. Only the people who can see your village on the board can read it (see Team villages).
   - **The phone remote, only if you set it up** (Settings › Team › Phone remote): the remote reads the same board, as its own Vercel project on your team. It adds to the board each paired phone's name and public key, the address its notifications go to, and every action a phone sends. Notifications pass through the phone maker's push service (Apple, Google or Mozilla) and carry the builder's name, the workspace and, with Share details on, the command or question.
   - **Anonymous usage counts, only if you turn them on** (the welcome, or Settings › Data & privacy; off until you do). Each is one of a fixed few: the app opened (with how many workspaces and builders), a session or terminal started (and which agent), a permission prompt allowed or denied, the Kanban opened. Each carries the app and macOS versions, the chip, and a random id made when you turn sharing on and deleted when you turn it off. Never names, paths, tasks, prompts or output. They go to PostHog's EU cloud.
 - A build you make from source has no bug reporting and sends no usage counts unless you give it your own keys (`COC_BUG_WEBHOOK`, `COC_POSTHOG_KEY`; see `src-tauri/build.rs`).

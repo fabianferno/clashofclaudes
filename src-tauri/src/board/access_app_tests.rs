@@ -209,3 +209,57 @@ fn the_window_cannot_change_what_the_app_owns() {
     let from_window = AccessSettings::default();
     assert_eq!(keep_app_owned(&old, &from_window), old);
 }
+
+/// With the real `vercel` on the PATH, on the scratch board `coc-spike` of the login's default
+/// team: closes the login's village there, reads it back, publishes a map, builds a visit from
+/// it as another person would, and opens the village again. Leaves no grant behind.
+/// `cargo test --lib real_village_closes_and_is_visited -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn real_village_closes_and_is_visited() {
+    use crate::board::cli::{args_for_msg, status as board_status, MsgWrite, VercelCli};
+    use crate::board::snapshot::{text, Snapshot};
+    use crate::board::visits::Visits;
+    let cli = VercelCli { program: None, cwd: std::env::temp_dir(), timeout: std::time::Duration::from_secs(60) };
+    let target = Target { team: None, name: "coc-spike".into() };
+    let st = board_status(&cli, &target);
+    assert_eq!(st.state, "ready", "{st:?}");
+    let owner = st.handle.unwrap();
+    let who: serde_json::Value = serde_json::from_str(cli.raw(&["whoami".to_string(), "--json".to_string()]).unwrap().stdout.trim()).unwrap();
+    let me = Me { owner: owner.clone(), email: who["email"].as_str().unwrap().to_string() };
+    let slugs = BTreeMap::new();
+    let mut set = AccessSettings::default();
+
+    let before = status(&cli, &target, &me, &set, &slugs);
+    println!("BEFORE {} who {:?}", before.state, before.who);
+    assert_eq!(before.state, "open");
+
+    close(&cli, &target, &me, true, &mut set).unwrap();
+    let closed = status(&cli, &target, &me, &set, &slugs);
+    println!("CLOSED {} who {:?} grants {:?} drift {:?}", closed.state, closed.who, set.grants, closed.drift);
+    assert_eq!(closed.state, "closed");
+    assert_eq!(closed.who, ["You", "The phone remote, and whoever can deploy it"]);
+    assert_eq!(closed.drift, None);
+
+    // the owner still writes inside: the village's map
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64;
+    let snap = Snapshot { v: 1, host: "realvisit".into(), owner: owner.clone(), name: Some("Real run".into()), seen: now, workspaces: vec![], builders: vec![], sessions: vec![], mates: vec![] };
+    let post = MsgWrite::Post { channel: format!("v/{owner}/village"), text: text(&snap), labels: vec![("coc.kind".into(), "village-map".into())], key: format!("coc-map-realvisit-{now}") };
+    let posted = cli.run(&args_for_msg(&post, &target)).unwrap();
+    println!("MAP posted as {}", posted["message"]["id"]);
+
+    // someone else's app, with this login's access: the village is one to visit, and its map is the owner's
+    let dir = tempfile::tempdir().unwrap();
+    let mut visits = Visits::load(dir.path().join("v.json"));
+    visits.refresh(&cli, &target, "someone-else", now).unwrap();
+    let list = visits.list(now);
+    println!("VISITS {:?}", list.iter().map(|v| (v.owner.clone(), v.name.clone(), v.away)).collect::<Vec<_>>());
+    let mine = list.iter().find(|v| v.owner == owner).expect("the village is listed");
+    assert_eq!((mine.name.as_deref(), mine.away), (Some("Real run"), false));
+
+    open(&cli, &target, &mut set).unwrap();
+    let after = status(&cli, &target, &me, &set, &slugs);
+    println!("AFTER {} who {:?} grants {:?}", after.state, after.who, set.grants);
+    assert_eq!(after.state, "open");
+    assert!(set.grants.is_empty());
+}

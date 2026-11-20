@@ -278,3 +278,171 @@ fn real_mate_run() {
     std::thread::sleep(Duration::from_secs(6));
     listener.stop();
 }
+
+/// Borrowing a builder on the real board, with one login playing both sides and a throwaway
+/// repository with a local bare `origin`: the visitor signs and posts a request; the lender's
+/// listener hears it, the desk takes it and cuts a worktree from origin; a commit stands in for
+/// the agent's work; finishing pushes the branch; closing removes the worktree and keeps the
+/// branch. Then a replayed request and one posted in another workspace's channel start nothing.
+/// `COC_BOARD_VERCEL=/path/to/vercel cargo test --lib real_borrow_run -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn real_borrow_run() {
+    use super::borrow::Lend;
+    use super::cli::{args_for_msg, message_id, BoardCli, MsgWrite};
+    use super::desk::{Borrowed, Desk, Started, Yard, YardBuilder, YardWorkspace};
+    use super::mac_key::{MacKey, MemoryKey};
+    use super::phones::{SecretStore, Secrets};
+    use super::remote::{key_id, Mate, Phone};
+    use super::visitor::{borrow_request, borrow_result};
+    use super::visits::thread_args;
+    use crate::git::test_util::{git, repo_with_commit};
+    use crate::model::Level;
+    use std::path::{Path, PathBuf};
+
+    let program = std::env::var("COC_BOARD_VERCEL").expect("COC_BOARD_VERCEL");
+    let dir = tempfile::tempdir().unwrap();
+    let cli = Arc::new(VercelCli { program: Some(program.into()), cwd: dir.path().to_path_buf(), timeout: Duration::from_secs(60) });
+    let target = Target { team: None, name: "coc-spike".into() };
+    let st = status(cli.as_ref(), &target);
+    assert_eq!(st.state, "ready", "{st:?}");
+    let owner = st.handle.unwrap();
+    let host = format!("borrowrun{}", now() / 1000);
+    let wait_for = |what: &str, f: &dyn Fn() -> bool| {
+        let started = Instant::now();
+        while !f() {
+            assert!(started.elapsed() < Duration::from_secs(90), "timed out waiting for {what}");
+            std::thread::sleep(Duration::from_millis(500));
+        }
+        println!("OK {what} ({:.0?})", started.elapsed());
+    };
+
+    // the lender's repository, cloned from a bare origin
+    let seed = dir.path().join("seed");
+    std::fs::create_dir_all(&seed).unwrap();
+    repo_with_commit(&seed);
+    git(&seed, &["branch", "-M", "main"]);
+    let origin = dir.path().join("origin.git");
+    git(dir.path(), &["clone", "-q", "--bare", &seed.to_string_lossy(), &origin.to_string_lossy()]);
+    let repo = dir.path().join("repo");
+    git(dir.path(), &["clone", "-q", &origin.to_string_lossy(), &repo.to_string_lossy()]);
+    std::fs::write(repo.join("local.txt"), "the lender's own unpushed work\n").unwrap();
+    git(&repo, &["add", "local.txt"]);
+    git(&repo, &["-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "-m", "local"]);
+
+    // the visitor's key, paired with the lender as a Helper, and the builder lent to every paired Mac
+    let visitor = MemoryKey::new();
+    let public = visitor.public().unwrap();
+    let store = Arc::new(MemoryStore::default());
+    store
+        .save(&Secrets {
+            phones: vec![Phone { key: key_id(&public), public, name: "visitor".into(), paired_at: 1, last_used: 0, record: None, level: Some(Level::Helper), who: Some(Mate { email: "mate@example.com".into(), handle: "mate".into(), user_id: "u".into() }) }],
+            lends: vec![Lend { builder: "b1".into(), keys: None, workspaces: None, floor: 0, ask: false }],
+            ..Default::default()
+        })
+        .unwrap();
+
+    /// The lender's Mac with real git; "starting the session" stands in for an agent.
+    struct GitYard {
+        repo: PathBuf,
+        worktrees: PathBuf,
+        started: Mutex<Vec<String>>,
+    }
+    impl Yard for GitYard {
+        fn builder(&self, profile: &str) -> Option<YardBuilder> {
+            (profile == "wizard").then(|| YardBuilder { id: "b1".into(), name: "Wizard".into(), busy: !self.started.lock().unwrap().is_empty(), elixir: None })
+        }
+        fn workspace(&self, slug: &str) -> Option<YardWorkspace> {
+            (slug == "real-borrow").then(|| YardWorkspace { id: "w1".into(), name: "real-borrow".into(), lendable: crate::git::lendable(&self.repo) })
+        }
+        fn start(&self, _: &str, _: &str, task: &str, branch: &str) -> Result<Started, String> {
+            crate::git::fetch_origin(&self.repo).map_err(|e| e.to_string())?;
+            let base = crate::git::default_branch(&self.repo).ok_or("no default branch")?;
+            let at = self.worktrees.join(branch.replace('/', "-"));
+            crate::git::add_worktree_from(&self.repo, &at, branch, &format!("origin/{base}")).map_err(|e| e.to_string())?;
+            self.started.lock().unwrap().push(task.to_string());
+            Ok(Started { session: "s-borrowed".into(), worktree: at, repo: self.repo.clone() })
+        }
+        fn push(&self, b: &Borrowed, first: bool) -> Result<(), String> {
+            crate::git::push_branch(&b.worktree, &b.branch, first).map_err(|e| e.to_string())
+        }
+        fn remove_if_safe(&self, b: &Borrowed) -> bool {
+            crate::git::safe_to_remove(&b.worktree, &b.branch) && crate::git::remove_worktree_keep_branch(&b.repo, &crate::model::WorktreeInfo { path: b.worktree.clone(), branch: Some(b.branch.clone()) }).is_ok()
+        }
+        fn notify(&self, title: &str, body: &str) {
+            println!("NOTIFY {title} | {body}");
+        }
+    }
+    let yard = Arc::new(GitYard { repo: repo.clone(), worktrees: dir.path().join("worktrees"), started: Mutex::default() });
+
+    // the lender's Mac: publisher, remote (for the record), desk, listener
+    let publisher = Publisher::start(cli.clone(), dir.path().join("board.json"), Arc::new(|_| vec![]), Arc::new(now));
+    publisher.configure(Config { enabled: true, target: target.clone(), owner: owner.clone(), host_id: host.clone(), share_details: true });
+    struct NoSessions;
+    impl Sessions for NoSessions {
+        fn since(&self, _: &str) -> Option<i64> {
+            None
+        }
+        fn approve_if(&self, _: &str, _: i64) -> Result<(), String> {
+            Ok(())
+        }
+        fn deny_if(&self, _: &str, _: i64) -> Result<(), String> {
+            Ok(())
+        }
+        fn prompt_if(&self, _: &str, _: i64, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn pick_if(&self, _: &str, _: i64, _: Option<usize>, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+    }
+    let remote = Arc::new(Remote::new(publisher.clone(), Arc::new(NoSessions), store, dir.path().join("r.json"), Arc::new(now), Arc::new(|| {})));
+    remote.configure(Some(Village { host: host.clone(), owner: owner.clone(), version: "test".into() }), None);
+    let desk = Arc::new(Desk::new(remote.clone(), publisher.clone(), yard.clone(), dir.path().join("borrowed.json"), Arc::new(now), Arc::new(|| {})));
+    let asks = desk.clone();
+    let listener = Listener::start(cli.clone(), dir.path().join("listen.json"), Box::new(move |e| asks.on_event(&e)));
+    listener.configure(Some(Following { target: target.clone(), owner: owner.clone() }));
+    std::thread::sleep(Duration::from_secs(8));
+
+    // the visitor asks
+    let post = |w: &MsgWrite| message_id(&cli.run(&args_for_msg(w, &target)).unwrap()).unwrap();
+    let result_of = |id: &str| borrow_result(&cli.run(&thread_args(id, &target)).unwrap(), &owner, id);
+    let (request, write) = borrow_request(&visitor, &owner, &host, "wizard", "real-borrow", "Add an export module", now(), &format!("{:032x}", now())).unwrap();
+    let asked = post(&write);
+    println!("VISITOR asked {asked}");
+    wait_for("the desk to start the borrowed work", &|| !desk.borrowed().is_empty());
+    let b = desk.borrowed().remove(0);
+    println!("LENDER started on {} in {}", b.branch, b.worktree.display());
+    assert!(b.worktree.join("a.txt").is_file());
+    assert!(!b.worktree.join("local.txt").exists(), "the lender's unpushed commit is not in the borrower's worktree");
+    wait_for("the visitor to read `started`", &|| result_of(&asked).is_some_and(|(r, _)| r == "started"));
+
+    // the agent's work, then Finished: the branch is pushed, and only it
+    std::fs::write(b.worktree.join("export.rs"), "pub fn export() {}\n").unwrap();
+    git(&b.worktree, &["add", "export.rs"]);
+    git(&b.worktree, &["-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "-m", "export"]);
+    desk.on_finished(&b.session, Some(&asked));
+    let heads = std::process::Command::new("git").arg("-C").arg(&origin).args(["for-each-ref", "--format=%(refname:short)", "refs/heads"]).output().unwrap();
+    let heads = String::from_utf8_lossy(&heads.stdout).to_string();
+    println!("ORIGIN has: {}", heads.split_whitespace().collect::<Vec<_>>().join(", "));
+    assert!(heads.contains(&b.branch) && !heads.contains("local"), "{heads}");
+    assert!(desk.borrowed()[0].pushed);
+
+    // a replayed request, and a fresh one posted in another workspace's channel: nothing starts
+    yard.started.lock().unwrap().clear();
+    let replay = post(&MsgWrite::Post { channel: format!("v/{owner}/w/real-borrow"), text: serde_json::to_string(&request).unwrap(), labels: vec![("coc.kind".into(), "borrow".into())], key: format!("replay-{}", now()) });
+    let (_, elsewhere) = borrow_request(&visitor, &owner, &host, "wizard", "real-borrow", "Something else", now(), &format!("{:032x}", now() + 7)).unwrap();
+    let MsgWrite::Post { text, labels, key, .. } = elsewhere else { unreachable!() };
+    let moved = post(&MsgWrite::Post { channel: format!("v/{owner}/w/other-place"), text, labels, key });
+    wait_for("the replay to be refused", &|| result_of(&replay).is_some_and(|(r, w)| r == "refused" && w.as_deref() == Some("already taken")));
+    wait_for("the moved request to be refused", &|| result_of(&moved).is_some_and(|(r, w)| r == "refused" && w.as_deref() == Some("posted in another workspace's channel")));
+    assert!(yard.started.lock().unwrap().is_empty(), "nothing started");
+
+    // Done: the worktree goes (clean, pushed), the branch stays
+    assert_eq!(desk.on_closed(&b.session), None);
+    assert!(!b.worktree.exists());
+    assert!(Path::new(&origin).exists());
+    println!("DONE: borrowed, pushed only its branch, refused a replay and a moved request, closed cleanly");
+    std::thread::sleep(Duration::from_secs(4));
+    listener.stop();
+}

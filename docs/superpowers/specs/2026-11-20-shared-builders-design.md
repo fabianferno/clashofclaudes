@@ -242,3 +242,33 @@ the lender's app says where. The branch is never deleted, locally or on `origin`
 - How the guest camp's compound is placed and drawn with the existing layout code.
 - How the lender's queue shows a borrow request beside its session items.
 - The mark on a borrowed session in the lender's village, and the wording of every line above.
+
+## Built (2026-11-20)
+
+Plan: `docs/superpowers/plans/2026-11-20-shared-builders.md`. Differences from the text above:
+
+- **Who a session works for is kept in the board module's own file** (`board-borrowed.json`,
+  beside the branch and worktree), not in `SessionInfo`. The record of what is lent and the
+  nonces of taken requests are in the Keychain as designed.
+- **Low elixir is "at or under the floor", and a floor of 0 is none**, the window's own rule.
+- **Borrowing lives in one card at the top right** for both sides: the lender's requests and
+  sessions working for teammates (with "Push again"), and the borrower's borrowed builders and
+  the answers to their requests. The lender's line "Working for bob" is there, not in the
+  session's own Briefing panel.
+- **The guest camp's place is kept in the window's local storage**, not in settings. A workspace
+  dragged onto it makes the camp find a new place on the next draw.
+- **Done closes through the app's own Close**, so the raid report, ships and the board see it as
+  an accepted close.
+- **The branch suffix is the first four hex characters of the request's nonce** (random in the
+  app; a test that builds its nonce from the clock gets `0000`).
+
+**Verified on the real board** (`real_borrow_run`, scratch board, the updated CLI, one login
+playing both sides, a throwaway repository with a local bare `origin`, a commit standing in for
+the agent's work): the visitor's signed request was heard and taken; the worktree was cut from
+`origin` and did not contain the lender's unpushed commit; the visitor read `started`; finishing
+pushed that branch and nothing else; a replay was refused as already taken and a request posted
+in another workspace's channel was refused; Done removed the worktree and kept the branch.
+
+**Not verified:** a real agent session started for a borrower; the screens, the guest camp and
+the borrow card in the running app (component tests, and a test that the scene draws the camp);
+two people on two Macs; a push to a real hosted `origin`.

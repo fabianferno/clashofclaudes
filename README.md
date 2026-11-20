@@ -121,6 +121,17 @@ Two things to know:
 - **Your own agents can reopen your village**, because they run with your Vercel login and so can change the board's access rules. They cannot act in anyone's village. Settings checks the rules when it opens and offers **Put it back** when they are not what you set.
 - **With the phone remote set up, whoever can deploy the `village-remote` project can read every private village that lets the remote in.** Settings names this in "who can see this village".
 
+### Lending and borrowing builders
+
+A teammate whose Mac you paired can hand one of your builders a task, and you theirs.
+
+- **Lend** a builder in **Settings › Team › Lent builders**: to everyone whose Mac is paired or to chosen people, in every shared workspace that can be lent or chosen ones, down to an elixir floor. A workspace can be lent when it is a git repository with a commit and an `origin`. A borrow starts on its own and tells you; turn on **Ask me first** to accept the first task yourself (follow-ups after it go straight to the builder).
+- **Borrow** while visiting a teammate's village: click one of their workspaces' houses, pick a builder they lend you, write the task, **Send**. **Borrowing**, at the top right, shows what came back and the builders working for you; they also stand in a **guest camp** in your own village.
+- **Where it runs.** On the lender's Mac, in a worktree of its own, on a new branch cut from what `origin` has (never from the lender's own unpushed work). The borrower answers its questions and sends follow-ups; Allow and Deny go to the lender unless the borrower is Trusted there. Nobody else may act on it.
+- **When it finishes**, the lender's Mac pushes that branch, and only it, to `origin`: never forced, and never over a branch of the same name. The borrower presses **Done**, which closes the session; the worktree is removed only when nothing in it would be lost, and the branch is kept.
+
+**Know this before you lend.** A borrowed task is a teammate running an agent on your Mac, with your logins, your repository and your elixir, and the push uses your git credentials. Lend only to people you would give that. "Ask me first" shows you the first task; it does not make the rest safe.
+
 ### Phone remote
 
 Answer your builders from your phone. A small web app, the remote, runs on your team's own Vercel account; your Mac listens to the board and applies what a paired phone sends, as if you had clicked in the window. It is off until you set it up, and separate from the switch above.

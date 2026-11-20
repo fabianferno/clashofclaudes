@@ -17,5 +17,5 @@ from the repo root, not from `site/`.
 - Images are built from the app's art by `node scripts/assets.mjs [path/to/app]` and committed.
 - `node scripts/og.mjs http://127.0.0.1:4321/` re-renders `public/og.png` from the running hero.
 - The download button always points at
-  `github.com/fabianferno/clashofclaudes-releases/releases/latest/download/Clash-of-Claudes.dmg`;
+  `github.com/fabianferno/clashofclaudes/releases/latest/download/Clash-of-Claudes.dmg`;
   the version label is read from the GitHub API in the browser and hidden if that fails.

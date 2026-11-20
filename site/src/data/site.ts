@@ -8,11 +8,11 @@ export const site = {
   url: 'https://clashofclaudes.crevn.xyz',
   description:
     'A Mac app that turns Claude Code, Codex, Antigravity CLI, OpenCode and Grok Build sessions into builders in a cozy village. See who is working, who needs you, who shipped.',
-  download: 'https://github.com/fabianferno/clashofclaudes-releases/releases/latest/download/Clash-of-Claudes.dmg',
-  releases: 'https://github.com/fabianferno/clashofclaudes-releases/releases',
+  download: 'https://github.com/fabianferno/clashofclaudes/releases/latest/download/Clash-of-Claudes.dmg',
+  releases: 'https://github.com/fabianferno/clashofclaudes/releases',
   /** The source: code under the GPL 3.0, art under its own terms. */
   source: 'https://github.com/fabianferno/clashofclaudes',
-  latestApi: 'https://api.github.com/repos/fabianferno/clashofclaudes-releases/releases/latest',
+  latestApi: 'https://api.github.com/repos/fabianferno/clashofclaudes/releases/latest',
   requirements: 'macOS 13 or later, Apple Silicon or Intel',
   /** Who makes it: the studio credit and the maker's X account for DMs. */
   studio: { name: 'Crevn', url: 'https://crevn.xyz', label: 'crevn.xyz' },

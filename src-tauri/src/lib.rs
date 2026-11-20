@@ -157,7 +157,7 @@ const WEBSITE_MENU_ID: &str = "app-website";
 const NOTES_MENU_ID: &str = "app-release-notes";
 /// Opened in the browser from the Help menu.
 const WEBSITE_URL: &str = "https://clashofclaudes.crevn.xyz";
-const RELEASES_URL: &str = "https://github.com/fabianferno/clashofclaudes-releases/releases";
+const RELEASES_URL: &str = "https://github.com/fabianferno/clashofclaudes/releases";
 
 /// The default menu, plus Settings… (Cmd+,) after About and, in Help, Report a Bug… / Request a Feature…,
 /// Release Notes and the website, except Quit: the predefined item

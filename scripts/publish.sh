@@ -7,7 +7,10 @@ set -euo pipefail
 { set +x; } 2>/dev/null   # never trace: secrets live in the environment
 cd "$(dirname "$0")/.."
 
-RELEASES_REPO="${RELEASES_REPO:-fabianferno/clashofclaudes-releases}"
+RELEASES_REPO="${RELEASES_REPO:-fabianferno/clashofclaudes}"
+# Builds before the move read their updates from the old public repo; keep publishing there too
+# until those installs are gone. Set LEGACY_RELEASES_REPO= (empty) to stop.
+LEGACY_RELEASES_REPO="${LEGACY_RELEASES_REPO-fabianferno/clashofclaudes-releases}"
 KEY_FILE="${COC_UPDATER_KEY_FILE:-$HOME/.tauri/clashofclaudes.key}"
 VERSION=""; NOTES_FILE=""; DRY=0
 die() { echo "ERROR: $*" >&2; exit 1; }
@@ -34,6 +37,9 @@ git fetch -q origin main
 [[ "$(git rev-list --count HEAD..origin/main)" == 0 ]] || die "main is behind origin/main; pull first"
 ! git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null || die "tag v$VERSION already exists"
 ! gh release view "v$VERSION" -R "$RELEASES_REPO" >/dev/null 2>&1 || die "v$VERSION is already released on $RELEASES_REPO"
+if [[ -n "$LEGACY_RELEASES_REPO" ]]; then
+  ! gh release view "v$VERSION" -R "$LEGACY_RELEASES_REPO" >/dev/null 2>&1 || die "v$VERSION is already released on $LEGACY_RELEASES_REPO"
+fi
 
 # 2. credentials, found on this Mac unless already set
 if [[ -z "${APPLE_SIGNING_IDENTITY:-}" ]]; then
@@ -110,6 +116,15 @@ cp "$DMG" "$STAGE/$(basename "$DMG" | tr ' ' '.')"
 cp "$OUT/dmg/Clash-of-Claudes.dmg" "$OUT/latest.json" "$STAGE/"
 cp "$OUT/macos/Clash of Claudes.app.tar.gz" "$STAGE/Clash.of.Claudes.app.tar.gz"
 gh release create "v$VERSION" -R "$RELEASES_REPO" --title "Clash of Claudes $VERSION" --notes "$NOTES" "$STAGE"/*
-rm -rf "$STAGE"
 echo "Published: https://github.com/$RELEASES_REPO/releases/tag/v$VERSION"
+if [[ -n "$LEGACY_RELEASES_REPO" ]]; then
+  # Old installs fetch latest.json and the tarball from the legacy repo, so its copy names that repo.
+  LEGACY_STAGE="$(mktemp -d)"
+  cp "$STAGE"/* "$LEGACY_STAGE/"
+  sed -i '' "s#github.com/$RELEASES_REPO/#github.com/$LEGACY_RELEASES_REPO/#g" "$LEGACY_STAGE/latest.json"
+  gh release create "v$VERSION" -R "$LEGACY_RELEASES_REPO" --title "Clash of Claudes $VERSION" --notes "$NOTES" "$LEGACY_STAGE"/*
+  rm -rf "$LEGACY_STAGE"
+  echo "Published: https://github.com/$LEGACY_RELEASES_REPO/releases/tag/v$VERSION"
+fi
+rm -rf "$STAGE"
 echo "Installed apps will offer the update within six hours (or at once from Settings › Check now)."

@@ -16,17 +16,18 @@ Universal (arm64 + x86_64) macOS 13+ DMG. Signed and notarized when credentials 
 3. Runs `scripts/release.sh`: universal build, signed; DMG notarized and stapled; updater tarball + `latest.json`; a copy of the DMG named `Clash-of-Claudes.dmg`.
 4. Verifies `codesign`, `stapler validate` and `spctl`; if anything fails the version bump is undone.
 5. Commits `Release v<version>`, tags `v<version>`, pushes to the private repo.
-6. Creates the GitHub Release `v<version>` on the **public** releases repo, [fabianferno/clashofclaudes-releases](https://github.com/fabianferno/clashofclaudes-releases), with the versioned DMG, `Clash-of-Claudes.dmg`, the `.app.tar.gz` and `latest.json`. Notes are the commit subjects since the last tag, or `--notes <file>`.
+6. Creates the GitHub Release `v<version>` on [fabianferno/clashofclaudes](https://github.com/fabianferno/clashofclaudes), with the versioned DMG, `Clash-of-Claudes.dmg`, the `.app.tar.gz` and `latest.json`. Notes are the commit subjects since the last tag, or `--notes <file>`.
+7. Creates the same release on the legacy repo, [fabianferno/clashofclaudes-releases](https://github.com/fabianferno/clashofclaudes-releases), with its `latest.json` pointing at that repo. Builds before the move (up to 0.2.10) only read updates from there. Set `LEGACY_RELEASES_REPO=` to stop this step once no old installs remain.
 
 `pnpm ship <version> --dry-run` shows the plan and the notes without changing anything.
 
-The source repo is private, so release files live in the separate public repo: GitHub serves private-repo assets only to signed-in collaborators, which would break both the download link and the updater.
+Release files live on the source repo's Releases page. The repo must be public: GitHub serves private-repo assets only to signed-in collaborators, which would break both the download link and the updater.
 
-**Download link** (always the newest release, used by the landing page): `https://github.com/fabianferno/clashofclaudes-releases/releases/latest/download/Clash-of-Claudes.dmg`.
+**Download link** (always the newest release, used by the landing page): `https://github.com/fabianferno/clashofclaudes/releases/latest/download/Clash-of-Claudes.dmg`.
 
 ## How installed apps update
 
-The updater reads `https://github.com/fabianferno/clashofclaudes-releases/releases/latest/download/latest.json` (`plugins.updater.endpoints`), and verifies the tarball against `plugins.updater.pubkey`. Only the newest non-prerelease release is served, so never mark a beta as a prerelease if testers should get it.
+The updater reads `https://github.com/fabianferno/clashofclaudes/releases/latest/download/latest.json` (`plugins.updater.endpoints`), and verifies the tarball against `plugins.updater.pubkey`. Only the newest non-prerelease release is served, so never mark a beta as a prerelease if testers should get it.
 
 In the app: a check 10 s after launch and every 6 h; when a newer version exists a toast offers **Update**, shows download progress, then **Restart to update** (with running sessions it asks first; cancelling keeps the update for the next launch). **Settings › Check now** checks at once, and the automatic check can be turned off there.
 

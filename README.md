@@ -21,7 +21,7 @@ v1 is Mac only (macOS 13 or later, Apple Silicon and Intel). Free and open sourc
 
 ## Install
 
-1. Download **[Clash-of-Claudes.dmg](https://github.com/fabianferno/clashofclaudes-releases/releases/latest/download/Clash-of-Claudes.dmg)** (the newest release, from the public [releases repo](https://github.com/fabianferno/clashofclaudes-releases/releases)).
+1. Download **[Clash-of-Claudes.dmg](https://github.com/fabianferno/clashofclaudes/releases/latest/download/Clash-of-Claudes.dmg)** (the newest release, from the public [releases repo](https://github.com/fabianferno/clashofclaudes/releases)).
 2. Open the DMG and drag **Clash of Claudes** onto **Applications**.
 3. Launch it from Applications. Releases are signed and notarized, and the app updates itself.
 

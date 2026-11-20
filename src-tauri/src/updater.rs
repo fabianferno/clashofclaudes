@@ -105,7 +105,7 @@ mod tests {
         let conf: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
         let eps: Vec<&str> = conf["plugins"]["updater"]["endpoints"].as_array().unwrap().iter().map(|v| v.as_str().unwrap()).collect();
         let key = conf["plugins"]["updater"]["pubkey"].as_str().unwrap();
-        assert_eq!(eps, ["https://github.com/fabianferno/clashofclaudes-releases/releases/latest/download/latest.json"]);
+        assert_eq!(eps, ["https://github.com/fabianferno/clashofclaudes/releases/latest/download/latest.json"]);
         assert_eq!(gate(false, key, &eps, true), Ok(()));
         assert_eq!(gate(true, key, &eps, true), Err("disabled"), "never from a dev build");
     }

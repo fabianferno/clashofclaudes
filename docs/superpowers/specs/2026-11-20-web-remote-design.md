@@ -309,3 +309,39 @@ which an agent cannot use" is wrong and now points here.
 - Which Keychain API (the `security-framework` crate or the system's own tool).
 - Which CLI calls deploy the bundled folder, set variables and list deployments.
 - Measuring the watcher's wake-up time and saying it honestly in the README.
+
+## Built (2026-11-20)
+
+Built as designed, with these differences and facts. Plan: `docs/superpowers/plans/2026-11-20-web-remote.md`.
+
+- **Files of their own.** The listener's cursor is in `board-listen.json` and the applied-action
+  hashes in `board-remote.json`, not in `board.json`: the publisher rewrites that file from its
+  own thread.
+- **The remote's source is compiled into the app** (`src-tauri/src/board/remote_src.rs`, checked
+  against `remote/` by a test), not shipped as a bundle resource.
+- **A deployment is named by its own address**; the CLI's list carries no id.
+- **Waiting or working is read from the `coc.state` label.** The Mac leaves a wait by labels only,
+  so there is no owner text for it. A teammate can hide or show a card by relabelling; they cannot
+  make one act, since the Mac checks every action against its own block.
+- **`url`, `trusted` and `paused` are the app's own settings.** `set_settings` keeps them whatever
+  the window sends; the window follows a `settings-changed` event.
+- **Fresh push keys and setup secret only when the project does not exist.** A Mac that did not
+  create it can update the remote but cannot register the watcher (it has no secret).
+- **An address the push service reports gone** is marked gone in its own message (the remote
+  edits what it wrote).
+- **CLI calls** (66.4.0): `project add village-remote`, `link --yes --project … --cwd …`,
+  `env add NAME --environment production --value … --force --yes --json`, `deploy --prod --yes`
+  (JSON on stdout with `deployment.url` and `productionUrl`), `ls village-remote --environment
+  production --json` (`project_not_found` when there is none), `inspect <deployment> --json`
+  (`aliases`). A project made empty needs `vercel.json` with `"framework": "nextjs"`.
+
+**Verified against the real board and the deployed remote** (`real_remote_run`, board `coc-spike`,
+`https://village-remote.vercel.app`): a headless browser paired as a phone (the same check number
+on both sides), then Deny, Allow, a picked answer and a follow-up were each applied by the Mac
+side within a few seconds and answered `applied` in the thread. The deployed remote answered an
+unsigned queue request with 401 and an unsigned watcher registration with 403.
+
+**Not verified:** a notification arriving on a real phone; pairing from an iPhone Home Screen app;
+the Settings block in the running app (component tests only); a real agent session answered from
+the phone (the real run used a simulated session behind the same interface); the listener across
+a real sleep and wake.

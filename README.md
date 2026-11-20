@@ -105,6 +105,18 @@ If you have a Vercel team, the village can show on its [Board](https://vercel.co
 
 This release only publishes. Answering builders from a phone and visiting teammates' villages build on it and come later.
 
+### Phone remote
+
+Answer your builders from your phone. A small web app, the remote, runs on your team's own Vercel account; your Mac listens to the board and applies what a paired phone sends, as if you had clicked in the window. It is off until you set it up, and separate from the switch above.
+
+- **Set it up** in **Settings › Team › Phone remote**, once Vercel Board is connected. **Deploy the remote** puts the app this version carries on your team as the project `village-remote`, with your own `vercel` CLI. If a teammate already did, you get **Use the team's remote**: one remote serves every village on the team's board.
+- **Pair a phone.** Press **Pair a phone**: Settings shows a six-digit code and the remote's address as a QR code. Open the address on the phone, type the code, and check that the phone and the Mac show the same check number before you press **Confirm** on the Mac. On an iPhone, add the page to the Home Screen first and pair from there (an iPhone sends notifications only to Home Screen pages).
+- **What the phone can do:** Allow or Deny a permission prompt, answer a question (pick an option or type), and send a follow-up to a builder that is stuck or finished. A tap answers only the prompt it was shown for; if the builder moved on, the phone says "Too late". Pickers with several questions, starting sessions and accepting finished work stay on the Mac.
+- **Notifications.** Turn them on from the phone's page. A notice goes out when a builder starts waiting; Vercel wakes the remote for it, which took between 5 and 60 seconds when measured.
+- **Paired phones** are kept in your macOS Keychain, with their names and when each was last used. **Remove** unpairs one at once.
+
+**Know this before you rely on it.** The phone's key lives in the browser, and the remote's own page is what uses it. So whoever can deploy to the `village-remote` project on your Vercel team can make that page act as your phone: a teammate with deploy rights, or one of your own agents, since they run with your Vercel login. Your Mac watches for production deployments it did not make and pauses the remote until you press **Trust it**, which narrows this and does not close it. Do not pair a phone on a team whose members you would not let approve commands on your Mac.
+
 ## Sounds
 
 The app plays a sound when a builder wants a decision, asks you something, finishes, gets stuck, starts, sends out a minion (subagent) or goes back to work, and when accepted work earns XP or a house levels up, for every agent and whether the window is in front or not. Pick a macOS sound or one of your own files for each moment in **Settings › Sounds** (a copy of your file is kept in the data folder), set the volume, or turn sounds off. The app plays them itself (`afplay`); it adds nothing to your agents' hooks.
@@ -117,6 +129,7 @@ The app plays a sound when a builder wants a decision, asks you something, finis
   - **The update check**, which you can turn off in Settings (the gear at the top right, or ⌘,). Development builds (`pnpm app`) never check.
   - **Reports you choose to send** (Help › Report a Bug…, Help › Request a Feature…, Settings › Beta feedback). A report holds what you type, app and system details (app, macOS and agent versions, counts of workspaces and sessions, and the last error the app showed, if any; never workspace names or tasks) and, only if you tick it, a screenshot. You see all of it before sending. It goes to the project's Discord.
   - **Vercel Board, only if you turn it on** (Settings › Team): for each workspace you share, the state of its agent sessions and, with Share details on, their tasks, tool calls, the agent's last reply and changed file names go to your Vercel team's board through your own `vercel` CLI. Board stores them in the United States, and your Vercel team can read them.
+  - **The phone remote, only if you set it up** (Settings › Team › Phone remote): the remote reads the same board, as its own Vercel project on your team. It adds to the board each paired phone's name and public key, the address its notifications go to, and every action a phone sends. Notifications pass through the phone maker's push service (Apple, Google or Mozilla) and carry the builder's name, the workspace and, with Share details on, the command or question.
   - **Anonymous usage counts, only if you turn them on** (the welcome, or Settings › Data & privacy; off until you do). Each is one of a fixed few: the app opened (with how many workspaces and builders), a session or terminal started (and which agent), a permission prompt allowed or denied, the Kanban opened. Each carries the app and macOS versions, the chip, and a random id made when you turn sharing on and deleted when you turn it off. Never names, paths, tasks, prompts or output. They go to PostHog's EU cloud.
 - A build you make from source has no bug reporting and sends no usage counts unless you give it your own keys (`COC_BUG_WEBHOOK`, `COC_POSTHOG_KEY`; see `src-tauri/build.rs`).
 - Agent output never leaves your machine. Prompts, file names and folders don't either, unless you turn on Vercel Board with Share details (above).

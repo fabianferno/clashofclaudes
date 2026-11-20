@@ -21,6 +21,8 @@ pub mod publisher;
 pub mod remote;
 pub mod remote_app;
 pub mod remote_src;
+#[cfg(test)]
+mod real_run_tests;
 pub mod store;
 
 #[cfg(test)]

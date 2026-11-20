@@ -9,6 +9,7 @@ const ipcMock = vi.hoisted(() => ({
 vi.mock('../api/ipc', () => ({ ipc: ipcMock }));
 vi.mock('../components/TerminalView', () => ({ default: () => <div className="terminal" /> }));
 import SessionPanel from './SessionPanel';
+import { asksToGoOn } from './Briefing';
 import { useApp } from '../state/store';
 
 const sess = (id: string, state: SessionState, extra: Partial<SessionInfo> = {}): SessionInfo => ({
@@ -106,6 +107,38 @@ test('with nothing typed, Go ahead tells it to carry on in one click', async () 
   } finally {
     vi.useRealTimers();
   }
+});
+
+test('asksToGoOn: a closing question about carrying on, not any question', () => {
+  expect(asksToGoOn('Plan is in docs/plan.md.\n\n**Want me to proceed?**')).toBe(true);
+  expect(asksToGoOn('Done with step 1. Shall I start on the tests?')).toBe(true);
+  expect(asksToGoOn('- [x] parser\n- [ ] wiring\n\nShould I continue with the wiring?')).toBe(true);
+  expect(asksToGoOn('Which database should it use, Postgres or SQLite?')).toBe(false);
+  expect(asksToGoOn('Want me to proceed? Here is what changed.')).toBe(false);
+  expect(asksToGoOn(null)).toBe(false);
+});
+
+test('when it asks whether to go on, Enter on the empty box goes ahead', async () => {
+  vi.useFakeTimers();
+  try {
+    useApp.getState().upsertSession({ ...sess('a', { kind: 'finished' }), lastMessage: 'The plan is ready. Want me to proceed?' });
+    render(<SessionPanel sessionId="a" />);
+    expect(screen.getByText('Go ahead').className).toContain('brief-goon');
+    fireEvent.keyDown(screen.getByLabelText('Follow up'), { key: 'Enter' });
+    await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+    const sent = ipcMock.writeSession.mock.calls.map(([, b]) => new TextDecoder().decode(new Uint8Array(b as number[])));
+    expect(sent).toEqual(['\x1b[200~Go ahead.\x1b[201~', '\r']);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('otherwise Enter on the empty box sends nothing', async () => {
+  useApp.getState().upsertSession({ ...sess('a', { kind: 'finished' }), lastMessage: 'All done.' });
+  render(<SessionPanel sessionId="a" />);
+  expect(screen.getByText('Go ahead').className).not.toContain('brief-goon');
+  await act(async () => { fireEvent.keyDown(screen.getByLabelText('Follow up'), { key: 'Enter' }); });
+  expect(ipcMock.writeSession).not.toHaveBeenCalled();
 });
 
 test('Park puts it aside with a note; it shows parked with a way back', async () => {

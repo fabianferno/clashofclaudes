@@ -28,6 +28,18 @@ export async function sendPrompt(id: string, text: string): Promise<void> {
 /** What the one-click follow-up types: carry on, as planned or as it proposed. */
 export const GO_AHEAD = 'Go ahead.';
 
+/**
+ * Whether its reply ends by asking whether to carry on ("Want me to proceed?", "Shall I start on
+ * the tests?"), so going ahead is the likely answer. A question about something else does not count.
+ */
+export function asksToGoOn(md: string | null | undefined): boolean {
+  if (!md) return false;
+  const lines = plainText(md).split('\n').map((l) => l.trim()).filter(Boolean);
+  const last = lines[lines.length - 1] ?? '';
+  if (!last.endsWith('?')) return false;
+  return /\b(proceed|go ahead|continue|carry on|move on|shall i|should i|want me to|would you like me to|do you want me to|ready (?:to|for)|ok(?:ay)? to|good to go|sound good|look good)\b/i.test(last);
+}
+
 const TAG_COLOR: Record<QueueReason, string> = {
   decide: 'var(--hud-needs)', answer: 'var(--hud-needs)', stuck: 'var(--hud-stuck)', review: 'var(--hud-finished)',
 };
@@ -140,6 +152,8 @@ export default function Briefing({ session: s, canApprove, answering, onAllow, o
   const unpark = () => act(async () => { useApp.getState().upsertSession(await ipc.parkSession(s.id, null)); }, false);
   // typing would land in the picker or the Allow/Deny menu, not in the agent's prompt
   const canReply = live && !questions && !(reason === 'decide' && canApprove);
+  // it asked whether to go on: Go ahead stands out, and Enter on the empty box sends it
+  const goOn = canReply && !doc && asksToGoOn(s.lastMessage);
 
   return (
     <div className={`brief sp-box${parked ? ' brief-parked' : ''}${doc ? ' brief-reading' : ''}`} data-testid="briefing">
@@ -238,13 +252,18 @@ export default function Briefing({ session: s, canApprove, answering, onAllow, o
       {canReply && (
         <form className="brief-reply-form" onSubmit={(e) => { e.preventDefault(); void send(); }}>
           <textarea aria-label="Follow up" rows={reply.includes('\n') ? 3 : 1} value={reply} disabled={sending}
-            placeholder={doc ? 'Follow up on the plan: approve it or ask for changes…' : reason === 'review' ? 'Follow up: ask for a change…' : 'Answer it…'}
+            placeholder={doc ? 'Follow up on the plan: approve it or ask for changes…' : goOn ? 'Enter to go ahead, or type a reply…' : reason === 'review' ? 'Follow up: ask for a change…' : 'Answer it…'}
             onChange={(e) => setReply(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }} />
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                void send(goOn && !reply.trim() ? GO_AHEAD : reply);
+              }
+            }} />
           {reply.trim()
             ? <button type="submit" className="hud-btn blue sm" disabled={sending}>Send</button>
             // the usual follow-up, one click: it stopped to check in, or to ask whether to go on
-            : <button type="button" className="hud-btn blue sm" disabled={sending} title={`Tell it: "${GO_AHEAD}"`}
+            : <button type="button" className={`hud-btn blue sm${goOn ? ' brief-goon' : ''}`} disabled={sending} title={`Tell it: "${GO_AHEAD}"`}
                 onClick={() => void send(GO_AHEAD)}>Go ahead</button>}
         </form>
       )}

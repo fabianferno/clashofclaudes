@@ -87,6 +87,8 @@
   background: #fff8e8; font: 600 13px/1.35 system-ui, sans-serif; color: #2b2018;
 }
 .brief-reply-form textarea:focus, .brief-park input:focus { outline: 3px solid rgba(255, 207, 51, .6); outline-offset: 0; }
+/* it asked whether to go on: the likely answer stands out */
+.brief-goon { box-shadow: 0 0 0 3px rgba(255, 207, 51, .85); }
 .brief-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 /* the reply box and the buttons stay in view while the reply above scrolls */
 .brief-foot {

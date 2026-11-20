@@ -34,6 +34,7 @@ pub mod status;
 pub mod updater;
 pub mod usage;
 pub mod xp;
+pub mod activity;
 
 use commands::{AppState, Channels, Removed};
 use sessions::{Emit, ManagerEvent, SessionManager};

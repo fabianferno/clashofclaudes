@@ -1,0 +1,13 @@
+/* Settings › Team: the folded guide to the team features */
+.team-guide { padding: 8px 10px; background: #fff8e8; border: 3px solid #d8c39a; border-radius: 12px; }
+.team-guide[open] { border-color: #a8885a; }
+.team-guide summary { cursor: pointer; font: 400 15px 'Lilita One', sans-serif; color: #3d6fd6; letter-spacing: .3px; }
+.team-guide summary:focus-visible { outline: 3px solid rgba(74,176,240,.6); outline-offset: 2px; border-radius: 6px; }
+.team-guide > p { margin: 8px 0 0; }
+.team-guide ol { margin: 10px 0 0; padding-left: 22px; display: flex; flex-direction: column; gap: 8px; }
+.team-guide li::marker { font: 400 14px 'Lilita One', sans-serif; color: #3d6fd6; }
+.team-guide li > span { display: block; }
+.team-guide-title { font-size: 13px; font-weight: 900; color: #2b2018; }
+.team-guide b { color: #2b2018; }
+.team-guide code { font-size: 11px; padding: 0 4px; background: rgba(0,0,0,.06); border-radius: 4px; }
+.team-guide-warn { padding: 6px 8px; background: #fdecc8; border-radius: 8px; color: #7a4a10; }

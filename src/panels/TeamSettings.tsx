@@ -5,6 +5,7 @@ import { useApp } from '../state/store';
 import { waitedLabel } from '../state/queue';
 import RemoteSettings from './RemoteSettings';
 import AccessSettings from './AccessSettings';
+import TeamGuide from './TeamGuide';
 
 const DEFAULT_BOARD = 'village';
 
@@ -92,6 +93,7 @@ export default function TeamSettings({ board, onChange }: { board: BoardSettings
 
   return (
     <>
+      <TeamGuide />
       <Switch label="Connect this village to Vercel Board"
         hint={board.enabled ? "Shared workspaces' builders show on your Vercel team's board." : "Shows your shared workspaces' builders to your Vercel team. Off until you turn it on."}
         checked={board.enabled} onChange={(enabled) => set({ enabled })} />

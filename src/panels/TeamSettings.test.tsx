@@ -7,6 +7,8 @@ vi.mock('../api/ipc', () => ({ ipc }));
 // the phone remote's block has its own tests (RemoteSettings.test.tsx)
 vi.mock('./RemoteSettings', () => ({ default: () => null }));
 vi.mock('./AccessSettings', () => ({ default: () => null }));
+// the guide names the same buttons; it has its own tests (TeamGuide.test.tsx)
+vi.mock('./TeamGuide', () => ({ default: () => <div data-testid="team-guide" /> }));
 import TeamSettings, { WorkspaceShare } from './TeamSettings';
 import { useApp } from '../state/store';
 import { DEFAULT_SETTINGS } from '../state/settings';
@@ -35,6 +37,14 @@ test('off shows only the switch, and asks the CLI nothing', async () => {
   expect(screen.queryByLabelText('Board name')).toBeNull();
   expect(screen.queryByLabelText(/^Share details/)).toBeNull();
   expect(ipc.boardStatus).not.toHaveBeenCalled();
+});
+
+test('the guide to the team features shows whether the board is on or off', async () => {
+  await show(OFF);
+  expect(screen.getByTestId('team-guide')).toBeTruthy();
+  cleanup();
+  await show(ON);
+  expect(screen.getByTestId('team-guide')).toBeTruthy();
 });
 
 test('turning it on calls onChange with enabled true', async () => {

@@ -22,6 +22,7 @@ pub mod publisher;
 pub mod remote;
 pub mod remote_app;
 pub mod remote_src;
+pub mod snapshot;
 #[cfg(test)]
 mod real_run_tests;
 pub mod store;
@@ -197,7 +198,7 @@ pub enum Write {
     EditRoot { text: String },
 }
 
-fn agent_key(a: &AgentKind) -> &'static str {
+pub(crate) fn agent_key(a: &AgentKind) -> &'static str {
     match a {
         AgentKind::Claude => "claude",
         AgentKind::Codex => "codex",
@@ -219,7 +220,7 @@ fn agent_name(a: &AgentKind) -> &'static str {
     }
 }
 
-fn wire(info: &SessionInfo) -> Wire {
+pub(crate) fn wire(info: &SessionInfo) -> Wire {
     match info.state {
         SessionState::Starting => Wire::Starting,
         SessionState::Working => Wire::Working,
@@ -231,7 +232,7 @@ fn wire(info: &SessionInfo) -> Wire {
     }
 }
 
-fn wait(info: &SessionInfo) -> Option<Wait> {
+pub(crate) fn wait(info: &SessionInfo) -> Option<Wait> {
     queue_reason(info).map(|r| match r {
         QueueReason::Decide => Wait::Decide,
         QueueReason::Answer => Wait::Answer,

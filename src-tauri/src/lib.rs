@@ -385,7 +385,11 @@ pub fn run() {
                 let changed = Arc::new(move || {
                     let _ = h.emit("remote-changed", board::app::remote_status_of(&h));
                 });
-                app.manage(board::app::BoardState::new(&board_dir, files, Arc::downgrade(&manager), changed));
+                let v = app.handle().clone();
+                let visits_changed = Arc::new(move || {
+                    let _ = v.emit("visits-changed", board::app::visits(v.clone()));
+                });
+                app.manage(board::app::BoardState::new(&board_dir, files, Arc::downgrade(&manager), changed, visits_changed));
             }
             {
                 let (m, workspaces, builders) = (manager.clone(), data.workspaces.clone(), data.builders.clone());
@@ -447,6 +451,7 @@ pub fn run() {
                     });
                     // then, for as long as the app runs: who deployed the phone remote
                     loop {
+                        board::app::refresh_visits(&h); // the villages this login was invited to
                         board::app::watch_remote(&h);
                         std::thread::sleep(std::time::Duration::from_millis(board::deploy::WATCH_MS as u64));
                     }
@@ -526,6 +531,10 @@ pub fn run() {
             board::app::remote_deploy,
             board::app::remote_deployed_version,
             board::app::remote_trust,
+            board::app::visits,
+            board::app::visit,
+            board::app::visits_refresh,
+            board::app::visit_builder,
             commands::detect_agents,
             commands::add_workspace,
             commands::create_workspace,

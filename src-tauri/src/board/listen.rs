@@ -35,6 +35,15 @@ pub struct Event {
     pub profile: Option<String>,
     /// Written with a person's login (possibly by one of their agents).
     pub person: bool,
+    /// The author's handle on the board: `ada`, or `ada/village` for one of ada's profiles.
+    pub handle: String,
+}
+
+impl Event {
+    /// Whether the message was written with `owner`'s own login: by them or one of their profiles.
+    pub fn by_owner(&self, owner: &str) -> bool {
+        self.person && (self.handle == owner || self.handle.strip_prefix(owner).is_some_and(|rest| rest.starts_with('/')))
+    }
 }
 
 /// One line of `vercel board tail --json`; None for anything else the CLI prints.
@@ -61,6 +70,7 @@ pub fn parse(line: &str) -> Option<Event> {
         text: s("text"),
         labels,
         person: principal.starts_with("vercel:user:"),
+        handle: m.and_then(|m| m.get("author")).and_then(|a| a.get("handle")).and_then(Value::as_str).unwrap_or_default().to_string(),
         profile: by("profile"),
         principal,
         id,

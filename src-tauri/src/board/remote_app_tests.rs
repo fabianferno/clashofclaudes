@@ -150,6 +150,7 @@ fn event(id: &str, root: &str, text: &str) -> Event {
         principal: "vercel:project:prj_K:production".into(),
         profile: Some("remote".into()),
         person: false,
+        handle: "remote".into(),
     }
 }
 

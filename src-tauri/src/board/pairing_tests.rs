@@ -34,6 +34,7 @@ fn bare_request(id: &str, ticket: &str, public: &str, name: &str) -> Event {
         principal: "vercel:project:prj_K:production".into(),
         profile: Some("remote".into()),
         person: false,
+        handle: "remote".into(),
     }
 }
 

@@ -38,6 +38,8 @@ pub struct BoardState {
     listener: Arc<Listener>,
     /// The village's map for visitors: when it was last written.
     map: Arc<Mutex<super::map::MapWriter>>,
+    /// The villages this login was invited to.
+    visits: Arc<Mutex<super::visits::Visits>>,
 }
 
 /// The session manager, as the phone remote uses it.
@@ -70,8 +72,9 @@ impl Sessions for ManagerSessions {
 
 impl BoardState {
     /// `data_dir`: where `board.json` lives and where `vercel` runs. `files`: a session's changed files.
-    /// `changed`: called when what Settings › Phone remote shows has changed.
-    pub fn new(data_dir: &Path, files: super::publisher::Files, manager: std::sync::Weak<crate::sessions::SessionManager>, changed: Arc<dyn Fn() + Send + Sync>) -> BoardState {
+    /// `changed`: called when what Settings › Phone remote shows has changed. `visits_changed`:
+    /// when the villages to visit, or one of their maps, changed.
+    pub fn new(data_dir: &Path, files: super::publisher::Files, manager: std::sync::Weak<crate::sessions::SessionManager>, changed: Arc<dyn Fn() + Send + Sync>, visits_changed: Arc<dyn Fn() + Send + Sync>) -> BoardState {
         let cli: Arc<dyn BoardCli> = Arc::new(VercelCli { program: None, cwd: data_dir.to_path_buf(), timeout: CLI_TIMEOUT });
         let now: super::publisher::Clock = Arc::new(|| std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0));
         let publisher = Publisher::start(cli.clone(), data_dir.join("board.json"), files, now.clone());
@@ -83,8 +86,19 @@ impl BoardState {
             now,
             changed,
         ));
-        let hears = remote.clone();
-        let listener = Listener::start(cli.clone(), data_dir.join("board-listen.json"), Box::new(move |e| hears.handle(e)));
+        let visits = Arc::new(Mutex::new(super::visits::Visits::load(data_dir.join("board-visits.json"))));
+        let (hears, sees) = (remote.clone(), visits.clone());
+        let listener = Listener::start(
+            cli.clone(),
+            data_dir.join("board-listen.json"),
+            Box::new(move |e| {
+                // another village's owner wrote their map: the people row follows
+                if sees.lock().unwrap_or_else(|p| p.into_inner()).on_event(&e, now_ms()) {
+                    visits_changed();
+                }
+                hears.handle(e);
+            }),
+        );
         // the remote's clock: an expired pairing ends, the village root says the Mac is there
         let ticks = Arc::downgrade(&remote);
         std::thread::Builder::new()
@@ -97,7 +111,7 @@ impl BoardState {
                 }
             })
             .expect("remote tick thread");
-        BoardState { publisher, cli, link: Arc::default(), active: AtomicBool::new(false), remote, listener, map: Arc::default() }
+        BoardState { publisher, cli, link: Arc::default(), active: AtomicBool::new(false), remote, listener, map: Arc::default(), visits }
     }
 
     fn link(&self) -> Link {
@@ -224,6 +238,66 @@ pub fn apply<R: Runtime>(app: &AppHandle<R>) {
         Arc::new(move |ws: &Workspace, b: &Builder| env_for(&board, url.as_deref(), ws, b)) as EnvHook
     });
     st.manager.set_env_hook(hook);
+}
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|t| t.as_millis() as i64).unwrap_or(0)
+}
+
+/// Reads again which villages this login may visit (blocking: one `vercel` call, plus one per
+/// village). Run at connect, every five minutes, and when asked.
+pub fn refresh_visits<R: Runtime>(app: &AppHandle<R>) {
+    let (Some(bs), Some(st)) = (app.try_state::<BoardState>(), app.try_state::<AppState>()) else { return };
+    let board = st.data().settings.board.clone();
+    let Some(me) = bs.link().owner.filter(|_| board.enabled) else {
+        bs.visits.lock().unwrap_or_else(|e| e.into_inner()).clear();
+        let _ = app.emit("visits-changed", Vec::<super::visits::VisitView>::new());
+        return;
+    };
+    // The calls run without the lock: the listener keeps feeding the store meanwhile.
+    let mut fresh = super::visits::Visits::load(st.data_path.with_file_name("board-visits.json"));
+    if fresh.refresh(bs.cli.as_ref(), &target(&board), &me, now_ms()).is_ok() {
+        *bs.visits.lock().unwrap_or_else(|e| e.into_inner()) = fresh;
+    }
+    let _ = app.emit("visits-changed", visits_of(app));
+}
+
+fn visits_of<R: Runtime>(app: &AppHandle<R>) -> Vec<super::visits::VisitView> {
+    app.try_state::<BoardState>().map(|bs| bs.visits.lock().unwrap_or_else(|e| e.into_inner()).list(now_ms())).unwrap_or_default()
+}
+
+/// The villages this login was invited to, for the people row.
+#[tauri::command]
+pub fn visits(app: AppHandle) -> Vec<super::visits::VisitView> {
+    visits_of(&app)
+}
+
+/// One village's map, to draw it.
+#[tauri::command]
+pub fn visit(owner: String, app: AppHandle) -> Option<super::snapshot::Snapshot> {
+    app.try_state::<BoardState>()?.visits.lock().unwrap_or_else(|e| e.into_inner()).get(&owner).cloned()
+}
+
+#[tauri::command]
+pub async fn visits_refresh(app: AppHandle) -> Result<Vec<super::visits::VisitView>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        refresh_visits(&app);
+        visits_of(&app)
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// What a builder in a visited village is doing and waiting for, from its thread (one `vercel` call).
+#[tauri::command]
+pub async fn visit_builder(owner: String, root: String, app: AppHandle) -> Result<Option<super::visits::VisitedBuilder>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let (cli, board, _) = board_of(&app)?;
+        let thread = cli.run(&super::visits::thread_args(&root, &target(&board))).map_err(|e| format!("{e:?}"))?;
+        Ok(super::visits::visited_builder(&thread, &owner))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Once a second: keeps the village's map on the board current for visitors (a change within ten

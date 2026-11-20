@@ -18,6 +18,11 @@ fn parse_reads_a_posted_reply() {
     assert_eq!(e.text, r#"{"v":1}"#);
     assert_eq!(e.labels.get("coc.do").map(String::as_str), Some("allow"));
     assert_eq!((e.principal.as_str(), e.profile.as_deref(), e.person), ("vercel:project:prj_K:production", Some("remote"), false));
+    assert_eq!(e.handle, "remote");
+    assert!(!e.by_owner("remote"), "a project is nobody's own login");
+    let mine = Event { person: true, handle: "ada/village".into(), ..e.clone() };
+    assert!(mine.by_owner("ada") && !mine.by_owner("ad") && !mine.by_owner("adam"));
+    assert!(Event { handle: "ada".into(), ..mine.clone() }.by_owner("ada"));
 }
 
 #[test]

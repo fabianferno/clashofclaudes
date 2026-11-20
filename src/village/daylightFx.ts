@@ -95,6 +95,9 @@ export class DaylightFx {
     this.sun.blendMode = 'add';
     this.sun.alpha = 0;
     for (const c of [this.tint, this.sun, this.glow]) { c.eventMode = 'none'; c.interactiveChildren = false; }
+    // hidden until night: `update` only runs while something shows or changes, so a village that
+    // opens in daylight never gets here to hide them (they would glow at full strength all day)
+    this.glow.visible = false;
     this.glow.addChild(this.lightsLayer, this.fliesLayer);
   }
 
@@ -118,6 +121,7 @@ export class DaylightFx {
         sprite.anchor.set(0.5);
         sprite.blendMode = 'add';
         sprite.tint = 0xffb04a;
+        sprite.alpha = 0; // `update` brings it up with the night
         this.lightsLayer.addChild(sprite);
         rec = { sprite, phase: rand(i + 1) * 10 };
         this.lights.push(rec);
@@ -139,6 +143,7 @@ export class DaylightFx {
         sprite.blendMode = 'add';
         sprite.tint = 0xd9ff6a;
         sprite.scale.set(0.14);
+        sprite.alpha = 0;
         this.fliesLayer.addChild(sprite);
         this.flies.push({ sprite, hx: 0, hy: 0, phase: rand(i * 7 + 3) * 100 });
       }

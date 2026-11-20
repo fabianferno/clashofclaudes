@@ -2,7 +2,10 @@ import type { AgentKind, AgentQuota, Compound, QuotaWindow, Tile } from '../api/
 import { HALL, STRUCT, gapBetween, roadRects, villageRect, wallRect, type Rect } from './layout';
 import type { StatusTone } from './status';
 
-/** Agents that ration usage; OpenCode uses whatever provider key it is given. */
+/**
+ * Agents whose limits the app can read. OpenCode uses whatever provider key it is given; Grok Build
+ * reports its plan's limit (`grok usage --json`) only on its background service, so it has none yet.
+ */
 export const COLLECTOR_AGENTS = ['claude', 'codex', 'antigravity'] as const satisfies readonly AgentKind[];
 export type CollectorAgent = (typeof COLLECTOR_AGENTS)[number];
 

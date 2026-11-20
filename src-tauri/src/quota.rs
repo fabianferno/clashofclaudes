@@ -45,6 +45,19 @@ pub struct AgentQuota {
     pub source: String,
 }
 
+/// A reading older than this says nothing about now.
+pub const STALE_MS: i64 = 3_600_000;
+
+/// The least left across an agent's windows, in percent: the rule of `leastLeft` in
+/// `src/state/elixir.ts` (a window whose reset time has passed is full again). None without
+/// windows, and for a reading older than an hour.
+pub fn least_left(q: &AgentQuota, now: i64) -> Option<u32> {
+    if now - q.updated_at > STALE_MS {
+        return None;
+    }
+    q.windows.iter().map(|w| if w.resets_at.is_some_and(|at| at <= now) { 100.0 } else { w.left_pct }).min_by(|a, b| a.total_cmp(b)).map(|l| l.clamp(0.0, 100.0).floor() as u32)
+}
+
 pub fn now_ms() -> i64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
 }
@@ -585,6 +598,20 @@ impl Poller {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn window(left: f64, resets_at: Option<i64>) -> QuotaWindow {
+        QuotaWindow { id: "w".into(), label: "w".into(), group: None, left_pct: left, resets_at, window_mins: None }
+    }
+
+    #[test]
+    fn least_left_is_the_emptiest_window_that_has_not_refilled() {
+        let q = |windows| AgentQuota { agent: crate::model::AgentKind::Claude, windows, updated_at: 1_000, source: "t".into() };
+        assert_eq!(least_left(&q(vec![window(60.0, None), window(12.9, Some(9_000))]), 2_000), Some(12));
+        // a window whose reset time has passed is full again
+        assert_eq!(least_left(&q(vec![window(60.0, None), window(3.0, Some(1_500))]), 2_000), Some(60));
+        assert_eq!(least_left(&q(vec![]), 2_000), None);
+        assert_eq!(least_left(&q(vec![window(5.0, None)]), 1_000 + STALE_MS + 1), None, "an old reading says nothing");
+    }
     use serde_json::json;
 
     /// Captured from agy 1.4.12 on 2026-10-31.

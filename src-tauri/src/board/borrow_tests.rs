@@ -160,12 +160,18 @@ fn busy_and_low_are_said_as_such() {
     let mut f = w.facts();
     f.builder = Some(("b1", true, Some(60)));
     assert_eq!(take(&r, &f), Take::Busy);
-    let mut f = w.facts();
-    f.builder = Some(("b1", false, Some(9)));
-    assert_eq!(take(&r, &f), Take::Low);
+    // the window's own rule for low elixir: at or under the reserve
     let mut f = w.facts();
     f.builder = Some(("b1", false, Some(10)));
-    assert_eq!(take(&r, &f), Take::Start, "at the floor is enough");
+    assert_eq!(take(&r, &f), Take::Low, "at the floor is low, as in the window");
+    let mut f = w.facts();
+    f.builder = Some(("b1", false, Some(11)));
+    assert_eq!(take(&r, &f), Take::Start);
+    let mut none = World { lends: vec![Lend { floor: 0, ..w.lends[0].clone() }], ..world(Some(Level::Helper)) };
+    none.phones = w.phones.clone();
+    let mut f = none.facts();
+    f.builder = Some(("b1", false, Some(0)));
+    assert_eq!(take(&r, &f), Take::Start, "a floor of 0 is no floor");
     let mut f = w.facts();
     f.builder = Some(("b1", false, None));
     assert_eq!(take(&r, &f), Take::Start, "no reading counts as enough");

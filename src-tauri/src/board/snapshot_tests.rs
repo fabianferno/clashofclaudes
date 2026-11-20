@@ -150,3 +150,29 @@ fn an_older_apps_map_reaches_the_visitor_without_a_made_up_activity() {
     assert!(v["workspaces"][0].get("a").is_none(), "got {v}");
     assert_eq!(v["workspaces"][0]["l"], 6);
 }
+
+#[test]
+fn the_map_names_what_is_lent_and_marks_borrowed_sessions() {
+    let mut s = snap(&[session("s1", "w1", SessionState::Finished, 5), session("s2", "w1", SessionState::Finished, 9)]);
+    s.lend = vec![MapLend { profile: "wizard".into(), name: "Wizard".into(), workspaces: Some(vec!["api".into()]), keys: None }];
+    s.sessions[0].by = Some("k_bob".into());
+    let back = parse(&text(&s)).unwrap();
+    assert_eq!(back, s);
+    assert!(text(&s).contains(r#""lend":[{"b":"wizard","n":"Wizard","w":["api"]}]"#), "{}", text(&s));
+    // an old map without the new fields still reads
+    let old = parse(r#"{"v":1,"host":"h","owner":"ada","seen":1,"workspaces":[],"builders":[],"sessions":[{"i":"s","w":"api","b":"wizard","s":"working","n":1,"a":1,"k":0}]}"#).unwrap();
+    assert!(old.lend.is_empty() && old.sessions[0].by.is_none());
+}
+
+#[test]
+fn a_borrowed_session_is_the_last_to_be_dropped() {
+    let mut d = data();
+    d.workspaces = vec![ws("w1", "API", true)];
+    let mut sessions: Vec<SessionInfo> = (0..400).map(|n| session(&format!("0f8fad5b-d9cb-469f-a165-7086768{n:05}"), "w1", SessionState::Finished, 1_000 + n)).collect();
+    sessions.push(session("the-borrowed-one", "w1", SessionState::Finished, 1));
+    let mut s = build(&d, "ada", "h1", &sessions, &|_| None, 1);
+    s.sessions.iter_mut().find(|x| x.id == "the-borrowed-one").unwrap().by = Some("k_bob".into());
+    let cut = parse(&text(&s)).unwrap();
+    assert!(cut.sessions.len() < 401);
+    assert!(cut.sessions.iter().any(|x| x.id == "the-borrowed-one"), "the oldest finished, and still there: its borrower needs it to press Done");
+}

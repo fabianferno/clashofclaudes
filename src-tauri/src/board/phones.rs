@@ -15,6 +15,13 @@ pub struct Secrets {
     /// What the remote asks for before it registers its watcher (set at its first deploy).
     #[serde(default)]
     pub setup_secret: Option<String>,
+    /// The builders lent to teammates. Here, not in settings: this list decides whose words may
+    /// start an agent on this Mac.
+    #[serde(default)]
+    pub lends: Vec<super::borrow::Lend>,
+    /// The nonces of borrow requests taken in the last day, with when (ms): a request is good once.
+    #[serde(default)]
+    pub borrow_nonces: Vec<(String, i64)>,
 }
 
 pub fn encode(s: &Secrets) -> Vec<u8> {

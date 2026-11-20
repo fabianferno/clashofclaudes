@@ -82,7 +82,7 @@ mod tests {
     use super::*;
 
     fn snap(state: &str, seen: i64) -> Snapshot {
-        let mut s = Snapshot { v: 1, host: "h1".into(), owner: "ada".into(), name: None, seen, workspaces: vec![], builders: vec![], sessions: vec![], mates: vec![] };
+        let mut s = Snapshot { v: 1, host: "h1".into(), owner: "ada".into(), name: None, seen, workspaces: vec![], builders: vec![], sessions: vec![], mates: vec![], lend: vec![] };
         s.name = Some(state.into());
         s
     }

@@ -143,7 +143,8 @@ pub fn take(r: &Request, f: &Facts<'_>) -> Take {
     if busy {
         return Take::Busy;
     }
-    if elixir.is_some_and(|left| left < lend.floor) {
+    // the window's own rule for low elixir: at or under the reserve; a floor of 0 is no floor
+    if lend.floor > 0 && elixir.is_some_and(|left| left <= lend.floor) {
         return Take::Low;
     }
     if lend.ask { Take::Ask } else { Take::Start }

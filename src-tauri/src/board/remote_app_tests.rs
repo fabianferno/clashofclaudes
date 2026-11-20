@@ -89,7 +89,7 @@ fn rig(block: &str) -> Rig {
     let public = pair.public_key().as_ref().to_vec();
     let key = key_id(&public);
     let store = Arc::new(MemoryStore::default());
-    store.save(&Secrets { phones: vec![Phone { key: key.clone(), public, name: "iPhone".into(), paired_at: 1, last_used: 0, record: Some("msg_rec".into()), level: None, who: None }], setup_secret: None }).unwrap();
+    store.save(&Secrets { phones: vec![Phone { key: key.clone(), public, name: "iPhone".into(), paired_at: 1, last_used: 0, record: Some("msg_rec".into()), level: None, who: None }], setup_secret: None, ..Default::default() }).unwrap();
     let sign = Box::new(move |a: &mut Action| {
         a.key = key.clone();
         loop {
@@ -484,4 +484,33 @@ fn lowering_never_raises_and_a_visitor_has_no_key() {
     g.r.lower_mate("bob@acme.com", Level::Visitor).unwrap();
     assert!(g.store.load().unwrap().phones.is_empty());
     assert!(g.r.lower_mate("nobody@acme.com", Level::Visitor).is_ok());
+}
+
+#[test]
+fn lending_is_set_from_the_screen_and_kept_in_the_keychain() {
+    use crate::board::borrow::Lend;
+    let g = rig(DECIDE);
+    let lend = Lend { builder: "b1".into(), keys: None, workspaces: Some(vec!["w1".into()]), floor: 10, ask: false };
+    g.r.set_lend("b1", Some(lend.clone())).unwrap();
+    assert_eq!(g.r.lends(), [lend.clone()]);
+    assert_eq!(g.store.load().unwrap().lends, [lend.clone()]);
+    // changed in place, not doubled
+    g.r.set_lend("b1", Some(Lend { ask: true, ..lend.clone() })).unwrap();
+    assert_eq!(g.r.lends().len(), 1);
+    assert!(g.r.lends()[0].ask);
+    g.r.set_lend("b1", None).unwrap();
+    assert!(g.store.load().unwrap().lends.is_empty());
+    // a lend for another builder than it names is not taken
+    assert!(g.r.set_lend("b2", Some(lend)).is_err());
+}
+
+#[test]
+fn a_borrow_nonce_is_remembered_for_a_day() {
+    let g = rig(DECIDE);
+    assert!(g.r.take_nonce("n1").unwrap(), "new");
+    assert!(!g.r.take_nonce("n1").unwrap(), "seen");
+    assert_eq!(g.store.load().unwrap().borrow_nonces.len(), 1, "kept where an agent cannot erase it");
+    g.clock.fetch_add(24 * 3_600_000 + 1, Ordering::SeqCst);
+    assert!(g.r.take_nonce("n2").unwrap());
+    assert_eq!(g.store.load().unwrap().borrow_nonces.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(), ["n2"], "older than a day: forgotten");
 }

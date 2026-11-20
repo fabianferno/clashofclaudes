@@ -131,6 +131,8 @@ struct Inner {
     acted: Option<Acted>,
     phones: Vec<Phone>,
     setup_secret: Option<String>,
+    lends: Vec<super::borrow::Lend>,
+    borrow_nonces: Vec<(String, i64)>,
     keychain_error: Option<String>,
     pairing: Pairing,
     seen: VecDeque<String>,
@@ -183,6 +185,8 @@ impl Remote {
             acted: None,
             phones: vec![],
             setup_secret: None,
+            lends: vec![],
+            borrow_nonces: vec![],
             keychain_error: None,
             pairing: Pairing::default(),
             seen: saved.seen,
@@ -224,6 +228,52 @@ impl Remote {
     /// teammates' paired Macs are not affected.
     pub fn set_phones_on(&self, on: bool) {
         self.lock().phones_on = on;
+    }
+
+    /// Lends a builder, changes how it is lent, or (None) stops lending it. The one way lending
+    /// is turned on or widened: called from Settings' own screen, never from a file.
+    pub fn set_lend(&self, builder_id: &str, lend: Option<super::borrow::Lend>) -> Result<(), String> {
+        if lend.as_ref().is_some_and(|l| l.builder != builder_id) {
+            return Err("that lend is for another builder".into());
+        }
+        let mut g = self.lock();
+        if let Some(e) = &g.keychain_error {
+            return Err(e.clone());
+        }
+        g.lends.retain(|l| l.builder != builder_id);
+        g.lends.extend(lend);
+        self.save_secrets(&mut g)
+    }
+
+    /// What is lent.
+    pub fn lends(&self) -> Vec<super::borrow::Lend> {
+        self.lock().lends.clone()
+    }
+
+    /// The paired keys, for judging a borrow request.
+    pub fn paired(&self) -> Vec<Phone> {
+        self.lock().phones.clone()
+    }
+
+    /// Takes a borrow request's nonce: true when it is new. Remembered for a day in the
+    /// Keychain (older ones are forgotten), so a request cannot be run twice, and an agent on
+    /// this Mac cannot make it forgettable by deleting a file.
+    pub fn take_nonce(&self, nonce: &str) -> Result<bool, String> {
+        let now = (self.now)();
+        let mut g = self.lock();
+        g.borrow_nonces.retain(|(_, at)| now - at <= super::borrow::FRESH_MS);
+        if g.borrow_nonces.iter().any(|(n, _)| n == nonce) {
+            return Ok(false);
+        }
+        g.borrow_nonces.push((nonce.to_string(), now));
+        self.save_secrets(&mut g)?;
+        Ok(true)
+    }
+
+    /// The nonces taken in the last day.
+    pub fn seen_nonces(&self) -> HashSet<String> {
+        let now = (self.now)();
+        self.lock().borrow_nonces.iter().filter(|(_, at)| now - at <= super::borrow::FRESH_MS).map(|(n, _)| n.clone()).collect()
     }
 
     /// The last thing a teammate did in this village.
@@ -283,18 +333,21 @@ impl Remote {
             Ok(s) => {
                 g.phones = s.phones;
                 g.setup_secret = s.setup_secret;
+                g.lends = s.lends;
+                g.borrow_nonces = s.borrow_nonces;
                 g.keychain_error = None;
             }
             Err(e) => {
                 // unreadable is not "none paired, carry on": nobody acts, and the owner is told
                 g.phones.clear();
+                g.lends.clear();
                 g.keychain_error = Some(e);
             }
         }
     }
 
     fn save_secrets(&self, g: &mut Inner) -> Result<(), String> {
-        let r = self.secrets.save(&Secrets { phones: g.phones.clone(), setup_secret: g.setup_secret.clone() });
+        let r = self.secrets.save(&Secrets { phones: g.phones.clone(), setup_secret: g.setup_secret.clone(), lends: g.lends.clone(), borrow_nonces: g.borrow_nonces.clone() });
         g.keychain_error = r.clone().err();
         r
     }
@@ -569,7 +622,7 @@ impl Remote {
                 if let Some(p) = g.phones.iter_mut().find(|p| p.key == key) {
                     p.record = id;
                 }
-                let _ = secrets.save(&Secrets { phones: g.phones.clone(), setup_secret: g.setup_secret.clone() });
+                let _ = secrets.save(&Secrets { phones: g.phones.clone(), setup_secret: g.setup_secret.clone(), lends: g.lends.clone(), borrow_nonces: g.borrow_nonces.clone() });
             })),
         );
         self.send_all(writes);

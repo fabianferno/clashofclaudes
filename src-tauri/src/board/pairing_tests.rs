@@ -195,7 +195,7 @@ mod phones {
     use crate::board::remote::Phone;
 
     fn secrets() -> Secrets {
-        Secrets { phones: vec![Phone { key: "k1".into(), public: vec![4, 1, 2], name: "iPhone".into(), paired_at: 1, last_used: 2, record: Some("msg_1".into()), level: None, who: None }], setup_secret: Some("s".into()) }
+        Secrets { phones: vec![Phone { key: "k1".into(), public: vec![4, 1, 2], name: "iPhone".into(), paired_at: 1, last_used: 2, record: Some("msg_1".into()), level: None, who: None }], setup_secret: Some("s".into()), ..Default::default() }
     }
 
     #[test]
@@ -204,6 +204,18 @@ mod phones {
         assert_eq!(store.load().unwrap(), Secrets::default());
         store.save(&secrets()).unwrap();
         assert_eq!(store.load().unwrap(), secrets());
+    }
+
+    #[test]
+    fn lends_and_borrow_nonces_are_kept_with_the_phones_and_old_blobs_still_read() {
+        use crate::board::borrow::Lend;
+        let mut s = secrets();
+        s.lends = vec![Lend { builder: "b1".into(), keys: Some(vec!["k1".into()]), workspaces: None, floor: 10, ask: true }];
+        s.borrow_nonces = vec![("n1".into(), 5)];
+        assert_eq!(decode(&encode(&s)).unwrap(), s);
+        // an item saved before lending existed
+        let old = decode(br#"{"phones":[],"setupSecret":null}"#).unwrap();
+        assert!(old.lends.is_empty() && old.borrow_nonces.is_empty());
     }
 
     #[test]

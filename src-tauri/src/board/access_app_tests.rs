@@ -270,7 +270,7 @@ fn real_village_closes_and_is_visited() {
 
     // the owner still writes inside: the village's map
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64;
-    let snap = Snapshot { v: 1, host: "realvisit".into(), owner: owner.clone(), name: Some("Real run".into()), seen: now, workspaces: vec![], builders: vec![], sessions: vec![], mates: vec![] };
+    let snap = Snapshot { v: 1, host: "realvisit".into(), owner: owner.clone(), name: Some("Real run".into()), seen: now, workspaces: vec![], builders: vec![], sessions: vec![], mates: vec![], lend: vec![] };
     let post = MsgWrite::Post { channel: format!("v/{owner}/village"), text: text(&snap), labels: vec![("coc.kind".into(), "village-map".into())], key: format!("coc-map-realvisit-{now}") };
     let posted = cli.run(&args_for_msg(&post, &target)).unwrap();
     println!("MAP posted as {}", posted["message"]["id"]);

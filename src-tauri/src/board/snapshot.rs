@@ -91,7 +91,28 @@ pub struct MapSession {
     pub spot: Option<Tile>,
     #[serde(rename = "k")]
     pub steps: u32,
+    /// The key id of the teammate it works for, for a borrowed session.
+    #[serde(rename = "y", default, skip_serializing_if = "Option::is_none")]
+    pub by: Option<String>,
 }
+
+/// A builder lent to teammates: their apps offer it when their own key is among `keys`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct MapLend {
+    #[serde(rename = "b")]
+    pub profile: String,
+    #[serde(rename = "n")]
+    pub name: String,
+    /// The workspace slugs it may work in; None: every shared workspace.
+    #[serde(rename = "w", default, skip_serializing_if = "Option::is_none")]
+    pub workspaces: Option<Vec<String>>,
+    /// The key ids it is lent to; None: every paired Mac.
+    #[serde(rename = "k", default, skip_serializing_if = "Option::is_none")]
+    pub keys: Option<Vec<String>>,
+}
+
+/// At most this many lent builders are listed (the map has 10,000 characters for everything).
+pub const MAX_LEND: usize = 12;
 
 /// A teammate whose Mac is paired with this village, and their level (for their own app's buttons).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -116,6 +137,8 @@ pub struct Snapshot {
     pub sessions: Vec<MapSession>,
     #[serde(default)]
     pub mates: Vec<MapMate>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lend: Vec<MapLend>,
 }
 
 /// The map of `owner`'s village as it is now. `roots`: a session's thread root on the board.
@@ -146,10 +169,11 @@ pub fn build(data: &AppData, owner: &str, host: &str, sessions: &[SessionInfo], 
             started: s.started_at,
             spot: s.spot.clone(),
             steps: s.steps,
+            by: None,
         });
     }
     let builders = data.builders.iter().filter(|b| used.contains(&b.id)).map(|b| MapBuilder { profile: profile_name(&b.name), name: b.name.clone(), agent: agent_key(&b.agent).to_string() }).collect();
-    Snapshot { v: 1, host: host.into(), owner: owner.into(), name: data.settings.player_name.clone(), seen: now, workspaces, builders, sessions: out, mates: vec![] }
+    Snapshot { v: 1, host: host.into(), owner: owner.into(), name: data.settings.player_name.clone(), seen: now, workspaces, builders, sessions: out, mates: vec![], lend: vec![] }
 }
 
 /// The message's text: the map as JSON, under the board's limit. A village too big for that
@@ -162,8 +186,13 @@ pub fn text(s: &Snapshot) -> String {
             return t;
         }
         let finished = Wire::Finished.as_str();
-        let oldest = s.sessions.iter().enumerate().filter(|(_, x)| x.state == finished).min_by_key(|(_, x)| x.since).map(|(i, _)| i);
-        match oldest.or_else(|| s.sessions.iter().enumerate().min_by_key(|(_, x)| x.since).map(|(i, _)| i)) {
+        s.lend.truncate(MAX_LEND);
+        // Finished sessions of the owner's own go first; a borrowed one is kept as long as
+        // anything else can go, because its borrower finds it (and Done) through this map.
+        let own_finished = s.sessions.iter().enumerate().filter(|(_, x)| x.state == finished && x.by.is_none()).min_by_key(|(_, x)| x.since).map(|(i, _)| i);
+        let own = || s.sessions.iter().enumerate().filter(|(_, x)| x.by.is_none()).min_by_key(|(_, x)| x.since).map(|(i, _)| i);
+        let any = || s.sessions.iter().enumerate().min_by_key(|(_, x)| x.since).map(|(i, _)| i);
+        match own_finished.or_else(own).or_else(any) {
             Some(i) => {
                 s.sessions.remove(i);
             }

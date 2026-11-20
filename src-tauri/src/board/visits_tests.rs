@@ -19,9 +19,10 @@ fn snap(owner: &str, seen: i64, states: &[&str]) -> Snapshot {
         sessions: states
             .iter()
             .enumerate()
-            .map(|(n, s)| MapSession { id: format!("s{n}"), root: None, workspace: "api".into(), builder: "wizard".into(), state: s.to_string(), wait: None, since: 1, started: 1, spot: None, steps: 0 })
+            .map(|(n, s)| MapSession { id: format!("s{n}"), root: None, workspace: "api".into(), builder: "wizard".into(), state: s.to_string(), wait: None, since: 1, started: 1, spot: None, steps: 0, by: None })
             .collect(),
         mates: vec![],
+        lend: vec![],
     }
 }
 

@@ -6,6 +6,8 @@ import ZoomControls from '../hud/ZoomControls';
 import { getPanelWidth, usePanelWidth } from '../state/panelWidth';
 import { createScene, type BoardInput, type Scene, type VillageInput } from './scene';
 import { visitInput } from '../state/visits';
+import { CAMP_ID, campCompound, guestCamp, isCampSession } from '../state/guestCamp';
+import type { Compound } from '../api/types';
 import { setBoardImage } from './art/entities';
 import { clearProbeScene, setProbeScene } from './probe';
 import { splashReady } from '../splash';
@@ -52,10 +54,27 @@ async function decodeSnapshots(s: AppState): Promise<boolean> {
 const inputOf = (s: AppState, mini = false): VillageInput =>
   s.visiting && !mini ? { ...visitInput(s.visiting.map), dayNight: s.settings?.dayNight !== false } : ownInput(s, mini);
 
-const ownInput = (s: AppState, mini = false): VillageInput => ({
-  workspaces: s.workspaces,
-  sessions: Object.values(s.sessions),
-  builders: s.builders,
+/** Where the guest camp stands, kept between launches on this Mac. */
+const CAMP_KEY = 'coc.guestCamp';
+let campAt: Compound | null = (() => {
+  try { return JSON.parse(localStorage.getItem(CAMP_KEY) ?? 'null') as Compound | null; } catch { return null; }
+})();
+function campFor(s: AppState) {
+  if (s.borrowedSessions.length === 0) return null;
+  const at = campCompound(s.workspaces, campAt);
+  if (at !== campAt) {
+    campAt = at;
+    try { localStorage.setItem(CAMP_KEY, JSON.stringify(at)); } catch { /* kept for this run only */ }
+  }
+  return guestCamp(s.borrowedSessions, at);
+}
+
+const ownInput = (s: AppState, mini = false): VillageInput => {
+  const camp = mini ? null : campFor(s);
+  return {
+  workspaces: camp ? [...s.workspaces, camp.workspace] : s.workspaces,
+  sessions: camp ? [...Object.values(s.sessions), ...camp.sessions] : Object.values(s.sessions),
+  builders: camp ? [...s.builders, ...camp.builders] : s.builders,
   closed: s.lastClosed,
   quotas: s.quotas,
   installed: s.agents.filter((a) => a.installed).map((a) => a.kind),
@@ -64,7 +83,8 @@ const ownInput = (s: AppState, mini = false): VillageInput => ({
   boards: mini ? [] : boardsOf(s),
   ownerName: s.settings?.playerName ?? null,
   dayNight: s.settings?.dayNight !== false,
-});
+  };
+};
 
 /** The Pixi village, full-window; syncs from the store on every change (also while hidden). */
 /**
@@ -95,10 +115,22 @@ export default function VillageCanvas({ onError, mini = false }: { onError?: (e:
       // In someone else's village a builder can be looked at; nothing can be opened, moved or assigned.
       onSelect: (sel) => {
         const st = useApp.getState();
-        if (st.visiting) st.setVisitedSession(sel?.kind === 'session' ? sel.id : null);
-        else st.setSelection(sel);
+        if (st.visiting) {
+          // a builder: look at it; a workspace's house: borrow one of its lent builders
+          st.setVisitedSession(sel?.kind === 'session' ? sel.id : null);
+          st.setBorrowHere(sel?.kind === 'workspace' ? sel.id : null);
+          return;
+        }
+        // in the guest camp: a builder working for you in someone else's village
+        const camp = sel?.kind === 'session' ? isCampSession(sel.id) : null;
+        if (camp) {
+          void ipc.visit(camp.owner).then((map) => { st.setBorrowedFrom(camp.owner, map ?? null); st.setVisitedSession(camp.session); }, () => {});
+          return;
+        }
+        if (sel?.kind === 'workspace' && sel.id === CAMP_ID) return;
+        st.setSelection(sel);
       },
-      canMove: (t, at) => !useApp.getState().visiting && moveValid(useApp.getState(), t, at),
+      canMove: (t, at) => !useApp.getState().visiting && !(t.kind === 'session' && isCampSession(t.id)) && !(t.kind === 'compound' && t.id === CAMP_ID) && moveValid(useApp.getState(), t, at),
       onMove: (t, at) => (useApp.getState().visiting ? Promise.resolve(false) : useApp.getState().village.commitMove(t, at, onError)),
       onClosedConsumed: (id) => useApp.getState().consumeClosed(id),
       onBuilderAssign: (builderId, id) => { if (!useApp.getState().visiting) useApp.getState().setSelection({ kind: 'workspace', id, builder: builderId }); },
@@ -133,7 +165,7 @@ export default function VillageCanvas({ onError, mini = false }: { onError?: (e:
           if (st.workspaces !== prev.workspaces || st.sessions !== prev.sessions || st.builders !== prev.builders || st.lastClosed !== prev.lastClosed
             || st.quotas !== prev.quotas || st.agents !== prev.agents || st.collectorSpots !== prev.collectorSpots
             || st.apps !== prev.apps || st.browsers !== prev.browsers || st.boardSpots !== prev.boardSpots
-            || st.settings?.playerName !== prev.settings?.playerName || st.settings?.dayNight !== prev.settings?.dayNight || st.visiting !== prev.visiting)
+            || st.settings?.playerName !== prev.settings?.playerName || st.settings?.dayNight !== prev.settings?.dayNight || st.visiting !== prev.visiting || st.borrowedSessions !== prev.borrowedSessions)
             s.sync(inputOf(st, mini));
           // the mini village keeps everything in view as compounds come and go
           if (mini && st.workspaces.length !== prev.workspaces.length) s.fitVillage();

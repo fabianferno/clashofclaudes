@@ -207,3 +207,42 @@ test('after an answer was applied and the builder asks again, the new wait can b
   expect(screen.getByRole('button', { name: 'Allow' })).toBeTruthy();
   expect(screen.queryByText(/Sent to/)).toBeNull();
 });
+
+// Borrowing (shared builders).
+const borrow = vi.hoisted(() => ({ borrowLent: vi.fn(), borrowSend: vi.fn() }));
+Object.assign(ipc, borrow);
+
+test('clicking a house in a visited village offers the builders lent to you there, and sends a request', async () => {
+  const BorrowHere = (await import('../panels/BorrowHere')).default;
+  useApp.setState({ visiting: { owner: 'ada', map: mapOf('ada') }, borrowHere: 'shop' });
+  borrow.borrowLent.mockResolvedValue([{ profile: 'wizard', name: 'Wizard' }, { profile: 'archer', name: 'Archer' }]);
+  await act(async () => { render(<BorrowHere />); });
+  expect(borrow.borrowLent).toHaveBeenCalledWith('ada', 'shop');
+  expect(screen.getByText('Borrow a builder in ada’s shop')).toBeTruthy();
+  const send = screen.getByRole('button', { name: 'Send' }) as HTMLButtonElement;
+  expect(send.disabled).toBe(true);
+  fireEvent.click(screen.getByLabelText('Archer'));
+  fireEvent.change(screen.getByLabelText('What should it do?'), { target: { value: 'Add a CSV export' } });
+  borrow.borrowSend.mockResolvedValue({ owner: 'ada', request: 'msg_q', builder: 'Archer', workspace: 'shop', task: 'Add a CSV export', at: 1, result: null, why: null });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Send' })); });
+  expect(borrow.borrowSend).toHaveBeenCalledWith('ada', 'shop', 'archer', 'Add a CSV export');
+  expect(screen.getByText(/Sent\. ada’s Mac will answer/)).toBeTruthy();
+});
+
+test('a workspace with nothing lent to you says so', async () => {
+  const BorrowHere = (await import('../panels/BorrowHere')).default;
+  useApp.setState({ visiting: { owner: 'ada', map: mapOf('ada') }, borrowHere: 'shop' });
+  borrow.borrowLent.mockResolvedValue([]);
+  await act(async () => { render(<BorrowHere />); });
+  expect(screen.getByText(/ada lends you no builder here/)).toBeTruthy();
+});
+
+test('a borrowed builder opened from home shows its panel, and Done when it is finished', async () => {
+  act2.mateKey.mockResolvedValue('k_me');
+  useApp.setState({ visiting: null, borrowedFrom: 'ada', borrowedMap: withMate('helper'), visitedSession: 's1' });
+  ipc.visitBuilder.mockResolvedValue(waiting({ wait: 'review', can: ['followup', 'close'], question: null, words: 'Finished.\n\nPushed to origin as `borrow/me/x-ab12`.' }));
+  await act(async () => { render(<VisitedBuilder />); });
+  expect(screen.getByText(/Pushed to origin as/)).toBeTruthy();
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Done' })); });
+  expect(act2.visitAct).toHaveBeenLastCalledWith('ada', 'msg_1', { do: 'close', prompt: 'ab'.repeat(32) });
+});

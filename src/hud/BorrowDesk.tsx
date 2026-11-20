@@ -42,7 +42,7 @@ export default function BorrowDesk() {
   const read = useCallback(() => {
     ipc.borrowRequests().then(setRequests, () => {});
     ipc.lentSessions().then(setLent, () => {});
-    ipc.borrowed().then(setBorrowed, () => {});
+    ipc.borrowed().then((b) => { setBorrowed(b); useApp.getState().setBorrowedSessions(b); }, () => {});
     ipc.borrowSent().then(setSent, () => {});
   }, []);
 

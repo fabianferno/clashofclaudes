@@ -5,9 +5,9 @@ import { useApp } from '../state/store';
 import { useMyLevel } from '../state/myLevel';
 
 const WAIT: Record<string, string> = { decide: 'Wants a decision', answer: 'Asking its owner', stuck: 'Stuck', review: 'Ready to review' };
-type Do = 'allow' | 'deny' | 'answer' | 'followup';
+type Do = 'allow' | 'deny' | 'answer' | 'followup' | 'close';
 /** What each level may do; the owner's Mac holds the same table and is the one that counts. */
-const MAY: Record<string, Do[]> = { visitor: [], helper: ['answer', 'followup'], trusted: ['allow', 'deny', 'answer', 'followup'] };
+const MAY: Record<string, Do[]> = { visitor: [], helper: ['answer', 'followup', 'close'], trusted: ['allow', 'deny', 'answer', 'followup', 'close'] };
 
 /** `**Wizard** (Claude Code): add a CSV export` as its parts. */
 function parts(title: string): { who: string; rest: string } {
@@ -21,7 +21,11 @@ function parts(title: string): { who: string; rest: string } {
  * Each is signed by this Mac and judged by its owner's.
  */
 export default function VisitedBuilder() {
-  const visiting = useApp((s) => s.visiting);
+  // in a visited village, or a builder working for you opened from home
+  const visitingNow = useApp((s) => s.visiting);
+  const borrowedFrom = useApp((s) => s.borrowedFrom);
+  const borrowedMap = useApp((s) => s.borrowedMap);
+  const visiting = visitingNow ?? (borrowedFrom && borrowedMap ? { owner: borrowedFrom, map: borrowedMap } : null);
   const id = useApp((s) => s.visitedSession);
   const [data, setData] = useState<Visited | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'closed' | 'none'>('loading');
@@ -85,7 +89,7 @@ export default function VisitedBuilder() {
   };
   const wordsFor: Do | null = can('followup') ? 'followup' : can('answer') ? 'answer' : null;
   const typed = words.trim();
-  const offered = (['allow', 'deny', 'answer', 'followup'] as Do[]).some(can);
+  const offered = (['allow', 'deny', 'answer', 'followup', 'close'] as Do[]).some(can);
   const heldBack = !!data && data.can.length > 0 && !offered && level === 'helper';
 
   return (
@@ -122,6 +126,9 @@ export default function VisitedBuilder() {
               <textarea aria-label={wordsFor === 'followup' ? 'Follow up' : 'Your answer'} placeholder={wordsFor === 'followup' ? 'Follow up' : 'Your answer'} rows={2} value={words} onChange={(e) => setWords(e.target.value)} />
               <button type="submit" className="hud-btn green sm" disabled={busy || !typed}>Send</button>
             </form>
+          )}
+          {can('close') && (
+            <button type="button" className="hud-btn green" disabled={busy} onClick={() => send('close')}>Done</button>
           )}
           {heldBack && <p className="set-note">Only a Trusted person can allow or deny here.</p>}
         </div>

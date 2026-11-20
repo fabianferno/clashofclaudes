@@ -3,7 +3,7 @@ import { create } from 'zustand';
 /** A newer version the updater found, with its release notes when it has them. */
 export interface FoundUpdate { version: string | null; notes: string | null }
 import { ipc } from '../api/ipc';
-import type { AgentInfo, AgentKind, AgentQuota, AppPreview, Todo, Builder, CloseOutcome, Compound, ListState, SessionInfo, SessionState, Settings, Stats, Tile, Workspace, ReportKind, VisitView, VillageMap } from '../api/types';
+import type { AgentInfo, AgentKind, AgentQuota, AppPreview, Todo, Builder, CloseOutcome, Compound, ListState, SessionInfo, SessionState, Settings, Stats, Tile, Workspace, ReportKind, VisitView, VillageMap, BorrowedSession } from '../api/types';
 import { HOUSE, STRUCT, canPlace, centeredHouse, compoundFits, gapBetween, houseClearOfWalls, placeCompound, shiftCompound, spotFor, tidySpots, wallRect } from '../village/layout';
 import { collectorFits, collectorTiles, shownCollectors } from '../village/quota';
 import { recordReading, type QuotaHistory } from './elixir';
@@ -176,6 +176,12 @@ export interface AppState {
   borrowedFrom: string | null;
   borrowedMap: VillageMap | null;
   setBorrowedFrom: (owner: string | null, map: VillageMap | null) => void;
+  /** In a visited village: the workspace (its slug) whose house was clicked, to borrow a builder there. */
+  borrowHere: string | null;
+  setBorrowHere: (slug: string | null) => void;
+  /** The builders working for you in other villages (the guest camp). */
+  borrowedSessions: BorrowedSession[];
+  setBorrowedSessions: (b: BorrowedSession[]) => void;
   /** Shipped close outcomes by session id, for the village to play the orbs; cleared once consumed. */
   lastClosed: Record<string, CloseOutcome>;
   /** A session was closed: pushes its notice(s) and remembers an earning outcome for the scene. Terminals stay silent. */
@@ -322,12 +328,16 @@ export const useApp = create<AppState>((set, get) => ({
   visits: [],
   setVisits: (visits) => set({ visits }),
   visiting: null,
-  setVisiting: (visiting) => set((st) => ({ visiting, visitedSession: visiting && st.visiting?.owner === visiting.owner ? st.visitedSession : null })),
+  setVisiting: (visiting) => set((st) => ({ visiting, borrowHere: null, visitedSession: visiting && st.visiting?.owner === visiting.owner ? st.visitedSession : null })),
   visitedSession: null,
   setVisitedSession: (visitedSession) => set((st) => ({ visitedSession, ...(visitedSession === null ? { borrowedFrom: null, borrowedMap: null } : {}) , ...(st.visiting ? {} : {}) })),
   borrowedFrom: null,
   borrowedMap: null,
   setBorrowedFrom: (borrowedFrom, borrowedMap) => set({ borrowedFrom, borrowedMap }),
+  borrowHere: null,
+  setBorrowHere: (borrowHere) => set({ borrowHere }),
+  borrowedSessions: [],
+  setBorrowedSessions: (borrowedSessions) => set({ borrowedSessions }),
   lastClosed: {},
   notify: (text, kind = 'info') => {
     const id = ++noticeSeq;

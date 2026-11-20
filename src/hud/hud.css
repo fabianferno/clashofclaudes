@@ -168,3 +168,7 @@ img.hud-stat-ico { width: 48px; height: 48px; margin: 0 -4px; filter: none; }
 .borrow-task { margin: 0; max-height: 9em; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 500 12.5px/1.4 ui-monospace, Menlo, monospace; }
 .borrow-note { font-weight: 500; color: #5a4632; }
 .borrow-acts { display: flex; gap: 8px; justify-content: flex-end; }
+.borrow-form { display: grid; gap: 8px; margin-top: 10px; }
+.borrow-form textarea { padding: 8px; border: 2px solid var(--hud-out); border-radius: 8px; font: inherit; resize: vertical; }
+.borrow-picks { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.borrow-picks label { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }

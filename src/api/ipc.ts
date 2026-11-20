@@ -144,7 +144,7 @@ export const ipc = {
   /** Asks a village's owner to pair this Mac, with the code they sent; the check number to read back. */
   matePair: (owner: string, code: string) => invoke<string>('mate_pair', { owner, code }),
   /** Sends a signed action for a builder in a visited village. */
-  visitAct: (owner: string, root: string, action: { do: 'allow' | 'deny' | 'answer' | 'followup'; pick?: number; text?: string; prompt: string }) =>
+  visitAct: (owner: string, root: string, action: { do: 'allow' | 'deny' | 'answer' | 'followup' | 'close'; pick?: number; text?: string; prompt: string }) =>
     invoke<void>('visit_act', { owner, root, do: action.do, pick: action.pick ?? null, text: action.text ?? null, prompt: action.prompt }),
   /** Settings › Lent builders. */
   lending: () => invoke<Lending>('lending'),

@@ -434,7 +434,7 @@ export interface VisitedBuilder {
   question: string | null;
   options: string[] | null;
   /** What the owner's Mac will take for this wait. */
-  can: ('allow' | 'deny' | 'answer' | 'followup')[];
+  can: ('allow' | 'deny' | 'answer' | 'followup' | 'close')[];
   /** The hash of the wait shown: what an action for it signs. */
   prompt: string | null;
   /** This Mac sent an action for this wait, and the owner's Mac's word on it. */

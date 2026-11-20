@@ -49,6 +49,11 @@ export class FakeBoard implements BoardLike {
     if (had) return had;
     return this.add({ id: m.id, channel: root.channel, text: m.text, re: root.re ?? root.id, labels: m.labels }, { principal: 'vercel:project:prj_r:production', handle: 'remote' });
   }
+
+  async edit(id: string, text: string): Promise<void> {
+    const m = this.msgs.find((x) => x.id === id);
+    if (m) m.text = text;
+  }
 }
 
 /** A phone: a P-256 key made as a browser makes it. */

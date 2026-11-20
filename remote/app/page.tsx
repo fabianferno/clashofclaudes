@@ -1,1 +1,5 @@
-export default function Page() { return <main>Village remote</main>; }
+import { App } from './ui/App';
+
+export default function Page() {
+  return <App />;
+}

@@ -1,0 +1,98 @@
+/* The village on a phone: grass underfoot, notices on parchment with the Mac app's dark outline
+   and hard drop edge, and buttons big enough to hit with a thumb while walking. */
+:root {
+  --grass: #6aa644;
+  --grass-deep: #4f8431;
+  --parch: #f1dfb6;
+  --parch-deep: #e2c98f;
+  --out: #1d130b;
+  --ink: #2b2018;
+  --allow: #62c23c;
+  --deny: #ff4b3e;
+  --gold: #ffcf33;
+  --stuck: #8e8e8e;
+  --edge: 0 5px 0 var(--out);
+  --display: 'Lilita One';
+}
+
+* { box-sizing: border-box; }
+html { background: var(--grass); -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; min-height: 100dvh; color: var(--ink);
+  font: 17px/1.45 system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* mown stripes, as the village's ground is tiled */
+  background: repeating-linear-gradient(135deg, var(--grass) 0 26px, #65a040 26px 52px) fixed;
+}
+main { max-width: 34rem; margin: 0 auto; padding: max(14px, env(safe-area-inset-top)) 14px calc(28px + env(safe-area-inset-bottom)); }
+
+.top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 4px 4px 14px; }
+.brand { font: 400 1.7rem/1 var(--display), system-ui, sans-serif; color: #fff; letter-spacing: .01em; text-shadow: -2px -2px 0 var(--out), 2px -2px 0 var(--out), -2px 2px 0 var(--out), 2px 2px 0 var(--out), 0 4px 0 var(--out); }
+.whose { font-weight: 700; color: var(--out); }
+
+.card, .panel, .working, .banner, .note {
+  background: var(--parch); border: 3px solid var(--out); border-radius: 16px; box-shadow: var(--edge);
+  padding: 16px; margin: 0 0 20px;
+}
+.note { background: rgba(241, 223, 182, .8); text-align: center; font-weight: 600; }
+.banner { background: var(--gold); font-weight: 600; }
+.banner.ask { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+
+/* a coloured tab down the card's left edge says why it waits, before a word is read */
+.card { position: relative; padding-left: 26px; overflow: hidden; }
+.card::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 12px; background: var(--deny); border-right: 3px solid var(--out); }
+.card.wait-stuck::before { background: var(--stuck); }
+.card.wait-review::before { background: var(--gold); }
+
+.card-head h2, .panel h1, .working h2 { margin: 0; font: 400 1.55rem/1.1 var(--display), system-ui, sans-serif; }
+.card-where { margin: 2px 0 0; font-weight: 700; font-size: .95rem; }
+.card-task { margin: 10px 0 0; color: #5a4632; }
+.card-prose { margin: 10px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 14rem; overflow: auto; }
+.card-ask {
+  margin: 12px 0 0; padding: 10px 12px; background: var(--out); color: #ffe9b0; border-radius: 10px;
+  font: 600 .95rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 12rem; overflow: auto;
+}
+
+.card-acts { display: grid; gap: 12px; margin-top: 16px; }
+.pair-row { display: grid; grid-template-columns: 1fr 1.4fr; gap: 12px; }
+
+.btn {
+  appearance: none; min-height: 56px; padding: 10px 16px; border: 3px solid var(--out); border-radius: 14px;
+  font: 400 1.35rem/1 var(--display), system-ui, sans-serif; color: var(--out); background: var(--parch-deep);
+  box-shadow: var(--edge); cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+}
+.btn:active:not(:disabled) { transform: translateY(4px); box-shadow: 0 1px 0 var(--out); }
+.btn:focus-visible, input:focus-visible, textarea:focus-visible { outline: 4px solid #fff; outline-offset: 2px; }
+.btn:disabled { opacity: .5; cursor: default; }
+.btn.allow { background: var(--allow); color: #fff; text-shadow: 0 2px 0 var(--out); }
+.btn.deny { background: var(--deny); color: #fff; text-shadow: 0 2px 0 var(--out); }
+.btn.send { background: var(--gold); }
+.btn.option { text-align: left; font: 700 1.05rem/1.25 system-ui, sans-serif; background: #fff8e4; }
+.btn.quiet { min-height: 44px; font: 700 1rem/1 system-ui, sans-serif; box-shadow: 0 3px 0 var(--out); }
+
+.words { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: stretch; }
+input, textarea {
+  width: 100%; padding: 12px; border: 3px solid var(--out); border-radius: 12px; background: #fff8e4; color: var(--ink);
+  font: inherit; resize: vertical;
+}
+
+.card-result { margin: 16px 0 0; padding: 12px; border: 3px dashed var(--out); border-radius: 12px; font-weight: 700; text-align: center; }
+.card-result.applied { background: #cfeeb9; border-style: solid; }
+.card-result.stale, .card-result.mac { background: #fff8e4; }
+.card-result.refused, .card-result.failed { background: #ffd2cc; border-style: solid; }
+.card-error { margin: 12px 0 0; font-weight: 700; color: #a11f14; }
+
+.panel p { margin: 10px 0 0; }
+.panel form { display: grid; gap: 14px; margin-top: 16px; }
+.panel label { display: grid; gap: 6px; font-weight: 700; }
+.code { font: 400 2rem/1 var(--display), system-ui, sans-serif; letter-spacing: .18em; text-align: center; }
+.check { margin: 16px 0; padding: 14px; background: var(--out); color: var(--gold); border-radius: 12px; text-align: center; font: 400 2.6rem/1 var(--display), system-ui, sans-serif; letter-spacing: .08em; }
+
+.working { background: rgba(241, 223, 182, .88); }
+.working ul { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+.working li { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: baseline; }
+.working li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #5a4632; }
+.working li i { font-style: normal; font-weight: 700; font-size: .9rem; }
+
+.foot { display: flex; justify-content: center; padding-top: 6px; }
+
+@media (prefers-reduced-motion: reduce) { .btn:active:not(:disabled) { transform: none; } }

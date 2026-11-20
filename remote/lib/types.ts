@@ -28,6 +28,8 @@ export interface BoardLike {
   thread(root: string): Promise<Thread>;
   /** Replies as the remote's own profile. `id` makes it idempotent. */
   reply(to: string, m: { text: string; labels: Record<string, string>; id: string }): Promise<Msg>;
+  /** Changes the text of a message the remote wrote. */
+  edit(id: string, text: string): Promise<void>;
 }
 
 /** What the Mac says about one wait, at the end of its reply in the session's thread. */

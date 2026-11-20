@@ -31,6 +31,8 @@ export interface Deps {
   /** What `POST /api/board/watchers` must carry (set when the remote was first deployed). */
   setup: string | undefined;
   version: string;
+  /** The public half of the push keys, for the page to subscribe with. */
+  pushKey?: string;
   lookups: Limiter;
   /** A village's queue, kept for two seconds: several phones, one read of the board. */
   cache: Map<string, { at: number; queue: Queue }>;
@@ -171,7 +173,7 @@ export async function pair(req: Request, d: Deps): Promise<Response> {
 
 /** `GET /api/version`, unsigned: so the Mac can offer an update. */
 export function version(d: Deps): Response {
-  return json({ version: d.version });
+  return json({ version: d.version, ...(d.pushKey ? { push: d.pushKey } : {}) });
 }
 
 /** Whether a request may reach the board handle's own routes (watcher registration): it carries the setup secret. */

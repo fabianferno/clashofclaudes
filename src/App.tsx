@@ -10,6 +10,7 @@ import { watchAmbience } from './state/ambience';
 import { queueReason } from './state/queue';
 import VillageCanvas from './village/VillageCanvas';
 import PeopleRow from './hud/PeopleRow';
+import BorrowDesk from './hud/BorrowDesk';
 import VisitedBuilder from './panels/VisitedBuilder';
 import TopBar from './hud/TopBar';
 import BuildersBar from './hud/BuildersBar';
@@ -92,6 +93,7 @@ function App() {
     <VillageCanvas onError={(e) => useApp.getState().setError(String(e))} />
     <TopBar />
     <PeopleRow />
+    <BorrowDesk />
     <VisitedBuilder />
     <BuildersBar />
     <BuildButtons />

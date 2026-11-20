@@ -291,6 +291,12 @@
 .kb-add + .att-strip { margin: 6px 0 0; }
 .kb-todo .att-strip { margin: 0; }
 .kb-todo .att-thumb { width: 44px; height: 44px; }
+/* a To Do's ✎, in its top corner so the start row keeps its room */
+.kb-card.kb-todo { position: relative; }
+.kb-todo > .kb-title, .kb-todo > .att-strip { padding-right: 26px; }
+.kb-edit-btn { position: absolute; top: 6px; right: 6px; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 2px solid #d8c39a; border-radius: 8px; background: #fff8e8; color: #8a7558; font: 900 13px/1 system-ui; cursor: pointer; }
+.kb-edit-btn:hover:not(:disabled), .kb-edit-btn:focus-visible { border-color: #a8885a; color: #2b2018; outline: none; }
+.kb-edit-btn:disabled { opacity: .5; cursor: default; }
 .kb-edit { display: flex; flex-direction: column; gap: 6px; }
 .kb-edit textarea { width: 100%; box-sizing: border-box; resize: vertical; border: 2px solid #c8b083; border-radius: 8px; padding: 6px 8px; background: #fff8e8; font: 700 13px/1.35 system-ui; color: #2b2018; }
 .kb-edit textarea:focus { outline: none; border-color: #a8885a; }
@@ -360,3 +366,4 @@ html.coc-panel-resizing :is(.hud-res, .hud-stats, .hud-build, .hud-roster-zone, 
 .set-invite input[type="email"] { flex: 1; min-width: 0; }
 .set-picks { flex-wrap: wrap; gap: 6px 14px; }
 .set-picks label { display: inline-flex; align-items: center; gap: 6px; }
+.set-lend-body { display: grid; gap: 6px; margin: 0 0 10px 28px; }

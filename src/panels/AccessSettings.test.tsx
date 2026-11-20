@@ -4,6 +4,7 @@ import type { AccessStatus, Workspace } from '../api/types';
 
 const ipc = vi.hoisted(() => ({ accessStatus: vi.fn(), accessSetPrivate: vi.fn(), accessPutBack: vi.fn(), invitePut: vi.fn(), inviteRemove: vi.fn() }));
 vi.mock('../api/ipc', () => ({ ipc }));
+vi.mock('./LentBuilders', () => ({ default: () => null }));
 import AccessSettings from './AccessSettings';
 import { useApp } from '../state/store';
 

@@ -172,6 +172,10 @@ export interface AppState {
   /** The builder looked at in the visited village (its session id there). */
   visitedSession: string | null;
   setVisitedSession: (id: string | null) => void;
+  /** A builder working for you in someone's village, opened from home: whose village, and its map. */
+  borrowedFrom: string | null;
+  borrowedMap: VillageMap | null;
+  setBorrowedFrom: (owner: string | null, map: VillageMap | null) => void;
   /** Shipped close outcomes by session id, for the village to play the orbs; cleared once consumed. */
   lastClosed: Record<string, CloseOutcome>;
   /** A session was closed: pushes its notice(s) and remembers an earning outcome for the scene. Terminals stay silent. */
@@ -320,7 +324,10 @@ export const useApp = create<AppState>((set, get) => ({
   visiting: null,
   setVisiting: (visiting) => set((st) => ({ visiting, visitedSession: visiting && st.visiting?.owner === visiting.owner ? st.visitedSession : null })),
   visitedSession: null,
-  setVisitedSession: (visitedSession) => set({ visitedSession }),
+  setVisitedSession: (visitedSession) => set((st) => ({ visitedSession, ...(visitedSession === null ? { borrowedFrom: null, borrowedMap: null } : {}) , ...(st.visiting ? {} : {}) })),
+  borrowedFrom: null,
+  borrowedMap: null,
+  setBorrowedFrom: (borrowedFrom, borrowedMap) => set({ borrowedFrom, borrowedMap }),
   lastClosed: {},
   notify: (text, kind = 'info') => {
     const id = ++noticeSeq;

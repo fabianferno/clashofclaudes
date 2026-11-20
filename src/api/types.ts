@@ -374,6 +374,42 @@ export interface AccessStatus {
   invites: InviteView[];
 }
 
+/** How a builder is lent (kept in the Keychain on the lender's Mac). */
+export interface Lend {
+  builder: string;
+  /** Paired key ids it is lent to; null: every paired Mac. */
+  keys: string[] | null;
+  /** Workspace ids it may work in; null: every shared workspace. */
+  workspaces: string[] | null;
+  /** Requests are refused at or under this much elixir left (percent); 0: no floor. */
+  floor: number;
+  /** The first task waits for Accept. */
+  ask: boolean;
+}
+
+/** Settings › Lent builders. */
+export interface Lending {
+  builders: { builder: string; name: string; lend: Lend | null }[];
+  workspaces: { id: string; name: string; lendable: boolean; why: string | null }[];
+  mates: { key: string; email: string; handle: string }[];
+  reserve: number;
+}
+
+/** A borrow request waiting for the lender. */
+export interface BorrowRequest { id: string; who: string; builder: string; workspace: string; task: string; until: number }
+
+/** A session on this Mac working for a teammate. */
+export interface LentSession { session: string; key: string; handle: string; branch: string; request: string; pushed: boolean; pushError: string | null; worktree: string; repo: string }
+
+/** A builder lent to this Mac, in a village it visits. */
+export interface LentBuilder { profile: string; name: string }
+
+/** A borrow request this Mac sent, and what came back. */
+export interface SentBorrow { owner: string; request: string; builder: string; workspace: string; task: string; at: number; result: string | null; why: string | null }
+
+/** A session in another village that works for this Mac. */
+export interface BorrowedSession { owner: string; session: string; root: string | null; builder: string; workspace: string; state: string; wait: string | null }
+
 /** A village this login was invited to, in the people row. */
 export interface VisitView { owner: string; name: string | null; waiting: number; away: boolean; seen: number }
 

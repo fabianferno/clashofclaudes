@@ -3,6 +3,7 @@ import { ipc } from '../api/ipc';
 import type { AccessStatus, Level, RemotePairing } from '../api/types';
 import { useApp } from '../state/store';
 import { waitedLabel } from '../state/queue';
+import LentBuilders from './LentBuilders';
 
 const LEVELS: { value: Level; label: string; can: string }[] = [
   { value: 'visitor', label: 'Visitor', can: 'sees builders and what they wait for' },
@@ -175,6 +176,7 @@ export default function AccessSettings() {
         </>
       )}
       {error && <div className="set-note set-bad" role="alert">{error}</div>}
+      <LentBuilders />
     </>
   );
 }

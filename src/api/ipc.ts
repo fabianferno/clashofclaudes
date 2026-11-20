@@ -1,6 +1,6 @@
 import { invoke, Channel } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type { HistoryEntry, HapticKind, Todo, AppPreview, AgentAccount, AgentInfo, AgentKind, AgentQuota, Builder, CloseOutcome, Compound, ConfirmQuit, Frame, ListState, Review, SessionInfo, Settings, Stats, Tile, UpdateStatus, Workspace, BugReport, BugReportInfo, ReportKind, RaidReport, BoardStatus, RemoteStatus, AccessStatus, Level, VisitView, VillageMap, VisitedBuilder } from './types';
+import type { HistoryEntry, HapticKind, Todo, AppPreview, AgentAccount, AgentInfo, AgentKind, AgentQuota, Builder, CloseOutcome, Compound, ConfirmQuit, Frame, ListState, Review, SessionInfo, Settings, Stats, Tile, UpdateStatus, Workspace, BugReport, BugReportInfo, ReportKind, RaidReport, BoardStatus, RemoteStatus, AccessStatus, Level, VisitView, VillageMap, VisitedBuilder, Lend, Lending, BorrowRequest, LentSession, LentBuilder, SentBorrow, BorrowedSession } from './types';
 
 const SKIP_FLAG = 1n << 63n;
 
@@ -146,6 +146,22 @@ export const ipc = {
   /** Sends a signed action for a builder in a visited village. */
   visitAct: (owner: string, root: string, action: { do: 'allow' | 'deny' | 'answer' | 'followup'; pick?: number; text?: string; prompt: string }) =>
     invoke<void>('visit_act', { owner, root, do: action.do, pick: action.pick ?? null, text: action.text ?? null, prompt: action.prompt }),
+  /** Settings › Lent builders. */
+  lending: () => invoke<Lending>('lending'),
+  /** Lends a builder, changes how, or (null) stops lending it. */
+  lendSet: (builder: string, lend: Lend | null) => invoke<Lending>('lend_set', { builder, lend }),
+  borrowRequests: () => invoke<BorrowRequest[]>('borrow_requests'),
+  borrowAccept: (id: string) => invoke<BorrowRequest[]>('borrow_accept', { id }),
+  borrowDecline: (id: string) => invoke<BorrowRequest[]>('borrow_decline', { id }),
+  lentSessions: () => invoke<LentSession[]>('lent_sessions'),
+  lentPush: (session: string) => invoke<LentSession[]>('lent_push', { session }),
+  onBorrowChanged: (cb: () => void): Promise<UnlistenFn> => listen('borrow-changed', () => cb()),
+  onBorrowKept: (cb: (note: string) => void): Promise<UnlistenFn> => listen<string>('borrow-kept', (e) => cb(e.payload)),
+  /** The builders a visited village lends to this Mac for one of its workspaces. */
+  borrowLent: (owner: string, workspace: string) => invoke<LentBuilder[]>('borrow_lent', { owner, workspace }),
+  borrowSend: (owner: string, workspace: string, builder: string, task: string) => invoke<SentBorrow>('borrow_send', { owner, workspace, builder, task }),
+  borrowSent: () => invoke<SentBorrow[]>('borrow_sent'),
+  borrowed: () => invoke<BorrowedSession[]>('borrowed'),
   /** The villages this login was invited to. */
   visits: () => invoke<VisitView[]>('visits'),
   visit: (owner: string) => invoke<VillageMap | null>('visit', { owner }),

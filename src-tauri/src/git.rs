@@ -195,6 +195,95 @@ pub fn remove_worktree(dir: &Path, wt: &WorktreeInfo) {
     }
 }
 
+/// Runs git in `dir`; its trimmed stderr when it fails. For the calls whose failure the owner is told.
+fn git_run(dir: &Path, args: &[&str]) -> anyhow::Result<String> {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .env_remove("GIT_DIR")
+        .env_remove("GIT_WORK_TREE")
+        .env_remove("GIT_INDEX_FILE")
+        .env("GIT_TERMINAL_PROMPT", "0") // never sit waiting for a password nobody will type
+        .stdin(Stdio::null())
+        .output()?;
+    if !out.status.success() {
+        anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr).trim().lines().last().unwrap_or("git failed").to_string());
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+/// Whether the repository holding `dir` has a remote named `origin`.
+pub fn has_origin(dir: &Path) -> bool {
+    git_line(dir, &["remote", "get-url", "origin"]).is_some()
+}
+
+/// Whether a workspace can be lent: a git repository with a commit and an `origin` to push to.
+pub fn lendable(dir: &Path) -> bool {
+    toplevel(dir).is_some() && git_line(dir, &["rev-parse", "--verify", "-q", "HEAD"]).is_some() && has_origin(dir)
+}
+
+/// `git fetch origin`: what `origin` has now. Network; never on a session's path.
+pub fn fetch_origin(dir: &Path) -> anyhow::Result<()> {
+    git_run(dir, &["fetch", "-q", "origin"]).map(|_| ())
+}
+
+/// `origin`'s default branch as last fetched: what `origin/HEAD` names, else `main`, else `master`.
+pub fn default_branch(dir: &Path) -> Option<String> {
+    let named = git_line(dir, &["symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD"]).and_then(|s| s.strip_prefix("origin/").map(str::to_string));
+    named.into_iter().chain(["main".to_string(), "master".to_string()]).find(|b| on_origin(dir, b).is_some())
+}
+
+/// The tip of `branch` on `origin` as last fetched, when it is there.
+pub fn on_origin(dir: &Path, branch: &str) -> Option<String> {
+    git_line(dir, &["rev-parse", "--verify", "-q", &format!("refs/remotes/origin/{branch}^{{commit}}")])
+}
+
+/// A new worktree at `at` on a new branch `branch`, cut from `start` (a ref such as
+/// `origin/main`), not from the checkout's own state. Returns it and the folder in it that
+/// matches `dir`.
+pub fn add_worktree_from(dir: &Path, at: &Path, branch: &str, start: &str) -> anyhow::Result<(WorktreeInfo, PathBuf)> {
+    let top = toplevel(dir).ok_or_else(|| anyhow::anyhow!("this workspace is not a git repository"))?;
+    if let Some(parent) = at.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    git_run(&top, &["worktree", "add", "-q", "--no-track", "-b", branch, &at.to_string_lossy(), start])?;
+    let cwd = matching_folder(dir, at);
+    std::fs::create_dir_all(&cwd)?;
+    Ok((WorktreeInfo { path: at.to_path_buf(), branch: Some(branch.to_string()) }, cwd))
+}
+
+/// Pushes `branch`, and only it, to `origin`: an explicit refspec, never forced. `first`: the
+/// name must not exist there yet (checked against a fresh look at `origin`), so a borrowed
+/// session can never write over a branch someone else made. Network; never on a session's path.
+pub fn push_branch(dir: &Path, branch: &str, first: bool) -> anyhow::Result<()> {
+    if first {
+        let there = git_run(dir, &["ls-remote", "--heads", "origin", &format!("refs/heads/{branch}")])?;
+        if !there.is_empty() {
+            anyhow::bail!("a branch named {branch} is already on origin");
+        }
+    }
+    let spec = format!("refs/heads/{branch}:refs/heads/{branch}");
+    git_run(dir, &["push", "-q", "origin", &spec]).map(|_| ())?;
+    // what origin has now, for `safe_to_remove`
+    let _ = git_run(dir, &["fetch", "-q", "origin", &format!("refs/heads/{branch}:refs/remotes/origin/{branch}")]);
+    Ok(())
+}
+
+/// Whether removing `worktree` loses nothing: no uncommitted or untracked change in it, and its
+/// tip is the one `origin` has for `branch`.
+pub fn safe_to_remove(worktree: &Path, branch: &str) -> bool {
+    let clean = git_out(worktree, &["status", "--porcelain"]).is_some_and(|o| o.iter().all(u8::is_ascii_whitespace));
+    let tip = git_line(worktree, &["rev-parse", "--verify", "-q", "HEAD"]);
+    clean && tip.is_some() && tip == on_origin(worktree, branch)
+}
+
+/// Removes a worktree and leaves its branch where it is. Fails (and removes nothing) when the
+/// worktree has changes git would lose.
+pub fn remove_worktree_keep_branch(dir: &Path, wt: &WorktreeInfo) -> anyhow::Result<()> {
+    git_run(dir, &["worktree", "remove", &wt.path.to_string_lossy()]).map(|_| ())
+}
+
 /// `git init` in an existing directory.
 pub fn init_repo(dir: &Path) -> anyhow::Result<()> {
     git_out(dir, &["init", "-q"])
@@ -228,6 +317,119 @@ pub(crate) mod test_util {
         std::fs::write(dir.join("a.txt"), "1\n").unwrap();
         git(dir, &["add", "a.txt"]);
         git(dir, &["commit", "-q", "-m", "init"]);
+    }
+}
+
+#[cfg(test)]
+mod borrow_tests {
+    use super::test_util::{git, repo_with_commit};
+    use super::*;
+
+    /// A repository with a commit, cloned from a bare `origin` beside it (default branch `main`).
+    fn cloned(dir: &Path) -> (PathBuf, PathBuf) {
+        let seed = dir.join("seed");
+        std::fs::create_dir_all(&seed).unwrap();
+        repo_with_commit(&seed);
+        git(&seed, &["branch", "-M", "main"]);
+        let origin = dir.join("origin.git");
+        git(dir, &["clone", "-q", "--bare", &seed.to_string_lossy(), &origin.to_string_lossy()]);
+        let repo = dir.join("repo");
+        git(dir, &["clone", "-q", &origin.to_string_lossy(), &repo.to_string_lossy()]);
+        (repo, origin)
+    }
+
+    fn commit(dir: &Path, file: &str, text: &str) {
+        std::fs::write(dir.join(file), text).unwrap();
+        git(dir, &["add", file]);
+        git(dir, &["commit", "-q", "-m", file]);
+    }
+
+    fn origin_heads(origin: &Path) -> Vec<String> {
+        let out = Command::new("git").arg("-C").arg(origin).args(["for-each-ref", "--format=%(refname:short)", "refs/heads"]).output().unwrap();
+        String::from_utf8_lossy(&out.stdout).lines().map(str::to_string).collect()
+    }
+
+    #[test]
+    fn a_workspace_needs_a_commit_and_an_origin_to_be_lent() {
+        let d = tempfile::tempdir().unwrap();
+        let (repo, _) = cloned(d.path());
+        assert!(lendable(&repo) && has_origin(&repo));
+        let alone = d.path().join("alone");
+        std::fs::create_dir_all(&alone).unwrap();
+        repo_with_commit(&alone);
+        assert!(!lendable(&alone), "no origin");
+        assert!(!lendable(d.path()), "not a repository");
+    }
+
+    #[test]
+    fn the_default_branch_is_origins() {
+        let d = tempfile::tempdir().unwrap();
+        let (repo, _) = cloned(d.path());
+        fetch_origin(&repo).unwrap();
+        assert_eq!(default_branch(&repo).as_deref(), Some("main"));
+        // on another branch locally, it is still origin's
+        git(&repo, &["checkout", "-q", "-b", "feature"]);
+        assert_eq!(default_branch(&repo).as_deref(), Some("main"));
+    }
+
+    #[test]
+    fn a_worktree_is_cut_from_origin_not_from_local_commits() {
+        let d = tempfile::tempdir().unwrap();
+        let (repo, _) = cloned(d.path());
+        commit(&repo, "secret.txt", "not pushed\n");
+        let at = d.path().join("wt");
+        let (wt, cwd) = add_worktree_from(&repo, &at, "borrow/bob/x-ab12", "origin/main").unwrap();
+        assert_eq!((wt.branch.as_deref(), cwd.clone()), (Some("borrow/bob/x-ab12"), at.clone()));
+        assert!(at.join("a.txt").is_file());
+        assert!(!at.join("secret.txt").exists(), "the lender's unpushed commit is not in a borrower's worktree");
+        assert!(add_worktree_from(&repo, &d.path().join("wt2"), "borrow/bob/y", "origin/nope").is_err());
+    }
+
+    #[test]
+    fn push_sends_only_the_named_branch_and_never_over_one_that_exists() {
+        let d = tempfile::tempdir().unwrap();
+        let (repo, origin) = cloned(d.path());
+        git(&repo, &["branch", "private-work"]);
+        let at = d.path().join("wt");
+        add_worktree_from(&repo, &at, "borrow/bob/x-ab12", "origin/main").unwrap();
+        commit(&at, "export.rs", "fn export() {}\n");
+        push_branch(&at, "borrow/bob/x-ab12", true).unwrap();
+        assert_eq!(origin_heads(&origin), ["borrow/bob/x-ab12", "main"]);
+        // more work, pushed again: a fast-forward
+        commit(&at, "export.rs", "fn export() { /* more */ }\n");
+        push_branch(&at, "borrow/bob/x-ab12", false).unwrap();
+        // a first push under a name that is there already is refused, whatever it holds
+        let other = d.path().join("wt2");
+        add_worktree_from(&repo, &other, "main2", "origin/main").unwrap();
+        git(&other, &["branch", "-M", "borrow/bob/taken"]);
+        git(&origin, &["branch", "borrow/bob/taken", "main"]);
+        let e = push_branch(&other, "borrow/bob/taken", true).unwrap_err().to_string();
+        assert!(e.contains("already on origin"), "{e}");
+        // history rewritten after a push: not forced over
+        git(&at, &["commit", "-q", "--amend", "-m", "rewritten"]);
+        assert!(push_branch(&at, "borrow/bob/x-ab12", false).is_err());
+    }
+
+    #[test]
+    fn a_worktree_is_safe_to_remove_only_when_clean_and_pushed() {
+        let d = tempfile::tempdir().unwrap();
+        let (repo, _) = cloned(d.path());
+        let at = d.path().join("wt");
+        let (wt, _) = add_worktree_from(&repo, &at, "borrow/bob/x-ab12", "origin/main").unwrap();
+        commit(&at, "export.rs", "1\n");
+        assert!(!safe_to_remove(&at, "borrow/bob/x-ab12"), "committed, not pushed");
+        push_branch(&at, "borrow/bob/x-ab12", true).unwrap();
+        assert!(safe_to_remove(&at, "borrow/bob/x-ab12"));
+        std::fs::write(at.join("notes.txt"), "untracked").unwrap();
+        assert!(!safe_to_remove(&at, "borrow/bob/x-ab12"), "an untracked file");
+        assert!(remove_worktree_keep_branch(&repo, &wt).is_err(), "git will not drop it either");
+        std::fs::remove_file(at.join("notes.txt")).unwrap();
+        commit(&at, "export.rs", "2\n");
+        assert!(!safe_to_remove(&at, "borrow/bob/x-ab12"), "a commit since the push");
+        push_branch(&at, "borrow/bob/x-ab12", false).unwrap();
+        remove_worktree_keep_branch(&repo, &wt).unwrap();
+        assert!(!at.exists());
+        assert!(git_line(&repo, &["rev-parse", "--verify", "-q", "refs/heads/borrow/bob/x-ab12"]).is_some(), "the branch stays");
     }
 }
 

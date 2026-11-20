@@ -10,7 +10,7 @@ Every decision should hold up to a stranger landing on the GitHub repo: it insta
 
 | Need | Status |
 |---|---|
-| Public GitHub repo | `fabianferno/clashofclaudes` exists (private until the owner flips it); `OWNER` placeholder replaced. The updater reads `fabianferno/clashofclaudes`, which must stay up for installed copies |
+| Public GitHub repo | `fabianferno/clashofclaudes` is public (flipped after a gitleaks scan of the full history found nothing); `OWNER` placeholder replaced. The updater reads `fabianferno/clashofclaudes`, which must stay up for installed copies |
 | License (`LICENSE`) | Code: GPL 3.0 or later (2026-11-13, replacing MIT, then briefly BSL 1.1, before any public push). Art, icon and name: all rights reserved (`ASSETS-LICENSE.md`). Code contributions come in under MIT (CONTRIBUTING). Third-party fonts and icons: `THIRD_PARTY_NOTICES.md` |
 | README a stranger can act on: one-line pitch, hero image, install, supported agents | Done: icon, pitch, badges, hero screenshot (`docs/brand/screenshot.jpg`); a hero GIF/video is still to do |
 | App icon | Knight artwork (`docs/brand/`) |

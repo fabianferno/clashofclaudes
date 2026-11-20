@@ -126,6 +126,7 @@ fn view(id: &str, state: SessionState, since: i64) -> SessionView {
         builder: "Wizard".into(),
         agent: AgentKind::Claude,
         channel: Some("v/ada/w/api".into()),
+        answerable: false,
     }
 }
 
@@ -136,7 +137,7 @@ fn decide(id: &str, since: i64) -> SessionView {
     view(id, SessionState::NeedsYou { reason: "permission".into() }, since)
 }
 fn record(root: &str) -> Published {
-    Published { board: "/village".into(), channel: "v/ada/w/api".into(), root: Some(root.into()), state: Wire::Working, wait: None, since: 1, titled: false, unshared: false }
+    Published { board: "/village".into(), channel: "v/ada/w/api".into(), root: Some(root.into()), state: Wire::Working, wait: None, since: 1, titled: false, unshared: false, block: None }
 }
 
 #[test]
@@ -181,7 +182,8 @@ fn a_waiting_session_gets_its_label_then_its_reply() {
     let calls = r.cli.calls();
     assert_eq!(calls.len(), 2, "{calls:?}");
     assert!(calls[0].starts_with("board label msg_1 coc.state=needs_you coc.wait=decide coc.since=2"));
-    assert!(calls[1].starts_with("board reply msg_1 Wants a decision: `Bash: npm test` --label coc.since=2 --idempotency-key coc-s1-2-decide"));
+    assert!(calls[1].starts_with("board reply msg_1 Wants a decision: `Bash: npm test`\n\n```json coc\n{"), "{calls:?}");
+    assert!(calls[1].contains("\n``` --label coc.since=2 --idempotency-key coc-s1-2-decide"), "{calls:?}");
 }
 
 #[test]
@@ -605,4 +607,96 @@ fn a_board_that_keeps_failing_does_not_hold_up_the_new_one_for_good() {
     let calls = r.cli.calls();
     assert_eq!(calls.iter().filter(|c| c.ends_with("--name village")).count(), DRAIN_TRIES as usize, "{calls:?}");
     assert!(calls.last().unwrap().starts_with("board post") && calls.last().unwrap().ends_with("--name ops"), "{calls:?}");
+}
+
+// Writes addressed to a message (the phone remote's results, tickets, records, heartbeat).
+fn msg(n: u32) -> MsgWrite {
+    MsgWrite::ReplyTo { id: format!("msg_a{n}"), text: format!("r{n}"), labels: vec![], key: format!("k{n}") }
+}
+
+#[test]
+fn message_writes_go_in_order_and_survive_a_retry() {
+    let r = rig();
+    let got = Arc::new(Mutex::new(Vec::new()));
+    for n in 1..=3 {
+        let got = got.clone();
+        r.p.send(msg(n), Some(Box::new(move |id| got.lock().unwrap().push((n, id)))));
+    }
+    r.cli.next(Ok(r#"{"message":{"id":"msg_r1"},"outcome":"posted"}"#));
+    r.cli.next(Err(CliError::Retryable("busy".into())));
+    r.p.step();
+    assert_eq!(r.cli.take().len(), 2, "the second failed: the third waits behind it");
+    r.wait(2_000);
+    let calls = r.cli.calls();
+    assert_eq!(calls.len(), 2, "{calls:?}");
+    assert!(calls[0].starts_with("board reply msg_a2 r2 --idempotency-key k2 --as village"), "{calls:?}");
+    assert!(calls[1].starts_with("board reply msg_a3 r3"), "{calls:?}");
+    let got = got.lock().unwrap().clone();
+    assert_eq!(got.iter().map(|(n, _)| *n).collect::<Vec<_>>(), [1, 2, 3]);
+    assert_eq!(got[0].1.as_deref(), Some("msg_r1"));
+}
+
+#[test]
+fn a_message_write_is_dropped_after_five_tries() {
+    let r = rig();
+    let got = Arc::new(Mutex::new(Vec::new()));
+    let g = got.clone();
+    r.p.send(msg(1), Some(Box::new(move |id| g.lock().unwrap().push(id))));
+    for _ in 0..DRAIN_TRIES {
+        r.cli.next(Err(CliError::Retryable("down".into())));
+    }
+    r.p.step();
+    for _ in 0..DRAIN_TRIES {
+        r.wait(RETRY_MAX_MS);
+    }
+    assert_eq!(r.cli.take().len(), DRAIN_TRIES as usize);
+    assert_eq!(*got.lock().unwrap(), [None], "told it was not delivered");
+    r.wait(RETRY_MAX_MS);
+    assert!(r.cli.calls().is_empty());
+}
+
+#[test]
+fn message_writes_wait_while_the_worker_is_stopped_or_off() {
+    let r = rig();
+    r.cli.next(Err(CliError::SignedOut("no login".into())));
+    r.p.send(msg(1), None);
+    r.p.step();
+    assert_eq!(r.cli.take().len(), 1);
+    r.wait(RETRY_MAX_MS);
+    assert!(r.cli.calls().is_empty(), "stopped: nothing is tried");
+    r.p.check_again();
+    r.p.step();
+    assert_eq!(r.cli.take().len(), 1, "kept, and sent once the login is back");
+
+    let off = rig_with(None);
+    off.p.send(msg(1), None);
+    off.p.step();
+    assert!(off.cli.calls().is_empty(), "no board is set up");
+}
+
+#[test]
+fn turning_the_board_off_forgets_queued_message_writes() {
+    let r = rig();
+    r.cli.next(Err(CliError::Retryable("busy".into())));
+    r.p.send(msg(1), None);
+    r.p.step();
+    r.p.configure(Config { enabled: false, ..cfg("village") });
+    r.cli.take();
+    r.wait(RETRY_MAX_MS);
+    assert!(r.cli.calls().iter().all(|c| !c.contains("msg_a1")), "{:?}", r.cli.calls());
+}
+
+#[test]
+fn open_block_and_root_lookup() {
+    let r = rig();
+    r.p.update(SessionView { answerable: true, ..decide("s1", 2) });
+    r.settle();
+    let (block, since) = r.p.open_block("s1").expect("the block of the open wait");
+    assert_eq!(since, 2);
+    assert!(block.contains(r#""can":["allow","deny"]"#), "{block}");
+    assert_eq!(r.p.session_for_root("msg_1").as_deref(), Some("s1"));
+    assert_eq!(r.p.session_for_root("msg_9"), None);
+    r.p.update(working("s1", 3));
+    r.settle();
+    assert_eq!(r.p.open_block("s1"), None);
 }

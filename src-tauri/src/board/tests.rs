@@ -31,7 +31,7 @@ fn info(state: SessionState) -> SessionInfo {
 }
 
 fn ctx<'a>(files: &'a [String], details: bool) -> Ctx<'a> {
-    Ctx { builder: "Wizard", agent: AgentKind::Claude, channel: "v/ada/w/api", board: "acme/village", host_id: "h1", share_details: details, files }
+    Ctx { builder: "Wizard", agent: AgentKind::Claude, channel: "v/ada/w/api", board: "acme/village", host_id: "h1", share_details: details, files, answerable: false }
 }
 
 fn needs(reason: &str) -> SessionState {
@@ -51,6 +51,11 @@ fn published(i: &SessionInfo) -> Published {
     let (_, mut p) = plan("s1", None, Now::Live(i), &ctx(&[], true));
     p.root = Some("msg_1".into());
     p
+}
+
+/// A reply's words, without the prompt block that ends it.
+fn prose(text: &str) -> &str {
+    text.split("\n\n```json coc\n").next().unwrap_or(text)
 }
 
 fn label<'a>(set: &'a [(String, String)], k: &str) -> Option<&'a str> {
@@ -112,7 +117,7 @@ fn first_sight_posts_a_root_with_all_labels() {
         assert_eq!(label(labels, k), Some(v), "{k}");
     }
     assert_eq!(label(labels, "coc.wait"), None);
-    assert_eq!(p, Published { board: "acme/village".into(), channel: "v/ada/w/api".into(), root: None, state: Wire::Working, wait: None, since: 100, titled: false, unshared: false });
+    assert_eq!(p, Published { board: "acme/village".into(), channel: "v/ada/w/api".into(), root: None, state: Wire::Working, wait: None, since: 100, titled: false, unshared: false, block: None });
 }
 
 #[test]
@@ -120,7 +125,7 @@ fn a_session_first_seen_waiting_posts_its_root_and_its_question() {
     let i = decide(100);
     let (w, _) = plan("s1", None, Now::Live(&i), &ctx(&[], true));
     assert!(matches!(&w[0], Write::PostRoot { labels, .. } if label(labels, "coc.wait") == Some("decide")));
-    assert!(matches!(&w[1], Write::Reply { text, .. } if text == "Wants a decision: `Bash: npm test`"));
+    assert!(matches!(&w[1], Write::Reply { text, .. } if prose(text) == "Wants a decision: `Bash: npm test`"));
     assert_eq!(w.len(), 2);
 }
 
@@ -144,7 +149,7 @@ fn working_to_decide_labels_and_replies() {
     assert_eq!(label(set, "coc.since"), Some("250"));
     assert!(unset.is_empty());
     let Write::Reply { text, labels, key } = &w[1] else { panic!("{w:?}") };
-    assert_eq!(text, "Wants a decision: `Bash: npm test`");
+    assert_eq!(prose(text), "Wants a decision: `Bash: npm test`");
     assert_eq!(key, "coc-s1-250-decide");
     assert_eq!(label(labels, "coc.since"), Some("250"));
     assert_eq!((p.state, p.wait, p.since, p.root.as_deref()), (Wire::NeedsYou, Some(Wait::Decide), 250, Some("msg_1")));
@@ -163,14 +168,14 @@ fn questions_list_their_options_numbered() {
     }];
     let (w, _) = plan("s1", Some(&prev), Now::Live(&i), &ctx(&[], true));
     let Write::Reply { text, key, .. } = &w[1] else { panic!("{w:?}") };
-    assert_eq!(text, "Asking you: Which separator?\n1. Comma\n2. Semicolon: for Excel");
+    assert_eq!(prose(text), "Asking you: Which separator?\n1. Comma\n2. Semicolon: for Excel");
     assert_eq!(key, "coc-s1-300-answer");
 
     // No picker: the reason the agent gave.
     let mut bare = info(needs("Waiting in the terminal"));
     bare.state_since = 301;
     let (w, _) = plan("s1", Some(&prev), Now::Live(&bare), &ctx(&[], true));
-    assert!(matches!(&w[1], Write::Reply { text, .. } if text == "Asking you: Waiting in the terminal"));
+    assert!(matches!(&w[1], Write::Reply { text, .. } if prose(text) == "Asking you: Waiting in the terminal"));
 }
 
 #[test]
@@ -183,13 +188,13 @@ fn finished_lists_twenty_files_then_counts_the_rest() {
     let (w, p) = plan("s1", Some(&prev), Now::Live(&i), &ctx(&files, true));
     let Write::Reply { text, key, .. } = &w[1] else { panic!("{w:?}") };
     assert!(text.starts_with("Finished.\n\nExport added.\n\nChanged: f1.rs, f2.rs"), "{text}");
-    assert!(text.ends_with("f20.rs and 5 more"), "{text}");
+    assert!(prose(text).ends_with("f20.rs and 5 more"), "{text}");
     assert!(!text.contains("f21.rs"));
     assert_eq!(key, "coc-s1-400-review");
     assert_eq!(p.wait, Some(Wait::Review));
 
     let (w, _) = plan("s1", Some(&prev), Now::Live(&i), &ctx(&[], true));
-    assert!(matches!(&w[1], Write::Reply { text, .. } if text == "Finished.\n\nExport added."));
+    assert!(matches!(&w[1], Write::Reply { text, .. } if prose(text) == "Finished.\n\nExport added."));
 }
 
 #[test]
@@ -198,7 +203,7 @@ fn stuck_gives_its_reason() {
     let mut i = info(SessionState::Stuck { reason: "usage limit".into() });
     i.state_since = 500;
     let (w, _) = plan("s1", Some(&prev), Now::Live(&i), &ctx(&[], true));
-    assert!(matches!(&w[1], Write::Reply { text, key, .. } if text == "Stuck: usage limit" && key == "coc-s1-500-stuck"));
+    assert!(matches!(&w[1], Write::Reply { text, key, .. } if prose(text) == "Stuck: usage limit" && key == "coc-s1-500-stuck"));
 }
 
 #[test]
@@ -253,7 +258,7 @@ fn without_details_nothing_of_the_task_appears() {
         .iter()
         .chain(second.iter())
         .filter_map(|w| match w {
-            Write::PostRoot { text, .. } | Write::Reply { text, .. } | Write::EditRoot { text } => Some(text.clone()),
+            Write::PostRoot { text, .. } | Write::Reply { text, .. } | Write::EditRoot { text } => Some(prose(text).to_string()),
             Write::Label { .. } => None,
         })
         .collect();
@@ -330,4 +335,79 @@ fn long_replies_are_cut() {
     i.last_message = Some("é".repeat(20_000));
     let (w, _) = plan("s1", Some(&prev), Now::Live(&i), &ctx(&[], true));
     assert!(matches!(&w[1], Write::Reply { text, .. } if text.chars().count() == MAX_TEXT));
+}
+
+// The prompt block that ends every wait reply (the phone remote shows and signs it).
+fn reply_of(writes: &[Write]) -> &str {
+    writes.iter().find_map(|w| if let Write::Reply { text, .. } = w { Some(text.as_str()) } else { None }).expect("a reply")
+}
+
+fn block_of(text: &str) -> crate::board::remote::PromptBlock {
+    serde_json::from_str(crate::board::remote::block_in(text).expect("a prompt block")).unwrap()
+}
+
+#[test]
+fn a_wait_reply_ends_with_its_prompt_block() {
+    use crate::board::remote::Do;
+    let i = decide(7);
+    let c = Ctx { answerable: true, ..ctx(&[], true) };
+    let (writes, rec) = plan("s1", None, Now::Live(&i), &c);
+    let text = reply_of(&writes);
+    assert!(text.starts_with("Wants a decision: `Bash: npm test`\n\n```json coc\n"), "{text}");
+    let b = block_of(text);
+    assert_eq!((b.host.as_str(), b.session.as_str(), b.since, b.wait.as_str()), ("h1", "s1", 7, "decide"));
+    assert_eq!(b.can, vec![Do::Allow, Do::Deny]);
+    assert_eq!(rec.block.as_deref(), crate::board::remote::block_in(text));
+    // the app has no keys for this prompt: the phone is offered nothing
+    let (writes, _) = plan("s1", None, Now::Live(&i), &ctx(&[], true));
+    assert!(block_of(reply_of(&writes)).can.is_empty());
+}
+
+#[test]
+fn stuck_and_finished_replies_offer_a_follow_up() {
+    use crate::board::remote::Do;
+    for (state, wait) in [(SessionState::Stuck { reason: "no output".into() }, "stuck"), (SessionState::Finished, "review")] {
+        let (writes, _) = plan("s1", None, Now::Live(&info(state)), &ctx(&[], true));
+        let b = block_of(reply_of(&writes));
+        assert_eq!((b.wait.as_str(), b.can), (wait, vec![Do::Followup]));
+    }
+}
+
+#[test]
+fn details_off_still_has_a_block_without_the_command() {
+    let c = Ctx { answerable: true, ..ctx(&[], false) };
+    let (writes, _) = plan("s1", None, Now::Live(&decide(7)), &c);
+    let text = reply_of(&writes);
+    assert!(text.starts_with("Wants a decision\n\n```json coc\n"), "{text}");
+    let b = block_of(text);
+    assert_eq!((b.question, b.can.len()), (None, 2));
+    assert!(!text.contains("npm test"));
+}
+
+#[test]
+fn the_block_fits_under_the_limit() {
+    let mut i = info(SessionState::Finished);
+    i.last_message = Some("x".repeat(20_000));
+    let (writes, rec) = plan("s1", None, Now::Live(&i), &ctx(&[], true));
+    let text = reply_of(&writes);
+    assert!(text.chars().count() <= MAX_TEXT, "{}", text.chars().count());
+    assert_eq!(block_of(text).wait, "review", "the prose is cut, never the block");
+    assert!(rec.block.is_some());
+}
+
+#[test]
+fn the_record_keeps_the_open_block_and_drops_it_when_the_wait_ends() {
+    let c = Ctx { answerable: true, ..ctx(&[], true) };
+    let (_, mut rec) = plan("s1", None, Now::Live(&decide(7)), &c);
+    rec.root = Some("msg_1".into());
+    // the same wait again: nothing new is written, the block stays
+    let (writes, same) = plan("s1", Some(&rec), Now::Live(&decide(7)), &c);
+    assert!(writes.is_empty());
+    assert_eq!(same.block, rec.block);
+    let mut working = info(SessionState::Working);
+    working.state_since = 8;
+    let (_, after) = plan("s1", Some(&rec), Now::Live(&working), &c);
+    assert_eq!(after.block, None);
+    let (_, closed) = plan("s1", Some(&rec), Now::Closed(None), &c);
+    assert_eq!(closed.block, None);
 }

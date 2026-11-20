@@ -65,7 +65,7 @@ pub fn session_view(data: &AppData, owner: &str, info: &SessionInfo) -> Option<S
     let builder = data.builders.iter().find(|b| &b.id == builder_id)?;
     let ws = data.workspaces.iter().find(|w| w.id == info.workspace_id)?;
     let channel = ws.board_shared.then(|| channel(owner, &workspace_slugs(&data.workspaces)[&ws.id]));
-    Some(SessionView { info: info.clone(), builder: builder.name.clone(), agent: builder.agent.clone(), channel })
+    Some(SessionView { info: info.clone(), builder: builder.name.clone(), agent: builder.agent.clone(), channel, answerable: false })
 }
 
 /// What a session of `builder` in `ws` gets in its environment, so its own `vercel board` calls

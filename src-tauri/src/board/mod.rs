@@ -151,6 +151,9 @@ pub struct Published {
     /// Closed because its workspace stopped being shared; sharing again reopens this thread.
     #[serde(default)]
     pub unshared: bool,
+    /// The prompt block of the wait it is in (`remote::block_json`), as its reply carried it.
+    #[serde(default)]
+    pub block: Option<String>,
 }
 
 /// What a session is now.
@@ -172,6 +175,8 @@ pub struct Ctx<'a> {
     pub share_details: bool,
     /// Files changed since the session started; used only when it finishes.
     pub files: &'a [String],
+    /// The app has the keys for the open permission prompt (`SessionManager::answerable`).
+    pub answerable: bool,
 }
 
 /// One call to the board. Replies, labels and edits go to the session's root, which the caller knows.
@@ -245,7 +250,7 @@ fn root_text(info: &SessionInfo, ctx: &Ctx<'_>) -> String {
 }
 
 /// What the thread says when the session starts waiting for `why`.
-fn reply_text(info: &SessionInfo, why: Wait, ctx: &Ctx<'_>) -> String {
+fn reply_prose(info: &SessionInfo, why: Wait, ctx: &Ctx<'_>) -> String {
     if !ctx.share_details {
         return match why {
             Wait::Decide => "Wants a decision",
@@ -259,7 +264,7 @@ fn reply_text(info: &SessionInfo, why: Wait, ctx: &Ctx<'_>) -> String {
         SessionState::NeedsYou { reason } | SessionState::Stuck { reason } => reason.as_str(),
         _ => "",
     };
-    cut(&match why {
+    match why {
         Wait::Decide => match info.asking.as_deref() {
             Some(call) => format!("Wants a decision: `{call}`"),
             None => "Wants a decision".to_string(),
@@ -295,15 +300,29 @@ fn reply_text(info: &SessionInfo, why: Wait, ctx: &Ctx<'_>) -> String {
             s
         }
         Wait::Stuck => format!("Stuck: {reason}"),
-    })
+    }
 }
 
-fn reply(session_id: &str, info: &SessionInfo, why: Wait, ctx: &Ctx<'_>) -> Write {
-    Write::Reply {
-        text: reply_text(info, why, ctx),
+/// `text` cut to `max` characters, marked when cut.
+fn cut_to(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        return text.to_string();
+    }
+    let keep = max.saturating_sub(CUT_MARK.chars().count());
+    text.chars().take(keep).chain(CUT_MARK.chars()).collect()
+}
+
+/// The reply for a wait, and the prompt block that ends it. The prose is cut to leave the block whole.
+fn reply(session_id: &str, info: &SessionInfo, why: Wait, ctx: &Ctx<'_>) -> (Write, String) {
+    let block = remote::block_json(&remote::block(info, session_id, ctx.host_id, why.as_str(), ctx.answerable, ctx.share_details));
+    let tail = remote::fenced(&block);
+    let prose = cut_to(&reply_prose(info, why, ctx), MAX_TEXT.saturating_sub(tail.chars().count()));
+    let write = Write::Reply {
+        text: format!("{prose}{tail}"),
         labels: vec![kv("coc.since", info.state_since.to_string())],
         key: format!("coc-{session_id}-{}-{}", info.state_since, why.as_str()),
-    }
+    };
+    (write, block)
 }
 
 /// The writes that take the board from `prev` to `now`, and the record to keep once they have
@@ -325,6 +344,7 @@ pub fn plan(session_id: &str, prev: Option<&Published>, now: Now<'_>, ctx: &Ctx<
                     since: 0,
                     titled: false,
                     unshared: false,
+                    block: None,
                 });
                 return (vec![], rec);
             };
@@ -333,7 +353,7 @@ pub fn plan(session_id: &str, prev: Option<&Published>, now: Now<'_>, ctx: &Ctx<
                 set.push(kv("coc.outcome", if o == Outcome::Accepted { "accepted" } else { "discarded" }));
             }
             let unset = if p.wait.is_some() { vec!["coc.wait".to_string()] } else { vec![] };
-            return (vec![Write::Label { set, unset }], Published { state: to, wait: None, ..p.clone() });
+            return (vec![Write::Label { set, unset }], Published { state: to, wait: None, block: None, ..p.clone() });
         }
     };
 
@@ -353,8 +373,11 @@ pub fn plan(session_id: &str, prev: Option<&Published>, now: Now<'_>, ctx: &Ctx<
             kv("coc.since", since.to_string()),
         ]);
         let mut writes = vec![Write::PostRoot { channel: ctx.channel.into(), text: root_text(info, ctx), labels, key: format!("coc-{session_id}-root") }];
-        writes.extend(why.map(|w| reply(session_id, info, w, ctx)));
-        let rec = Published { board: ctx.board.into(), channel: ctx.channel.into(), root: None, state, wait: why, since, titled, unshared: false };
+        let block = why.map(|w| reply(session_id, info, w, ctx)).map(|(write, block)| {
+            writes.push(write);
+            block
+        });
+        let rec = Published { board: ctx.board.into(), channel: ctx.channel.into(), root: None, state, wait: why, since, titled, unshared: false, block };
         return (writes, rec);
     };
 
@@ -376,13 +399,16 @@ pub fn plan(session_id: &str, prev: Option<&Published>, now: Now<'_>, ctx: &Ctx<
         writes.push(Write::Label { set, unset });
     }
     // A reply each time it starts waiting for something new.
+    let mut block = why.and(p.block.clone());
     if let Some(w) = why
         && (fresh || p.wait != Some(w) || p.since != since)
     {
-        writes.push(reply(session_id, info, w, ctx));
+        let (write, b) = reply(session_id, info, w, ctx);
+        writes.push(write);
+        block = Some(b);
     }
     if titled && !p.titled && ctx.share_details {
         writes.push(Write::EditRoot { text: root_text(info, ctx) });
     }
-    (writes, Published { state, wait: why, since, titled: p.titled || titled, unshared: false, ..p.clone() })
+    (writes, Published { state, wait: why, since, titled: p.titled || titled, unshared: false, block, ..p.clone() })
 }

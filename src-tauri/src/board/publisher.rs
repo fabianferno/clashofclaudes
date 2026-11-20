@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::Duration;
 
-use super::cli::{args_for, message_id, BoardCli, CliError, Target};
+use super::cli::{args_for_msg, MsgWrite, args_for, message_id, BoardCli, CliError, Target};
 use super::store::Store;
 use super::{plan, Ctx, Now, Outcome, Published, Wire, Write};
 use crate::model::{AgentKind, SessionInfo, SessionState};
@@ -49,6 +49,18 @@ pub struct SessionView {
     pub agent: AgentKind,
     /// Its workspace's channel; None when the workspace is not shared.
     pub channel: Option<String>,
+    /// The app has the keys for its open permission prompt.
+    pub answerable: bool,
+}
+
+/// Told the new message's id, or None when the write was given up.
+pub type Sent = Box<dyn FnOnce(Option<String>) + Send>;
+
+/// A message write waiting its turn.
+struct Msg {
+    write: MsgWrite,
+    done: Option<Sent>,
+    tries: u32,
 }
 
 enum Pending {
@@ -72,6 +84,8 @@ struct Inner {
     /// The newest thing to publish per session, and when it arrived.
     pending: HashMap<String, (Pending, i64)>,
     drains: VecDeque<Drain>,
+    /// Message writes, in the order they were asked for.
+    msgs: VecDeque<Msg>,
     store: Store,
     retry_at: i64,
     backoff_ms: i64,
@@ -164,7 +178,7 @@ impl Publisher {
     /// Queues a close for `rec`'s thread on `target`.
     fn drain(inner: &mut Inner, id: &str, rec: &Published, target: &Target) {
         let Some(root) = rec.root.clone() else { return };
-        let ctx = Ctx { builder: "", agent: AgentKind::Custom, channel: &rec.channel, board: &rec.board, host_id: "", share_details: false, files: &[] };
+        let ctx = Ctx { builder: "", agent: AgentKind::Custom, channel: &rec.channel, board: &rec.board, host_id: "", share_details: false, files: &[], answerable: false };
         let (writes, _) = plan(id, Some(rec), Now::Closed(None), &ctx);
         inner.drains.extend(writes.into_iter().map(|write| Drain { root: root.clone(), write, target: target.clone(), tries: 0 }));
     }
@@ -177,6 +191,8 @@ impl Publisher {
         let was_on = old.as_ref().is_some_and(|c| c.enabled);
         if old.as_ref().is_none_or(|o| o.enabled != cfg.enabled || o.target != cfg.target || o.owner != cfg.owner) {
             inner.generation += 1;
+            // written for the board the app is leaving
+            inner.msgs.clear();
         }
         if let Some(old) = old.as_ref().filter(|_| was_on) {
             let moved = cfg.enabled && (old.target != cfg.target || old.owner != cfg.owner);
@@ -337,6 +353,28 @@ impl Publisher {
         self.wake.notify_all();
     }
 
+    /// Queues a write addressed to a message or channel. They go out in order, one at a time,
+    /// before session states; one that keeps failing is given up after `DRAIN_TRIES`.
+    pub fn send(&self, write: MsgWrite, done: Option<Sent>) {
+        self.lock().msgs.push_back(Msg { write, done, tries: 0 });
+        self.wake.notify_all();
+    }
+
+    /// The prompt block last written for the session's open wait, and its `since`.
+    pub fn open_block(&self, session_id: &str) -> Option<(String, i64)> {
+        let g = self.lock();
+        let board = g.cfg.as_ref().filter(|c| c.enabled)?.target.key();
+        let rec = g.store.sessions.get(session_id).filter(|r| r.board == board && !r.unshared)?;
+        rec.block.clone().map(|b| (b, rec.since))
+    }
+
+    /// The session whose thread starts at `root`, on the board the app publishes to.
+    pub fn session_for_root(&self, root: &str) -> Option<String> {
+        let g = self.lock();
+        let board = g.cfg.as_ref().filter(|c| c.enabled)?.target.key();
+        g.store.sessions.iter().find(|(_, r)| r.board == board && r.root.as_deref() == Some(root)).map(|(id, _)| id.clone())
+    }
+
     fn call(&self, write: &Write, root: Option<&str>, target: &Target) -> Result<Option<String>, Done> {
         match self.cli.run(&args_for(write, root, target)) {
             Ok(v) => Ok(message_id(&v)),
@@ -422,6 +460,45 @@ impl Publisher {
             }
 
             let Some(cfg) = inner.cfg.clone() else { return };
+            if cfg.enabled
+                && let Some(m) = inner.msgs.pop_front()
+            {
+                let generation = inner.generation;
+                drop(g);
+                let res = match self.cli.run(&args_for_msg(&m.write, &cfg.target)) {
+                    Ok(v) => Ok(message_id(&v)),
+                    Err(CliError::Retryable(e)) => Err(Done::Later(e)),
+                    Err(CliError::Fatal(e)) => Err(Done::Dropped(e)),
+                    Err(e) => Err(Done::Stop(e)),
+                };
+                let mut g = self.lock();
+                let mut m = m;
+                let (done, id) = match res {
+                    Ok(id) => (Done::Ok, id),
+                    Err(Done::Later(e)) => {
+                        m.tries += 1;
+                        (if m.tries >= DRAIN_TRIES { Done::Dropped(e) } else { Done::Later(e) }, None)
+                    }
+                    Err(other) => (other, None),
+                };
+                let keep = matches!(done, Done::Later(_) | Done::Stop(_)) && g.generation == generation;
+                let told = if keep {
+                    g.msgs.push_front(m);
+                    None
+                } else {
+                    m.done.take()
+                };
+                let go_on = self.settle(&mut g, &done);
+                drop(g);
+                // outside the lock: it may queue more
+                if let Some(f) = told {
+                    f(id);
+                }
+                if !go_on {
+                    return;
+                }
+                continue;
+            }
             let due = inner
                 .pending
                 .iter()
@@ -504,7 +581,8 @@ impl Publisher {
             Pending::Paused => (Now::Paused, "", AgentKind::Custom, ""),
             Pending::Closed(o) => (Now::Closed(*o), "", AgentKind::Custom, ""),
         };
-        let ctx = Ctx { builder, agent, channel, board: &board, host_id: &cfg.host_id, share_details: cfg.share_details, files: &files };
+        let answerable = matches!(entry, Pending::Live(v) if v.answerable);
+        let ctx = Ctx { builder, agent, channel, board: &board, host_id: &cfg.host_id, share_details: cfg.share_details, files: &files, answerable };
         let (writes, planned) = plan(id, prev, now, &ctx);
         let mut root = prev.and_then(|p| p.root.clone());
         for w in &writes {

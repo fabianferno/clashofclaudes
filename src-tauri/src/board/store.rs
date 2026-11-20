@@ -44,7 +44,7 @@ mod tests {
         let mut s = Store::default();
         s.sessions.insert(
             "s1".into(),
-            Published { board: "/village".into(), channel: "v/ada/w/api".into(), root: Some("msg_1".into()), state: Wire::NeedsYou, wait: None, since: 5, titled: true, unshared: false },
+            Published { board: "/village".into(), channel: "v/ada/w/api".into(), root: Some("msg_1".into()), state: Wire::NeedsYou, wait: None, since: 5, titled: true, unshared: false, block: None },
         );
         s.save(&path).unwrap();
         assert_eq!(Store::load(&path), s);

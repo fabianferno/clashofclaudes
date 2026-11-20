@@ -174,6 +174,41 @@ pub fn args_for(w: &Write, root: Option<&str>, t: &Target) -> Vec<String> {
     a
 }
 
+/// A write addressed to a channel or a message, outside any session's thread state: the phone
+/// remote's results, pairing tickets, phone records and heartbeat.
+#[derive(Clone, PartialEq, Debug)]
+pub enum MsgWrite {
+    Post { channel: String, text: String, labels: Vec<(String, String)>, key: String },
+    ReplyTo { id: String, text: String, labels: Vec<(String, String)>, key: String },
+    Edit { id: String, text: String },
+}
+
+/// The `vercel` arguments for one message write.
+pub fn args_for_msg(w: &MsgWrite, t: &Target) -> Vec<String> {
+    let mut a: Vec<String> = vec!["board".into()];
+    let labels = |a: &mut Vec<String>, labels: &[(String, String)]| {
+        for (k, v) in labels {
+            a.extend(["--label".to_string(), format!("{k}={v}")]);
+        }
+    };
+    match w {
+        MsgWrite::Post { channel, text, labels: l, key } => {
+            a.extend(["post".to_string(), channel.clone(), text.clone()]);
+            labels(&mut a, l);
+            a.extend(["--idempotency-key".to_string(), key.clone(), "--ensure".to_string()]);
+        }
+        MsgWrite::ReplyTo { id, text, labels: l, key } => {
+            a.extend(["reply".to_string(), id.clone(), text.clone()]);
+            labels(&mut a, l);
+            a.extend(["--idempotency-key".to_string(), key.clone()]);
+        }
+        MsgWrite::Edit { id, text } => a.extend(["edit".to_string(), id.clone(), text.clone()]),
+    }
+    a.extend(["--as".to_string(), STATUS_PROFILE.to_string()]);
+    t.tail(&mut a);
+    a
+}
+
 /// Reads a call's stdout: the board's answer, or why it failed.
 pub fn classify(exit_ok: bool, stdout: &str) -> Result<Value, CliError> {
     let Ok(v) = serde_json::from_str::<Value>(stdout.trim()) else {
@@ -291,6 +326,18 @@ mod tests {
         assert_eq!(args_for(&label, Some("msg_1"), &none), s(&["board", "label", "msg_1", "coc.state=working", "--unset", "coc.wait", "--as", "village", "--json", "--name", "village"]));
         let edit = Write::EditRoot { text: "new".into() };
         assert_eq!(args_for(&edit, Some("msg_1"), &team), s(&["board", "edit", "msg_1", "new", "--as", "village", "--json", "--name", "village", "--scope", "acme"]));
+    }
+
+    #[test]
+    fn args_for_each_msg_write() {
+        let team = Target { team: Some("acme".into()), name: "village".into() };
+        let none = Target { team: None, name: "village".into() };
+        let post = MsgWrite::Post { channel: "v/ada/remote".into(), text: "{}".into(), labels: vec![("coc.kind".into(), "phone".into())], key: "k1".into() };
+        assert_eq!(args_for_msg(&post, &team), s(&["board", "post", "v/ada/remote", "{}", "--label", "coc.kind=phone", "--idempotency-key", "k1", "--ensure", "--as", "village", "--json", "--name", "village", "--scope", "acme"]));
+        let reply = MsgWrite::ReplyTo { id: "msg_7".into(), text: "ok".into(), labels: vec![], key: "k2".into() };
+        assert_eq!(args_for_msg(&reply, &none), s(&["board", "reply", "msg_7", "ok", "--idempotency-key", "k2", "--as", "village", "--json", "--name", "village"]));
+        let edit = MsgWrite::Edit { id: "msg_7".into(), text: "new".into() };
+        assert_eq!(args_for_msg(&edit, &none), s(&["board", "edit", "msg_7", "new", "--as", "village", "--json", "--name", "village"]));
     }
 
     #[test]

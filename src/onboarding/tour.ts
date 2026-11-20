@@ -10,7 +10,7 @@ import * as probe from '../village/probe';
 import { DEMO_WS_ID, clearDemo, demoAgentSession, demoWorkspace, installSandbox, raiseDemoWorkspace, uninstallSandbox } from './demo';
 
 export type StepId =
-  | 'welcome' | 'workspace' | 'new-session' | 'picker' | 'working' | 'needs' | 'wait-finish' | 'review' | 'kanban' | 'roster'
+  | 'welcome' | 'workspace' | 'new-session' | 'picker' | 'working' | 'needs' | 'wait-finish' | 'review' | 'kanban' | 'roster' | 'team'
   | 'done';
 
 export type Target = { kind: 'dom'; selector: string } | { kind: 'village'; sel: Selection };
@@ -103,6 +103,11 @@ export const STEPS: StepSpec[] = [
     id: 'roster', next: true,
     enter: () => { app().setKanban(null); sel(null); },
     target: () => dom('[data-testid="builders-bar"]'),
+  },
+  {
+    id: 'team', next: true,
+    enter: () => { app().setKanban(null); sel(null); },
+    target: () => dom('[data-testid="settings-button"]'),
   },
   { id: 'done', modal: true, enter: () => { app().setKanban(null); sel(null); } },
 ];

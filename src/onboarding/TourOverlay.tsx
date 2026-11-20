@@ -85,6 +85,7 @@ function SendOff() {
           <li><b>⌘J</b> takes the next builder waiting on you.</li>
           <li><b>+ Terminal</b> and <b>+ Browser</b> put a shell or a live page in a compound.</li>
           <li>Scroll to zoom, drag to pan, <b>⌘0</b> fits the village.</li>
+          <li><b>Settings › Team</b> shares your village with a Vercel team: visits, lent builders and your phone.</li>
           <li>Settings has notifications, your name, and this tour again.</li>
         </ul>
         <div className="tour-btns">

@@ -12,7 +12,7 @@ import Builder from '../../components/Builder.astro';
   })} />
   <section class="page-hero" aria-labelledby="page-title">
     <h1 class="title" id="page-title" data-split="lines" data-intro>What stays on your Mac</h1>
-    <p class="page-hero__lede">Short version: all of it. Here is exactly what the app touches, what it sends, and what it never does.</p>
+    <p class="page-hero__lede">Short version: all of it, unless you turn on a team board. Here is exactly what the app touches, what it sends, and what it never does.</p>
     <div class="page-hero__art drop-in" aria-hidden="true">
       <img src="/img/tent-codex.webp" alt="" width="360" height="330" fetchpriority="high" />
       <Builder sheet="craftsman-codex" pose="cheer" />
@@ -23,6 +23,7 @@ import Builder from '../../components/Builder.astro';
       <p>On this page</p>
       <ol>
         <li><a href="#network">Network</a></li>
+        <li><a href="#team">With a team</a></li>
         <li><a href="#config">Your agent configuration</a></li>
         <li><a href="#status">How status works</a></li>
         <li><a href="#notifications">Notifications</a></li>
@@ -37,10 +38,22 @@ import Builder from '../../components/Builder.astro';
           <li><strong>The update check.</strong> One request to see whether a newer beta exists. Turn it off in Settings.</li>
           <li><strong>Reports you choose to send</strong> from Help › Report a Bug…, Help › Request a Feature… or Settings › Beta feedback. A report holds what you type, the app, macOS and agent versions, counts of workspaces and sessions, and the last error the app showed. Never workspace names or tasks. A screenshot is included only if you tick it, and you see everything before sending.</li>
           <li><strong>Anonymous usage counts, only if you turn them on</strong> in the welcome or Settings › Data &amp; privacy. They are off until you do. Each count is one of a fixed few: the app opened (with how many workspaces and builders you have), a session started (and which agent), a terminal started, a permission prompt allowed or denied, the Kanban opened. Each carries the app, macOS and chip, and a random id made when you turn sharing on and deleted when you turn it off. Never names, paths, tasks, prompts or output. They go to PostHog’s EU cloud with no profile of you. Turn it off and they stop at once.</li>
-          <li><strong>Your Vercel team’s board, only if you turn it on</strong> in Settings › Team. It is off until you do, and it goes through the <code>vercel</code> command and login you already have; the app never sees your Vercel token. For each workspace you choose to share, the board gets the state of its sessions and a map of your village (workspace and builder names, where they stand). With Share details on, which is the default, it also gets tasks, the tool calls builders ask about, their questions, the agent’s last reply and the names of changed files. Vercel stores this in the United States. A new village is closed to everyone you did not invite, where your Vercel team lets you close it; Settings always says who can see it.</li>
-          <li><strong>What builds on the board, each only if you set it up.</strong> Inviting a teammate writes their Vercel email and level to the board’s access rules, and the actions they send you are written there. Lending a builder lets a teammate you paired run a task on your Mac; the app pushes that work to your repository’s <code>origin</code> as one new branch, with your own git credentials. The phone remote is a small web app on your own Vercel team that reads the same board; its notifications pass through Apple’s, Google’s or Mozilla’s push service.</li>
+          <li><strong>Your Vercel team’s board, only if you turn it on</strong> in Settings › Team. It is off until you do. <a href="#team">With a team</a>, below, says what it sends and who can read it.</li>
         </ul>
         <p>Your agents still talk to their own services the way they always do, with your own logins. The app does not sit in between.</p>
+      </section>
+      <section id="team" aria-labelledby="team-h">
+        <h2 id="team-h">With a team</h2>
+        <p>Everything here is off until you turn it on in Settings › Team, and it goes through the <code>vercel</code> command and login you already have. The app never sees your Vercel token.</p>
+        <ul>
+          <li><strong>What goes to the board.</strong> For each workspace you choose to share: the state of its sessions (working, needs you, finished, stuck, paused, closed) and a map of your village, which is the names of your shared workspaces and builders and where they stand. With Share details on, which is the default, also the task, the tool call a builder asks about, its questions, the agent’s last reply and the names of changed files. Turn Share details off and only the states and the map go. Terminal output and file contents never go.</li>
+          <li><strong>Where it is kept.</strong> On Vercel Board, in the United States, under your Vercel team.</li>
+          <li><strong>Who can read it.</strong> A village is closed to everyone you did not invite, and Settings always lists who can see yours, read from the board itself. Only an owner of the Vercel team can close a village: if you are a member, everyone on the team can see yours until an owner does, and Settings says so.</li>
+          <li><strong>People you invite.</strong> An invite writes a teammate’s Vercel email and level to the board’s access rules. Nobody can act in your village until you pair their Mac, by a code you send them and a number you both check. Paired Macs and phones are kept in your macOS Keychain. Your Mac checks every action against that list, whatever the board allows, and each action is written to the builder’s thread.</li>
+          <li><strong>Lending a builder.</strong> A teammate you paired can hand a builder you lend a task. It runs on your Mac, with your logins and your elixir, in its own copy of the repository cut from what <code>origin</code> has. When it finishes, the app pushes that one new branch to <code>origin</code> with your git credentials: never forced, never over an existing branch. The task and whether it was taken are written to the board. Lend only to people you would give that access.</li>
+          <li><strong>The phone remote.</strong> A small web app on your own Vercel team, as the project <code>village-remote</code>. It reads the same board and adds each paired phone’s name and public key, the address its notifications go to, and every action a phone sends. Notifications pass through Apple’s, Google’s or Mozilla’s push service and carry the builder’s name, the workspace and, with Share details on, the command or question. Whoever can deploy to that project on your team can make it act as your phone and read every village that lets the remote in; your Mac pauses the remote when it sees a deployment it did not make.</li>
+          <li><strong>Your own agents.</strong> They run with your Vercel login, so one could change your village’s access rules. Settings checks the rules when it opens and offers to put them back.</li>
+        </ul>
       </section>
       <section id="config" aria-labelledby="config-h">
         <h2 id="config-h">Your agent configuration</h2>

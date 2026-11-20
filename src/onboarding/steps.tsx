@@ -86,5 +86,16 @@ export function copyOf(id: StepId, c: StepContext): StepCopy {
         title: 'Your builders',
         body: <>Every builder you’ve recruited, with what they’re doing. Click one to jump to its terminal, or drag an idle one onto a compound to start work there.</>,
       };
+    case 'team':
+      return {
+        title: 'Bring your team',
+        body: (
+          <>
+            On a Vercel team? <K>Settings › Team</K> puts your village on the team’s board. Invite teammates to visit and
+            answer your builders, lend a builder for a task, and pair your phone to Allow or Deny from anywhere.
+            <span className="tour-fine">It is off until you turn it on, and your village is closed to everyone you did not invite.</span>
+          </>
+        ),
+      };
   }
 }

@@ -6,12 +6,12 @@ import FolderHint from './FolderHint';
 import { useTour } from '../onboarding/tour';
 
 /**
- * Gentle first-run start, shown only while there are no workspaces. Not modal: no backdrop, no focus
+ * Gentle first-run start, shown only while there are no workspaces (and not over a village you visit). Not modal: no backdrop, no focus
  * trap, and the layer around the card ignores pointer events so the village and HUD stay usable.
  */
 export default function WelcomeCard() {
   const touring = useTour((s) => s.step !== null);
-  const show = useApp((s) => s.loaded && s.workspaces.length === 0) && !touring;
+  const show = useApp((s) => s.loaded && s.workspaces.length === 0 && !s.visiting) && !touring;
   const inset = usePanelInset();
   const [naming, setNaming] = useState<string | null>(null);
   if (!show) return null;

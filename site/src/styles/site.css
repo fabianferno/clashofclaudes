@@ -314,7 +314,7 @@ html.js .reel.is-live .reel__beat:not(.is-active) { opacity: 0.4; }
 }
 .reel__slide { position: absolute; inset: 0; opacity: 0; visibility: hidden; transition: opacity 0.35s, visibility 0s 0.35s; }
 .reel__slide.is-on { opacity: 1; visibility: visible; transition: opacity 0.35s; }
-.reel__slide video { display: block; width: 100%; height: 100%; object-fit: cover; }
+.reel__slide video, .reel__shot { display: block; width: 100%; height: 100%; object-fit: cover; }
 /* The Kanban is a wide strip: it fills most of the frame's height and pans along. */
 .reel__kanban { position: absolute; inset: 0; background: radial-gradient(80% 70% at 50% 50%, #3f7a23, #1f4a17); }
 .reel__kanban img {

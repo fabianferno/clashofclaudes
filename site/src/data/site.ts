@@ -102,7 +102,8 @@ export const reports: { agent: AgentKey; name: string; status: 'needs' | 'work' 
 ];
 
 // The feature reel: the ad's beats as a scroll story. Each beat plays a loop of real app footage
-// (public/reel/<clip>.mp4, cut from the ad's raw shots) or, for the Kanban, the real screenshot.
+// (public/reel/<clip>.mp4, cut from the ad's raw shots) or, for the Kanban and the team, a real
+// screenshot (the team's is a sample teammate's village, drawn by the app).
 // In a title, the words between asterisks are set in gold.
 export const reel: { clip: string; title: string; text: string }[] = [
   {
@@ -150,11 +151,16 @@ export const reel: { clip: string; title: string; text: string }[] = [
     title: 'Plan it on the *Kanban*',
     text: 'Write tasks in To Do and start one when a builder is free. Sessions move across Active, Needs You and Finished on their own, and a permission prompt can be allowed or denied right on its card.',
   },
+  {
+    clip: 'team',
+    title: 'Bring your *team*',
+    text: 'On a Vercel team, each person keeps their own village. Invite teammates to walk into yours, see which builders are waiting and answer them. Lend a builder for a task that comes back as a branch, and allow or deny from your phone. It is off until you turn it on, and your village is closed to everyone you did not invite.',
+  },
 ];
 
 export const privacy = [
   {
-    title: 'Nothing leaves your Mac',
+    title: 'Nothing leaves unless you say so',
     text: 'Agent output stays on your machine, and so do prompts, file names and folders unless you turn on your team’s board. The only network calls are the update check (you can turn it off), bug reports you choose to send, anonymous usage counts if you turn them on, and your Vercel team’s board if you turn it on.',
   },
   {
@@ -167,7 +173,7 @@ export const privacy = [
   },
   {
     title: 'Quiet notifications',
-    text: 'Notifications say a builder needs you or finished, and a permission prompt can be allowed right from one. They never include your task or terminal output.',
+    text: 'Notifications say a builder needs you or finished, and a permission prompt can be allowed right from one. They never include your task or terminal output. If you lend builders, a borrow shows the first line of the task your teammate wrote.',
   },
 ];
 
@@ -188,6 +194,10 @@ export const faq = [
   {
     q: 'Does it send my code or prompts anywhere?',
     a: 'Not unless you turn on your team’s board. Agent output always stays on your Mac. Prompts, file names and folders stay there too, unless you connect your Vercel team’s board in Settings and share a workspace on it. The other network calls are the update check, which you can turn off, bug reports or feature requests you choose to send, and anonymous usage counts, which are off unless you turn them on.',
+  },
+  {
+    q: 'Can my team use it together?',
+    a: 'Yes, if you are on a Vercel team. Turn on Vercel Board in Settings and each person’s village shows on the team’s board. You choose who may visit yours and what they may do: look, answer a builder’s questions, or allow and deny its tool calls. You can lend a builder to a teammate for a task, which runs on your Mac and comes back as a branch, and pair your phone to answer builders from anywhere. All of it is off until you turn it on.',
   },
   {
     q: 'Will it change my Claude Code, Codex, OpenCode or Grok Build settings?',

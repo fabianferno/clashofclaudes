@@ -72,3 +72,12 @@ test('welcome_card_steps_aside_while_the_tour_runs', async () => {
   act(() => useTour.setState({ step: null }));
   expect(screen.getByText('Open a workspace to start')).toBeTruthy();
 });
+
+test('welcome_stays_out_of_a_village_you_visit', () => {
+  const map = { v: 1, host: 'h', owner: 'ada', seen: 0, workspaces: [], builders: [], sessions: [] };
+  const { container } = render(<WelcomeCard />);
+  act(() => useApp.getState().setVisiting({ owner: 'ada', map }));
+  expect(container.textContent).toBe('');
+  act(() => useApp.getState().setVisiting(null));
+  expect(screen.getByText('Open a workspace to start')).toBeTruthy();
+});

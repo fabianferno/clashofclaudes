@@ -14,7 +14,7 @@ vi.mock('../village/probe', () => probe);
 import { useApp } from '../state/store';
 import { DEFAULT_SETTINGS } from '../state/settings';
 import TourOverlay, { measure, placeCard } from './TourOverlay';
-import { COACH_STEPS, endTour, goTo, startTour, stepNumber, useTour } from './tour';
+import { COACH_STEPS, endTour, goTo, specOf, startTour, stepNumber, useTour } from './tour';
 import { DEMO_WS_ID, sandboxInstalled } from './demo';
 
 const st = () => useApp.getState();
@@ -60,7 +60,7 @@ describe('the welcome', () => {
     expect(st().settings?.playerName).toBe('Fabian');
     expect(useTour.getState().step).toBe('workspace');
     expect(screen.getByTestId('tour-card').dataset.step).toBe('workspace');
-    expect(screen.getByText('Step 1 of 8')).toBeTruthy();
+    expect(screen.getByText(`Step 1 of ${COACH_STEPS.length}`)).toBeTruthy();
   });
 
   it('skipping keeps a typed name, marks the welcome done and puts ipc back', async () => {
@@ -84,8 +84,8 @@ describe('the welcome', () => {
 });
 
 describe('the coach', () => {
-  it('is short: the loop, then two tips', () => {
-    expect(COACH_STEPS.map((s) => s.id)).toEqual(['workspace', 'new-session', 'picker', 'working', 'needs', 'review', 'kanban', 'roster']);
+  it('is short: the loop, then three tips', () => {
+    expect(COACH_STEPS.map((s) => s.id)).toEqual(['workspace', 'new-session', 'picker', 'working', 'needs', 'review', 'kanban', 'roster', 'team']);
     expect(stepNumber('wait-finish')).toBe(stepNumber('needs')); // the pause keeps the number before it
   });
 
@@ -101,11 +101,28 @@ describe('the coach', () => {
   });
 
   it('counts its steps and Next moves on', () => {
-    act(() => { startTour(); goTo('roster'); });
+    act(() => { startTour(); goTo('team'); });
     render(<TourOverlay />);
     expect(screen.getByText(`Step ${COACH_STEPS.length} of ${COACH_STEPS.length}`)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     expect(useTour.getState().step).toBe('done');
+  });
+
+  it('ends on the team: where it is set up, and that it is off until then', () => {
+    act(() => { startTour(); goTo('roster'); });
+    render(<TourOverlay />);
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(useTour.getState().step).toBe('team');
+    expect(specOf('team').target!()).toEqual({ kind: 'dom', selector: '[data-testid="settings-button"]' });
+    expect(screen.getByText('Bring your team')).toBeTruthy();
+    expect(document.body.textContent).toContain('Settings › Team');
+    expect(document.body.textContent).toContain('off until you turn it on');
+  });
+
+  it('the send-off says where the team lives', () => {
+    act(() => { startTour(); goTo('done'); });
+    render(<TourOverlay />);
+    expect(screen.getByTestId('tour-done').textContent).toContain('Settings › Team');
   });
 
   it('offers to raise the sample again when it was removed', () => {

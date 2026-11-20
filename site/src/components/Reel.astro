@@ -26,6 +26,8 @@ const gold = (t: string) => t.split('*').map((part, i) => (i % 2 ? `<span class=
           <div class:list={['reel__slide', { 'is-on': i === 0 }]} data-slide={i}>
             {b.clip === 'kanban'
               ? <div class="reel__kanban"><img src="/img/kanban-2000.webp" alt="" width="2000" height="451" loading="lazy" decoding="async" /></div>
+              : b.clip === 'team'
+              ? <img class="reel__shot" src="/img/team-1600.webp" alt="" width="1600" height="900" loading="lazy" decoding="async" />
               : <video src={`/reel/${b.clip}.mp4`} poster={`/reel/${b.clip}.jpg`} width="1280" height="720" muted loop playsinline preload="none"></video>}
           </div>
         ))}

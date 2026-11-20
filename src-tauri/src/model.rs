@@ -239,11 +239,27 @@ pub struct BoardSettings {
     pub share_new: bool,
     /// A random id for this install's village (`coc.host`), made when the feature is first turned on.
     pub host_id: Option<String>,
+    /// The phone remote: a web app the team deploys, whose paired phones answer builders.
+    pub remote: RemoteSettings,
+}
+
+/// Settings › Team › Phone remote. The paired phones themselves are in the Keychain.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct RemoteSettings {
+    /// The Mac listens to the board and takes paired phones' actions.
+    pub enabled: bool,
+    /// Where the team's remote is deployed.
+    pub url: Option<String>,
+    /// Production deployments of the remote this Mac made or the owner trusted.
+    pub trusted: Vec<String>,
+    /// Why actions are refused for now (the remote was redeployed by someone else).
+    pub paused: Option<String>,
 }
 
 impl Default for BoardSettings {
     fn default() -> Self {
-        Self { enabled: false, team: None, name: "village".into(), share_details: true, session_env: true, share_new: false, host_id: None }
+        Self { enabled: false, team: None, name: "village".into(), share_details: true, session_env: true, share_new: false, host_id: None, remote: RemoteSettings::default() }
     }
 }
 

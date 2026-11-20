@@ -78,5 +78,9 @@ test('a village tidied under older spacing rules is tidied again once', async ()
 });
 
 test('Vercel Board is off by default, with a board named village', () => {
-  expect(DEFAULT_SETTINGS.board).toEqual({ enabled: false, team: null, name: 'village', shareDetails: true, sessionEnv: true, shareNew: false, hostId: null });
+  expect(DEFAULT_SETTINGS.board).toMatchObject({ enabled: false, team: null, name: 'village', shareDetails: true, sessionEnv: true, shareNew: false, hostId: null });
+});
+
+test('the phone remote starts off, with no address and nothing trusted', () => {
+  expect(DEFAULT_SETTINGS.board?.remote).toEqual({ enabled: false, url: null, trusted: [], paused: null });
 });

@@ -1,6 +1,6 @@
 import { invoke, Channel } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type { HistoryEntry, HapticKind, Todo, AppPreview, AgentAccount, AgentInfo, AgentKind, AgentQuota, Builder, CloseOutcome, Compound, ConfirmQuit, Frame, ListState, Review, SessionInfo, Settings, Stats, Tile, UpdateStatus, Workspace, BugReport, BugReportInfo, ReportKind, RaidReport, BoardStatus } from './types';
+import type { HistoryEntry, HapticKind, Todo, AppPreview, AgentAccount, AgentInfo, AgentKind, AgentQuota, Builder, CloseOutcome, Compound, ConfirmQuit, Frame, ListState, Review, SessionInfo, Settings, Stats, Tile, UpdateStatus, Workspace, BugReport, BugReportInfo, ReportKind, RaidReport, BoardStatus, RemoteStatus } from './types';
 
 const SKIP_FLAG = 1n << 63n;
 
@@ -128,6 +128,13 @@ export const ipc = {
   boardCheck: () => invoke<BoardStatus>('board_check'),
   /** Shares a workspace on the team's board, or stops. */
   setWorkspaceShared: (workspaceId: string, shared: boolean) => invoke<Workspace>('set_workspace_shared', { workspaceId, shared }),
+  /** Settings › Phone remote: paired phones, pairing, whether the Mac listens. */
+  remoteStatus: () => invoke<RemoteStatus>('remote_status'),
+  /** Opens a pairing; the six-digit code to type on the phone. */
+  remotePairStart: () => invoke<string>('remote_pair_start'),
+  remotePairConfirm: () => invoke<void>('remote_pair_confirm'),
+  remotePairCancel: () => invoke<void>('remote_pair_cancel'),
+  remoteRemovePhone: (key: string) => invoke<void>('remote_remove_phone', { key }),
   /** The folder holding the app's data. */
   dataFolder: () => invoke<string>('data_folder'),
   bugReportInfo: () => invoke<BugReportInfo>('bug_report_info'),

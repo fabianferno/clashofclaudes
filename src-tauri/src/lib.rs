@@ -381,7 +381,11 @@ pub fn run() {
             {
                 let m = Arc::downgrade(&manager);
                 let files = Arc::new(move |id: &str| m.upgrade().and_then(|m| m.review(id).ok()).map(|r| r.files.into_iter().map(|f| f.path).chain(r.untracked).collect()).unwrap_or_default());
-                app.manage(board::app::BoardState::new(&board_dir, files));
+                let h = app.handle().clone();
+                let changed = Arc::new(move || {
+                    let _ = h.emit("remote-changed", board::app::remote_status_of(&h));
+                });
+                app.manage(board::app::BoardState::new(&board_dir, files, Arc::downgrade(&manager), changed));
             }
             {
                 let (m, workspaces, builders) = (manager.clone(), data.workspaces.clone(), data.builders.clone());
@@ -501,6 +505,11 @@ pub fn run() {
             board::app::board_status,
             board::app::board_check,
             board::app::set_workspace_shared,
+            board::app::remote_status,
+            board::app::remote_pair_start,
+            board::app::remote_pair_confirm,
+            board::app::remote_pair_cancel,
+            board::app::remote_remove_phone,
             commands::detect_agents,
             commands::add_workspace,
             commands::create_workspace,

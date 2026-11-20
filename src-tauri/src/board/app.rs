@@ -7,6 +7,8 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 
 use super::cli::{status, BoardCli, BoardStatus, Target, VercelCli};
+use super::listen::{Following, Listener};
+use super::remote_app::{Remote, RemoteStatus, Sessions, Village};
 use super::publisher::{Config, Publisher, SessionView};
 use super::{channel, profile_name, workspace_slugs, Outcome};
 use crate::commands::AppState;
@@ -31,15 +33,69 @@ pub struct BoardState {
     link: Arc<Mutex<Link>>,
     /// The feature is on and the owner is known: session updates are worth looking at.
     active: AtomicBool,
+    /// The phone remote, and the listener that feeds it.
+    pub remote: Arc<Remote>,
+    listener: Arc<Listener>,
+}
+
+/// The session manager, as the phone remote uses it.
+struct ManagerSessions(std::sync::Weak<crate::sessions::SessionManager>);
+
+impl ManagerSessions {
+    fn with(&self, f: impl FnOnce(&crate::sessions::SessionManager) -> anyhow::Result<()>) -> Result<(), String> {
+        let m = self.0.upgrade().ok_or("the app is quitting")?;
+        f(&m).map_err(|e| format!("{e:#}"))
+    }
+}
+
+impl Sessions for ManagerSessions {
+    fn since(&self, id: &str) -> Option<i64> {
+        self.0.upgrade()?.list().into_iter().find(|s| s.id == id).map(|s| s.state_since)
+    }
+    fn approve_if(&self, id: &str, since: i64) -> Result<(), String> {
+        self.with(|m| m.approve_if(id, since))
+    }
+    fn deny_if(&self, id: &str, since: i64) -> Result<(), String> {
+        self.with(|m| m.deny_if(id, since))
+    }
+    fn prompt_if(&self, id: &str, since: i64, text: &str) -> Result<(), String> {
+        self.with(|m| m.prompt_if(id, since, text))
+    }
+    fn pick_if(&self, id: &str, since: i64, pick: Option<usize>, text: &str) -> Result<(), String> {
+        self.with(|m| m.pick_if(id, since, pick, text))
+    }
 }
 
 impl BoardState {
     /// `data_dir`: where `board.json` lives and where `vercel` runs. `files`: a session's changed files.
-    pub fn new(data_dir: &Path, files: super::publisher::Files) -> BoardState {
+    /// `changed`: called when what Settings › Phone remote shows has changed.
+    pub fn new(data_dir: &Path, files: super::publisher::Files, manager: std::sync::Weak<crate::sessions::SessionManager>, changed: Arc<dyn Fn() + Send + Sync>) -> BoardState {
         let cli: Arc<dyn BoardCli> = Arc::new(VercelCli { program: None, cwd: data_dir.to_path_buf(), timeout: CLI_TIMEOUT });
         let now: super::publisher::Clock = Arc::new(|| std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0));
-        let publisher = Publisher::start(cli.clone(), data_dir.join("board.json"), files, now);
-        BoardState { publisher, cli, link: Arc::default(), active: AtomicBool::new(false) }
+        let publisher = Publisher::start(cli.clone(), data_dir.join("board.json"), files, now.clone());
+        let remote = Arc::new(Remote::new(
+            publisher.clone(),
+            Arc::new(ManagerSessions(manager)),
+            Arc::new(super::phones::Keychain::app()),
+            data_dir.join("board-remote.json"),
+            now,
+            changed,
+        ));
+        let hears = remote.clone();
+        let listener = Listener::start(cli.clone(), data_dir.join("board-listen.json"), Box::new(move |e| hears.handle(e)));
+        // the remote's clock: an expired pairing ends, the village root says the Mac is there
+        let ticks = Arc::downgrade(&remote);
+        std::thread::Builder::new()
+            .name("board-remote-tick".into())
+            .spawn(move || {
+                while let Some(r) = ticks.upgrade() {
+                    r.tick();
+                    drop(r);
+                    std::thread::sleep(Duration::from_secs(1));
+                }
+            })
+            .expect("remote tick thread");
+        BoardState { publisher, cli, link: Arc::default(), active: AtomicBool::new(false), remote, listener }
     }
 
     fn link(&self) -> Link {
@@ -60,12 +116,13 @@ pub fn config(data: &AppData, owner: &str) -> Config {
 
 /// An agent session as the publisher wants it; None for terminals and for sessions whose
 /// workspace or builder is gone.
-pub fn session_view(data: &AppData, owner: &str, info: &SessionInfo) -> Option<SessionView> {
+/// `answerable`: the app has the keys for its open permission prompt.
+pub fn session_view(data: &AppData, owner: &str, info: &SessionInfo, answerable: bool) -> Option<SessionView> {
     let SessionKind::Agent { builder_id } = &info.kind else { return None };
     let builder = data.builders.iter().find(|b| &b.id == builder_id)?;
     let ws = data.workspaces.iter().find(|w| w.id == info.workspace_id)?;
     let channel = ws.board_shared.then(|| channel(owner, &workspace_slugs(&data.workspaces)[&ws.id]));
-    Some(SessionView { info: info.clone(), builder: builder.name.clone(), agent: builder.agent.clone(), channel, answerable: false })
+    Some(SessionView { info: info.clone(), builder: builder.name.clone(), agent: builder.agent.clone(), channel, answerable })
 }
 
 /// What a session of `builder` in `ws` gets in its environment, so its own `vercel board` calls
@@ -137,11 +194,22 @@ pub fn apply<R: Runtime>(app: &AppHandle<R>) {
             bs.active.store(false, Ordering::SeqCst);
             bs.publisher.configure(off);
             st.manager.set_env_hook(None);
+            bs.listener.configure(None);
+            bs.remote.configure(None, None);
             return;
         };
-        let views: Vec<SessionView> = st.manager.list().iter().filter_map(|i| session_view(&d, owner, i)).collect();
+        let sessions = st.manager.list();
+        drop(d);
+        // asked outside the data lock: it takes the session manager's
+        let answerable: Vec<bool> = sessions.iter().map(|i| st.manager.answerable(&i.id)).collect();
+        let d = st.data();
+        let views: Vec<SessionView> = sessions.iter().zip(answerable).filter_map(|(i, a)| session_view(&d, owner, i, a)).collect();
         (config(&d, owner), views, board)
     };
+    // The phone remote listens only while its own switch is on.
+    let village = board.remote.enabled.then(|| Village { host: cfg.host_id.clone(), owner: cfg.owner.clone(), version: env!("CARGO_PKG_VERSION").to_string() });
+    bs.listener.configure(village.as_ref().map(|v| Following { target: cfg.target.clone(), owner: v.owner.clone() }));
+    bs.remote.configure(village, board.remote.paused.clone());
     bs.publisher.configure(cfg);
     bs.active.store(true, Ordering::SeqCst);
     for v in views {
@@ -161,7 +229,8 @@ pub fn on_update<R: Runtime>(app: &AppHandle<R>, info: &SessionInfo) {
         return;
     }
     let (Some(st), Some(owner)) = (app.try_state::<AppState>(), bs.link().owner) else { return };
-    let view = session_view(&st.data(), &owner, info);
+    let answerable = info.awaiting_decision && st.manager.answerable(&info.id);
+    let view = session_view(&st.data(), &owner, info, answerable);
     if let Some(v) = view {
         bs.publisher.update(v);
     }
@@ -181,6 +250,48 @@ pub fn on_quit<R: Runtime>(app: &AppHandle<R>) {
     {
         bs.publisher.pause_all(QUIT_WAIT);
     }
+    if let Some(bs) = app.try_state::<BoardState>() {
+        bs.listener.stop();
+    }
+}
+
+/// Settings › Team › Phone remote: phones, pairing, and whether the Mac is listening.
+pub fn remote_status_of<R: Runtime>(app: &AppHandle<R>) -> RemoteStatus {
+    let Some(bs) = app.try_state::<BoardState>() else { return RemoteStatus::default() };
+    let mut s = bs.remote.status();
+    s.listening = bs.listener.status().0;
+    s
+}
+
+#[tauri::command]
+pub fn remote_status(app: AppHandle) -> RemoteStatus {
+    remote_status_of(&app)
+}
+
+/// Opens a pairing; the six-digit code to show beside the remote's address.
+#[tauri::command]
+pub fn remote_pair_start(app: AppHandle) -> Result<String, String> {
+    let bs = app.try_state::<BoardState>().ok_or("the board is not set up")?;
+    let mut buf = [0u8; 4];
+    getrandom::fill(&mut buf).map_err(|e| e.to_string())?;
+    bs.remote.pair_start(u32::from_be_bytes(buf))
+}
+
+#[tauri::command]
+pub fn remote_pair_confirm(app: AppHandle) -> Result<(), String> {
+    app.try_state::<BoardState>().ok_or("the board is not set up")?.remote.pair_confirm()
+}
+
+#[tauri::command]
+pub fn remote_pair_cancel(app: AppHandle) {
+    if let Some(bs) = app.try_state::<BoardState>() {
+        bs.remote.pair_cancel();
+    }
+}
+
+#[tauri::command]
+pub fn remote_remove_phone(key: String, app: AppHandle) -> Result<(), String> {
+    app.try_state::<BoardState>().ok_or("the board is not set up")?.remote.remove_phone(&key)
 }
 
 /// Asks the CLI where things stand (blocking: it runs `vercel`), remembers who the owner is, and
@@ -240,7 +351,7 @@ mod tests {
         let mut d = AppData::default();
         d.workspaces = vec![ws("w1", "API Server", true), ws("w2", "site", false)];
         d.builders = vec![Builder { id: "b1".into(), name: "Wizard".into(), agent: AgentKind::Claude, model: None, effort: None, custom_command: None }];
-        d.settings.board = BoardSettings { enabled: true, team: Some("acme".into()), name: "ops".into(), share_details: false, session_env: true, share_new: false, host_id: Some("h1".into()) };
+        d.settings.board = BoardSettings { enabled: true, team: Some("acme".into()), name: "ops".into(), share_details: false, session_env: true, share_new: false, host_id: Some("h1".into()), remote: Default::default() };
         d
     }
 
@@ -290,12 +401,12 @@ mod tests {
     #[test]
     fn session_view_gives_shared_workspaces_a_channel() {
         let d = data();
-        let v = session_view(&d, "ada", &agent("w1", "b1")).unwrap();
+        let v = session_view(&d, "ada", &agent("w1", "b1"), false).unwrap();
         assert_eq!((v.builder.as_str(), v.agent, v.channel.as_deref()), ("Wizard", AgentKind::Claude, Some("v/ada/w/api-server")));
-        assert_eq!(session_view(&d, "ada", &agent("w2", "b1")).unwrap().channel, None);
-        assert!(session_view(&d, "ada", &info("w1", SessionKind::Terminal)).is_none());
-        assert!(session_view(&d, "ada", &agent("w1", "gone")).is_none());
-        assert!(session_view(&d, "ada", &agent("gone", "b1")).is_none());
+        assert_eq!(session_view(&d, "ada", &agent("w2", "b1"), false).unwrap().channel, None);
+        assert!(session_view(&d, "ada", &info("w1", SessionKind::Terminal), false).is_none());
+        assert!(session_view(&d, "ada", &agent("w1", "gone"), false).is_none());
+        assert!(session_view(&d, "ada", &agent("gone", "b1"), false).is_none());
     }
 
     #[test]
@@ -367,7 +478,7 @@ mod tests {
         let p = Publisher::new(Arc::new(SignedOutOnce(AtomicBool::new(true))), dir.path().join("board.json"), Arc::new(|_| vec![]), Arc::new(move || c.load(Ordering::SeqCst)));
         let d = data();
         p.configure(config(&d, "ada"));
-        p.update(session_view(&d, "ada", &agent("w1", "b1")).unwrap());
+        p.update(session_view(&d, "ada", &agent("w1", "b1"), false).unwrap());
         clock.fetch_add(10_000, Ordering::SeqCst);
         p.step();
         assert!(p.stopped_reason().is_some());

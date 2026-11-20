@@ -337,6 +337,41 @@ export interface BoardSettings {
   sessionEnv: boolean;
   shareNew: boolean;
   hostId: string | null;
+  /** The phone remote. Absent in settings saved before it existed. */
+  remote?: RemoteSettings;
+}
+
+/** Settings › Team › Phone remote (the paired phones themselves are in the Keychain). */
+export interface RemoteSettings {
+  enabled: boolean;
+  /** Where the team's remote is deployed. */
+  url: string | null;
+  /** Production deployments of the remote this Mac made or the owner trusted. */
+  trusted: string[];
+  /** Why actions are refused for now. */
+  paused: string | null;
+}
+
+export interface RemotePhone { key: string; name: string; pairedAt: number; lastUsed: number }
+
+export interface RemotePairing {
+  state: 'idle' | 'open' | 'asking' | 'cancelled';
+  code: string | null;
+  until: number | null;
+  /** The phone that asks, and the number it shows. */
+  name: string | null;
+  check: string | null;
+  why: string | null;
+}
+
+/** What Settings › Phone remote shows (the `remote-changed` event carries it too). */
+export interface RemoteStatus {
+  phones: RemotePhone[];
+  pairing: RemotePairing;
+  listening: boolean;
+  paused: string | null;
+  lastRefusedAt: number | null;
+  keychainError: string | null;
 }
 
 /** A moment that can play a sound (see src/state/sounds.ts and src-tauri/src/sounds.rs). */

@@ -9,7 +9,7 @@ export const DEFAULT_SETTINGS: Settings = {
   elixirReserve: 10, elixirStandIn: false,
   soundsOn: true, soundVolume: 70, sounds: DEFAULT_SOUNDS,
   dayNight: true, ambienceOn: false, ambienceVolume: 50,
-  board: { enabled: false, team: null, name: 'village', shareDetails: true, sessionEnv: true, shareNew: false, hostId: null },
+  board: { enabled: false, team: null, name: 'village', shareDetails: true, sessionEnv: true, shareNew: false, hostId: null, remote: { enabled: false, url: null, trusted: [], paused: null } },
 };
 
 export { PLAYER_NAME_MAX, cleanName, townHallTitle } from './names';

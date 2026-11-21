@@ -36,6 +36,8 @@ export const ipc = {
   readAttachment: (name: string) => invoke<ArrayBuffer>('read_attachment', { name }),
   /** Removes attachments taken off a task before it was added or started (ones a To Do keeps stay). */
   discardAttachments: (names: string[]) => invoke<void>('discard_attachments', { names }),
+  /** Moves a follow-up's images into a running session's images folder; returns their paths. */
+  attachToSession: (id: string, names: string[]) => invoke<string[]>('attach_to_session', { id, names }),
   removeTodo: (id: string) => invoke<void>('remove_todo', { id }),
   /** How a To Do starts: on its own (`auto`, needs a builder), with which builder, in its own worktree. */
   updateTodo: (id: string, auto: boolean, builderId: string | null, worktree: boolean) =>

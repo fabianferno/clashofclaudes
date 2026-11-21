@@ -9,7 +9,7 @@ const ipcMock = vi.hoisted(() => ({
 vi.mock('../api/ipc', () => ({ ipc: ipcMock }));
 vi.mock('../components/TerminalView', () => ({ default: () => <div className="terminal" /> }));
 import SessionPanel from './SessionPanel';
-import { asksToGoOn } from './Briefing';
+import { asksToGoOn, withImages } from './Briefing';
 import { useApp } from '../state/store';
 
 const sess = (id: string, state: SessionState, extra: Partial<SessionInfo> = {}): SessionInfo => ({
@@ -273,4 +273,10 @@ test('a changed markdown file opens in the reader; a missing one says so', async
   expect(screen.getByText('src/theme.ts').tagName).toBe('SPAN');
   fireEvent.click(screen.getByText('docs/PLAN.md'));
   expect(await screen.findByText('docs/PLAN.md is not there (moved or deleted?)')).toBeTruthy();
+});
+
+test('withImages: a follow-up names its images by path after the text', () => {
+  expect(withImages(' fix the header ', [])).toBe('fix the header');
+  expect(withImages('fix this', ['/d/images/image-2.png'])).toBe('fix this\n\nImage attached to this message (open with your file reading tool):\n/d/images/image-2.png');
+  expect(withImages('', ['/a.png', '/b.png'])).toBe('Images attached to this message (open with your file reading tool):\n/a.png\n/b.png');
 });

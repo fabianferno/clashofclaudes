@@ -86,16 +86,23 @@ pub fn remove(data_dir: &Path, names: &[String]) {
 }
 
 /// Copies the attachments into `dest` as `image-1.<ext>`, `image-2.<ext>`, … and returns their paths.
+/// Images already there (a follow-up's, after the task's) keep their numbers: new ones come after.
 pub fn copy_into(data_dir: &Path, names: &[String], dest: &Path) -> Result<Vec<PathBuf>> {
     validate(names)?;
     if names.is_empty() {
         return Ok(vec![]);
     }
     std::fs::create_dir_all(dest)?;
+    let taken = std::fs::read_dir(dest)?
+        .flatten()
+        .filter_map(|e| e.file_name().into_string().ok())
+        .filter_map(|n| n.strip_prefix("image-").and_then(|r| r.split_once('.')).and_then(|(k, _)| k.parse::<usize>().ok()))
+        .max()
+        .unwrap_or(0);
     let mut out = Vec::with_capacity(names.len());
     for (i, n) in names.iter().enumerate() {
         let ext = n.rsplit('.').next().unwrap_or("png");
-        let to = dest.join(format!("image-{}.{ext}", i + 1));
+        let to = dest.join(format!("image-{}.{ext}", taken + i + 1));
         std::fs::copy(dir(data_dir).join(n), &to).context("an attached image is gone; remove it and attach it again")?;
         out.push(to);
     }
@@ -162,6 +169,8 @@ mod tests {
         assert_eq!(paths, vec![dest.join("image-1.png"), dest.join("image-2.gif")]);
         assert_eq!(std::fs::read(&paths[0]).unwrap(), PNG);
         assert!(copy_into(d.path(), &["../x.png".into()], &dest).is_err());
+        // a follow-up's images come after the ones already there
+        assert_eq!(copy_into(d.path(), std::slice::from_ref(&a), &dest).unwrap(), vec![dest.join("image-3.png")]);
 
         std::fs::write(dir(d.path()).join("notes.txt"), "keep me").unwrap();
         let removed = sweep(d.path(), &HashSet::from([a.as_str()]));

@@ -82,8 +82,12 @@
 .brief-files li { display: flex; gap: 6px; }
 .brief-files li span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .brief-reply-form, .brief-park { display: flex; gap: 6px; align-items: flex-end; }
+.brief-reply-box { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+/* room for a real follow-up; drag the corner for more */
+.brief-reply-form textarea { flex: none; min-height: 64px; max-height: 40vh; resize: vertical; }
+.brief-reply-box .att-strip { margin: 0; }
 .brief-reply-form textarea, .brief-park input {
-  flex: 1; min-width: 0; resize: none; padding: 6px 9px; border: 2px solid var(--hud-out); border-radius: 8px;
+  flex: 1; min-width: 0; padding: 6px 9px; border: 2px solid var(--hud-out); border-radius: 8px;
   background: #fff8e8; font: 600 13px/1.35 system-ui, sans-serif; color: #2b2018;
 }
 .brief-reply-form textarea:focus, .brief-park input:focus { outline: 3px solid rgba(255, 207, 51, .6); outline-offset: 0; }

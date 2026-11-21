@@ -433,6 +433,19 @@ pub async fn read_attachment(name: String, state: State<'_, AppState>) -> Result
     attachments::read(state.data_dir(), &name).map(Response::new).map_err(fmt_err)
 }
 
+/// Moves images attached to a follow-up into a running session's images folder (where its task's
+/// images go, which the agent may already read) and returns their paths, to name in the follow-up.
+#[tauri::command]
+pub async fn attach_to_session(id: String, names: Vec<String>, state: State<'_, AppState>) -> Result<Vec<PathBuf>, String> {
+    if !state.manager.list().iter().any(|s| s.id == id) {
+        return Err("unknown session".into());
+    }
+    let dest = state.data_dir().join("sessions").join(&id).join("images");
+    let paths = attachments::copy_into(state.data_dir(), &names, &dest).map_err(fmt_err)?;
+    attachments::remove(state.data_dir(), &names);
+    Ok(paths)
+}
+
 /// Removes attachments taken off a task before it was added or started. Ones a To Do keeps stay.
 #[tauri::command]
 pub fn discard_attachments(names: Vec<String>, state: State<'_, AppState>) {

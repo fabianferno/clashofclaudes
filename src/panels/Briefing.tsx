@@ -6,6 +6,7 @@ import { QUEUE_LABEL, ownerQueue, queueReason, waitedLabel, waitingSince, type Q
 import { isDemoId } from '../onboarding/demo';
 import Markdown, { docPath } from './Markdown';
 import QuestionPicker from './QuestionPicker';
+import { AttachmentStrip, useAttachments } from './Attachments';
 import { plainText } from './markdownText';
 import './briefing.css';
 
@@ -23,6 +24,15 @@ export async function sendPrompt(id: string, text: string): Promise<void> {
   await ipc.writeSession(id, bytes(isDemoId(id) ? t : `\x1b[200~${t}\x1b[201~`));
   await new Promise((r) => setTimeout(r, 120));
   await ipc.writeSession(id, bytes('\r'));
+}
+
+/** A follow-up with its images named by path after it, the way a task's are, so any agent can open them. */
+export function withImages(text: string, paths: string[]): string {
+  const t = text.trim();
+  if (paths.length === 0) return t;
+  const head = paths.length === 1 ? 'Image attached to this message' : 'Images attached to this message';
+  const body = `${head} (open with your file reading tool):\n${paths.join('\n')}`;
+  return t ? `${t}\n\n${body}` : body;
 }
 
 /** What the one-click follow-up types: carry on, as planned or as it proposed. */
@@ -73,6 +83,9 @@ export default function Briefing({ session: s, canApprove, answering, onAllow, o
   const [showFiles, setShowFiles] = useState(false);
   const [taskOpen, setTaskOpen] = useState(false);
   const [reply, setReply] = useState('');
+  // images pasted into the follow-up or dropped on it from Finder
+  const replyZone = useRef<HTMLFormElement>(null);
+  const att = useAttachments(replyZone);
   const [sending, setSending] = useState(false);
   const [parking, setParking] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -140,11 +153,18 @@ export default function Briefing({ session: s, canApprove, answering, onAllow, o
     }
   };
   const send = async (text = reply) => {
-    if (!text.trim() || sending) return;
+    const images = att.names;
+    if ((!text.trim() && images.length === 0) || sending || att.saving) return;
     setSending(true);
-    await act(async () => { await sendPrompt(s.id, text); setReply(''); });
+    await act(async () => {
+      const paths = images.length && !isDemoId(s.id) ? await ipc.attachToSession(s.id, images) : [];
+      att.clear();
+      await sendPrompt(s.id, withImages(text, paths));
+      setReply('');
+    });
     setSending(false);
   };
+  const hasReply = !!reply.trim() || att.names.length > 0;
   const park = () => act(async () => {
     useApp.getState().upsertSession(await ipc.parkSession(s.id, (parking ?? '').trim()));
     setParking(null);
@@ -250,18 +270,22 @@ export default function Briefing({ session: s, canApprove, answering, onAllow, o
 
       <div className="brief-foot">
       {canReply && (
-        <form className="brief-reply-form" onSubmit={(e) => { e.preventDefault(); void send(); }}>
-          <textarea aria-label="Follow up" rows={reply.includes('\n') ? 3 : 1} value={reply} disabled={sending}
-            placeholder={doc ? 'Follow up on the plan: approve it or ask for changes…' : goOn ? 'Enter to go ahead, or type a reply…' : reason === 'review' ? 'Follow up: ask for a change…' : 'Answer it…'}
-            onChange={(e) => setReply(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                e.preventDefault();
-                void send(goOn && !reply.trim() ? GO_AHEAD : reply);
-              }
-            }} />
-          {reply.trim()
-            ? <button type="submit" className="hud-btn blue sm" disabled={sending}>Send</button>
+        <form ref={replyZone} className="brief-reply-form" onSubmit={(e) => { e.preventDefault(); void send(); }}>
+          <div className="brief-reply-box">
+            <textarea aria-label="Follow up" rows={3} value={reply} disabled={sending}
+              placeholder={doc ? 'Follow up on the plan: approve it or ask for changes…' : goOn ? 'Enter to go ahead, or type a reply…' : reason === 'review' ? 'Follow up: ask for a change… (paste or drop images)' : 'Answer it…'}
+              onChange={(e) => setReply(e.target.value)}
+              onPaste={att.onPaste}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                  void send(goOn && !hasReply ? GO_AHEAD : reply);
+                }
+              }} />
+            <AttachmentStrip names={att.names} onRemove={att.remove} />
+          </div>
+          {hasReply
+            ? <button type="submit" className="hud-btn blue sm" disabled={sending || att.saving}>Send</button>
             // the usual follow-up, one click: it stopped to check in, or to ask whether to go on
             : <button type="button" className={`hud-btn blue sm${goOn ? ' brief-goon' : ''}`} disabled={sending} title={`Tell it: "${GO_AHEAD}"`}
                 onClick={() => void send(GO_AHEAD)}>Go ahead</button>}

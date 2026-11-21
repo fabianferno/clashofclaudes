@@ -602,6 +602,7 @@ pub fn run() {
             commands::import_attachment,
             commands::read_attachment,
             commands::discard_attachments,
+            commands::attach_to_session,
             commands::refresh_quotas,
             commands::get_account,
             commands::open_in_editor,

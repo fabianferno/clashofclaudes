@@ -332,7 +332,9 @@ mod tests {
             hook_url: "http://127.0.0.1:1/hook/x/sid", data_dir: d.path(), custom_command: None, images: &imgs, resume: None,
         };
         let claude = ClaudeAdapter.launch(&req).unwrap().args;
-        assert_eq!(claude[claude.len() - 3..], ["--add-dir=/d/images", "--", "t"]);
+        // Claude reads its images folder by a rule in its settings file (see `claude::read_rule`)
+        assert_eq!(claude[claude.len() - 2..], ["--", "t"]);
+        assert!(!claude.iter().any(|a| a.starts_with("--add-dir")));
         let codex = CodexAdapter.launch(&req).unwrap().args;
         assert_eq!(codex[codex.len() - 4..], ["--image=/d/images/image-1.png", "--image=/d/images/image-2.png", "--", "t"]);
         let agy = AntigravityAdapter.launch(&req).unwrap().args;

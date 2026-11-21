@@ -176,7 +176,13 @@ fn user_status_line(cwd: &std::path::Path) -> Option<serde_json::Value> {
     })
 }
 
-fn settings_json(hook_url: &str, user_status: Option<&serde_json::Value>) -> serde_json::Value {
+/// Lets the agent read (only read) everything under `dir` without asking. Claude's absolute-path
+/// rules start with `//`.
+fn read_rule(dir: &std::path::Path) -> String {
+    format!("Read(/{}/**)", dir.to_string_lossy().trim_end_matches('/'))
+}
+
+fn settings_json(hook_url: &str, user_status: Option<&serde_json::Value>, images_dir: &std::path::Path) -> serde_json::Value {
     let cmd = hook_command(hook_url);
     let mut hooks = serde_json::Map::new();
     for ev in HOOK_EVENTS {
@@ -191,7 +197,9 @@ fn settings_json(hook_url: &str, user_status: Option<&serde_json::Value>) -> ser
     let user_cmd = status.get("command").and_then(|c| c.as_str()).map(String::from);
     status["type"] = "command".into();
     status["command"] = status_command(hook_url, user_cmd.as_deref()).into();
-    serde_json::json!({ "hooks": hooks, "statusLine": status })
+    // The session's images folder, where a task's and its follow-ups' images go, is readable
+    // without a prompt. `--add-dir` would also grant writes, and asks to trust the folder first.
+    serde_json::json!({ "hooks": hooks, "statusLine": status, "permissions": { "allow": [read_rule(images_dir)] } })
 }
 
 /// Writes `bytes` readable by the owner only (the settings carry the hook token).
@@ -242,7 +250,7 @@ impl AgentAdapter for ClaudeAdapter {
         let dir = req.data_dir.join("sessions").join(req.session_id);
         std::fs::create_dir_all(&dir)?;
         let settings_path = dir.join("claude-settings.json");
-        write_private(&settings_path, &serde_json::to_vec_pretty(&settings_json(req.hook_url, user_status_line(req.cwd).as_ref()))?)?;
+        write_private(&settings_path, &serde_json::to_vec_pretty(&settings_json(req.hook_url, user_status_line(req.cwd).as_ref(), &dir.join("images")))?)?;
 
         // A new conversation takes the session's id; a resumed one keeps its own.
         let mut args: Vec<String> = match req.resume {
@@ -260,10 +268,6 @@ impl AgentAdapter for ClaudeAdapter {
         }
         if let Some(e) = req.effort {
             args.extend(["--effort".into(), e.into()]);
-        }
-        if let Some(d) = super::images_dir(req.images) {
-            // reading the attached images needs no permission prompt
-            args.push(format!("--add-dir={}", d.to_string_lossy()));
         }
         if let Some(t) = req.task {
             args.extend(["--".into(), t.into()]); // a task like `--help` is not an option
@@ -460,19 +464,34 @@ mod tests {
             assert!(cmd.contains("--data-binary @-"), "{ev}");
         }
         assert_eq!(v["hooks"]["PostToolUse"][0]["matcher"], "*");
+        // the images folder is readable, even before any image is in it (a follow-up's come later)
+        let images = d.path().join("sessions/sid-9/images");
+        assert_eq!(v["permissions"]["allow"], json!([format!("Read(/{}/**)", images.display())]));
+        assert!(v["permissions"]["allow"][0].as_str().unwrap().starts_with("Read(//"));
+    }
+
+    #[test]
+    fn images_are_allowed_by_rule_not_by_add_dir() {
+        let d = tempfile::tempdir().unwrap();
+        let imgs = [d.path().join("sessions/s/images/image-1.png")];
+        let mut r = req("s", d.path(), None, None, Some("look"));
+        r.images = &imgs;
+        let spec = ClaudeAdapter.launch(&r).unwrap();
+        assert!(!spec.args.iter().any(|a| a.starts_with("--add-dir")), "--add-dir asks to trust the folder");
+        assert_eq!(read_rule(Path::new("/a b/images/")), "Read(//a b/images/**)");
     }
 
     #[test]
     fn status_line_keeps_the_users_options_and_chains_their_command() {
         let user = json!({ "type": "command", "command": "~/bin/line.sh # mine", "padding": 2 });
-        let v = settings_json("http://127.0.0.1:1/hook/a/b", Some(&user));
+        let v = settings_json("http://127.0.0.1:1/hook/a/b", Some(&user), Path::new("/i"));
         assert_eq!(v["statusLine"]["padding"], 2);
         let cmd = v["statusLine"]["command"].as_str().unwrap();
         assert!(cmd.contains("'http://127.0.0.1:1/hook/a/b'") && cmd.contains("-c '~/bin/line.sh # mine' <<"), "{cmd}");
-        let none = settings_json("http://x", None);
+        let none = settings_json("http://x", None, Path::new("/i"));
         assert_eq!(none["statusLine"]["command"], status_command("http://x", None));
         // a non-command status line cannot be chained: ours replaces it
-        let other = settings_json("http://x", Some(&json!({ "type": "static", "text": "hi" })));
+        let other = settings_json("http://x", Some(&json!({ "type": "static", "text": "hi" })), Path::new("/i"));
         assert_eq!(other["statusLine"], json!({ "type": "command", "command": status_command("http://x", None) }));
     }
 

@@ -1468,7 +1468,7 @@ impl SessionManager {
             bail!("{} is not installed", adapter.label());
         }
         let hook_url = self.hooks.register(id);
-        // the task's images stay readable (Claude and agy are allowed their folder)
+        // the task's images stay readable (Claude, agy and Grok are allowed their folder)
         let images = files_in(&self.data_dir.join("sessions").join(id).join("images"));
         let conversation = prior.conversation.clone();
         let req = LaunchRequest {

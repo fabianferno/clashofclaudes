@@ -6,6 +6,7 @@ import { QUEUE_LABEL, ownerQueue, queueReason, waitedLabel, waitingSince, type Q
 import { isDemoId } from '../onboarding/demo';
 import Markdown, { docPath } from './Markdown';
 import QuestionPicker from './QuestionPicker';
+import LastReply from './LastReply';
 import { AttachmentStrip, useAttachments } from './Attachments';
 import { plainText } from './markdownText';
 import './briefing.css';
@@ -233,7 +234,7 @@ export default function Briefing({ session: s, canApprove, answering, onAllow, o
       {s.lastMessage && (
         <div className="brief-sec">
           <div className="brief-h">Its last reply</div>
-          <Markdown className="brief-reply md" text={s.lastMessage} onDoc={(p) => openDoc(p)} />
+          <LastReply key={s.id} text={s.lastMessage} onDoc={(p) => openDoc(p)} />
         </div>
       )}
 
@@ -271,24 +272,22 @@ export default function Briefing({ session: s, canApprove, answering, onAllow, o
       <div className="brief-foot">
       {canReply && (
         <form ref={replyZone} className="brief-reply-form" onSubmit={(e) => { e.preventDefault(); void send(); }}>
-          <div className="brief-reply-box">
-            <textarea aria-label="Follow up" rows={3} value={reply} disabled={sending}
-              placeholder={doc ? 'Follow up on the plan: approve it or ask for changes…' : goOn ? 'Enter to go ahead, or type a reply…' : reason === 'review' ? 'Follow up: ask for a change… (paste or drop images)' : 'Answer it…'}
-              onChange={(e) => setReply(e.target.value)}
-              onPaste={att.onPaste}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                  e.preventDefault();
-                  void send(goOn && !hasReply ? GO_AHEAD : reply);
-                }
-              }} />
-            <AttachmentStrip names={att.names} onRemove={att.remove} />
-          </div>
+          <textarea aria-label="Follow up" rows={3} value={reply} disabled={sending}
+            placeholder={doc ? 'Follow up on the plan: approve it or ask for changes…' : goOn ? 'Enter to go ahead, or type a reply…' : reason === 'review' ? 'Follow up: ask for a change… (paste or drop images)' : 'Answer it…'}
+            onChange={(e) => setReply(e.target.value)}
+            onPaste={att.onPaste}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                void send(goOn && !hasReply ? GO_AHEAD : reply);
+              }
+            }} />
           {hasReply
             ? <button type="submit" className="hud-btn blue sm" disabled={sending || att.saving}>Send</button>
             // the usual follow-up, one click: it stopped to check in, or to ask whether to go on
             : <button type="button" className={`hud-btn blue sm${goOn ? ' brief-goon' : ''}`} disabled={sending} title={`Tell it: "${GO_AHEAD}"`}
                 onClick={() => void send(GO_AHEAD)}>Go ahead</button>}
+          <AttachmentStrip names={att.names} onRemove={att.remove} />
         </form>
       )}
 

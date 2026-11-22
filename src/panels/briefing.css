@@ -27,6 +27,7 @@
   background: #fffaf0; border: 2px solid #d8c39a; border-left: 5px solid #c79a3e; border-radius: 8px; padding: 6px 9px;
   max-height: 180px; overflow-y: auto;
 }
+.brief-reply.open { max-height: none; overflow: visible; }
 /* a plan or spec the agent pointed to, read in place of the briefing (DocReader) */
 .brief.brief-reading { max-height: 72vh; }
 .brief-doc { gap: 6px; }
@@ -81,11 +82,13 @@
 .brief-files { margin: 0; padding: 0 0 0 4px; list-style: none; max-height: 150px; overflow-y: auto; font: 600 12px/1.6 ui-monospace, monospace; }
 .brief-files li { display: flex; gap: 6px; }
 .brief-files li span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.brief-reply-form, .brief-park { display: flex; gap: 6px; align-items: flex-end; }
-.brief-reply-box { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.brief-park { display: flex; gap: 6px; align-items: flex-end; }
+/* the button is a block beside the box, as tall as it (and as it is dragged taller); images go under the box */
+.brief-reply-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: stretch; }
+.brief-reply-form > .hud-btn { display: flex; align-items: center; justify-content: center; }
+.brief-reply-form .att-strip { grid-column: 1; margin: 0; }
 /* room for a real follow-up; drag the corner for more */
-.brief-reply-form textarea { flex: none; min-height: 64px; max-height: 40vh; resize: vertical; }
-.brief-reply-box .att-strip { margin: 0; }
+.brief-reply-form textarea { min-height: 64px; max-height: 40vh; resize: vertical; }
 .brief-reply-form textarea, .brief-park input {
   flex: 1; min-width: 0; padding: 6px 9px; border: 2px solid var(--hud-out); border-radius: 8px;
   background: #fff8e8; font: 600 13px/1.35 system-ui, sans-serif; color: #2b2018;

@@ -5,4 +5,4 @@ export { BOARD, boardFacePoint, drawBoard, drawCollector, setBoardImage, drawHal
 export { FORGE_FX, type Heat } from './sprites';
 export { drawBuilder, hammerPose, STROKE, type Pose } from './builders';
 export { drawWallSeg, drawGate, drawTree, drawGroundTree, drawBuilderShadow, drawBubble, drawRing, drawPuff, drawStatusBar, drawHallPlate, drawHousePlate } from './scenery';
-export { GROUND_SCALE, drawGround, drawPathTile, groundBakeSize, groundOrigin, groundTrees, pathLinks, pathTiles, treesOverPaths, type GroundTree } from './ground';
+export { GROUND_SCALE, drawGround, drawPathTile, groundBakeSize, groundOrigin, groundTrees, pathLinks, pathTiles, pathVariant, treesOverPaths, type GroundTree } from './ground';

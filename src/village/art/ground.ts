@@ -5,6 +5,7 @@ import { bake, ctx, type Art, type Pt } from './draw';
 import { paintTree, TREE_K, TREE_REACH } from './scenery';
 import { keepClearOfTrees, treeOver } from '../clearance';
 import { forestField, forestMasks, grassTile } from './forest';
+import { DIRT_SPAN, paintDirt } from './sprites';
 
 const PAD_TOP = 90;
 const PAD = 40;
@@ -201,9 +202,16 @@ export function pathLinks(tiles: Map<string, Tile>, t: Tile): string {
   return dirs.filter(([, dx, dy]) => tiles.has(tkey(t.x + dx, t.y + dy))).map(([d]) => d).join('');
 }
 
+/** A path tile's place in the earth texture's block: the `variant` its sprite is drawn with. */
+export function pathVariant(t: Tile): number {
+  const m = (v: number) => ((v % DIRT_SPAN) + DIRT_SPAN) % DIRT_SPAN;
+  return m(t.x) + DIRT_SPAN * m(t.y);
+}
+
 /**
  * One tile of dirt path, its grass-facing edges (those not in `links`) under a scalloped grass lip
- * with a shade on the dirt; `variant` (0-2) shuffles the stones and patches. Anchor: the tile's
+ * with a shade on the dirt; `variant` is the tile's place in the earth texture's block
+ * (x mod DIRT_SPAN + DIRT_SPAN * (y mod DIRT_SPAN)), so the texture runs on from tile to tile. Anchor: the tile's
  * front corner, grid point (tx+1, ty+1) for tile (tx, ty).
  */
 export function drawPathTile(links: string, variant: number): Art {
@@ -218,19 +226,26 @@ export function drawPathTile(links: string, variant: number): Art {
     const o = 0.03;
     const u0 = has('w') ? -o : 0, u1 = has('e') ? 1 + o : 1, v0 = has('n') ? -o : 0, v1 = has('s') ? 1 + o : 1;
     g.fillStyle = DIRT; g.fillRect(u0, v0, u1 - u0, v1 - v0);
-    for (let i = 0; i < 4; i++) {
-      g.fillStyle = DIRT_MOTTLE[rnd() < 0.6 ? 0 : 1];
-      g.beginPath(); g.ellipse(0.15 + rnd() * 0.7, 0.15 + rnd() * 0.7, 0.12 + rnd() * 0.16, 0.08 + rnd() * 0.1, rnd() * Math.PI, 0, Math.PI * 2); g.fill();
-    }
-    if (links.length >= 3) { g.fillStyle = DIRT_WORN; g.beginPath(); g.ellipse(0.5, 0.5, 0.34, 0.3, 0, 0, Math.PI * 2); g.fill(); }
-    // stones: outlined, a shadow side and a lit top
-    for (let i = 0, n = 2 + Math.floor(rnd() * 3); i < n; i++) {
-      const x = 0.18 + rnd() * 0.64, y = 0.18 + rnd() * 0.64, r = 0.035 + rnd() * 0.04;
-      g.fillStyle = rnd() < 0.5 ? '#b9a07a' : '#a8a39a';
-      g.beginPath(); g.ellipse(x, y, r, r * 0.85, 0, 0, Math.PI * 2); g.fill();
-      g.strokeStyle = '#4a3220'; g.lineWidth = 0.014; g.stroke();
-      g.fillStyle = 'rgba(255, 246, 224, 0.65)';
-      g.beginPath(); g.ellipse(x - r * 0.3, y - r * 0.3, r * 0.4, r * 0.3, 0, 0, Math.PI * 2); g.fill();
+    // the painted earth, cut to the tile (and its overlap); without it, mottling and stones drawn here
+    g.save();
+    g.beginPath(); g.rect(u0, v0, u1 - u0, v1 - v0); g.clip();
+    const painted = paintDirt(g, variant % DIRT_SPAN, Math.floor(variant / DIRT_SPAN) % DIRT_SPAN, o);
+    g.restore();
+    if (!painted) {
+      for (let i = 0; i < 4; i++) {
+        g.fillStyle = DIRT_MOTTLE[rnd() < 0.6 ? 0 : 1];
+        g.beginPath(); g.ellipse(0.15 + rnd() * 0.7, 0.15 + rnd() * 0.7, 0.12 + rnd() * 0.16, 0.08 + rnd() * 0.1, rnd() * Math.PI, 0, Math.PI * 2); g.fill();
+      }
+      if (links.length >= 3) { g.fillStyle = DIRT_WORN; g.beginPath(); g.ellipse(0.5, 0.5, 0.34, 0.3, 0, 0, Math.PI * 2); g.fill(); }
+      // stones: outlined, a shadow side and a lit top
+      for (let i = 0, n = 2 + Math.floor(rnd() * 3); i < n; i++) {
+        const x = 0.18 + rnd() * 0.64, y = 0.18 + rnd() * 0.64, r = 0.035 + rnd() * 0.04;
+        g.fillStyle = rnd() < 0.5 ? '#b9a07a' : '#a8a39a';
+        g.beginPath(); g.ellipse(x, y, r, r * 0.85, 0, 0, Math.PI * 2); g.fill();
+        g.strokeStyle = '#4a3220'; g.lineWidth = 0.014; g.stroke();
+        g.fillStyle = 'rgba(255, 246, 224, 0.65)';
+        g.beginPath(); g.ellipse(x - r * 0.3, y - r * 0.3, r * 0.4, r * 0.3, 0, 0, Math.PI * 2); g.fill();
+      }
     }
     // each grass-facing edge: the dirt shaded under the lip, then the lip, scalloped and outlined
     const edges: [string, (t: number, d: number) => [number, number]][] = [

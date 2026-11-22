@@ -104,10 +104,17 @@ describe('painted sprites', () => {
       'ui/ribbon.png': img(140, 140),
     });
     try {
-      expect(drawHall()).toMatchObject({ ax: 380, ay: 600 });
-      expect(drawHall().canvas.width).toBe(760);
+      // the kit's 30 degree ground is pressed to the grid's 2:1 about the footprint's middle: the
+      // width holds, the height shrinks by 0.5 / 0.58, the anchor stays under the footprint's front corner
+      const hall = drawHall();
+      expect(hall.ax).toBe(380);
+      expect(hall.ay).toBeCloseTo((600 - 160) * (0.5 / 0.58) + 160, 5);
+      expect(hall.canvas.width).toBe(760);
+      expect(hall.canvas.height).toBe(Math.ceil(680 * (0.5 / 0.58)));
       // a teal roof picks the teal house; a roof with no sprite loaded falls back to baked art
-      expect(drawHouse(2, '#2a9d8f', '#e6d7b8')).toMatchObject({ ax: 300, ay: 600 });
+      const house = drawHouse(2, '#2a9d8f', '#e6d7b8');
+      expect(house.ax).toBe(300);
+      expect(house.ay).toBeCloseTo((600 - 96) * (0.5 / 0.58) + 96, 5);
       expect(drawHouse(1, '#2a9d8f', '#e6d7b8').canvas.width).toBe(600); // procedural: 300 x 2
       expect(drew(drawHouse(0, '#c64a32', '#f3e2c4'))).toBe(1);
       expect(drawTree(3)).toMatchObject({ ax: 100, ay: 224 });
@@ -126,10 +133,13 @@ describe('painted sprites', () => {
       expect(drew(legend)).toBe(1);
       expect(legend.canvas.getContext('2d')!.__getDrawCalls()[0].transform.map((v: number) => +v.toFixed(2))).toEqual([1.08, 0, 0, 1.08, -8.8, -16]);
       expect(drew(drawBuilder('codex', 2, 4, 'idle', 1))).toBe(0); // no strip loaded: baked figure
-      expect(drew(drawStructure('codex', 'foundation', 0))).toBe(1);
-      expect(drew(drawStructure('codex', 'scaffold', 0.5))).toBe(2); // cloth, then the canvas climbing the frame
-      expect(drew(drawStructure('codex', 'scaffold', 0))).toBe(1); // just the frame on the cloth
-      expect(drew(drawStructure('codex', 'complete', 1))).toBe(2); // tent and ribbon
+      // a tent is composed, then pressed to the grid and sized to its 2x2 spot in one draw
+      for (const [stage, p] of [['foundation', 0], ['scaffold', 0.5], ['complete', 1]] as const) {
+        const tent = drawStructure('codex', stage, p);
+        expect(drew(tent)).toBe(1);
+        expect(tent.canvas.width).toBe(Math.ceil(440 * 0.87));
+        expect(tent.ax).toBeCloseTo(220 * 0.87, 5);
+      }
     } finally {
       setSpritesForTest(null);
     }

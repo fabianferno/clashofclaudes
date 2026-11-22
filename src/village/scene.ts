@@ -12,7 +12,7 @@ import { classOf, gearOf, houseColors, scaffoldHeight, type ClassTier, type Gear
 import { activityOf, type Stage } from './activity';
 import { blockedBy, dropOf, onGround, plazaPoint, retarget, routeHome, routeToSite, standTile, step, takenBy, walkable, type Blocked, type BuilderDrop, type Walker } from './walkers';
 import {
-  GROUND_SCALE, drawPathTile, groundTrees, pathLinks, pathTiles, treesOverPaths, drawGroundTree, drawBuilderShadow, drawBoard, drawBubble, drawBuilder, drawCollector, drawGate, drawGround, drawHall, drawHouse, drawPuff, drawRing, drawStatusBar, drawHallPlate, drawHousePlate, drawStructure,
+  GROUND_SCALE, drawPathTile, groundTrees, pathLinks, pathTiles, pathVariant, treesOverPaths, drawGroundTree, drawBuilderShadow, drawBoard, drawBubble, drawBuilder, drawCollector, drawGate, drawGround, drawHall, drawHouse, drawPuff, drawRing, drawStatusBar, drawHallPlate, drawHousePlate, drawStructure,
   drawWallSeg, drawForge, groundOrigin, FORGE_FX, type Heat,
   hammerPose, type Art, type GroundTree, type Pose,
 } from './art/entities';
@@ -865,7 +865,7 @@ export async function createScene(canvasHost: HTMLElement, opts: SceneOptions = 
     for (const t of [...tiles.values()].sort((a, b) => a.x + a.y - (b.x + b.y))) {
       const sp = new Sprite();
       sp.scale.set(0.5);
-      setTex(sp, `path:${pathLinks(tiles, t)}:${(((t.x * 7 + t.y * 13) % 3) + 3) % 3}`);
+      setTex(sp, `path:${pathLinks(tiles, t)}:${pathVariant(t)}`);
       const p = iso(t.x + 1, t.y + 1);
       sp.position.set(p.x, p.y);
       paths.addChild(sp);

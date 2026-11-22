@@ -139,7 +139,7 @@ export const reel: { clip: string; title: string; text: string }[] = [
   {
     clip: 'stones',
     title: 'Terminals = *forges*',
-    text: 'A plain shell in a workspace stands as a forge: its fire roars and its chimney smokes while a command runs, and embers glow while it waits at the prompt. A local web app running in the workspace gets a board in the compound, showing its page.',
+    text: 'A plain shell in a workspace stands as a forge: its fire roars and its chimney smokes while a command runs, and embers glow while it waits at the prompt. A local web app running in the workspace gets a portal in the compound, showing its page.',
   },
   {
     clip: 'levelup',

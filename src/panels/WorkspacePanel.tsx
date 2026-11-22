@@ -154,7 +154,7 @@ export default function WorkspacePanel({ workspaceId }: { workspaceId: string })
             </span>
           </button>
           <button className="hud-btn grey sm" aria-label={`Remove ${b.label}`}
-            title={b.browserId ? 'Close this browser' : 'Hide this board until the app stops'} onClick={() => st.removeBoard(b)}>✕</button>
+            title={b.browserId ? 'Close this browser' : 'Hide this portal until the app stops'} onClick={() => st.removeBoard(b)}>✕</button>
         </div>
       ))}
       <div className="sp-sec">Danger zone</div>

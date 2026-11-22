@@ -67,11 +67,12 @@ function houseTint(roof: string): string {
 function paths(): string[] {
   const out = [
     'buildings/hall.png', 'sheets/trees-sheet.png', 'structures/structure-foundation.png',
-    'structures/collector-base.png', 'ui/bubble-needs.png', 'ui/bubble-stuck.png', 'ui/ribbon.png', 'ui/puff.png',
+    'structures/collector.png', 'structures/forge-cold.png', 'structures/forge-warm.png', 'structures/forge-hot.png',
+    'structures/portal.png', 'ui/bubble-needs.png', 'ui/bubble-stuck.png', 'ui/ribbon.png', 'ui/puff.png',
   ];
   for (const a of AGENTS) out.push(`structures/structure-complete-${a}.png`);
   for (const l of WALL_LINKS) out.push(`scenery/wall-${WALL_FILE[l] ?? l}.png`);
-  out.push('scenery/gate-ns.png', 'scenery/gate-ew.png');
+  out.push('scenery/gate-ns.png', 'scenery/gate-ew.png', 'scenery/dirt.png');
   for (const c of CLASSES) for (const a of AGENTS) out.push(`sheets/builder-${c}-${a}.png`);
   const tints = new Set(HOUSE_COLORS.map((h) => houseTint(h.roof)));
   for (let s = 0; s < 5; s++) for (const t of tints) out.push(`buildings/house-stage-${s}${t}.png`);
@@ -136,8 +137,30 @@ function whole(p: string, ax: number, ay: number): Art | null {
   return img ? canvasArt(img.width, img.height, ax, ay, (g) => g.drawImage(img, 0, 0)) : null;
 }
 
+/**
+ * The kit is painted in true isometric: its ground edges fall 0.58-0.64 px per px across (measured on
+ * each family's plinth), where the grid, the paths and everything drawn here fall 0.5. `grounded`
+ * presses a sprite down to the grid's angle about the middle of its `tiles`-wide footprint, so its
+ * plinth lies along the tile edges; widths, and so where it stands, do not change unless `size`
+ * scales the whole sprite too (the tent's cloth was painted 2.6 tiles wide for its 2x2 spot).
+ */
+const TENT_SIZE = 0.87;
+const GROUND_SLOPE = { building: 0.58, tent: 0.644, wall: 0.56, gate: 0.6 };
+/** Half a tile's height in art px (the art is 2x): a footprint's centre is this far above its front corner, per tile. */
+const HALF_TILE = 32;
+
+function grounded(art: Art | null, slope: number, tiles: number, size = 1): Art | null {
+  if (!art) return null;
+  const k = (0.5 / slope) * size, up = tiles * HALF_TILE;
+  const w = Math.ceil(art.canvas.width * size), h = Math.ceil(art.canvas.height * k);
+  return canvasArt(w, h, art.ax * size, (art.ay - up) * k + up, (g) => {
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(art.canvas, 0, 0, art.canvas.width, art.canvas.height, 0, 0, art.canvas.width * size, art.canvas.height * k);
+  });
+}
+
 // Anchors put the painted footprint's centre on the grid footprint's centre (measured).
-export const paintedHall = () => whole('buildings/hall.png', 380, 600);
+export const paintedHall = () => grounded(whole('buildings/hall.png', 380, 600), GROUND_SLOPE.building, 5);
 /** Left edge of each house stage's flag pole (5 px wide), which stops short of the roof. */
 const HOUSE_POLE = [null, 295, 313, 313, 313];
 /** Where the poles end, and how far down to run them so they reach behind the ridge. */
@@ -167,20 +190,43 @@ export function paintedHouse(stage: number, roof: string): Art | null {
   const img = get(own ? `buildings/house-stage-${stage}${houseTint(roof)}.png` : `buildings/house-stage-${stage}-base.png`);
   const mask = own ? null : get(`buildings/house-stage-${stage}-mask.png`);
   if (!img || (!own && !mask)) return null;
-  return canvasArt(img.width, img.height, 300, 600, (g) => {
+  return grounded(canvasArt(img.width, img.height, 300, 600, (g) => {
     const x = HOUSE_POLE[stage];
     // the pole carried on down behind the roof, from its own lowest pixels
     if (x != null) g.drawImage(img, x, POLE_END - 6, 5, 6, x, POLE_END - 1, 5, POLE_FOOT - POLE_END + 1);
     g.drawImage(img, 0, 0);
     if (mask) g.drawImage(tinted(mask, roof), 0, 0);
-  });
+  }), GROUND_SLOPE.building, 3);
 }
 export const paintedBubble = (kind: 'needs' | 'stuck') => whole(`ui/bubble-${kind}.png`, 60, 112);
 export const paintedPuff = () => whole('ui/puff.png', 40, 40);
 
-export const paintedWall = (links: string) => whole(`scenery/wall-${WALL_FILE[links] ?? links}.png`, 110, 144);
+export const paintedWall = (links: string) => grounded(whole(`scenery/wall-${WALL_FILE[links] ?? links}.png`, 110, 144), GROUND_SLOPE.wall, 1);
 /** n/s gates run along x (the kit's `ns` gate), e/w along y. */
-export const paintedGate = (side: 'n' | 's' | 'e' | 'w') => whole(`scenery/gate-${side === 'n' || side === 's' ? 'ns' : 'ew'}.png`, 120, 184);
+export const paintedGate = (side: 'n' | 's' | 'e' | 'w') => grounded(whole(`scenery/gate-${side === 'n' || side === 's' ? 'ns' : 'ew'}.png`, 120, 184), GROUND_SLOPE.gate, 1);
+
+/** The dirt texture (seen from straight above, seamless) is laid over this many tiles a side. */
+export const DIRT_SPAN = 4;
+
+/**
+ * Paint the trodden-earth texture over the unit square of `g` (tile space) for the tile at
+ * (`i`, `j`) of the texture's `DIRT_SPAN` x `DIRT_SPAN` block, `o` past each edge so no seam shows.
+ * Returns false when the sprites are not loaded.
+ */
+export function paintDirt(g: CanvasRenderingContext2D, i: number, j: number, o: number): boolean {
+  const img = get('scenery/dirt.png');
+  if (!img) return false;
+  g.save();
+  g.beginPath(); g.rect(-o, -o, 1 + o * 2, 1 + o * 2); g.clip();
+  g.imageSmoothingQuality = 'high';
+  // the block and its neighbours, so the overlap at the block's own edges is textured too
+  for (const dy of [-DIRT_SPAN, 0, DIRT_SPAN]) for (const dx of [-DIRT_SPAN, 0, DIRT_SPAN]) {
+    if (dx - i > 1 + o || dx - i + DIRT_SPAN < -o || dy - j > 1 + o || dy - j + DIRT_SPAN < -o) continue;
+    g.drawImage(img, dx - i, dy - j, DIRT_SPAN, DIRT_SPAN);
+  }
+  g.restore();
+  return true;
+}
 
 const TREE_W = 200, TREE_H = 260, TREE_AX = 100, TREE_AY = 224;
 
@@ -466,7 +512,7 @@ export function paintedStructure(agent: AgentKind, stage: 'foundation' | 'scaffo
   const tent = get(`structures/structure-complete-${agent}.png`);
   const ribbon = get('ui/ribbon.png');
   if (!cloth || !tent || !ribbon) return null;
-  return canvasArt(S_W, S_H, S_AX, S_AY, (g) => {
+  return grounded(canvasArt(S_W, S_H, S_AX, S_AY, (g) => {
     if (stage === 'complete') {
       g.drawImage(tent, 0, 0);
       g.drawImage(ribbon, S_AX - 40, 78, 80, 80);
@@ -498,29 +544,44 @@ export function paintedStructure(agent: AgentKind, stage: 'foundation' | 'scaffo
     for (const foot of frontFeet) pole(g, foot, F);
     lashing(g, B);
     lashing(g, F);
-  });
+  }), GROUND_SLOPE.tent, 2, TENT_SIZE);
 }
 
-const C_W = 400, C_H = 440, C_AX = 200, C_AY = 380;
+// The collector, the forge and the portal share one cobbled plinth, painted to the grid: its foot is
+// the 2x2 footprint and an eighth more (like the tent's cloth), centred on it, edges along the tile edges
+// (no `grounded` needed).
+const C_W = 400, C_H = 440, C_AX = 200, C_AY = 372;
 /**
- * The collector's glass: centre x, half width, ellipse half height; the arc under the top band
- * (the glass shows below it), the resource's bottom and its surface when full; and the gold bands'
- * centres, redrawn over the resource. Measured on collector-base.png.
+ * The collector's tank: centre x, half width and its rims' ellipse half height; the resource's
+ * bottom and its surface when full (ellipse centres). Measured on collector.png.
  */
-const GLASS = { cx: 200, rx: 46, ry: 18, rim: 223, bot: 290, top: 228, bands: [217, 252, 286], band: 5 };
+const GLASS = { cx: 203, rx: 47, ry: 19.5, bot: 290, top: 216 };
+let glassMask: HTMLCanvasElement | null = null;
 
-/** The glass under the top band: everything in the tank's column below the band's front arc. */
-function glassClip(g: CanvasRenderingContext2D) {
-  const { cx, rx, ry, rim } = GLASS;
-  g.beginPath();
-  g.ellipse(cx, rim, rx, ry, 0, Math.PI, 0, true);
-  g.lineTo(cx + rx, C_H); g.lineTo(cx - rx, C_H); g.closePath();
-  g.clip();
+/**
+ * The tank's glass (white, by colour: smoky blue-grey, where the bands, rivets and lid are gold and
+ * wood), so the resource shows through the glass alone and the bands stay in front of it.
+ */
+function glass(img: Pic): HTMLCanvasElement {
+  if (glassMask) return glassMask;
+  const c = document.createElement('canvas');
+  c.width = C_W; c.height = C_H;
+  const g = c.getContext('2d')!;
+  g.drawImage(img, 0, 0);
+  const { cx, rx, ry, bot, top } = GLASS, x0 = cx - rx, y0 = top - ry, w = rx * 2, h = bot - top + ry * 2 + 2;
+  const d = g.getImageData(x0, y0, w, h), px = d.data;
+  for (let i = 0; i < px.length; i += 4) {
+    const on = px[i + 3] > 200 && px[i + 2] > px[i] - 10;
+    px[i] = px[i + 1] = px[i + 2] = 255; px[i + 3] = on ? 255 : 0;
+  }
+  g.clearRect(0, 0, C_W, C_H);
+  g.putImageData(d, x0, y0);
+  return (glassMask = c);
 }
 
 /** Resource collector: the painted tank, filled `tenths` (0-10) with the agent's resource; null shows "?". */
 export function paintedCollector(agent: keyof typeof RESOURCE, tenths: number | null): Art | null {
-  const base = get('structures/collector-base.png');
+  const base = get('structures/collector.png');
   if (!base) return null;
   const E = RESOURCE[agent];
   const { cx, rx, ry, bot, top } = GLASS;
@@ -529,51 +590,40 @@ export function paintedCollector(agent: keyof typeof RESOURCE, tenths: number | 
     const level = tenths === null ? 0 : Math.max(0, Math.min(10, tenths)) / 10;
     if (level > 0) {
       const surf = bot - (bot - top) * level;
-      g.save();
-      glassClip(g);
-      // the column of resource, to the surface
-      const column = () => {
-        g.beginPath(); g.ellipse(cx, bot, rx, ry, 0, 0, Math.PI); g.lineTo(cx - rx, surf); g.lineTo(cx + rx, surf); g.closePath();
-      };
-      g.save();
-      column();
-      g.clip();
-      const gr = g.createLinearGradient(cx - rx, 0, cx + rx, 0);
-      gr.addColorStop(0, E.deep); gr.addColorStop(0.35, E.mid); gr.addColorStop(0.7, E.mid); gr.addColorStop(1, E.deep);
+      // the resource on its own canvas, cut to the glass, then laid in the tank
+      const fill = canvasArt(C_W, C_H, 0, 0, (f) => {
+        // the column, to the surface
+        f.beginPath(); f.ellipse(cx, bot, rx, ry, 0, 0, Math.PI); f.lineTo(cx - rx, surf); f.lineTo(cx + rx, surf); f.closePath();
+        const gr = f.createLinearGradient(cx - rx, 0, cx + rx, 0);
+        gr.addColorStop(0, E.deep); gr.addColorStop(0.35, E.mid); gr.addColorStop(0.7, E.mid); gr.addColorStop(1, E.deep);
+        f.fillStyle = gr; f.fill();
+        for (const [dx, dy, r] of [[-20, 0.35, 5], [12, 0.6, 4], [26, 0.25, 3.5], [-8, 0.8, 3]] as const) {
+          const y = bot + ry * 0.6 - (bot - surf) * dy;
+          if (y > surf + ry + 4) { f.beginPath(); f.arc(cx + dx, y, r, 0, Math.PI * 2); f.fillStyle = E.bubble; f.fill(); }
+        }
+        // the surface seen from above: a little lighter than the resource, lit along its far rim
+        const sg = f.createLinearGradient(0, surf - ry, 0, surf + ry);
+        sg.addColorStop(0, E.lit); sg.addColorStop(1, E.mid);
+        f.beginPath(); f.ellipse(cx, surf, rx - 1, ry - 1, 0, 0, Math.PI * 2);
+        f.fillStyle = sg; f.fill();
+        f.globalAlpha = 0.7; f.strokeStyle = E.deep; f.lineWidth = 1.5; f.stroke();
+        f.globalAlpha = 1;
+        f.globalCompositeOperation = 'destination-in';
+        f.drawImage(glass(base), 0, 0);
+      }).canvas;
       g.globalAlpha = 0.88;
-      g.fillStyle = gr; g.fillRect(cx - rx, surf, rx * 2, bot - surf + ry);
-      g.globalAlpha = 1;
-      for (const [dx, dy, r] of [[-20, 0.35, 5], [12, 0.6, 4], [26, 0.25, 3.5], [-8, 0.8, 3]] as const) {
-        const y = bot - (bot - surf) * dy;
-        if (y > surf + 8) { g.beginPath(); g.arc(cx + dx, y, r, 0, Math.PI * 2); g.fillStyle = E.bubble; g.fill(); }
-      }
-      g.restore();
-      // the surface seen from above: a little lighter than the resource, lit along its far rim
-      const sg = g.createLinearGradient(0, surf - ry, 0, surf + ry);
-      sg.addColorStop(0, E.lit); sg.addColorStop(1, E.mid);
-      g.beginPath(); g.ellipse(cx, surf, rx - 1, ry - 1, 0, 0, Math.PI * 2);
-      g.globalAlpha = 0.8; g.fillStyle = sg; g.fill();
-      g.globalAlpha = 0.7; g.strokeStyle = E.deep; g.lineWidth = 1.5; g.stroke();
+      g.drawImage(fill, 0, 0);
       g.globalAlpha = 1;
       // the glass' own reflections, over the resource
-      column();
-      g.ellipse(cx, surf, rx, ry, 0, 0, Math.PI * 2);
-      g.clip();
-      g.globalCompositeOperation = 'screen';
-      g.globalAlpha = 0.35;
-      g.drawImage(base, 0, 0);
-      g.restore();
-      // the gold bands in front of the resource, from the painted tank
+      const shine = canvasArt(C_W, C_H, 0, 0, (f) => {
+        f.drawImage(base, 0, 0);
+        f.globalCompositeOperation = 'destination-in';
+        f.drawImage(fill, 0, 0);
+      }).canvas;
       g.save();
-      g.beginPath();
-      for (const c of GLASS.bands) {
-        g.moveTo(cx + rx + 4, c + GLASS.band);
-        g.ellipse(cx, c + GLASS.band, rx + 4, ry + 2, 0, 0, Math.PI);
-        g.ellipse(cx, c - GLASS.band, rx + 4, ry + 2, 0, Math.PI, 0, true);
-        g.closePath();
-      }
-      g.clip();
-      g.drawImage(base, 0, 0);
+      g.globalCompositeOperation = 'screen';
+      g.globalAlpha = 0.45;
+      g.drawImage(shine, 0, 0);
       g.restore();
     }
     if (tenths === null) {
@@ -591,320 +641,98 @@ export function paintedCollector(agent: keyof typeof RESOURCE, tenths: number | 
  */
 export type Heat = 'hot' | 'warm' | 'cold';
 
-/**
- * The forge's frame on the collector's plinth (art px): X runs to the lower right, Y to the lower
- * left, Z up; the hearth spans 0..110 on both, `HZ` high, with the chimney on its back half.
- */
-const FORGE = { ox: 204, oy: 212, hz: 68, chimney: { x0: 6, x1: 58, z0: 70, z1: 178, taper: 8 } };
-/** The forge is drawn at this size about the middle of its hearth's foot (art px), so it stands no taller than the house. */
-const FORGE_SCALE = { k: 0.85, px: 204, py: 267 };
-const forgeIso = (x: number, y: number, z = 0) => ({ x: FORGE.ox + (x - y), y: FORGE.oy + (x + y) / 2 - z });
-/** A point of the forge's frame in world px from the footprint's front corner (the art is drawn at 2x). */
-const forgeAt = (x: number, y: number, z: number) => {
-  const p = forgeIso(x, y, z), { k, px, py } = FORGE_SCALE;
-  return { x: (px + (p.x - px) * k - C_AX) / 2, y: (py + (p.y - py) * k - C_AY) / 2 };
-};
-/** Where the forge's smoke and sparks start, and its light at night, in world px from its anchor. */
+/** A point of the forge's sprite (art px) in world px from the footprint's front corner (the art is drawn at 2x). */
+const forgeAt = (x: number, y: number) => ({ x: (x - C_AX) / 2, y: (y - C_AY) / 2 });
+/** Where the forge's smoke and sparks start, and its light at night, in world px from its anchor (measured on forge-*.png). */
 export const FORGE_FX = {
-  flue: forgeAt(32, 32, FORGE.chimney.z1 + 12),
-  bed: forgeAt(83, 83, FORGE.hz + 14),
-  mouth: forgeAt(57, 110, 22),
+  flue: forgeAt(228, 162),
+  bed: forgeAt(198, 222),
+  mouth: forgeAt(156, 268),
 };
 
 /**
- * A terminal's forge in the painted style, on the collector's cobbled plinth (whose tank the hearth
- * and chimney hide): a stone hearth with a coal bed and an arched fire mouth, a brick chimney, an
- * anvil on a stump and a quench bucket. `hot` roars (flames, glowing mouth, a bar on the anvil),
- * `warm` smoulders, `cold` is ash. The chimney's smoke and sparks are particles (see `FORGE_FX`).
+ * A terminal's forge: a stone hearth with a coal bed and an arched fire mouth, a brick chimney, an
+ * anvil on a stump and a quench bucket, on the cobbled plinth. One painting per heat, alike but for
+ * the fire: `hot` roars (flames, a glowing mouth, a bar on the anvil), `warm` smoulders, `cold` is
+ * ash. The chimney's smoke and sparks are particles (see `FORGE_FX`).
  */
-export function paintedForge(heat: Heat): Art | null {
-  const base = get('structures/collector-base.png');
-  if (!base) return null;
-  const hot = heat === 'hot', warm = heat === 'warm';
-  return canvasArt(C_W, C_H, C_AX, C_AY, (g) => {
-    g.drawImage(base, 0, 0);
-    g.clearRect(250, 140, 70, 92); // the tank's crank, which would show past the chimney (only air around it)
-    g.translate(FORGE_SCALE.px, FORGE_SCALE.py); g.scale(FORGE_SCALE.k, FORGE_SCALE.k); g.translate(-FORGE_SCALE.px, -FORGE_SCALE.py);
-    type P = { x: number; y: number };
-    const OUTL = '#2a1d14';
-    const at = forgeIso;
-    const mid = (a: P, b: P): P => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
-    const poly = (pts: P[], fill: string | CanvasGradient, lw = 3) => {
-      g.beginPath(); g.moveTo(pts[0].x, pts[0].y); for (const q of pts.slice(1)) g.lineTo(q.x, q.y); g.closePath();
-      g.fillStyle = fill; g.fill();
-      if (lw) { g.strokeStyle = OUTL; g.lineWidth = lw; g.lineJoin = 'round'; g.stroke(); }
-    };
-    const seg = (a: P, b: P) => { g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke(); };
-    const glow = (c: P, r: number, inner: string, outer: string, k = 1) => {
-      const gr = g.createRadialGradient(c.x, c.y, 2, c.x, c.y, r);
-      gr.addColorStop(0, inner); gr.addColorStop(1, outer);
-      g.fillStyle = gr; g.beginPath(); g.ellipse(c.x, c.y, r, r * k, 0, 0, Math.PI * 2); g.fill();
-    };
-    /** An iso box's two near faces and (optionally) its top. */
-    const box = (x0: number, x1: number, y0: number, y1: number, z0: number, z1: number,
-      top: string | null, left: string | CanvasGradient, right: string | CanvasGradient) => {
-      poly([at(x0, y1, z0), at(x1, y1, z0), at(x1, y1, z1), at(x0, y1, z1)], left);
-      poly([at(x1, y1, z0), at(x1, y0, z0), at(x1, y0, z1), at(x1, y1, z1)], right);
-      if (top) poly([at(x0, y0, z1), at(x1, y0, z1), at(x1, y1, z1), at(x0, y1, z1)], top);
-    };
-    let seed = 11;
-    const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+export const paintedForge = (heat: Heat) => whole(`structures/forge-${heat}.png`, C_AX, C_AY);
 
-    // contact shadow on the cobbles
-    g.fillStyle = 'rgba(20,12,6,.35)';
-    g.beginPath(); g.ellipse(208, 314, 100, 44, 0, 0, Math.PI * 2); g.fill();
+/** The portal's dark pane on its sprite: top-left, top-right and bottom-left corners (the sill and pillars stand in front of its edges). */
+const SCREEN = { tl: { x: 151, y: 168 }, tr: { x: 251, y: 218 }, bl: { x: 151, y: 257 } };
+/** The pane's own colour on the sprite, and how far a pixel may stray from it and still be pane. */
+const PANE = { r: 38, g: 48, b: 61, tol: 20 };
+let paneMask: HTMLCanvasElement | null = null;
 
-    // ---- the chimney, tapering up from the hearth's back half
-    const { x0: c0, x1: c1, z0: cz0, z1: cz1, taper: tp } = FORGE.chimney;
-    /** A point on the chimney's front-left (f 'L', u along x) or front-right face (f 'R', u along y) at height z. */
-    const onChimney = (f: 'L' | 'R', u: number, z: number) => {
-      const t = tp * (z - cz0) / (cz1 - cz0), lo = c0 + t, hi = c1 - t;
-      return f === 'L' ? at(lo + (hi - lo) * u, hi, z) : at(hi, hi - (hi - lo) * u, z);
-    };
-    poly([onChimney('L', 0, cz0), onChimney('L', 1, cz0), onChimney('L', 1, cz1), onChimney('L', 0, cz1)], '#9a7a62');
-    poly([onChimney('R', 0, cz0), onChimney('R', 1, cz0), onChimney('R', 1, cz1), onChimney('R', 0, cz1)], '#6e5444');
-    g.strokeStyle = 'rgba(42,29,20,.45)'; g.lineWidth = 2;
-    const rows = 8, rz = (cz1 - cz0) / rows;
-    for (let r = 0; r < rows; r++) {
-      for (const f of ['L', 'R'] as const) {
-        if (r) seg(onChimney(f, 0.03, cz0 + r * rz), onChimney(f, 0.97, cz0 + r * rz));
-        for (const u of r % 2 ? [0.3, 0.72] : [0.52]) seg(onChimney(f, u, cz0 + r * rz + 2), onChimney(f, u, cz0 + (r + 1) * rz - 2));
-      }
-    }
-    // its cap, overhanging, and the flue's mouth (lit from below while hot)
-    box(c0 + tp - 5, c1 - tp + 5, c0 + tp - 5, c1 - tp + 5, cz1, cz1 + 10, '#b39a84', '#8c7360', '#634c3e');
-    const flue = [at(c0 + tp + 2, c0 + tp + 2, cz1 + 10), at(c1 - tp - 2, c0 + tp + 2, cz1 + 10),
-      at(c1 - tp - 2, c1 - tp - 2, cz1 + 10), at(c0 + tp + 2, c1 - tp - 2, cz1 + 10)];
-    poly(flue, hot ? '#5a2410' : '#1e1510', 2);
-    if (hot) glow(mid(flue[0], flue[2]), 26, 'rgba(255,170,60,.55)', 'rgba(255,120,40,0)');
-
-    // ---- the hearth: a stone block, coursed, with a coal bed on top
-    const H = 110, hz = FORGE.hz;
-    const sl = g.createLinearGradient(at(0, H).x, 0, at(H, H).x, 0);
-    sl.addColorStop(0, '#bdb4a6'); sl.addColorStop(1, '#a0978a');
-    const sr = g.createLinearGradient(at(H, H).x, 0, at(H, 0).x, 0);
-    sr.addColorStop(0, '#857c70'); sr.addColorStop(1, '#6a6259');
-    box(0, H, 0, H, 0, hz, null, sl, sr);
-    for (const [f, color] of [['L', 'rgba(42,29,20,.4)'], ['R', 'rgba(30,20,14,.45)']] as const) {
-      const p = (u: number, z: number) => (f === 'L' ? at(u, H, z) : at(H, u, z));
-      g.strokeStyle = color; g.lineWidth = 2; g.lineCap = 'round';
-      const courses = 4, ch = hz / courses;
-      for (let r = 1; r < courses; r++) seg(p(2, r * ch), p(H - 2, r * ch));
-      for (let r = 0; r < courses; r++)
-        for (let u = (r % 2 ? 10 : 18) + rnd() * 6; u < H - 8; u += 20 + rnd() * 14) seg(p(u, r * ch + 2), p(u, (r + 1) * ch - 2));
-    }
-    // the top around the chimney's foot, then the foot itself over it, so it stands on the hearth
-    poly([at(0, c1 + 2, hz), at(c1 + 2, c1 + 2, hz), at(c1 + 2, 0, hz), at(H, 0, hz), at(H, H, hz), at(0, H, hz)], '#c6bcac');
-    const foot = cz0 + 12;
-    poly([at(c0, c1, hz), at(c1, c1, hz), at(c1, c1, foot), at(c0, c1, foot)], '#9a7a62', 0);
-    poly([at(c1, c1, hz), at(c1, c0, hz), at(c1, c0, foot), at(c1, c1, foot)], '#6e5444', 0);
-    g.strokeStyle = OUTL; g.lineWidth = 3; g.lineJoin = 'round';
-    g.beginPath();
-    for (const q of [at(c0, c1, foot), at(c0, c1, hz), at(c1, c1, hz), at(c1, c0, hz), at(c1, c0, foot)]) g.lineTo(q.x, q.y);
-    g.stroke();
-    seg(at(c1, c1, hz), at(c1, c1, foot));
-    // the coal bed, sunk into the front of the top
-    const bed = [at(66, 66, hz), at(100, 66, hz), at(100, 100, hz), at(66, 100, hz)];
-    poly(bed, OUTL, 2.5);
-    for (let i = 0; i < 26; i++) {
-      const q = at(70 + rnd() * 26, 70 + rnd() * 26, hz), r = 3 + rnd() * 3, k = rnd();
-      g.fillStyle = hot ? (k < 0.5 ? '#ffd27a' : '#ff8a2a') : warm ? (k < 0.4 ? '#e0502a' : '#5a2a1c') : (k < 0.5 ? '#4a4440' : '#2e2a28');
-      g.beginPath(); g.ellipse(q.x, q.y, r, r * 0.6, 0, 0, Math.PI * 2); g.fill();
-    }
-    const bc = mid(bed[0], bed[2]);
-    if (hot) glow(bc, 60, 'rgba(255,190,80,.75)', 'rgba(255,120,40,0)');
-    else if (warm) glow(bc, 34, 'rgba(255,90,40,.4)', 'rgba(255,120,40,0)');
-    if (hot) {
-      const flame = (dx: number, h: number, w: number, col: string) => {
-        g.fillStyle = col; g.beginPath();
-        g.moveTo(bc.x + dx - w, bc.y + 2);
-        g.quadraticCurveTo(bc.x + dx - w * 0.9, bc.y - h * 0.5, bc.x + dx + w * 0.2, bc.y - h);
-        g.quadraticCurveTo(bc.x + dx + w * 0.4, bc.y - h * 0.45, bc.x + dx + w, bc.y + 2);
-        g.closePath(); g.fill();
-      };
-      g.save(); g.shadowColor = 'rgba(255,150,40,.9)'; g.shadowBlur = 14;
-      flame(-14, 34, 11, '#ff7a1c'); flame(12, 40, 12, '#ff7a1c'); flame(-1, 54, 15, '#ff8f24');
-      g.restore();
-      flame(-12, 22, 7, '#ffc444'); flame(11, 27, 7, '#ffc444'); flame(0, 38, 9, '#ffd25a'); flame(0, 20, 5, '#fff3c0');
-    }
-    // the top's front lip, chiselled
-    g.strokeStyle = 'rgba(255,248,232,.55)'; g.lineWidth = 2;
-    g.beginPath(); for (const q of [at(3, H, hz - 3), at(H - 2, H, hz - 3), at(H, 3, hz - 3)]) g.lineTo(q.x, q.y); g.stroke();
-
-    // ---- the fire mouth: an arch in the hearth's front-left face
-    {
-      const face = (u: number, z: number) => at(u, H, z);
-      const a0 = 34, a1 = 80, z0 = 8, zs = 34, zr = 50; // jambs up to zs, the crown at zr
-      const arch = (grow: number, i: number, n: number) => {
-        const ang = Math.PI * i / n;
-        return face((a0 + a1) / 2 - Math.cos(ang) * ((a1 - a0) / 2 + grow), zs + Math.sin(ang) * (zr - zs + grow));
-      };
-      g.beginPath();
-      for (const q of [face(a0, z0), face(a0, zs)]) g.lineTo(q.x, q.y);
-      for (let i = 1; i <= 16; i++) { const q = arch(0, i, 16); g.lineTo(q.x, q.y); }
-      const q2 = face(a1, z0); g.lineTo(q2.x, q2.y); g.closePath();
-      const m = face((a0 + a1) / 2, (z0 + zs) / 2);
-      if (hot || warm) {
-        const gr = g.createRadialGradient(m.x, m.y + (hot ? 6 : 10), 2, m.x, m.y, hot ? 40 : 36);
-        if (hot) { gr.addColorStop(0, '#fff1b0'); gr.addColorStop(0.35, '#ffb236'); gr.addColorStop(0.8, '#d9481a'); gr.addColorStop(1, '#5a1a0c'); }
-        else { gr.addColorStop(0, '#9a3a1c'); gr.addColorStop(0.45, '#4e1c10'); gr.addColorStop(1, '#1e120e'); }
-        g.fillStyle = gr;
-      } else g.fillStyle = '#1b1512';
-      g.fill(); g.strokeStyle = OUTL; g.lineWidth = 3; g.stroke();
-      // the voussoirs around it
-      g.strokeStyle = 'rgba(42,29,20,.55)'; g.lineWidth = 2;
-      for (let i = 1; i < 8; i++) seg(arch(0, i, 8), arch(8, i, 8));
-      g.beginPath(); for (let i = 0; i <= 16; i++) { const q = arch(8, i, 16); g.lineTo(q.x, q.y); } g.stroke();
-      for (let i = 0; i < 9; i++) {
-        const q = face(a0 + 6 + rnd() * (a1 - a0 - 12), z0 + 2 + rnd() * 4), r = 3 + rnd() * 2;
-        g.fillStyle = hot ? (i % 2 ? '#fff0a0' : '#ff9a2e') : warm ? (i % 3 ? '#7a2c18' : '#ff6a30') : (i % 2 ? '#3a3330' : '#4d4641');
-        g.beginPath(); g.ellipse(q.x, q.y, r, r * 0.6, 0, 0, Math.PI * 2); g.fill();
-      }
-      if (hot) {
-        // its light spilling onto the cobbles
-        const f = face((a0 + a1) / 2, 0);
-        g.save(); g.globalCompositeOperation = 'lighter';
-        glow({ x: f.x - 10, y: f.y + 22 }, 80, 'rgba(255,150,50,.45)', 'rgba(255,120,40,0)', 0.5);
-        g.restore();
-      }
-    }
-
-    // ---- the anvil on a stump, front right
-    {
-      const s = { x: 296, y: 330 }, rx = 22, ry = 11, h = 26;
-      g.fillStyle = 'rgba(20,12,6,.35)'; g.beginPath(); g.ellipse(s.x + 4, s.y + 2, rx + 10, ry + 5, 0, 0, Math.PI * 2); g.fill();
-      g.beginPath(); g.moveTo(s.x - rx, s.y); g.lineTo(s.x - rx, s.y - h);
-      g.ellipse(s.x, s.y - h, rx, ry, 0, Math.PI, 0, false); g.lineTo(s.x + rx, s.y); g.ellipse(s.x, s.y, rx, ry, 0, 0, Math.PI, false); g.closePath();
-      const wood = g.createLinearGradient(s.x - rx, 0, s.x + rx, 0); wood.addColorStop(0, '#9a6a3e'); wood.addColorStop(1, '#5e3c22');
-      g.fillStyle = wood; g.fill(); g.strokeStyle = OUTL; g.lineWidth = 3; g.stroke();
-      g.strokeStyle = 'rgba(42,29,20,.5)'; g.lineWidth = 2;
-      for (const dx of [-10, 3, 12]) seg({ x: s.x + dx, y: s.y - h + ry - 2 }, { x: s.x + dx + 1, y: s.y + ry - 4 });
-      g.beginPath(); g.ellipse(s.x, s.y - h, rx, ry, 0, 0, Math.PI * 2); g.fillStyle = '#d2a670'; g.fill(); g.strokeStyle = OUTL; g.lineWidth = 3; g.stroke();
-      g.strokeStyle = 'rgba(120,70,30,.6)'; g.lineWidth = 1.5; g.beginPath(); g.ellipse(s.x, s.y - h, rx * 0.55, ry * 0.55, 0, 0, Math.PI * 2); g.stroke();
-      const x = s.x, y = s.y - h - 12; // the anvil's face
-      const iron = (pts: [number, number][], fill: string) => poly(pts.map(([dx, dy]) => ({ x: x + dx, y: y + dy })), fill, 2.5);
-      iron([[-12, 14], [12, 14], [7, 2], [-7, 2]], '#3b3f46'); // waist
-      iron([[-30, 8], [-14, -2], [20, -2], [20, -12], [-14, -12], [-34, 1]], '#4b5059'); // body and horn
-      iron([[-14, -12], [20, -12], [26, -16], [-6, -17], [-34, 1]], '#7d848f'); // top
-      iron([[20, -2], [26, -6], [26, -16], [20, -12]], '#2e3238'); // heel
-      g.strokeStyle = 'rgba(230,236,245,.6)'; g.lineWidth = 1.6;
-      g.beginPath(); for (const [dx, dy] of [[-28, -1], [-8, -13], [20, -13]]) g.lineTo(x + dx, y + dy); g.stroke();
-      // the hammer resting on it
-      g.lineCap = 'round';
-      g.strokeStyle = OUTL; g.lineWidth = 5; seg({ x: x + 2, y: y - 16 }, { x: x + 24, y: y - 30 });
-      g.strokeStyle = '#a8763f'; g.lineWidth = 2.5; seg({ x: x + 2, y: y - 16 }, { x: x + 24, y: y - 30 });
-      iron([[-6, -12], [6, -19], [10, -15], [-2, -8]], '#5a6069');
-      if (hot) {
-        // a bar fresh from the fire
-        g.save(); g.shadowColor = 'rgba(255,140,40,.95)'; g.shadowBlur = 10;
-        g.strokeStyle = '#ff9a2e'; g.lineWidth = 4; seg({ x: x - 22, y: y - 6 }, { x: x - 4, y: y - 15 });
-        g.restore();
-        g.strokeStyle = '#ffe9a0'; g.lineWidth = 1.5; seg({ x: x - 20, y: y - 7 }, { x: x - 6, y: y - 14 });
-      }
-      g.lineCap = 'butt';
-    }
-
-    // ---- the quench bucket, front left
-    {
-      const b = { x: 112, y: 318 }, rx = 15, ry = 7.5, h = 20;
-      g.fillStyle = 'rgba(20,12,6,.3)'; g.beginPath(); g.ellipse(b.x + 3, b.y + 2, rx + 7, ry + 4, 0, 0, Math.PI * 2); g.fill();
-      g.beginPath(); g.moveTo(b.x - rx, b.y - h); g.lineTo(b.x - rx + 2, b.y);
-      g.ellipse(b.x, b.y, rx - 2, ry - 1, 0, Math.PI, 0, true); g.lineTo(b.x + rx, b.y - h); g.closePath();
-      const wood = g.createLinearGradient(b.x - rx, 0, b.x + rx, 0); wood.addColorStop(0, '#a87244'); wood.addColorStop(1, '#6a4426');
-      g.fillStyle = wood; g.fill(); g.strokeStyle = OUTL; g.lineWidth = 2.5; g.stroke();
-      g.strokeStyle = '#3b3f46'; g.lineWidth = 3;
-      for (const z of [5, 14]) { g.beginPath(); g.ellipse(b.x, b.y - z, rx - 0.5, ry - 0.5, 0, 0, Math.PI, false); g.stroke(); }
-      g.beginPath(); g.ellipse(b.x, b.y - h, rx, ry, 0, 0, Math.PI * 2); g.fillStyle = '#4b7fa8'; g.fill(); g.strokeStyle = OUTL; g.lineWidth = 2.5; g.stroke();
-      g.fillStyle = 'rgba(220,240,255,.6)'; g.beginPath(); g.ellipse(b.x - 4, b.y - h - 1, 5, 2, 0, 0, Math.PI * 2); g.fill();
-    }
-  });
+/** The pane's pixels (white, by colour) within the screen's box, so what is drawn on it stays behind the frame. */
+function pane(img: Pic): HTMLCanvasElement {
+  if (paneMask) return paneMask;
+  const c = document.createElement('canvas');
+  c.width = C_W; c.height = C_H;
+  const g = c.getContext('2d')!;
+  g.drawImage(img, 0, 0);
+  const { tl, tr, bl } = SCREEN, x0 = tl.x - 2, y0 = tl.y - 2, w = tr.x - tl.x + 4, h = tr.y - tl.y + bl.y - tl.y + 4;
+  const d = g.getImageData(x0, y0, w, h), px = d.data;
+  for (let i = 0; i < px.length; i += 4) {
+    // fully pane within the tolerance, fading out over the next 14 (the frame's soft inner edge)
+    const off = Math.max(Math.abs(px[i] - PANE.r), Math.abs(px[i + 1] - PANE.g), Math.abs(px[i + 2] - PANE.b));
+    const a = px[i + 3] > 200 ? Math.max(0, Math.min(1, 1 - (off - PANE.tol) / 14)) : 0;
+    px[i] = px[i + 1] = px[i + 2] = 255; px[i + 3] = Math.round(a * 255);
+  }
+  g.clearRect(0, 0, C_W, C_H);
+  g.putImageData(d, x0, y0);
+  return (paneMask = c);
 }
 
-/** The board's screen on its sprite: top-left, top-right and bottom-left corners. */
-const SCREEN = { tl: { x: 148, y: 165 }, tr: { x: 238, y: 209 }, bl: { x: 148, y: 244 } };
-
 /**
- * App board, painted to match the kit (its own board-frame is flat vector art): a timber easel with a
- * back prop, a bevelled plank frame under a little shingle canopy, gold nails, and a browser window
- * whose screen shows `img` (the app's snapshot) or `label` as a card.
+ * A running app's portal: a rune-carved stone gateway under a timber lintel, on the cobbled plinth.
+ * Its pane shows `img` (the app's snapshot), or `label` as a card until one is taken.
  */
 export function paintedBoard(label: string, img: (CanvasImageSource & { width: number; height: number }) | undefined): Art | null {
-  if (!ready) return null;
+  const base = get('structures/portal.png');
+  if (!base) return null;
   const { tl, tr, bl } = SCREEN;
   const k = (tr.y - tl.y) / (tr.x - tl.x); // the face falls this much per px to the right
-  const at = (x: number, y0: number) => ({ x, y: y0 + (x - tl.x) * k }); // a point on the face's slope
   return canvasArt(C_W, C_H, C_AX, C_AY, (g) => {
-    // drawn a fifth larger than measured, about its foot, to fill the 2x2 like the other props
-    g.translate(200, 316); g.scale(1.2, 1.2); g.translate(-200, -316);
-    const OUTL = '#2a1d14';
-    const quad = (x0: number, x1: number, y0: number, y1: number, fill: string | CanvasGradient, lw = 3) => {
-      const a = at(x0, y0), b = at(x1, y0), c = at(x1, y1), d = at(x0, y1);
-      g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.lineTo(c.x, c.y); g.lineTo(d.x, d.y); g.closePath();
-      g.fillStyle = fill; g.fill();
-      if (lw) { g.strokeStyle = OUTL; g.lineWidth = lw; g.lineJoin = 'round'; g.stroke(); }
-    };
-    // contact shadow, the prop behind, then the posts
-    g.fillStyle = 'rgba(20,12,6,.3)';
-    g.beginPath(); g.ellipse(204, 322, 78, 26, 0.45, 0, Math.PI * 2); g.fill();
-    pole(g, { x: 236, y: 286 }, { x: 206, y: 196 });
-    pole(g, at(142, 296), at(142, 128));
-    pole(g, at(244, 296), at(244, 128));
-    // the frame: its thickness on the right, then the face in planks
-    const X0 = 134, X1 = 252, Y0 = 136, Y1 = 262;
-    const tr0 = at(X1, Y0), br0 = at(X1, Y1);
-    g.beginPath(); g.moveTo(tr0.x, tr0.y); g.lineTo(tr0.x + 9, tr0.y - 5); g.lineTo(br0.x + 9, br0.y - 5); g.lineTo(br0.x, br0.y); g.closePath();
-    g.fillStyle = '#5a3518'; g.fill(); g.strokeStyle = OUTL; g.lineWidth = 3; g.stroke();
-    const wood = g.createLinearGradient(0, at(X0, Y0).y, 0, at(X0, Y1).y + 60);
-    wood.addColorStop(0, '#b07a45'); wood.addColorStop(0.5, '#93602f'); wood.addColorStop(1, '#6e4422');
-    quad(X0, X1, Y0, Y1, wood);
-    g.strokeStyle = 'rgba(42,29,20,.35)'; g.lineWidth = 1.5;
-    for (const y of [170, 205, 240]) { const a = at(X0 + 3, y), b = at(X1 - 3, y); g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke(); }
-    g.strokeStyle = 'rgba(255,236,200,.45)'; g.lineWidth = 2; // bevel catching the light
-    { const a = at(X0 + 3, Y0 + 3), b = at(X1 - 3, Y0 + 3); g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke(); }
-    // the canopy: a short shingled roof over the top edge, in the hall's red
-    const r0 = at(X0 - 10, Y0 + 2), r1 = at(X1 + 12, Y0 + 2), r2 = { x: r1.x + 10, y: r1.y - 22 }, r3 = { x: r0.x + 10, y: r0.y - 22 };
-    const roof = g.createLinearGradient(0, r3.y, 0, r0.y);
-    roof.addColorStop(0, '#d9594a'); roof.addColorStop(1, '#a3352a');
-    g.beginPath(); g.moveTo(r0.x, r0.y); g.lineTo(r1.x, r1.y); g.lineTo(r2.x, r2.y); g.lineTo(r3.x, r3.y); g.closePath();
-    g.fillStyle = roof; g.fill(); g.strokeStyle = OUTL; g.lineWidth = 3; g.stroke();
-    g.strokeStyle = 'rgba(60,16,10,.45)'; g.lineWidth = 1.4;
-    for (let i = 1; i < 7; i++) { const t = i / 7; const a = mix(r0, r1, t), b = mix(r3, r2, t); g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke(); }
-    { const a = mix(r0, r3, 0.5), b = mix(r1, r2, 0.5); g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke(); }
-    // the window: title bar with its lights and address pill, then the screen
-    quad(tl.x, tr.x, tl.y - 16, tl.y, '#efe7d8', 2.5);
-    ([[156, '#ff5f57'], [164, '#febc2e'], [172, '#28c840']] as const).forEach(([x, c]) => {
-      const q = at(x, tl.y - 8); g.fillStyle = c; g.beginPath(); g.arc(q.x, q.y, 2.6, 0, Math.PI * 2); g.fill();
-    });
-    quad(182, tr.x - 6, tl.y - 12, tl.y - 4, '#ffffff', 0);
-    g.save();
-    g.beginPath();
-    g.moveTo(tl.x, tl.y); g.lineTo(tr.x, tr.y); g.lineTo(tr.x + bl.x - tl.x, tr.y + bl.y - tl.y); g.lineTo(bl.x, bl.y);
-    g.closePath();
-    g.fillStyle = img ? '#ffffff' : '#26303d'; g.fill();
-    g.clip();
+    g.drawImage(base, 0, 0);
+    // the picture on its own canvas, cut to the pane, then laid over the sprite
+    const face = canvasArt(C_W, C_H, 0, 0, (f) => {
+      f.save();
+      if (img) {
+        f.fillStyle = '#ffffff';
+        f.fillRect(0, 0, C_W, C_H);
+        f.transform((tr.x - tl.x) / img.width, (tr.y - tl.y) / img.width, (bl.x - tl.x) / img.height, (bl.y - tl.y) / img.height, tl.x, tl.y);
+        f.imageSmoothingQuality = 'high';
+        f.drawImage(img, 0, 0);
+      } else {
+        // the card: the app's name lying on the pane, in the runes' blue
+        const mx = (tl.x + tr.x) / 2, my = (tl.y + bl.y) / 2 + (tr.y - tl.y) / 2;
+        f.translate(mx, my);
+        f.transform(1, k, 0, 1, 0, 0);
+        f.textAlign = 'center'; f.textBaseline = 'middle';
+        f.shadowColor = 'rgba(90,190,255,.9)'; f.shadowBlur = 8;
+        f.fillStyle = '#9fd3ff';
+        f.font = '400 24px "Lilita One", sans-serif';
+        f.fillText('\u2197', 0, -14);
+        f.fillStyle = '#e9f4ff';
+        f.font = '400 15px "Lilita One", sans-serif';
+        f.fillText(label.length > 9 ? `${label.slice(0, 8)}\u2026` : label, 0, 12);
+      }
+      f.restore();
+      f.globalCompositeOperation = 'destination-in';
+      f.drawImage(pane(base), 0, 0);
+    }).canvas;
+    g.drawImage(face, 0, 0);
     if (img) {
-      g.transform((tr.x - tl.x) / img.width, (tr.y - tl.y) / img.width, (bl.x - tl.x) / img.height, (bl.y - tl.y) / img.height, tl.x, tl.y);
-      g.imageSmoothingQuality = 'high';
-      g.drawImage(img, 0, 0);
-    } else {
-      // the card: the app's name lying on the screen
-      const mx = (tl.x + tr.x) / 2, my = (tl.y + bl.y) / 2 + (tr.y - tl.y) / 2;
-      g.translate(mx, my);
-      g.transform(1, k, 0, 1, 0, 0);
-      g.textAlign = 'center'; g.textBaseline = 'middle';
-      g.fillStyle = '#9fd3ff';
-      g.font = '400 26px "Lilita One", sans-serif';
-      g.fillText('\u2197', 0, -18);
-      g.fillStyle = '#e9eef5';
-      g.font = '400 18px "Lilita One", sans-serif';
-      g.fillText(label.length > 10 ? `${label.slice(0, 9)}\u2026` : label, 0, 14);
-    }
-    g.restore();
-    quad(tl.x, tr.x, tl.y, bl.y, 'rgba(0,0,0,0)', 2.5); // the outline again, over the picture's edge
-    for (const [x, y] of [[X0 + 7, Y0 + 9], [X1 - 7, Y0 + 9], [X0 + 7, Y1 - 8], [X1 - 7, Y1 - 8]]) {
-      const q = at(x, y);
-      g.fillStyle = '#ffcf33'; g.strokeStyle = OUTL; g.lineWidth = 1.5;
-      g.beginPath(); g.arc(q.x, q.y, 3.2, 0, Math.PI * 2); g.fill(); g.stroke();
+      // the pane's sheen over the picture, and a faint rune-blue cast, so it sits in the gateway
+      const sheen = g.createLinearGradient(tl.x, tl.y, tr.x, bl.y + tr.y - tl.y);
+      sheen.addColorStop(0, 'rgba(160,215,255,.22)'); sheen.addColorStop(0.5, 'rgba(160,215,255,0)'); sheen.addColorStop(1, 'rgba(20,30,60,.18)');
+      const glaze = canvasArt(C_W, C_H, 0, 0, (f) => {
+        f.fillStyle = sheen; f.fillRect(0, 0, C_W, C_H);
+        f.globalCompositeOperation = 'destination-in';
+        f.drawImage(pane(base), 0, 0);
+      }).canvas;
+      g.drawImage(glaze, 0, 0);
     }
   });
 }

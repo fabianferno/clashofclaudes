@@ -1046,6 +1046,36 @@ impl SessionManager {
         self.write(id, b"\r")
     }
 
+    /// Types `text` into the prompt of a session at work, as the window's message box does, but
+    /// only while it is still in the stretch of work that began at `since`: an agent that has
+    /// stopped to ask would take the words as its answer. Unlike `prompt_if`, not once per wait:
+    /// the owner may say several things while it works (the remote keeps each action to once).
+    pub fn message_if(&self, id: &str, since: i64, text: &str) -> Result<()> {
+        let text = text.replace("\r\n", "\n").replace('\r', "\n");
+        let text = text.trim();
+        if text.is_empty() {
+            bail!("nothing to send");
+        }
+        let at_work = |e: &SessionEntry| matches!(e.info.state, SessionState::Working) && e.info.state_since == since;
+        {
+            let g = self.lock();
+            let e = g.get(id).ok_or_else(|| anyhow!("unknown session {id}"))?;
+            if !at_work(e) {
+                bail!("stale: it is no longer at that work");
+            }
+            if e.pty.is_none() || e.info.paused {
+                bail!("session is not running");
+            }
+        }
+        self.write(id, format!("\x1b[200~{text}\x1b[201~").as_bytes())?;
+        std::thread::sleep(REMOTE_KEY_GAP);
+        // It stopped meanwhile: Enter would answer whatever it asks now. The words stay unsent.
+        if self.lock().get(id).is_none_or(|e| !at_work(e)) {
+            bail!("stale: it stopped before the words were sent");
+        }
+        self.write(id, b"\r")
+    }
+
     /// Answers the open picker (one single-select question) with option `pick`, or with `text`
     /// in place of an option, for the wait that began at `since` and only once.
     pub fn pick_if(&self, id: &str, since: i64, pick: Option<usize>, text: &str) -> Result<()> {
@@ -2098,6 +2128,29 @@ mod tests {
         assert!(again.contains("stale"), "{again}");
         std::thread::sleep(Duration::from_millis(300));
         assert_eq!(scrollback(&fx, &s.id).matches("also add").count(), 1);
+    }
+
+    #[test]
+    fn message_if_types_into_a_builder_at_work_but_not_into_one_that_stopped() {
+        let fx = fixture();
+        let s = start_parrot(&fx, "b1");
+        fx.mgr.on_hook(&s.id, fixture_json("user_prompt_submit.json"));
+        assert_eq!(state(&fx, &s.id), SessionState::Working);
+        let since = info(&fx, &s.id).state_since;
+        assert!(fx.mgr.message_if(&s.id, since - 1, "x").unwrap_err().to_string().contains("stale"), "another stretch of work");
+        assert!(fx.mgr.message_if(&s.id, since, "  ").is_err(), "no words");
+        fx.mgr.message_if(&s.id, since, "use v2").unwrap();
+        // more than once while it works
+        fx.mgr.message_if(&s.id, since, "and tests").unwrap();
+        assert!(wait_until(|| scrollback(&fx, &s.id).contains("\x1b[200~use v2\x1b[201~") && scrollback(&fx, &s.id).contains("\x1b[200~and tests\x1b[201~")), "{:?}", scrollback(&fx, &s.id));
+        // it stopped to ask: words would be its answer
+        fx.mgr.on_hook(&s.id, fixture_json("notification_permission.json"));
+        let err = fx.mgr.message_if(&s.id, since, "zzz").unwrap_err().to_string();
+        assert!(err.contains("stale"), "{err}");
+        let after = info(&fx, &s.id).state_since;
+        assert!(fx.mgr.message_if(&s.id, after, "zzz").is_err(), "not at work");
+        std::thread::sleep(Duration::from_millis(200));
+        assert!(!scrollback(&fx, &s.id).contains("zzz"));
     }
 
     #[test]

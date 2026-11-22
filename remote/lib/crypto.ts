@@ -48,6 +48,15 @@ export async function signedBytes(a: Signable): Promise<Uint8Array> {
   return enc.encode(lines.join('\n'));
 }
 
+/**
+ * What a phone signs as `prompt` for words to a builder at work. A working session has no prompt
+ * block, so the stretch of work is named instead: its thread's root and the `since` of its working
+ * state. The Mac's `working_prompt` makes the same string.
+ */
+export async function workingPrompt(root: string, since: number): Promise<string> {
+  return sha256Hex(enc.encode(`coc-working-1\n${root}\n${since}`));
+}
+
 /** What the phone signs for a request to the remote's API. `path` includes the query. */
 export async function requestBytes(method: string, path: string, ts: number, body: Uint8Array): Promise<Uint8Array> {
   return enc.encode(['coc-req-1', method.toUpperCase(), path, String(ts), await sha256Hex(body)].join('\n'));

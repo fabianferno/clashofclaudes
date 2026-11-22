@@ -2,9 +2,9 @@
 // says and what its buttons sign come from the Mac's own replies (written by the owner's login),
 // never from a label or from anyone else's message. The thread's `coc.state` label only decides
 // whether a builder is listed as waiting or working; the Mac checks every action anyway.
-import { sha256Hex } from './crypto';
+import { sha256Hex, workingPrompt } from './crypto';
 import { byOwner } from './records';
-import type { Card, Msg, PromptBlock, Thread, Working } from './types';
+import type { Card, Msg, PromptBlock, Result, Thread, Working } from './types';
 
 const FENCE_OPEN = '\n\n```json coc\n';
 const FENCE_CLOSE = '\n```';
@@ -45,6 +45,26 @@ function result(text: string): { re: string; result: string } | null {
   }
 }
 
+const RESULTS: string[] = ['applied', 'stale', 'refused', 'failed'];
+const isResult = (r: string | undefined): r is Result => r !== undefined && RESULTS.includes(r);
+// an action is a reply the remote posted (a project's identity); anyone can put the label on anything
+const isAction = (m: Msg) => 'coc.do' in m.labels && m.by.principal.startsWith('vercel:project:');
+
+/** The owner's Mac's word on action `id`, if it has given one. */
+function resultFor(replies: Msg[], owner: string, id: string): Result | null {
+  const r = replies.flatMap((m) => (byOwner(m, owner) ? [result(m.text)] : [])).filter((r) => r?.re === id).at(-1)?.result;
+  return isResult(r) ? r : null;
+}
+
+/** A builder at work: what a message to it signs, and how the last one went. */
+async function atWork(root: Msg, replies: Msg[], owner: string, state: string): Promise<Working> {
+  // The label only names the stretch of work; the Mac holds a message to its own `since`.
+  const since = Number(root.labels['coc.since']);
+  const promptSha = state === 'working' && Number.isSafeInteger(since) ? await workingPrompt(root.id, since) : null;
+  const a = replies.filter(isAction).at(-1);
+  return { root: root.id, workspace: workspaceOf(root.channel), title: firstLine(root.text), state, promptSha, last: a ? { id: a.id, result: resultFor(replies, owner, a.id) } : null };
+}
+
 async function card(root: Msg, replies: Msg[], owner: string): Promise<Card> {
   const state = root.labels['coc.state'];
   const base: Card = {
@@ -75,8 +95,7 @@ async function card(root: Msg, replies: Msg[], owner: string): Promise<Card> {
   const block = parseBlock(json)!;
   const reply = replies[at];
   const after = replies.slice(at + 1);
-  // an action is a reply the remote posted (a project's identity); anyone can put the label on anything
-  const actions = after.filter((m) => 'coc.do' in m.labels && m.by.principal.startsWith('vercel:project:')).map((m) => m.id);
+  const actions = after.filter(isAction).map((m) => m.id);
   const results = after.flatMap((m) => (byOwner(m, owner) ? [result(m.text)] : [])).filter((r) => r !== null && actions.includes(r.re));
   const last = results.at(-1)?.result;
   return {
@@ -101,7 +120,7 @@ export async function buildQueue(threads: Thread[], owner: string): Promise<{ ca
     if (root.labels['coc.kind'] !== 'session' || !byOwner(root, owner) || !root.channel.startsWith(`v/${owner}/w/`)) continue;
     const state = root.labels['coc.state'];
     if (state in WAITING) cards.push(await card(root, replies, owner));
-    else if (state === 'working' || state === 'starting') working.push({ root: root.id, workspace: workspaceOf(root.channel), title: firstLine(root.text), state });
+    else if (state === 'working' || state === 'starting') working.push(await atWork(root, replies, owner, state));
   }
   cards.sort((a, b) => WAITS.indexOf(a.wait) - WAITS.indexOf(b.wait) || a.waitedFrom - b.waitedFrom || a.root.localeCompare(b.root));
   return { cards, working };

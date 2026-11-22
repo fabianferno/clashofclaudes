@@ -102,6 +102,6 @@ mod tests {
             assert!(to.join(f).is_file(), "{f}");
         }
         assert!(!to.join("lib/fake.ts").exists());
-        assert_eq!(version(), "0.1.0");
+        assert_eq!(version(), "0.2.0");
     }
 }

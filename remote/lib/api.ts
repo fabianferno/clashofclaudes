@@ -72,8 +72,8 @@ async function villageQueue(owner: string, d: Deps): Promise<Queue> {
   const threads: Thread[] = [];
   for (const channel of await d.board.channels(`v/${owner}/w/`)) {
     for (const root of await d.board.roots(channel, { 'coc.kind': 'session' })) {
-      // only a waiting builder's replies are worth a read
-      threads.push(WAITING.includes(root.labels['coc.state']) ? await d.board.thread(root.id) : { root, replies: [] });
+      // only a builder that waits, or one at work that can be messaged, has replies worth a read
+      threads.push(WAITING.includes(root.labels['coc.state']) || root.labels['coc.state'] === 'working' ? await d.board.thread(root.id) : { root, replies: [] });
     }
   }
   const queue = { ...(await buildQueue(threads, owner)), seen: await d.records.seen(owner) };

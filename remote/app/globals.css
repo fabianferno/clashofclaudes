@@ -90,6 +90,12 @@ input, textarea {
 .working { background: rgba(241, 223, 182, .88); }
 .working ul { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
 .working li { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: baseline; }
+/* a message to a builder at work: under its line, the width of the row */
+.working li > .tell, .working li > .tell-form, .working li > .tell-status, .working li > .card-error { grid-column: 1 / -1; margin: 0; }
+.btn.tell { justify-self: start; padding: 6px 14px; font-size: 1rem; }
+.tell-status { font-weight: 700; font-size: .95rem; }
+.tell-status.applied { color: #2c6b14; }
+.tell-status.stale, .tell-status.refused, .tell-status.failed { color: #a11f14; }
 .working li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #5a4632; }
 .working li i { font-style: normal; font-weight: 700; font-size: .9rem; }
 

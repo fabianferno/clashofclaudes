@@ -79,6 +79,13 @@ impl Sessions for ManagerSessions {
     fn pick_if(&self, id: &str, since: i64, pick: Option<usize>, text: &str) -> Result<(), String> {
         self.with(|m| m.pick_if(id, since, pick, text))
     }
+    fn working_since(&self, id: &str) -> Option<i64> {
+        let s = self.0.upgrade()?.list().into_iter().find(|s| s.id == id)?;
+        (matches!(s.state, crate::model::SessionState::Working) && !s.paused).then_some(s.state_since)
+    }
+    fn message_if(&self, id: &str, since: i64, text: &str) -> Result<(), String> {
+        self.with(|m| m.message_if(id, since, text))
+    }
     /// The borrower said a finished borrowed session is done: it is closed as the lender's own
     /// Close would close it (accepted), if it is still finished and in that wait.
     fn close_if(&self, id: &str, since: i64) -> Result<(), String> {

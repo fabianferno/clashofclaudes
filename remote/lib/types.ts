@@ -63,12 +63,18 @@ export interface Card {
   promptSha: string;
   /** An action for this wait is on the board; the Mac's word on it, once it has answered. */
   sent: boolean;
-  result: 'applied' | 'stale' | 'refused' | 'failed' | null;
+  result: Result | null;
 }
+
+export type Result = 'applied' | 'stale' | 'refused' | 'failed';
 
 export interface Working {
   root: string;
   workspace: string;
   title: string;
   state: string;
+  /** What a message to it signs (`workingPrompt`); null while it is starting. */
+  promptSha: string | null;
+  /** The newest message the remote posted in its thread, and the Mac's word on it once it has answered. */
+  last: { id: string; result: Result | null } | null;
 }

@@ -340,6 +340,43 @@ pub fn judge(a: &Action, phones: &[Phone], open: Option<Open<'_>>, seen: &HashSe
     }
 }
 
+/// What a phone signs as `prompt` for words to a builder at work. A working session has no
+/// prompt block (it waits on nobody), so the stretch of work is named instead: its thread's root
+/// and the `since` of its working state, which the root's `coc.since` label carries. The remote's
+/// `workingPrompt` makes the same string.
+pub fn working_prompt(root: &str, since: i64) -> String {
+    sha_hex(format!("coc-working-1\n{root}\n{since}").as_bytes())
+}
+
+/// Whether the Mac takes `a`, words for the session whose thread starts at `root`, which has no
+/// open wait. `working_since`: when its current stretch of work began; None when it is not at
+/// work (the words would land in a menu, or nowhere). Only the owner's own phones may: a
+/// teammate's key looks on, whatever its level.
+pub fn judge_working(a: &Action, phones: &[Phone], root: &str, working_since: Option<i64>, seen: &HashSet<String>, phones_off: bool) -> Verdict {
+    // Up to the staleness checks, as `judge` with nothing open, so an old action reads the same.
+    let Some(phone) = phones.iter().find(|p| p.key == a.key) else { return Verdict::Refused };
+    if phone.level.is_none() && phones_off {
+        return Verdict::Refused;
+    }
+    let signed = signed_bytes(a);
+    if !verify(&phone.public, &signed, &a.sig) {
+        return Verdict::Refused;
+    }
+    let Some(since) = working_since else { return Verdict::Stale };
+    if a.prompt != working_prompt(root, since) || seen.contains(&sha_hex(&signed)) {
+        return Verdict::Stale;
+    }
+    if phone.level.is_some() {
+        return Verdict::Refused;
+    }
+    let words = a.text.as_deref().is_some_and(|t| !t.trim().is_empty());
+    if a.r#do == Do::Followup && a.pick.is_none() && words {
+        Verdict::Apply
+    } else {
+        Verdict::Refused
+    }
+}
+
 #[cfg(test)]
 #[path = "remote_tests.rs"]
 mod tests;

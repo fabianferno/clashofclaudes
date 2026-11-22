@@ -137,7 +137,43 @@ test('a failed send puts the buttons back and says why', async () => {
   expect(screen.getByRole('button', { name: 'Deny' })).toBeTruthy();
 });
 
-const queue = (over: object = {}) => ({ cards: [card()], working: [{ root: 'msg_2', workspace: 'api', title: '**Archer** (Codex): fix login', state: 'working' }], seen: Date.now() - 60_000, now: Date.now(), ...over });
+const working = (over: object = {}) => ({ root: 'msg_2', workspace: 'api', title: '**Archer** (Codex): fix login', state: 'working', promptSha: 'cd'.repeat(32), last: null, ...over });
+const queue = (over: object = {}) => ({ cards: [card()], working: [working()], seen: Date.now() - 60_000, now: Date.now(), ...over });
+
+test('a builder at work takes a message signed for its stretch of work, then shows the Mac’s word on it', async () => {
+  const { phone, posts, pub } = await api();
+  let data = queue({ cards: [] });
+  render(<Queue phone={phone} load={async () => data} every={20} />);
+  await settle();
+  await press('Message');
+  const box = screen.getByRole('textbox', { name: 'Message Archer' });
+  expect((screen.getByRole('button', { name: 'Send' }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.change(box, { target: { value: 'use the v2 endpoint' } });
+  await press('Send');
+  await settle();
+  expect(posts).toHaveLength(1);
+  const { root, action } = posts[0].body;
+  expect(root).toBe('msg_2');
+  expect(action).toMatchObject({ v: 1, do: 'followup', text: 'use the v2 endpoint', prompt: 'cd'.repeat(32), key: phone.key });
+  expect(await verify(pub, await signedBytes(action), action.sig)).toBe(true);
+  expect((box as HTMLTextAreaElement).value).toBe('');
+  expect(screen.getByRole('status').textContent).toBe('Sent to your Mac');
+  // the remote posted it as `x`; the Mac answers, read on the next poll
+  data = queue({ cards: [], working: [working({ last: { id: 'x', result: 'applied' } })] });
+  await act(async () => { await new Promise((r) => setTimeout(r, 60)); });
+  expect(screen.getByRole('status').textContent).toBe('Your Mac typed it in');
+  data = queue({ cards: [], working: [working({ last: { id: 'x', result: 'stale' } })] });
+  await act(async () => { await new Promise((r) => setTimeout(r, 60)); });
+  expect(screen.getByRole('status').textContent).toMatch(/^Too late/);
+});
+
+test('a builder still starting cannot be messaged yet', async () => {
+  const { phone } = await api();
+  render(<Queue phone={phone} load={async () => queue({ cards: [], working: [working({ state: 'starting', promptSha: null })] })} every={0} />);
+  await settle();
+  expect(screen.getByText('Archer')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Message' })).toBeNull();
+});
 
 test('the queue shows who waits, who works, and when the Mac is away', async () => {
   const { phone } = await api();

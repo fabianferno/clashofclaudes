@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
 import type { Card as CardData, Working } from '../../lib/types';
-import { Card, parts } from './Card';
+import { Card, WorkingRow } from './Card';
 import type { PhoneApi } from './phone-api';
 
 export interface QueueData {
@@ -50,10 +50,7 @@ export function Queue({ phone, load, every = 4000 }: { phone: PhoneApi; load: ()
         <section className="working" aria-label="At work">
           <h2>At work</h2>
           <ul>
-            {data.working.map((w) => {
-              const { who, task } = parts(w.title);
-              return <li key={w.root}><b>{who}</b> <span>{task}</span> <i>{w.workspace}</i></li>;
-            })}
+            {data.working.map((w) => <WorkingRow key={w.root} w={w} phone={phone} onSent={refresh} />)}
           </ul>
         </section>
       )}

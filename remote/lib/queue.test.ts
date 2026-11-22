@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { sha256Hex } from './crypto';
+import { sha256Hex, workingPrompt } from './crypto';
 import { FakeBoard } from './fake';
 import { blockIn, buildQueue } from './queue';
 import type { Thread } from './types';
@@ -84,7 +84,7 @@ test('builders that do not wait are listed as working, and closed ones are left 
   // waiting by its label, but the Mac wrote no block (an older app): shown without buttons
   session(b, 'api', 'needs_you', 'decide');
   const { cards, working } = await buildQueue(await threads(b), 'ada');
-  expect(working).toEqual([{ root: w.root, workspace: 'shop', title: '**Wizard** (Claude Code): add a CSV export', state: 'working' }]);
+  expect(working).toEqual([{ root: w.root, workspace: 'shop', title: '**Wizard** (Claude Code): add a CSV export', state: 'working', promptSha: null, last: null }]);
   expect(cards).toHaveLength(1);
   expect(cards[0]).toMatchObject({ workspace: 'api', can: [], wait: 'decide', promptSha: '' });
 });
@@ -110,4 +110,28 @@ test('an action after the block shows as sent, then with the Mac’s result', as
   expect((await buildQueue(await threads(b), 'ada')).cards[0]).toMatchObject({ sent: true, result: null });
   s.reply(JSON.stringify({ re: act, result: 'stale' }));
   expect((await buildQueue(await threads(b), 'ada')).cards[0]).toMatchObject({ sent: true, result: 'stale' });
+});
+
+test('a builder at work can be messaged for its stretch of work, and shows how the last message went', async () => {
+  const b = new FakeBoard();
+  const root = b.add({ channel: 'v/ada/w/shop', text: '**Wizard** (Claude Code): add a CSV export', labels: { 'coc.kind': 'session', 'coc.state': 'working', 'coc.since': '42' } });
+  const starting = b.add({ channel: 'v/ada/w/api', text: '**Archer** (Codex): fix login', labels: { 'coc.kind': 'session', 'coc.state': 'starting', 'coc.since': '7' } });
+  const reply = (text: string, by?: typeof BOB, labels: Record<string, string> = {}) => b.add({ channel: root.channel, re: root.id, text, labels }, by).id;
+  let { working } = await buildQueue(await threads(b), 'ada');
+  const w = working.find((x) => x.root === root.id)!;
+  expect(w.promptSha).toBe(await workingPrompt(root.id, 42));
+  // the Mac's own string (src-tauri/src/board/remote_tests.rs)
+  expect(await workingPrompt('msg_1', 42)).toBe('7c1bfdad9c9413d70bf92f08a2fdb6a3d8a329af51a032230065d45e933e8e33');
+  expect(w.last).toBeNull();
+  expect(working.find((x) => x.root === starting.id)!.promptSha).toBeNull();
+  // a teammate's "action" is not one
+  reply('{"do":"followup"}', BOB, { 'coc.do': 'followup' });
+  expect((await buildQueue(await threads(b), 'ada')).working[0].last).toBeNull();
+  const sent = reply('{"do":"followup"}', REMOTE, { 'coc.do': 'followup' });
+  expect((await buildQueue(await threads(b), 'ada')).working[0].last).toEqual({ id: sent, result: null });
+  reply(JSON.stringify({ re: sent, result: 'applied' }), BOB);
+  expect((await buildQueue(await threads(b), 'ada')).working[0].last).toEqual({ id: sent, result: null });
+  reply(JSON.stringify({ re: sent, result: 'applied' }));
+  ({ working } = await buildQueue(await threads(b), 'ada'));
+  expect(working[0].last).toEqual({ id: sent, result: 'applied' });
 });

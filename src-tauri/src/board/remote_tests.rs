@@ -397,3 +397,35 @@ fn a_finished_borrowed_session_offers_done_and_names_its_borrower() {
     assert!(!block_json(&own).contains("by"), "{}", block_json(&own));
     assert_eq!(serde_json::from_str::<PromptBlock>(&block_json(&own)).unwrap().by, None);
 }
+
+#[test]
+fn working_prompt_names_the_root_and_the_stretch_of_work() {
+    // the remote's `workingPrompt` test pins the same value
+    assert_eq!(working_prompt("msg_1", 42), sha_hex(b"coc-working-1\nmsg_1\n42"));
+    assert_eq!(working_prompt("msg_1", 42), "7c1bfdad9c9413d70bf92f08a2fdb6a3d8a329af51a032230065d45e933e8e33");
+    assert_ne!(working_prompt("msg_1", 42), working_prompt("msg_1", 43));
+    assert_ne!(working_prompt("msg_1", 42), working_prompt("msg_2", 42));
+}
+
+#[test]
+fn judge_working_reads_like_judge_for_an_old_action() {
+    let (phones, sign) = signer();
+    let mut a = action(Do::Followup);
+    a.text = Some("hi".into());
+    a.prompt = working_prompt("msg_1", 42);
+    sign(&mut a);
+    let j = |a: &Action, phones: &[Phone], since: Option<i64>, seen: &[String], off: bool| judge_working(a, phones, "msg_1", since, &seen.iter().cloned().collect(), off);
+    assert_eq!(j(&a, &phones, Some(42), &[], false), Verdict::Apply);
+    assert_eq!(j(&a, &phones, None, &[], false), Verdict::Stale, "not at work");
+    assert_eq!(j(&a, &phones, Some(43), &[], false), Verdict::Stale, "another stretch of work");
+    assert_eq!(j(&a, &phones, Some(42), &[sha_hex(&signed_bytes(&a))], false), Verdict::Stale, "applied before");
+    assert_eq!(j(&a, &phones, Some(42), &[], true), Verdict::Refused, "the phone remote is off");
+    assert_eq!(j(&a, &[], Some(42), &[], false), Verdict::Refused, "not paired");
+    let mut forged = a.clone();
+    forged.text = Some("rm -rf".into());
+    assert_eq!(j(&forged, &phones, Some(42), &[], false), Verdict::Refused, "the words are signed");
+    let mut mate = phones.clone();
+    mate[0].level = Some(crate::model::Level::Trusted);
+    assert_eq!(j(&a, &mate, Some(42), &[], false), Verdict::Refused, "a teammate's key");
+    assert_eq!(j(&a, &mate, None, &[], false), Verdict::Stale, "but stale reads as stale");
+}

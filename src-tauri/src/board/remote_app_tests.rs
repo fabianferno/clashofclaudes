@@ -39,6 +39,8 @@ impl Outbox for FakeBoard {
 #[derive(Default)]
 struct FakeSessions {
     since: AtomicI64,
+    /// At work since then, when Some.
+    working: Mutex<Option<i64>>,
     calls: Mutex<Vec<String>>,
     fail: Mutex<Option<String>>,
 }
@@ -68,6 +70,12 @@ impl Sessions for FakeSessions {
     }
     fn pick_if(&self, id: &str, since: i64, pick: Option<usize>, text: &str) -> Result<(), String> {
         self.call(format!("pick {id} {since} {pick:?} {text}"))
+    }
+    fn working_since(&self, id: &str) -> Option<i64> {
+        (id == "s1").then(|| *self.working.lock().unwrap()).flatten()
+    }
+    fn message_if(&self, id: &str, since: i64, text: &str) -> Result<(), String> {
+        self.call(format!("message {id} {since} {text}"))
     }
 }
 
@@ -516,4 +524,85 @@ fn a_borrow_nonce_is_remembered_for_a_day() {
     g.clock.fetch_add(60_000 + 1, Ordering::SeqCst);
     assert!(g.r.take_nonce("n2").unwrap());
     assert_eq!(g.store.load().unwrap().borrow_nonces.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(), ["n2"], "older than a day: forgotten");
+}
+
+impl Rig {
+    /// Words for `s1` while it works, signed for the stretch of work that began at `since`.
+    fn message(&self, since: i64, text: &str, nonce: &str) -> Action {
+        let mut a = Action { v: 1, r#do: Do::Followup, pick: None, text: Some(text.into()), nonce: nonce.into(), key: String::new(), prompt: crate::board::remote::working_prompt("msg_1", since), sig: String::new() };
+        (self.sign)(&mut a);
+        a
+    }
+    fn at_work(&self, since: Option<i64>) {
+        *self.board.block.lock().unwrap() = None;
+        *self.sessions.working.lock().unwrap() = since;
+        if let Some(s) = since {
+            self.sessions.since.store(s, Ordering::SeqCst);
+        }
+    }
+}
+
+#[test]
+fn words_for_a_builder_at_work_are_typed_each_time_once() {
+    let g = rig(DECIDE);
+    g.at_work(Some(77));
+    g.hear("msg_m1", "msg_1", &g.message(77, "use the v2 endpoint", "m1"));
+    assert_eq!(g.result("msg_m1"), "applied");
+    // a second thing to say while it still works: not once per wait, once per action
+    g.hear("msg_m2", "msg_1", &g.message(77, "and keep the old one", "m2"));
+    assert_eq!(g.result("msg_m2"), "applied");
+    let again = g.message(77, "use the v2 endpoint", "m1");
+    g.hear("msg_m3", "msg_1", &again);
+    assert_eq!(g.result("msg_m3"), "stale", "the same action heard again");
+    assert_eq!(g.calls(), ["message s1 77 use the v2 endpoint", "message s1 77 and keep the old one"]);
+}
+
+#[test]
+fn words_for_work_that_is_over_are_stale() {
+    let g = rig(DECIDE);
+    g.at_work(Some(78));
+    g.hear("msg_m1", "msg_1", &g.message(77, "x", "m1"));
+    assert_eq!(g.result("msg_m1"), "stale", "another stretch of work");
+    g.at_work(None);
+    g.hear("msg_m2", "msg_1", &g.message(78, "x", "m2"));
+    assert_eq!(g.result("msg_m2"), "stale", "not at work");
+    // it stopped to ask: a block is open, and words signed for its work are not an answer
+    *g.board.block.lock().unwrap() = Some((REVIEW.to_string(), 42));
+    *g.sessions.working.lock().unwrap() = Some(78);
+    g.hear("msg_m3", "msg_1", &g.message(78, "x", "m3"));
+    assert_eq!(g.result("msg_m3"), "stale");
+    assert!(g.calls().is_empty());
+    // the manager found it had stopped meanwhile
+    g.at_work(Some(79));
+    *g.sessions.fail.lock().unwrap() = Some("stale: it stopped before the words were sent".into());
+    g.hear("msg_m4", "msg_1", &g.message(79, "x", "m4"));
+    assert_eq!(g.result("msg_m4"), "stale");
+}
+
+#[test]
+fn words_for_a_builder_at_work_need_the_owners_own_phone_and_words() {
+    use crate::model::Level;
+    let g = rig(DECIDE);
+    g.at_work(Some(77));
+    let mut a = g.message(77, "  ", "m1");
+    g.hear("msg_m1", "msg_1", &a);
+    assert_eq!(g.result("msg_m1"), "refused", "no words");
+    a = g.message(77, "x", "m2");
+    a.r#do = Do::Allow;
+    (g.sign)(&mut a);
+    g.hear("msg_m2", "msg_1", &a);
+    assert_eq!(g.result("msg_m2"), "refused", "only words");
+    g.r.set_phones_on(false);
+    g.hear("msg_m3", "msg_1", &g.message(77, "x", "m3"));
+    assert_eq!(g.result("msg_m3"), "refused", "the phone remote is off");
+    g.r.set_phones_on(true);
+    let mut s = g.store.load().unwrap();
+    s.phones[0].level = Some(Level::Trusted);
+    s.phones[0].who = Some(crate::board::remote::Mate { email: "bob@acme.com".into(), handle: "bob".into(), user_id: "u_bob".into() });
+    g.store.save(&s).unwrap();
+    g.r.reload();
+    g.sent();
+    g.hear("msg_m4", "msg_1", &g.message(77, "x", "m4"));
+    assert_eq!(g.result("msg_m4"), "refused", "a teammate, even a trusted one, only looks on");
+    assert!(g.calls().is_empty());
 }

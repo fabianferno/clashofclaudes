@@ -13,7 +13,7 @@ use super::listen::Event;
 use super::pairing::{phone_record, village_text, PairState, Pairing};
 use super::phones::{SecretStore, Secrets};
 use super::publisher::{Publisher, Sent};
-use super::remote::{judge, parse_action, sha_hex, signed_bytes, Action, Do, Open, Phone, PromptBlock, Verdict};
+use super::remote::{judge, judge_working, parse_action, sha_hex, signed_bytes, Action, Do, Open, Phone, PromptBlock, Verdict};
 
 /// How often the Mac says it is there (the village root's `seen`).
 pub const HEARTBEAT_MS: i64 = 300_000;
@@ -48,6 +48,15 @@ pub trait Sessions: Send + Sync {
     fn deny_if(&self, id: &str, since: i64) -> Result<(), String>;
     fn prompt_if(&self, id: &str, since: i64, text: &str) -> Result<(), String>;
     fn pick_if(&self, id: &str, since: i64, pick: Option<usize>, text: &str) -> Result<(), String>;
+    /// When the session's current stretch of work began; None when it is not at work.
+    fn working_since(&self, _id: &str) -> Option<i64> {
+        None
+    }
+    /// Types `text` into the prompt of a session at work, if it is still in the stretch of work
+    /// that began at `since` (the agent takes it as words typed mid-turn).
+    fn message_if(&self, _id: &str, _since: i64, _text: &str) -> Result<(), String> {
+        Err("this app cannot message a builder at work".into())
+    }
     /// Closes a finished borrowed session as done (its borrower said so), if it is still in the
     /// wait that began at `since`.
     fn close_if(&self, _id: &str, _since: i64) -> Result<(), String> {
@@ -440,7 +449,7 @@ impl Remote {
         if parse_action(&e.text).is_none() {
             return;
         }
-        let result = self.act(&session, &e.text);
+        let result = self.act(&session, root, &e.text);
         self.board.send(
             MsgWrite::ReplyTo { id: e.id.clone(), text: result_text(&e.id, result), labels: vec![kv("coc.kind", "result")], key: format!("coc-res-{}", e.id) },
             None,
@@ -449,7 +458,7 @@ impl Remote {
     }
 
     /// Judges the action in `text` for `session` and applies it. The result's word.
-    fn act(&self, session: &str, text: &str) -> &'static str {
+    fn act(&self, session: &str, root: &str, text: &str) -> &'static str {
         let now = (self.now)();
         let refuse = |g: &mut Inner| {
             g.last_refused_at = Some(now);
@@ -458,15 +467,18 @@ impl Remote {
         let Some(action) = parse_action(text) else { return refuse(&mut self.lock()) };
         let open = self.board.open_block(session);
         let current = self.sessions.since(session);
+        // no wait open: words for a builder at work, if it is
+        let working = if open.is_none() { self.sessions.working_since(session) } else { None };
         {
             let mut g = self.lock();
-            let open = match (&open, current) {
-                (Some((block, since)), Some(current_since)) => Some(Open { block_json: block, since: *since, current_since }),
-                _ => None,
-            };
             let seen: HashSet<String> = g.seen.iter().cloned().collect();
             let hash = sha_hex(&signed_bytes(&action));
-            let verdict = judge(&action, &g.phones, open, &seen, g.paused.is_some() || !g.phones_on);
+            let off = g.paused.is_some() || !g.phones_on;
+            let verdict = match (&open, current) {
+                (None, _) => judge_working(&action, &g.phones, root, working, &seen, off),
+                (Some((block, since)), Some(current_since)) => judge(&action, &g.phones, Some(Open { block_json: block, since: *since, current_since }), &seen, off),
+                (Some(_), None) => judge(&action, &g.phones, None, &seen, off),
+            };
             match verdict {
                 Verdict::Refused => return refuse(&mut g),
                 Verdict::Stale => return verdict.as_str(),
@@ -485,6 +497,13 @@ impl Remote {
                     let _ = self.save_secrets(&mut g);
                 }
             }
+        }
+        if let Some(since) = working {
+            return match self.sessions.message_if(session, since, action.text.as_deref().unwrap_or("")) {
+                Ok(()) => "applied",
+                Err(e) if e.contains("stale") => Verdict::Stale.as_str(),
+                Err(_) => "failed",
+            };
         }
         let since = open.map(|(_, s)| s).unwrap_or_default();
         let block = self.board.open_block(session);

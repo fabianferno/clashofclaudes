@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import type { Do } from '../../lib/crypto';
-import type { Card as CardData } from '../../lib/types';
+import type { Card as CardData, Working } from '../../lib/types';
 import type { PhoneApi } from './phone-api';
 
 const WAIT: Record<CardData['wait'], string> = { decide: 'Wants a decision', answer: 'Asking you', stuck: 'Stuck', review: 'Ready to review' };
@@ -23,6 +23,16 @@ export function waited(ms: number): string {
 
 const nonce = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('');
 
+/** Signs an action for the wait `prompt` names and posts it in the thread at `root`; the posted message's id. */
+async function postAction(phone: PhoneApi, root: string, prompt: string, d: Do, extra: { pick?: number; text?: string } = {}): Promise<string> {
+  const signable = { do: d, ...extra, nonce: nonce(), prompt };
+  const action = { v: 1, ...signable, key: phone.key, sig: await phone.signAction(signable) };
+  const res = await phone.api('/api/act', { method: 'POST', body: JSON.stringify({ root, action }) });
+  const body = (await res.json().catch(() => null)) as { id?: string; error?: string } | null;
+  if (!res.ok) throw new Error(body?.error ?? `The remote answered ${res.status}`);
+  return body?.id ?? '';
+}
+
 /** One waiting builder: what it wants, and the answers the Mac will take. */
 export function Card({ card, phone, onSent }: { card: CardData; phone: PhoneApi; onSent?: () => void }) {
   const [sent, setSent] = useState(false);
@@ -36,10 +46,7 @@ export function Card({ card, phone, onSent }: { card: CardData; phone: PhoneApi;
     setBusy(true);
     setError(null);
     try {
-      const signable = { do: d, ...extra, nonce: nonce(), prompt: card.promptSha };
-      const action = { v: 1, ...signable, key: phone.key, sig: await phone.signAction(signable) };
-      const res = await phone.api('/api/act', { method: 'POST', body: JSON.stringify({ root: card.root, action }) });
-      if (!res.ok) throw new Error(((await res.json().catch(() => null)) as { error?: string } | null)?.error ?? `The remote answered ${res.status}`);
+      await postAction(phone, card.root, card.promptSha, d, extra);
       setSent(true);
       onSent?.();
     } catch (e) {
@@ -102,5 +109,59 @@ export function Card({ card, phone, onSent }: { card: CardData; phone: PhoneApi;
       )}
       {error && <p className="card-error" role="alert">{error}</p>}
     </article>
+  );
+}
+
+const MESSAGE_RESULT: Record<NonNullable<CardData['result']>, string> = {
+  applied: 'Your Mac typed it in',
+  stale: 'Too late: it had stopped working. Look in your queue.',
+  refused: 'Your Mac refused it',
+  failed: 'Your Mac could not type it in',
+};
+
+/** A builder at work, and a way to tell it something without waiting for it to stop. */
+export function WorkingRow({ w, phone, onSent }: { w: Working; phone: PhoneApi; onSent?: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [words, setWords] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // the message this phone just posted, until the Mac's word on it shows
+  const [sentId, setSentId] = useState<string | null>(null);
+  const { who, task } = parts(w.title);
+  const typed = words.trim();
+
+  const send = async () => {
+    if (!w.promptSha || !typed) return;
+    setBusy(true);
+    setError(null);
+    try {
+      setSentId(await postAction(phone, w.root, w.promptSha, 'followup', { text: typed }));
+      setWords('');
+      onSent?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const mine = sentId !== null && w.last?.id === sentId ? w.last : null;
+  const status = sentId === null ? null : mine?.result ? MESSAGE_RESULT[mine.result] : 'Sent to your Mac';
+  return (
+    <li>
+      <b>{who}</b> <span>{task}</span> <i>{w.workspace}</i>
+      {w.promptSha && !open && (
+        <button type="button" className="btn quiet tell" onClick={() => setOpen(true)}>Message</button>
+      )}
+      {w.promptSha && open && (
+        <form className="words tell-form" onSubmit={(e) => { e.preventDefault(); void send(); }}>
+          <textarea aria-label={`Message ${who}`} placeholder="Tell it something while it works" rows={2} autoFocus value={words}
+            onChange={(e) => setWords(e.target.value)} />
+          <button type="submit" className="btn send" disabled={busy || !typed}>Send</button>
+        </form>
+      )}
+      {status && <p className={`tell-status ${mine?.result ?? 'sent'}`} role="status">{status}</p>}
+      {error && <p className="card-error" role="alert">{error}</p>}
+    </li>
   );
 }

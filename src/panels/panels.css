@@ -361,6 +361,8 @@ html.coc-panel-resizing :is(.hud-res, .hud-stats, .hud-build, .hud-roster-zone, 
 /* the terminal is hidden: the briefing (or the glance) takes the panel's height */
 .session-panel > .brief:last-child { flex: 1; max-height: none; margin-bottom: 0; }
 .session-glance .brief-reply { max-height: none; }
+/* the box to message a working agent sits at the foot of the glance, however short its reply */
+.session-glance > .steer { margin-top: auto; }
 
 /* Settings › Phone remote */
 .set-bad { color: #ffb3aa; }

@@ -7,11 +7,13 @@ const reviewSession = vi.fn();
 const closeSession = vi.fn();
 const stopSession = vi.fn();
 const resumeSession = vi.fn();
+const writeSession = vi.fn();
 vi.mock('../api/ipc', () => ({
   ipc: {
     approve: (id: string) => approve(id), deny: vi.fn(), reviewSession: (id: string) => reviewSession(id),
     closeSession: (id: string) => closeSession(id), stopSession: (id: string) => stopSession(id),
     resumeSession: (id: string) => resumeSession(id),
+    writeSession: (id: string, b: number[]) => writeSession(id, b),
   },
 }));
 vi.mock('../components/TerminalView', () => ({ default: ({ sessionId }: { sessionId: string }) => <div className="terminal" tabIndex={0} data-sid={sessionId} /> }));
@@ -296,4 +298,32 @@ test('a shell session always shows its terminal, with no toggle', () => {
   const { container } = render(<SessionPanel sessionId="s1" />);
   expect(container.querySelector('.terminal')).toBeTruthy();
   expect(screen.queryByText('Show terminal')).toBeNull();
+});
+
+test('a working agent can be messaged from the glance without opening its terminal', async () => {
+  writeSession.mockReset();
+  writeSession.mockResolvedValue(undefined);
+  useApp.getState().upsertSession({ ...sess({ kind: 'working' }, false), lastMessage: 'On it' });
+  const { container } = render(<SessionPanel sessionId="s1" />);
+  expect(container.querySelector('.terminal')).toBeNull();
+  const box = screen.getByLabelText('Message it') as HTMLTextAreaElement;
+  expect((screen.getByRole('button', { name: 'Send' }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.change(box, { target: { value: 'Use the v2 endpoint instead' } });
+  await act(async () => { fireEvent.keyDown(box, { key: 'Enter' }); await new Promise((r) => setTimeout(r, 200)); });
+  const typed = writeSession.mock.calls.map(([, b]) => new TextDecoder().decode(new Uint8Array(b))).join('');
+  expect(typed).toBe('\x1b[200~Use the v2 endpoint instead\x1b[201~\r');
+  expect(box.value).toBe('');
+  expect(screen.getByRole('status').textContent).toBe('Sent to its prompt.');
+});
+
+test('the message box is only there while it works', () => {
+  useApp.getState().upsertSession({ ...sess({ kind: 'starting' }, false) });
+  const { rerender } = render(<SessionPanel sessionId="s1" />);
+  expect(screen.queryByTestId('steer-box')).toBeNull();
+  act(() => useApp.getState().upsertSession({ ...sess({ kind: 'ended', exitCode: 0 }, false), rev: 2 }));
+  rerender(<SessionPanel sessionId="s1" />);
+  expect(screen.queryByTestId('steer-box')).toBeNull();
+  act(() => useApp.getState().upsertSession({ ...sess({ kind: 'working' }, false), rev: 3 }));
+  rerender(<SessionPanel sessionId="s1" />);
+  expect(screen.getByTestId('steer-box')).toBeTruthy();
 });

@@ -13,6 +13,7 @@ import { useTermShown } from '../components/terminalShown';
 import Markdown from './Markdown';
 import LastReply from './LastReply';
 import { plainText } from './markdownText';
+import SteerBox from './SteerBox';
 
 function elapsed(from: number, now: number): string {
   const s = Math.max(0, Math.floor((now - from) / 1000));
@@ -176,14 +177,19 @@ export default function SessionPanel({ sessionId, onClosed }: { sessionId: strin
       ) : showTerm ? (
         <TerminalView sessionId={sessionId} readOnly={readOnly} />
       ) : !briefed ? (
-        <SessionGlance task={session.task} asking={session.asking ?? null} lastMessage={session.lastMessage ?? null} ended={readOnly} />
+        <SessionGlance sessionId={sessionId} working={st === 'working'} task={session.task} asking={session.asking ?? null} lastMessage={session.lastMessage ?? null} ended={readOnly} />
       ) : null}
     </section>
   );
 }
 
-/** What an agent session is up to, in place of its terminal: the task, what it is about to run, its last reply. */
-function SessionGlance({ task, asking, lastMessage, ended }: { task: string | null; asking: string | null; lastMessage: string | null; ended: boolean }) {
+/**
+ * What an agent session is up to, in place of its terminal: the task, what it is about to run, its
+ * last reply; and while it works, a box to message it.
+ */
+function SessionGlance({ sessionId, working, task, asking, lastMessage, ended }: {
+  sessionId: string; working: boolean; task: string | null; asking: string | null; lastMessage: string | null; ended: boolean;
+}) {
   const [taskOpen, setTaskOpen] = useState(false);
   return (
     <div className="brief sp-box session-glance" data-testid="session-glance">
@@ -209,6 +215,7 @@ function SessionGlance({ task, asking, lastMessage, ended }: { task: string | nu
           </div>
         )
         : <div className="sp-d">{ended ? 'It has ended. Show terminal to read its output.' : 'Working on it. Show terminal to watch it live.'}</div>}
+      {working && <SteerBox sessionId={sessionId} />}
     </div>
   );
 }

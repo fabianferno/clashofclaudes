@@ -11,6 +11,7 @@ import Briefing from './Briefing';
 import { queueReason } from '../state/queue';
 import { useTermShown } from '../components/terminalShown';
 import Markdown from './Markdown';
+import LastReply from './LastReply';
 import { plainText } from './markdownText';
 
 function elapsed(from: number, now: number): string {
@@ -204,7 +205,7 @@ function SessionGlance({ task, asking, lastMessage, ended }: { task: string | nu
         ? (
           <div className="brief-sec">
             <div className="brief-h">Its last reply</div>
-            <Markdown className="brief-reply md" text={lastMessage} />
+            <LastReply text={lastMessage} />
           </div>
         )
         : <div className="sp-d">{ended ? 'It has ended. Show terminal to read its output.' : 'Working on it. Show terminal to watch it live.'}</div>}

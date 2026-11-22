@@ -19,7 +19,7 @@ const ipc = vi.hoisted(() => ({
 }));
 vi.mock('../api/ipc', () => ({ ipc }));
 import { KANBAN_ALL, useApp } from '../state/store';
-import Kanban, { kanbanColumn } from './Kanban';
+import Kanban, { WorkspaceTodo, kanbanColumn } from './Kanban';
 
 const ws: Workspace = { id: 'w1', name: 'shop', path: '/p/shop', createdAt: 0, missing: false, compound: null };
 const bld = (id: string, name: string): Builder => ({ id, name, agent: 'claude', model: null, effort: null, customCommand: null });
@@ -296,4 +296,21 @@ test("a To Do's text and images are edited in place; Esc puts it back as it was"
   expect(ipc.discardAttachments).not.toHaveBeenCalled(); // the backend deletes the dropped one; the new one is kept
   expect(useApp.getState().todos.map((x) => x.id)).toEqual(['t1', 't2']); // it keeps its place
   expect(useApp.getState().todos[0]).toMatchObject({ worktree: true, images: [b] });
+});
+
+test("a workspace's side panel carries its To Do: tasks are added there and only its own show", async () => {
+  act(() => useApp.setState({
+    kanban: null,
+    todos: [{ id: 't0', workspaceId: 'w1', text: 'Write docs', createdAt: 0 }, { id: 'tx', workspaceId: 'w2', text: 'Elsewhere', createdAt: 0 }],
+  }));
+  ipc.addTodo.mockResolvedValue({ id: 't1', workspaceId: 'w1', text: 'Fix login', createdAt: 1 });
+  render(<WorkspaceTodo workspaceId="w1" />);
+  expect(screen.getByText('To Do (1)')).toBeTruthy();
+  expect(screen.getByText('Write docs')).toBeTruthy();
+  expect(screen.queryByText('Elsewhere')).toBeNull();
+  fireEvent.change(screen.getByRole('textbox', { name: 'New task' }), { target: { value: 'Fix login' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+  await waitFor(() => expect(screen.getByText('Fix login')).toBeTruthy());
+  expect(ipc.addTodo).toHaveBeenCalledWith('w1', 'Fix login', []);
+  expect(screen.getByText('To Do (2)')).toBeTruthy();
 });

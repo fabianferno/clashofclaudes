@@ -4,6 +4,7 @@ import { ipc } from '../api/ipc';
 import NewSessionPicker from './NewSessionPicker';
 import HistoryList from './HistoryList';
 import WorkspaceNotes from './WorkspaceNotes';
+import { WorkspaceTodo } from './Kanban';
 import { WorkspaceShare } from './TeamSettings';
 import { boardItems, browserUrl, sessionsByWorkspace, useApp } from '../state/store';
 import { HOUSE_SWATCHES, houseColors } from '../village/look';
@@ -133,6 +134,7 @@ export default function WorkspacePanel({ workspaceId }: { workspaceId: string })
       )}
       <WorkspaceShare workspaceId={workspaceId} onError={setErr} />
       <WorkspaceNotes key={workspaceId} workspaceId={workspaceId} onStartSession={(task) => { setFormTask(task); setForm(true); }} />
+      <WorkspaceTodo workspaceId={workspaceId} />
       <div className="sp-sec">Sessions ({agentSessions.length})</div>
       {agentSessions.length === 0 && <div className="sp-note">No sessions running. Plots are empty.</div>}
       {agentSessions.map((s) => row(s, false))}

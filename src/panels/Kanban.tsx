@@ -153,6 +153,32 @@ export default function Kanban() {
   );
 }
 
+/**
+ * The Kanban's To Do column for one workspace, in its side panel: the same add box and cards, so a
+ * task can be planned, edited and started without opening the board.
+ */
+export function WorkspaceTodo({ workspaceId }: { workspaceId: string }) {
+  const ws = useApp((s) => s.workspaces.find((w) => w.id === workspaceId));
+  const builders = useApp((s) => s.builders);
+  const sessionMap = useApp((s) => s.sessions);
+  const todos = useApp((s) => s.todos);
+  if (!ws) return null;
+  const mine = todos.filter((t) => t.workspaceId === workspaceId);
+  const idle = idleBuilders({ builders, sessions: sessionMap });
+  const done = finishedBuilders({ builders, sessions: sessionMap });
+  return (
+    <>
+      <div className="sp-sec">To Do ({mine.length})</div>
+      <div className="sp-todo">
+        <AddTodo workspaces={[ws]} disabled={ws.missing} />
+        {mine.map((t) => (
+          <TodoCard key={t.id} todo={t} idle={idle} done={done} all={builders.filter((b) => isDemoId(b.id) === isDemoId(t.workspaceId))} disabled={ws.missing} />
+        ))}
+      </div>
+    </>
+  );
+}
+
 /** On the Town Hall's board, which workspace a card belongs to, in its house colour. */
 function WorkspaceTag({ ws }: { ws: Workspace | undefined }) {
   if (!ws) return null;

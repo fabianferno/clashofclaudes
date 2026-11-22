@@ -75,3 +75,12 @@ test('shows the newest few until asked for all', async () => {
   fireEvent.click(screen.getByText(`Show all ${HISTORY_SHOWN + 2}`));
   expect(screen.getByText(`Task ${HISTORY_SHOWN + 1}`)).toBeTruthy();
 });
+
+test('the history starts folded and opens from its heading', async () => {
+  ipc.listHistory.mockResolvedValue([entry()]);
+  render(<HistoryList workspaceId="w1" onError={() => {}} />);
+  const fold = (await screen.findByTestId('history')) as HTMLDetailsElement;
+  expect(fold.open).toBe(false);
+  fireEvent.click(screen.getByText('History (1)'));
+  expect(fold.open).toBe(true);
+});

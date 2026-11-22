@@ -27,7 +27,7 @@ export function continuer(e: Pick<HistoryEntry, 'builderId' | 'agent'>, idle: Bu
   return idle.find((b) => b.id === e.builderId) ?? idle.find((b) => b.agent === e.agent) ?? null;
 }
 
-/** The workspace's closed agent sessions, newest first; Continue opens one's conversation again. */
+/** The workspace's closed agent sessions, newest first, folded until opened; Continue opens one's conversation again. */
 export default function HistoryList({ workspaceId, onError }: { workspaceId: string; onError: (e: string | null) => void }) {
   const [entries, setEntries] = useState<HistoryEntry[] | null>(null);
   const [all, setAll] = useState(false);
@@ -69,8 +69,8 @@ export default function HistoryList({ workspaceId, onError }: { workspaceId: str
   };
 
   return (
-    <>
-      <div className="sp-sec">History ({mine.length})</div>
+    <details className="sp-fold" data-testid="history">
+      <summary className="sp-sec">History ({mine.length})</summary>
       {shown.map((e) => {
         const b = continuer(e, idle);
         const own = builders.find((x) => x.id === e.builderId);
@@ -93,6 +93,6 @@ export default function HistoryList({ workspaceId, onError }: { workspaceId: str
       {mine.length > HISTORY_SHOWN && (
         <button className="hud-btn grey sm" onClick={() => setAll((a) => !a)}>{all ? 'Show fewer' : `Show all ${mine.length}`}</button>
       )}
-    </>
+    </details>
   );
 }

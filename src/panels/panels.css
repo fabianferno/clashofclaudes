@@ -18,6 +18,12 @@
 .sp-body button:not(.hud-btn):not(.sp-row), .sp-body input, .sp-body select { color: #2b2018; }
 .sp-box { background: linear-gradient(180deg, #f7ebd2 0%, #ead5b0 100%); border: 3px solid #c8b083; border-radius: 14px; padding: 10px; margin-bottom: 10px; box-shadow: var(--bevel); }
 .sp-sec { font: 400 14px 'Lilita One', sans-serif; color: var(--sp-ink-soft); margin: 12px 2px 8px; letter-spacing: .4px; }
+.sp-fold > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 6px; }
+.sp-fold > summary::-webkit-details-marker { display: none; }
+.sp-fold > summary::before { content: '▸'; font-size: 12px; transition: transform .15s; }
+.sp-fold[open] > summary::before { transform: rotate(90deg); }
+.sp-fold > summary:focus-visible { outline: 2px solid #a8885a; outline-offset: 2px; border-radius: 6px; }
+.sp-todo { display: flex; flex-direction: column; gap: 8px; margin-bottom: 4px; }
 .sp-note, .sp-d { font-size: 12px; color: var(--sp-ink-soft); font-weight: 700; }
 .sp-note { margin: 0 2px 10px; }
 .sp-gap { margin-top: 6px; }

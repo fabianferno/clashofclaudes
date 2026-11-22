@@ -5,7 +5,7 @@ import { idleBuilders, useApp } from '../state/store';
 import { sessionName, taskTooltip } from './sessionName';
 
 /** How many past sessions show before "Show all". */
-export const HISTORY_SHOWN = 5;
+export const HISTORY_SHOWN = 3;
 
 /** "just now", "5 min ago", "3 h ago", "2 d ago", else the date. */
 export function ago(at: number, now: number = Date.now()): string {

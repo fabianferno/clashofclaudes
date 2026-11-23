@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { AgentInfo, Builder, SessionInfo } from '../api/types';
 
@@ -66,7 +66,7 @@ test('picker_disables_uninstalled', () => {
   // The agents list (install commands, Re-check) lives in the Town Hall only.
   expect(screen.queryByTestId('agents-status')).toBeNull();
   // the default never lands on an uninstalled agent
-  expect(screen.getByRole('radio', { checked: true }).getAttribute('aria-label')).toBe('Claude Code');
+  expect(within(screen.getByRole('radiogroup', { name: 'Agent' })).getByRole('radio', { checked: true }).getAttribute('aria-label')).toBe('Claude Code');
 });
 
 test('clicking an agent that is not installed shows how to install it, without picking it', () => {
@@ -77,7 +77,7 @@ test('clicking an agent that is not installed shows how to install it, without p
   expect(dialog.textContent).toContain('Not installed');
   expect(dialog.textContent).toContain('npm i -g @openai/codex');
   expect(dialog.textContent).toContain('brew install --cask codex');
-  expect(screen.getByRole('radio', { checked: true }).getAttribute('aria-label')).toBe('Claude Code');
+  expect(within(screen.getByRole('radiogroup', { name: 'Agent' })).getByRole('radio', { checked: true }).getAttribute('aria-label')).toBe('Claude Code');
   fireEvent.click(screen.getByRole('button', { name: 'Done' }));
   expect(screen.queryByRole('dialog')).toBeNull();
 });
@@ -86,7 +86,7 @@ test('agent default follows agents detected after mount until the user picks', (
   setup({ agents: [] });
   render(<NewSessionPicker workspaceId="w" />);
   act(() => useApp.setState({ agents: [claude, custom] }));
-  const checked = () => screen.getByRole('radio', { checked: true }).getAttribute('aria-label');
+  const checked = () => within(screen.getByRole('radiogroup', { name: 'Agent' })).getByRole('radio', { checked: true }).getAttribute('aria-label');
   expect(checked()).toBe('Claude Code');
   fireEvent.click(screen.getByRole('radio', { name: 'Custom command' }));
   act(() => useApp.setState({ agents: [claude, custom, { ...codex, installed: true }] }));
@@ -122,6 +122,18 @@ test('recruit requires a command for custom', async () => {
   fireEvent.click(screen.getByText('Start'));
   expect(await screen.findByText('Enter the custom command')).toBeTruthy();
   expect(ipc.createBuilder).not.toHaveBeenCalled();
+});
+
+test('where it works sits under the workspace: in the folder by default, or its own worktree', async () => {
+  setup({ builders: [bld('b1', 'Ada')] });
+  vi.mocked(ipc.startSession).mockResolvedValue(sess('s9', 'b1', { kind: 'working' }));
+  render(<NewSessionPicker workspaceId="w" />);
+  const where = within(screen.getByRole('radiogroup', { name: 'Where it works' }));
+  expect(where.getByRole('radio', { checked: true }).textContent).toBe('In the folder');
+  fireEvent.click(where.getByRole('radio', { name: 'Own worktree' }));
+  expect(where.getByRole('radio', { checked: true }).textContent).toBe('Own worktree');
+  fireEvent.click(screen.getByText('Start'));
+  await vi.waitFor(() => expect(ipc.startSession).toHaveBeenCalledWith('w', 'b1', '', [], true));
 });
 
 test('start: startSession, upsert, ensureSpot, select; empty task allowed', async () => {

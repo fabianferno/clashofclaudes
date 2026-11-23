@@ -222,6 +222,10 @@
 .bug-kind button:hover { color: #2b2018; }
 .bug-kind button[aria-checked="true"] { background: #fff8e8; color: #2b2018; box-shadow: 0 2px 0 #c8b083; }
 .bug-kind button:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(74,176,240,.35); }
+/* new session: where the builder works, read with the workspace it sits under */
+.ns-where { display: flex; flex-direction: column; gap: 5px; margin: -4px 0 12px; }
+.ns-where .bug-kind { margin-top: 0; }
+.ns-where .sp-d { line-height: 1.35; padding: 0 2px; }
 .bug-field { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
 .bug-field .sp-sec { margin: 0; }
 .bug-field textarea, .bug-field input { width: 100%; box-sizing: border-box; border: 2px solid #c8b083; border-radius: 8px; padding: 7px 9px; background: #fff8e8; font: 600 13px system-ui; color: #2b2018; resize: vertical; }

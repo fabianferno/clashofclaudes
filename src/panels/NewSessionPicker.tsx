@@ -149,6 +149,19 @@ export default function NewSessionPicker({ workspaceId, builderId, task: initial
           {workspaces.filter((w) => !w.missing && isDemoId(w.id) === sample).map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
         </select>
       </label>
+      {!sample && (
+        <div className="ns-where">
+          <div className="bug-kind" role="radiogroup" aria-label="Where it works">
+            <button type="button" role="radio" aria-checked={!isolate} onClick={() => setIsolate(false)}>In the folder</button>
+            <button type="button" role="radio" aria-checked={isolate} onClick={() => setIsolate(true)}>Own worktree</button>
+          </div>
+          <span className="sp-d">
+            {isolate
+              ? 'A new branch from your last commit, in its own folder: its changes wait apart from yours until you merge them.'
+              : 'Edits the workspace’s files directly, alongside yours.'}
+          </span>
+        </div>
+      )}
       <label className="sp-field" ref={taskField}>Task (optional)
         <textarea rows={3} value={task} placeholder={sample ? `Try: ${DEMO_TASK}` : 'Paste or drop images here too'}
           onChange={(e) => setTask(e.target.value)} onPaste={att.onPaste} />
@@ -205,11 +218,6 @@ export default function NewSessionPicker({ workspaceId, builderId, task: initial
           <BuilderPreview agent={agent.kind} model={pModel} effort={pEffort} />
           <span className="sp-d">{tier}</span>
         </div>
-      )}
-      {!sample && (
-        <label className="sp-check" title="A new branch in its own folder (in the app's data), from your last commit: its changes wait apart from yours until you merge them">
-          <input type="checkbox" role="switch" className="set-switch" checked={isolate} onChange={(e) => setIsolate(e.target.checked)} /> Work in its own git worktree
-        </label>
       )}
       {elixirNote && <div className="ns-elixir" role="note" data-testid="start-elixir">{elixirNote}</div>}
       {nudge && (

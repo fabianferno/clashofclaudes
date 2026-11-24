@@ -31,7 +31,7 @@ export const CLASS_MAP: Record<AgentKind, Record<string, ClassTier>> = {
   claude: { haiku: 0, sonnet: 1, opus: 2, fable: 3 },
   codex: {},
   // Model ids such as "gemini-3.8-flash-medium" or "claude-opus-5-5-high" (matched by substring).
-  antigravity: { flash: 0, sonnet: 1, argon: 2, opus: 2 },
+  antigravity: { flash: 0, sonnet: 1, 'gemini-4': 2, opus: 2 },
   opencode: {},
   grok: {},
   custom: {},

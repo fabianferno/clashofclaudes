@@ -47,6 +47,7 @@ test('Antigravity model ids map to classes by family', () => {
   expect(classOf('antigravity', 'gemini-3.8-flash-medium')).toBe(0);
   expect(classOf('antigravity', 'claude-sonnet-5-5-high')).toBe(1);
   expect(classOf('antigravity', 'gemini-4-argon-high')).toBe(2);
+  expect(classOf('antigravity', 'gemini-4-neon-xhigh')).toBe(2);
   expect(classOf('antigravity', 'claude-opus-5-5-high')).toBe(2);
   expect(classOf('antigravity', 'gpt-oss-120b-medium')).toBe(1);
 });

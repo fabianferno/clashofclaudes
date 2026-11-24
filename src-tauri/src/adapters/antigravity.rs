@@ -10,12 +10,14 @@
 //! cancels (a tool prompt interrupts the turn, the trust menu exits agy).
 use super::claude::SHARED_FOLDER_NOTE;
 use super::codex::parse_version;
-use super::{AgentAdapter, Detection, DetectionCache, LaunchRequest, ScreenPrompt, DETECTION_TTL};
+use super::{AgentAdapter, Detection, DetectionCache, LaunchRequest, ModelChoice, ScreenPrompt, DETECTION_TTL};
 use crate::model::AgentKind;
+use crate::platform::{output_within, RunOutcome};
 use crate::pty::LaunchSpec;
 use crate::status::StatusPolicy;
 use std::path::{Path, PathBuf};
-use std::time::Instant;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 pub struct AntigravityAdapter;
 
@@ -39,9 +41,9 @@ fn probe() -> Detection {
 /// One `agy --version` per minute at most.
 pub static DETECTION: DetectionCache = DetectionCache::new(DETECTION_TTL);
 
-/// Model ids as `agy models` lists them (account-dependent; each embeds its effort level).
+/// Models offered when `agy models` can't be read (signed out, offline, an agy without it).
 /// Ordered roughly from fastest to most capable (the model slider runs in this order).
-const MODELS: [&str; 8] = [
+const FALLBACK_MODELS: [&str; 8] = [
     "gpt-oss-120b-medium",
     "gemini-3.8-flash-medium",
     "gemini-3.8-flash-high",
@@ -51,6 +53,83 @@ const MODELS: [&str; 8] = [
     "gemini-4-argon-high",
     "claude-opus-5-5-high",
 ];
+/// The effort suffixes agy model ids end in, lowest first.
+const EFFORT_ORDER: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
+/// How long a read list is reused; one that came back empty is retried after DETECTION_TTL.
+const CATALOG_TTL: Duration = Duration::from_secs(10 * 60);
+/// Longest `agy models` may take (it fetches the account's list from Google).
+const CATALOG_TIMEOUT: Duration = Duration::from_secs(8);
+
+static CATALOG: Mutex<Option<(Instant, Vec<ModelChoice>)>> = Mutex::new(None);
+
+/// A model id split into its family and effort rank: "gemini-4-neon-xhigh" is ("gemini-4-neon", 3);
+/// an id without an effort suffix is its own family.
+fn family_and_effort(id: &str) -> (&str, usize) {
+    id.rsplit_once('-')
+        .and_then(|(fam, e)| EFFORT_ORDER.iter().position(|o| *o == e).map(|r| (fam, r)))
+        .unwrap_or((id, 0))
+}
+
+/// The models `agy models` prints (`id<TAB>label` per line, other lines ignored) for the slider:
+/// agy lists its top families first, so families run in reverse of that (agy's top pick last, as
+/// Claude's most capable is), each from its lowest effort to its highest.
+fn parse_models(out: &[u8]) -> Vec<ModelChoice> {
+    let text = String::from_utf8_lossy(out);
+    let mut listed: Vec<ModelChoice> = vec![];
+    for line in text.lines() {
+        let Some((id, name)) = line.split_once('\t') else { continue };
+        let id = id.trim();
+        if id.is_empty() || id.contains(char::is_whitespace) || listed.iter().any(|m| m.id == id) {
+            continue;
+        }
+        let name = Some(name.trim()).filter(|n| !n.is_empty()).unwrap_or(id);
+        listed.push(ModelChoice { id: id.to_string(), name: name.to_string(), efforts: vec![] });
+    }
+    let mut families: Vec<&str> = vec![];
+    for m in &listed {
+        let fam = family_and_effort(&m.id).0;
+        if !families.contains(&fam) {
+            families.push(fam);
+        }
+    }
+    let rank = |id: &str| {
+        let (fam, effort) = family_and_effort(id);
+        (families.len() - families.iter().position(|f| *f == fam).unwrap_or(0), effort)
+    };
+    let mut ordered = listed.clone();
+    ordered.sort_by_key(|m| rank(&m.id));
+    ordered
+}
+
+/// The account's models from the agy at `path`; empty when it can't say (e.g. signed out).
+fn catalog_from(path: &Path, timeout: Duration) -> Vec<ModelChoice> {
+    let mut cmd = std::process::Command::new(path);
+    cmd.arg("models");
+    match output_within(cmd, timeout) {
+        RunOutcome::Exited { success: true, stdout } => parse_models(&stdout),
+        _ => vec![],
+    }
+}
+
+/// agy's models, read at most every CATALOG_TTL (Re-check reads them again); the built-in list
+/// when they can't be read.
+fn catalog() -> Vec<ModelChoice> {
+    let mut cached = CATALOG.lock().unwrap_or_else(|e| e.into_inner());
+    let fresh = cached.as_ref().filter(|(at, models)| at.elapsed() < if models.is_empty() { DETECTION_TTL } else { CATALOG_TTL });
+    let models = match fresh {
+        Some((_, models)) => models.clone(),
+        None => {
+            let models = AntigravityAdapter.detect().path.map(|p| catalog_from(&p, CATALOG_TIMEOUT)).unwrap_or_default();
+            *cached = Some((Instant::now(), models.clone()));
+            models
+        }
+    };
+    if models.is_empty() {
+        FALLBACK_MODELS.iter().map(|m| ModelChoice { id: m.to_string(), name: m.to_string(), efforts: vec![] }).collect()
+    } else {
+        models
+    }
+}
 
 impl AgentAdapter for AntigravityAdapter {
     fn kind(&self) -> AgentKind {
@@ -64,9 +143,13 @@ impl AgentAdapter for AntigravityAdapter {
     }
     fn invalidate_detection(&self) {
         DETECTION.invalidate();
+        *CATALOG.lock().unwrap_or_else(|e| e.into_inner()) = None;
     }
     fn models(&self) -> Vec<String> {
-        MODELS.map(String::from).to_vec()
+        catalog().into_iter().map(|m| m.id).collect()
+    }
+    fn model_choices(&self) -> Vec<ModelChoice> {
+        catalog()
     }
     fn efforts(&self) -> Vec<String> {
         vec![] // part of the model id
@@ -130,6 +213,33 @@ mod tests {
 
     fn req<'a>(model: Option<&'a str>, task: Option<&'a str>) -> LaunchRequest<'a> {
         LaunchRequest { session_id: "sid", cwd: Path::new("/tmp"), model, effort: Some("high"), task, hook_url: "http://x", data_dir: Path::new("/nonexistent"), custom_command: None, images: &[], resume: None }
+    }
+
+    #[test]
+    fn models_list_runs_agys_top_family_last_each_from_low_to_high_effort() {
+        let out = b"Fetching available models...\n\
+gemini-4-neon-high\tGemini 4 Neon (High)\n\
+gemini-4-neon-xhigh\tGemini 4 Neon (XHigh)\n\
+gemini-4-neon-low\tGemini 4 Neon (Low)\n\
+gemini-pro-orchestrator\tOrchestrator (Carbon)\n\
+gemini-3.8-flash-high\tGemini 3.8 Flash (High)\n\
+gemini-3.8-flash-low\tGemini 3.8 Flash (Low)\n\
+gemini-3.8-flash-low\tduplicate\n\
+gpt-oss-120b-medium\t\n";
+        let ids: Vec<String> = parse_models(out).into_iter().map(|m| m.id).collect();
+        assert_eq!(ids, [
+            "gpt-oss-120b-medium",
+            "gemini-3.8-flash-low",
+            "gemini-3.8-flash-high",
+            "gemini-pro-orchestrator",
+            "gemini-4-neon-low",
+            "gemini-4-neon-high",
+            "gemini-4-neon-xhigh",
+        ]);
+        let m = parse_models(out);
+        assert_eq!(m.iter().find(|m| m.id == "gemini-4-neon-xhigh").unwrap().name, "Gemini 4 Neon (XHigh)");
+        assert_eq!(m.iter().find(|m| m.id == "gpt-oss-120b-medium").unwrap().name, "gpt-oss-120b-medium", "no label: the id");
+        assert!(parse_models(b"Please sign in ... Launch the CLI without arguments to sign in.").is_empty());
     }
 
     #[test]

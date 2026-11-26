@@ -33,6 +33,22 @@ const PARENT_AGENT_ENV: [&str; 10] = [
     "CLAUDE_EFFORT",
 ];
 
+/// The character encoding a session gets when the app has no locale at all, which is how macOS
+/// starts an app from the Dock or Finder. Without one, children fall back to the C locale:
+/// `pbcopy` (which Claude Code copies a selection with) reads its UTF-8 input as Mac Roman, so
+/// `╌│❯` lands on the clipboard as `‚ïå‚îÇ‚ùØ`. Only the encoding is set, as Terminal.app does, so
+/// date and number formats stay the system's.
+#[cfg(target_os = "macos")]
+const FALLBACK_CTYPE: &str = "UTF-8";
+#[cfg(not(target_os = "macos"))]
+const FALLBACK_CTYPE: &str = "C.UTF-8";
+
+/// `LC_CTYPE` to add when none of the variables that pick the encoding is set.
+fn fallback_ctype(get: impl Fn(&str) -> Option<std::ffi::OsString>) -> Option<&'static str> {
+    let set = |k: &str| get(k).is_some_and(|v| !v.is_empty());
+    (!["LC_ALL", "LC_CTYPE", "LANG"].into_iter().any(set)).then_some(FALLBACK_CTYPE)
+}
+
 /// The command for `spec`: the app's environment minus `PARENT_AGENT_ENV`, plus the spec's.
 fn command(spec: &LaunchSpec) -> CommandBuilder {
     let mut cmd = CommandBuilder::new(&spec.program);
@@ -42,6 +58,9 @@ fn command(spec: &LaunchSpec) -> CommandBuilder {
         cmd.env_remove(k);
     }
     cmd.env("TERM", "xterm-256color");
+    if let Some(ctype) = fallback_ctype(|k| std::env::var_os(k)) {
+        cmd.env("LC_CTYPE", ctype);
+    }
     for (k, v) in &spec.env {
         cmd.env(k, v);
     }
@@ -288,6 +307,18 @@ mod tests {
         }
         assert_eq!(cmd.get_env("AGY_CLI_OSC7501").and_then(|v| v.to_str()), Some("on"));
         assert!(cmd.get_env("PATH").is_some(), "the rest of the environment is kept");
+    }
+
+    #[test]
+    fn sessions_get_utf8_only_when_the_app_has_no_locale() {
+        let env = |pairs: &'static [(&'static str, &'static str)]| {
+            move |k: &str| pairs.iter().find(|(n, _)| *n == k).map(|(_, v)| v.into())
+        };
+        assert_eq!(fallback_ctype(env(&[])), Some(FALLBACK_CTYPE), "a Dock launch has no locale");
+        assert_eq!(fallback_ctype(env(&[("LANG", "")])), Some(FALLBACK_CTYPE), "empty counts as unset");
+        assert_eq!(fallback_ctype(env(&[("LANG", "en_GB.UTF-8")])), None);
+        assert_eq!(fallback_ctype(env(&[("LC_CTYPE", "UTF-8")])), None);
+        assert_eq!(fallback_ctype(env(&[("LC_ALL", "fr_FR.ISO8859-1")])), None, "a chosen locale is left alone");
     }
 
     #[test]
